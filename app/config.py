@@ -1,0 +1,8 @@
+import os
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+load_dotenv()
+SECRET_KEY = 'ksdjfksdf'
+ALGORITHM = "HS256"
