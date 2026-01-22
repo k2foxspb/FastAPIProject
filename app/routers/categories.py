@@ -1,7 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select, update, and_
-from sqlalchemy.orm import Session
+
 from starlette import status
+
+from app.auth import get_current_admin
+from app.models import User as UserNodel
 from app.models.categories import Category as CategoryModel
 from app.db_depends import get_db
 from app.schemas import Category as CategorySchema, CategoryCreate
@@ -15,7 +18,9 @@ router = APIRouter(
 
 
 @router.post("/", response_model=CategorySchema, status_code=status.HTTP_201_CREATED)
-async def create_category(category: CategoryCreate, db: AsyncSession = Depends(get_async_db)):
+async def create_category(category: CategoryCreate,
+                          db: AsyncSession = Depends(get_async_db),
+                          current_user: UserNodel=Depends(get_current_admin)):
     """
     Создаёт новую категорию.
     """
@@ -45,7 +50,10 @@ async def get_all_categories(db: AsyncSession = Depends(get_async_db)):
 
 
 @router.delete("/{category_id}", response_model=CategorySchema)
-async def delete_category(category_id: int, db: AsyncSession = Depends(get_async_db)):
+async def delete_category(category_id: int,
+                          db: AsyncSession = Depends(get_async_db),
+                          current_user: UserNodel = Depends(get_current_admin)
+                          ):
     """
     Выполняет мягкое удаление категории по её ID, устанавливая is_active = False.
     """
@@ -65,7 +73,9 @@ async def delete_category(category_id: int, db: AsyncSession = Depends(get_async
     return db_category
 
 @router.put("/{category_id}", response_model=CategorySchema)
-async def update_category(category_id: int, category: CategoryCreate, db: AsyncSession = Depends(get_async_db)):
+async def update_category(category_id: int, category: CategoryCreate,
+                          db: AsyncSession = Depends(get_async_db),
+                          current_user: UserNodel = Depends(get_current_admin)):
     """
     Обновляет категорию по её ID.
     """

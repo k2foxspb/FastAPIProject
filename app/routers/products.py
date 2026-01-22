@@ -9,7 +9,7 @@ from app.auth import get_current_seller
 from app.db_depends import get_async_db
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import Product as ProductModel, Category as CategoryModel, User as UserModel
-from app.schemas import Product as ProductShema, ProductCreate, Category, CategoryCreate
+from app.schemas import Product as ProductShema, ProductCreate
 
 # Создаём маршрутизатор для товаров
 router = APIRouter(
