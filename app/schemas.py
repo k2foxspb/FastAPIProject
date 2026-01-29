@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from pydantic import BaseModel, Field, ConfigDict, EmailStr
 from decimal import Decimal
 
@@ -33,7 +35,7 @@ class ProductCreate(BaseModel):
     name: str = Field(min_length=3, max_length=100,
                       description="Название товара (3-100 символов)")
     description: str | None = Field(None, max_length=500,
-                                       description="Описание товара (до 500 символов)")
+                                    description="Описание товара (до 500 символов)")
     price: Decimal = Field(gt=0, description="Цена товара (больше 0)", decimal_places=2)
     image_url: str | None = Field(None, max_length=200, description="URL изображения товара")
     stock: int = Field(ge=0, description="Количество товара на складе (0 или больше)")
@@ -53,6 +55,7 @@ class Product(BaseModel):
     stock: int = Field(description="Количество товара на складе")
     category_id: int = Field(description="ID категории")
     is_active: bool = Field(description="Активность товара")
+    rating: float | None = Field(None, description="Рейтинг товара (от 0 до 5)")
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -60,7 +63,8 @@ class Product(BaseModel):
 class UserCreate(BaseModel):
     email: EmailStr = Field(description="Email пользователя")
     password: str = Field(min_length=8, description="Пароль (минимум 8 символов)")
-    role: str = Field(default="buyer", pattern="^(buyer|seller|admin)$", description="Роль: 'buyer' или 'seller' или администратор")
+    role: str = Field(default="buyer", pattern="^(buyer|seller|admin)$",
+                      description="Роль: 'buyer' или 'seller' или администратор")
 
 
 class User(BaseModel):
@@ -74,3 +78,17 @@ class User(BaseModel):
 class RefreshTokenRequest(BaseModel):
     refresh_token: str
 
+
+class Review(BaseModel):
+    id: int = Field(description='id комментария')
+    user_id: int = Field(description='id владелеца коментария')
+    product_id: int = Field('id продукта к которому оставлен комментарий')
+    comment: str = Field(description='комментарий')
+    comment_date: datetime = Field(description='дата комментария')
+    grade: int = Field(ge=1, le=5, description='оценка от 1 до 5')
+
+
+class CreateReview(BaseModel):
+    product_id: int = Field(description='id продукта')
+    comment: str | None = Field(None, description='комментарий', )
+    grade: int = Field(ge=1, le=5, description='оценка от 1 до 5')

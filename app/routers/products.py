@@ -9,8 +9,8 @@ from app.auth import get_current_seller
 from app.db_depends import get_async_db
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import Product as ProductModel, Category as CategoryModel, User as UserModel
-from app.schemas import Product as ProductShema, ProductCreate
-
+from app.schemas import Product as ProductShema, ProductCreate, Review
+from app.models import Reviews as ReviewsModel
 # Создаём маршрутизатор для товаров
 router = APIRouter(
     prefix="/products",
@@ -135,3 +135,11 @@ async def delete_product(
     await db.commit()
     await db.refresh(product)  # Для возврата is_active = False
     return product
+
+@router.get('/{product_id}/review', response_model=list[Review])
+async def get_reviews(product_id: int, db: AsyncSession = Depends(get_async_db)):
+
+    result = await db.scalars(
+        select(ReviewsModel).where(ReviewsModel.product_id == product_id).where(ReviewsModel.is_active == True)
+    )
+    return result.all()
