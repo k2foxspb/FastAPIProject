@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 
-from .routers import reviews, users, categories, products
+from .routers import reviews, users, categories, products, cart
 
 app = FastAPI(
     title="FastAPI Интернет-магазин",
@@ -11,6 +11,7 @@ app.include_router(categories.router)
 app.include_router(products.router)
 app.include_router(users.router)
 app.include_router(reviews.router)
+app.include_router(cart.router)
 
 
 # Корневой эндпоинт для проверки

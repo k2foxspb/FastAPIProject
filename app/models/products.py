@@ -5,7 +5,7 @@ from sqlalchemy.dialects.postgresql import TSVECTOR
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
-from app.models import Category
+from app.models import Category, CartItem
 
 
 class Product(Base):
@@ -40,8 +40,8 @@ class Product(Base):
         Index("ix_products_tsv_gin", "tsv", postgresql_using="gin"),
     )
 
-
-
+    cart_items: Mapped[list["CartItem"]] = relationship("CartItem", back_populates="product",
+                                                        cascade="all, delete-orphan")
     category: Mapped["Category"] = relationship(back_populates="products")  # New
     seller = relationship("User", back_populates="products")
     review = relationship("Reviews", back_populates="product")
