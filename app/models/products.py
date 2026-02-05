@@ -6,6 +6,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
 from app.models import Category, CartItem
+from app.models.orders import OrderItem
 
 
 class Product(Base):
@@ -45,3 +46,4 @@ class Product(Base):
     category: Mapped["Category"] = relationship(back_populates="products")  # New
     seller = relationship("User", back_populates="products")
     review = relationship("Reviews", back_populates="product")
+    order_items: Mapped[list["OrderItem"]] = relationship("OrderItem", back_populates="product")
