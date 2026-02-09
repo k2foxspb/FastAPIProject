@@ -189,4 +189,16 @@ class OrderList(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-    
+class OrderCheckoutResponse(BaseModel):
+    order: Order = Field(..., description="Созданный заказ")
+    confirmation_url: str | None = Field(
+        None,
+        description="URL для перехода на оплату в YooKassa",
+    )
+
+
+class OrderStatus(BaseModel):
+    order_id: int = Field(..., description='id заказа')
+    status: str = Field(..., description='статус')
+    paid_at: datetime = Field(..., description='дата оплаты')
+    message: str = Field(..., description='сообщение пользователю')
