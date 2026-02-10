@@ -1,7 +1,7 @@
 import datetime
 import time
 
-from fastapi import FastAPI
+from fastapi import FastAPI, BackgroundTasks
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
@@ -77,11 +77,11 @@ app.include_router(payments.router)
 
 # Корневой эндпоинт для проверки
 @app.get("/")
-async def root():
+async def root(background_tasks: BackgroundTasks):
     """
     Корневой маршрут, подтверждающий, что API работает.
     """
-    call_background_task()
+    background_tasks.add_task(call_background_task,'welcome')
     logger.info("Hello from the root path")
     return {"message": "Добро пожаловать в API интернет-магазина!"}
 
@@ -109,7 +109,7 @@ app.mount("/media", StaticFiles(directory="media"), name="media")
 app.mount('/v1', app_v1)
 
 
-def call_background_task():
+def call_background_task(message):
     time.sleep(10)
-    print(f"Background Task called!")
+    print(f"Background Task called! {message}")
 
