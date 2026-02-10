@@ -1,3 +1,4 @@
+import datetime
 import time
 
 from fastapi import FastAPI
@@ -8,9 +9,11 @@ from fastapi.middleware.httpsredirect import HTTPSRedirectMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.requests import Request
+from loguru import logger
 
 from .routers import reviews, users, categories, products, cart, orders, payments
 
+logger.add("info.log", level="INFO")
 app = FastAPI(
     title="FastAPI Интернет-магазин",
     version="0.1.0",
@@ -78,11 +81,14 @@ async def root():
     """
     Корневой маршрут, подтверждающий, что API работает.
     """
+    call_background_task()
+    logger.info("Hello from the root path")
     return {"message": "Добро пожаловать в API интернет-магазина!"}
 
 
 @app.get("/create_session")
 async def session_set(request: Request):
+
     request.session["my_session"] = "1234"
     return 'ok'
 
@@ -101,3 +107,9 @@ async def session_delete(request: Request):
 
 app.mount("/media", StaticFiles(directory="media"), name="media")
 app.mount('/v1', app_v1)
+
+
+def call_background_task():
+    time.sleep(10)
+    print(f"Background Task called!")
+
