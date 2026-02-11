@@ -1,15 +1,15 @@
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select, func, update
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth import get_current_buyer, get_current_user
-from app.db_depends import get_async_db
+from app.core.auth import get_current_buyer, get_current_user
+from app.api.dependencies import get_async_db
 from app.models import (Reviews as ReviewModel,
                         User as UserModel,
                         Product as ProductModel)
-from app.schemas import Review as ReviewSchema, Review, CreateReview
+from app.schemas.reviews import Review as ReviewSchema, Review, CreateReview
 
 router = APIRouter(
     prefix="/reviews",

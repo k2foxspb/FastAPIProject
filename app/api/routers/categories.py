@@ -1,15 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select, update, and_
+from sqlalchemy import select, update
 
 from starlette import status
 
-from app.auth import get_current_admin
+from app.core.auth import get_current_admin
 from app.models import User as UserNodel
 from app.models.categories import Category as CategoryModel
-from app.db_depends import get_db
-from app.schemas import Category as CategorySchema, CategoryCreate
+from app.schemas.categories import Category as CategorySchema, CategoryCreate
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.db_depends import get_async_db
+from app.api.dependencies import get_async_db
 router = APIRouter(
     prefix="/categories",
     tags=["categories"],

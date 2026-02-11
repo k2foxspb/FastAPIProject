@@ -1,115 +1,1 @@
-import datetime
-import time
-
-from fastapi import FastAPI, BackgroundTasks
-from fastapi.staticfiles import StaticFiles
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.middleware.trustedhost import TrustedHostMiddleware
-from fastapi.middleware.httpsredirect import HTTPSRedirectMiddleware
-from fastapi.middleware.gzip import GZipMiddleware
-from starlette.middleware.sessions import SessionMiddleware
-from starlette.requests import Request
-from loguru import logger
-
-from .routers import reviews, users, categories, products, cart, orders, payments
-
-logger.add("info.log", level="INFO")
-app = FastAPI(
-    title="FastAPI Интернет-магазин",
-    version="0.1.0",
-)
-
-app_v1 = FastAPI(
-    title="FastAPI Интернет-магазин",
-    version="0.2.0",
-)
-
-
-class TimingMiddleware:
-    def __init__(self, app):
-        self.app = app
-
-    async def __call__(self, scope, receive, send):
-        start_time = time.time()
-        await self.app(scope, receive, send)
-        duration = time.time() - start_time
-        print(f"Request duration: {duration:.10f} seconds")
-
-
-# мидлвар на основе функции
-# @app.middleware("http")
-# async def modify_request_response_middleware(request: Request, call_next):
-#     start_time = time.time()
-#     response = await call_next(request)
-#     duration = time.time() - start_time
-#     print(f"Request duration: {duration:.10f} seconds")
-#     return response
-app.add_middleware(TimingMiddleware)
-
-origins = [
-    "http://127.0.0.1:8000",
-    "http://localhost:63342",
-    "https://example.com",
-]
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,
-    allow_methods=["GET", "POST"],
-    allow_headers=["Authorization", "Content-Type"],
-)
-app.add_middleware(
-    TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost:8000", "*"]
-)
-# app.add_middleware(HTTPSRedirectMiddleware)
-
-app.add_middleware(GZipMiddleware, minimum_size=1000)
-app.add_middleware(SessionMiddleware, secret_key="7UzGQS7woBazLUtVQJG39ywOP7J7lkPkB0UmDhMgBR8=")
-app.include_router(categories.router)
-app.include_router(products.router)
-app.include_router(users.router)
-app.include_router(reviews.router)
-app.include_router(cart.router)
-app.include_router(orders.router)
-app.include_router(payments.router)
-
-
-# Корневой эндпоинт для проверки
-@app.get("/")
-async def root(background_tasks: BackgroundTasks):
-    """
-    Корневой маршрут, подтверждающий, что API работает.
-    """
-    background_tasks.add_task(call_background_task,'welcome')
-    logger.info("Hello from the root path")
-    return {"message": "Добро пожаловать в API интернет-магазина!"}
-
-
-@app.get("/create_session")
-async def session_set(request: Request):
-
-    request.session["my_session"] = "1234"
-    return 'ok'
-
-
-@app.get("/read_session")
-async def session_info(request: Request):
-    my_var = request.session.get("my_session")
-    return my_var
-
-
-@app.get("/delete_session")
-async def session_delete(request: Request):
-    my_var = request.session.pop("my_session")
-    return my_var
-
-
-app.mount("/media", StaticFiles(directory="media"), name="media")
-app.mount('/v1', app_v1)
-
-
-def call_background_task(message):
-    time.sleep(10)
-    print(f"Background Task called! {message}")
-
+from fastapi import FastAPIfrom fastapi.staticfiles import StaticFilesfrom app.core.middleware import setup_middlewarefrom app.core.logging import setup_loggingfrom app.api.routers import api_routerfrom app.api.routers.health import router as health_routerdef create_application() -> FastAPI:    """Фабрика для создания приложения FastAPI."""    # Настройка логирования    setup_logging()    # Создание приложения    app = FastAPI(        title="FastAPI Интернет-магазин",        version="0.1.0",        description="API для интернет-магазина",        docs_url="/docs",        redoc_url="/redoc",    )    # Настройка middleware    setup_middleware(app)    # Подключение роутеров    app.include_router(health_router)    app.include_router(api_router, prefix="/api/v1")    # Статические файлы    app.mount("/media", StaticFiles(directory="app/media"), name="media")    return app# Создание экземпляра приложенияapp = create_application()# Опционально: создание второй версии APIdef create_v2_application() -> FastAPI:    """Версия 2 API (если нужна)."""    app_v2 = FastAPI(        title="FastAPI Интернет-магазин",        version="0.2.0",        description="API для интернет-магазина v2",    )    # Настройки для v2...    return app_v2# app_v1 = create_v2_application()# app.mount('/v2', app_v1)

@@ -5,7 +5,7 @@ from uuid import uuid4  # Для уникального idempotence_key (пре�
 from anyio import to_thread  # Для запуска синхронного кода в async (FastAPI)
 from yookassa import Configuration, Payment  # библиотека YooKassa
 
-from app.config import (  # Импорт настроек
+from app.core.config import (  # Импорт настроек
     YOOKASSA_RETURN_URL,
     YOOKASSA_SECRET_KEY,
     YOOKASSA_SHOP_ID,

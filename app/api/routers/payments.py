@@ -1,7 +1,6 @@
 import ipaddress
 import json
 from datetime import datetime, timezone
-from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
@@ -9,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from yookassa.domain.notification import WebhookNotification
 
-from app.db_depends import get_async_db
+from app.api.dependencies import get_async_db
 from app.models.orders import Order as OrderModel
 
 router = APIRouter(

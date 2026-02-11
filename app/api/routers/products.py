@@ -1,19 +1,17 @@
 import uuid
-from datetime import datetime
-from itertools import product
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from sqlalchemy import select, update, and_, func, desc
-from sqlalchemy.orm import Session
 from starlette.status import HTTP_201_CREATED, HTTP_404_NOT_FOUND, HTTP_200_OK, HTTP_400_BAD_REQUEST, HTTP_403_FORBIDDEN
 
-from app.auth import get_current_seller
-from app.db_depends import get_async_db
+from app.core.auth import get_current_seller
+from app.api.dependencies import get_async_db
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import Product as ProductModel, Category as CategoryModel, User as UserModel
-from app.schemas import Product as ProductShema, ProductCreate, Review, ProductList
+from app.schemas.products import Product as ProductShema, ProductCreate, ProductList
 from app.models import Reviews as ReviewsModel
+from app.schemas.reviews import Review
 
 # Создаём маршрутизатор для товаров
 router = APIRouter(

@@ -4,11 +4,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from fastapi.security import OAuth2PasswordRequestForm
 
-from app.config import SECRET_KEY, ALGORITHM
+from app.core.config import SECRET_KEY, ALGORITHM
 from app.models.users import User as UserModel
-from app.schemas import UserCreate, User as UserSchema, RefreshTokenRequest
-from app.db_depends import get_async_db
-from app.auth import hash_password, verify_password, create_access_token, create_refresh_token
+from app.schemas.users import UserCreate, User as UserSchema, RefreshTokenRequest
+from app.api.dependencies import get_async_db
+from app.core.auth import hash_password, verify_password, create_access_token, create_refresh_token
 
 router = APIRouter(prefix="/users", tags=["users"])
 
