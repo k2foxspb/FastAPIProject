@@ -9,3 +9,4 @@ def call_background_task(message: str = 'нет сообщений'):
     time.sleep(10)
     print(f"Background Task called!")
     print(message)
+
