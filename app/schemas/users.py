@@ -1,5 +1,6 @@
 from datetime import datetime
-from pydantic import BaseModel, EmailStr, Field, ConfigDict
+from pydantic import BaseModel, EmailStr, Field, ConfigDict, field_validator
+from typing import Any
 
 
 class UserCreate(BaseModel):
@@ -35,21 +36,39 @@ class PhotoAlbum(PhotoAlbumBase):
     id: int
     user_id: int
     created_at: datetime
-    photos: list[UserPhoto] = []
+    photos: list[UserPhoto] = Field(default_factory=list)
     
     # Для превью альбома (последняя фотография)
     album_preview_url: str | None = None
     
     model_config = ConfigDict(from_attributes=True)
 
+    @field_validator('photos', mode='before')
+    @classmethod
+    def prevent_lazy_loading(cls, v: Any) -> Any:
+        try:
+            if v is None:
+                return []
+            iter(v)
+            return v
+        except Exception:
+            return []
+
     @classmethod
     def model_validate(cls, obj, **kwargs):
         # Переопределяем для того чтобы вычислить album_preview_url
         data = super().model_validate(obj, **kwargs)
-        if hasattr(obj, 'photos') and obj.photos:
-            # Сортируем по дате создания или по ID (последняя добавленная)
-            sorted_photos = sorted(obj.photos, key=lambda x: x.created_at or x.id, reverse=True)
-            data.album_preview_url = sorted_photos[0].preview_url
+        try:
+            # Check if photos are loaded before accessing them
+            if hasattr(obj, 'photos'):
+                iter(obj.photos)
+                if obj.photos:
+                    # Сортируем по дате создания или по ID (последняя добавленная)
+                    sorted_photos = sorted(obj.photos, key=lambda x: x.created_at or x.id, reverse=True)
+                    data.album_preview_url = sorted_photos[0].preview_url
+        except Exception:
+            # If not loaded, album_preview_url remains None
+            pass
         return data
 
 
@@ -58,12 +77,29 @@ class User(BaseModel):
     email: EmailStr
     is_active: bool
     role: str
-    status: str
+    status: str | None = "offline"
     avatar_url: str | None = None
     avatar_preview_url: str | None = None
-    photos: list[UserPhoto] = []
-    albums: list[PhotoAlbum] = []
+    photos: list[UserPhoto] = Field(default_factory=list)
+    albums: list[PhotoAlbum] = Field(default_factory=list)
+    
     model_config = ConfigDict(from_attributes=True)
+
+    @field_validator('photos', 'albums', mode='before')
+    @classmethod
+    def prevent_lazy_loading(cls, v: Any) -> Any:
+        try:
+            # Try to access the value to see if it's loaded
+            # For SQLAlchemy async, accessing an unloaded relationship
+            # outside of a greenlet will raise an error.
+            if v is None:
+                return []
+            # We just need to check if it's iterable without error
+            iter(v)
+            return v
+        except Exception:
+            # If any error occurs (like MissingGreenlet), return empty list
+            return []
 
 
 class RefreshTokenRequest(BaseModel):

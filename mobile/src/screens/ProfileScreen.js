@@ -1,15 +1,41 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, Image, FlatList, ScrollView } from 'react-native';
-import { usersApi } from '../api';
+import { useFocusEffect } from '@react-navigation/native';
+import api, { usersApi } from '../api';
 
-export default function ProfileScreen() {
+export default function ProfileScreen({ navigation }) {
   const [user, setUser] = useState(null);
+  const [error, setError] = useState(null);
 
-  useEffect(() => {
-    usersApi.getMe().then(res => setUser(res.data)).catch(err => console.log(err));
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      // Если токена нет в заголовках axios, сразу редиректим
+      if (!api.defaults.headers.common['Authorization']) {
+        navigation.replace('Login');
+        return;
+      }
 
-  if (!user) return <View style={styles.center}><Text>Загрузка...</Text></View>;
+      usersApi
+        .getMe()
+        .then(res => setUser(res.data))
+        .catch(err => {
+          const status = err?.response?.status;
+          if (status === 401) {
+            // Не авторизован — отправляем на экран входа
+            navigation.replace('Login');
+          } else {
+            setError('Не удалось загрузить профиль');
+            console.log(err);
+          }
+        });
+    }, [navigation])
+  );
+
+  if (!user) return (
+    <View style={styles.center}>
+      <Text>{error || 'Загрузка...'}</Text>
+    </View>
+  );
 
   return (
     <ScrollView style={styles.container}>

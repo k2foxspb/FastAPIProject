@@ -8,6 +8,7 @@ import UsersScreen from '../screens/UsersScreen';
 import ChatListScreen from '../screens/ChatListScreen';
 import ChatScreen from '../screens/ChatScreen';
 import FeedScreen from '../screens/FeedScreen';
+import LoginScreen from '../screens/LoginScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
@@ -17,6 +18,23 @@ function ChatStack() {
     <Stack.Navigator>
       <Stack.Screen name="ChatList" component= {ChatListScreen} options={{ title: 'Сообщения' }} />
       <Stack.Screen name="Chat" component={ChatScreen} options={({ route }) => ({ title: route.params.userName })} />
+    </Stack.Navigator>
+  );
+}
+
+function ProfileStack() {
+  return (
+    <Stack.Navigator>
+      <Stack.Screen name="ProfileMain" component={ProfileScreen} options={{ title: 'Профиль' }} />
+      <Stack.Screen 
+        name="Login" 
+        component={LoginScreen} 
+        options={{ 
+          title: 'Вход',
+          headerLeft: () => null, // Отключаем кнопку назад на экране логина
+          gestureEnabled: false,   // Отключаем жесты назад
+        }} 
+      />
     </Stack.Navigator>
   );
 }
@@ -43,7 +61,7 @@ export default function TabNavigator() {
       <Tab.Screen name="Feed" component={FeedScreen} options={{ title: 'Новости' }} />
       <Tab.Screen name="Users" component={UsersScreen} options={{ title: 'Пользователи' }} />
       <Tab.Screen name="Messages" component={ChatStack} options={{ title: 'Чат', headerShown: false }} />
-      <Tab.Screen name="Profile" component={ProfileScreen} options={{ title: 'Профиль' }} />
+      <Tab.Screen name="Profile" component={ProfileStack} options={{ title: 'Профиль', headerShown: false }} />
     </Tab.Navigator>
   );
 }

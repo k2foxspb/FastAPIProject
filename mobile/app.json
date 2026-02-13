@@ -1,5 +1,9 @@
 {
   "expo": {
+    "plugins": [
+      "@react-native-firebase/app",
+      "@react-native-firebase/messaging"
+    ],
     "name": "FastAPI Expo",
     "slug": "fastapi-expo-app",
     "version": "1.0.0",
@@ -15,18 +19,21 @@
       "**/*"
     ],
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.k2foxspb.fokinfun",
+      "googleServicesFile": "./GoogleService-Info.plist"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/logo1024.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.yourname.fastapiexpo"
+      "package": "com.k2foxspb.fokinfun",
+      "googleServicesFile": "./google-services.json"
     },
 
     "extra": {
-      "apiUrl": "http://127.0.0.1:8000",
+      "apiUrl": "http://192.168.0.3:8000",
       "eas": {
         "projectId": "9e4ed2de-5ab1-47d0-a0ca-24f4f580e862"
       }

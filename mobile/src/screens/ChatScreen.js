@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, FlatList, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform } from 'react-native';
 import { chatApi } from '../api';
-import Constants from 'expo-constants';
+import { API_BASE_URL } from '../constants';
 
 export default function ChatScreen({ route }) {
   const { userId, userName } = route.params;
@@ -15,7 +15,7 @@ export default function ChatScreen({ route }) {
     chatApi.getHistory(userId, token).then(res => setMessages(res.data));
 
     // WebSocket соединение
-    const wsUrl = `ws://${Constants.expoConfig.extra.apiUrl.replace('http://', '')}/chat/ws/${token}`;
+    const wsUrl = `ws://${API_BASE_URL.replace('http://', '').replace('https://', '')}/chat/ws/${token}`;
     ws.current = new WebSocket(wsUrl);
 
     ws.current.onmessage = (e) => {

@@ -1,10 +1,8 @@
 import axios from 'axios';
-import Constants from 'expo-constants';
-
-const API_URL = Constants.expoConfig?.extra?.apiUrl || 'http://192.168.1.100:8000';
+import { API_BASE_URL } from '../constants';
 
 const api = axios.create({
-  baseURL: API_URL,
+  baseURL: API_BASE_URL,
 });
 
 export const setAuthToken = (token) => {
@@ -38,5 +36,24 @@ export const chatApi = {
     headers: { 'Content-Type': 'multipart/form-data' },
   }),
 };
+
+// Добавляем перехватчик для отладки сетевых ошибок
+api.interceptors.response.use(
+  response => response,
+  error => {
+    console.log('[API Error Detail]:', {
+      message: error.message,
+      config: {
+        url: error.config?.url,
+        method: error.config?.method,
+        baseURL: error.config?.baseURL,
+        headers: error.config?.headers,
+      },
+      status: error.response?.status,
+      data: error.response?.data
+    });
+    return Promise.reject(error);
+  }
+);
 
 export default api;
