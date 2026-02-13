@@ -17,6 +17,7 @@ class Product(Base):
     description: Mapped[str | None] = mapped_column(String(500), nullable=True)
     price: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
     image_url: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    thumbnail_url: Mapped[str | None] = mapped_column(String(200), nullable=True)
     stock: Mapped[int] = mapped_column(nullable=False)
     is_active: Mapped[bool] = mapped_column(default=True)
     category_id: Mapped[int] = mapped_column(ForeignKey("categories.id"), nullable=False)  # New

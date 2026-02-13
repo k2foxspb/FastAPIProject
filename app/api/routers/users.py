@@ -5,12 +5,37 @@ from sqlalchemy import select
 from fastapi.security import OAuth2PasswordRequestForm
 
 from app.core.config import SECRET_KEY, ALGORITHM
-from app.models.users import User as UserModel
-from app.schemas.users import UserCreate, User as UserSchema, RefreshTokenRequest
+from app.models.users import User as UserModel, PhotoAlbum as PhotoAlbumModel, UserPhoto as UserPhotoModel
+from app.schemas.users import UserCreate, User as UserSchema, RefreshTokenRequest, PhotoAlbumCreate, PhotoAlbum as PhotoAlbumSchema, UserPhotoCreate, UserPhoto as UserPhotoSchema
 from app.api.dependencies import get_async_db
-from app.core.auth import hash_password, verify_password, create_access_token, create_refresh_token
+from app.core.auth import (
+    hash_password,
+    verify_password,
+    create_access_token,
+    create_refresh_token,
+    get_current_user,
+    verify_refresh_token
+)
+
+from sqlalchemy.orm import selectinload
 
 router = APIRouter(prefix="/users", tags=["users"])
+
+
+@router.get("/me", response_model=UserSchema)
+async def get_me(current_user: UserModel = Depends(get_current_user), db: AsyncSession = Depends(get_async_db)):
+    """
+    Возвращает информацию о текущем пользователе, включая его альбомы и фотографии.
+    """
+    # Загружаем фотографии и альбомы пользователя
+    result = await db.execute(
+        select(UserModel).where(UserModel.id == current_user.id).options(
+            selectinload(UserModel.photos),
+            selectinload(UserModel.albums).selectinload(PhotoAlbumModel.photos)
+        )
+    )
+    user = result.scalar_one_or_none()
+    return user
 
 
 @router.post("/", response_model=UserSchema, status_code=status.HTTP_201_CREATED)
@@ -64,40 +89,7 @@ async def refresh_token(
     """
     Обновляет refresh-токен, принимая старый refresh-токен в теле запроса.
     """
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate refresh token",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-
-    old_refresh_token = body.refresh_token
-
-    try:
-        payload = jwt.decode(old_refresh_token, SECRET_KEY, algorithms=[ALGORITHM])
-        email: str | None = payload.get("sub")
-        token_type: str | None = payload.get("token_type")
-
-        # Проверяем, что токен действительно refresh
-        if email is None or token_type != "refresh":
-            raise credentials_exception
-
-    except jwt.ExpiredSignatureError:
-        # refresh-токен истёк
-        raise credentials_exception
-    except jwt.PyJWTError:
-        # подпись неверна или токен повреждён
-        raise credentials_exception
-
-    # Проверяем, что пользователь существует и активен
-    result = await db.scalars(
-        select(UserModel).where(
-            UserModel.email == email,
-            UserModel.is_active == True
-        )
-    )
-    user = result.first()
-    if user is None:
-        raise credentials_exception
+    user = await verify_refresh_token(body.refresh_token, db)
 
     # Генерируем новый refresh-токен
     new_refresh_token = create_refresh_token(
@@ -116,44 +108,11 @@ async def refresh_token_access(
     db: AsyncSession = Depends(get_async_db),
 ):
     """
-    Обновляет refresh-токен, принимая старый refresh-токен в теле запроса.
+    Обновляет access-токен, принимая refresh-токен в теле запроса.
     """
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate refresh token",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
+    user = await verify_refresh_token(body.refresh_token, db)
 
-    refresh_token = body.refresh_token
-
-    try:
-        payload = jwt.decode(refresh_token, SECRET_KEY, algorithms=[ALGORITHM])
-        email: str | None = payload.get("sub")
-        token_type: str | None = payload.get("token_type")
-
-        # Проверяем, что токен действительно refresh
-        if email is None or token_type != "refresh":
-            raise credentials_exception
-
-    except jwt.ExpiredSignatureError:
-        # refresh-токен истёк
-        raise credentials_exception
-    except jwt.PyJWTError:
-        # подпись неверна или токен повреждён
-        raise credentials_exception
-
-    # Проверяем, что пользователь существует и активен
-    result = await db.scalars(
-        select(UserModel).where(
-            UserModel.email == email,
-            UserModel.is_active == True
-        )
-    )
-    user = result.first()
-    if user is None:
-        raise credentials_exception
-
-    # Генерируем новый refresh-токен
+    # Генерируем новый access-токен
     new_access_token = create_access_token(
         data={"sub": user.email, "role": user.role, "id": user.id}
     )
@@ -162,5 +121,58 @@ async def refresh_token_access(
         "access_token": new_access_token,
         "token_type": "bearer",
     }
+
+
+@router.post("/albums", response_model=PhotoAlbumSchema, status_code=status.HTTP_201_CREATED)
+async def create_album(
+    album: PhotoAlbumCreate,
+    current_user: UserModel = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """
+    Создает новый фотоальбом для текущего пользователя.
+    """
+    db_album = PhotoAlbumModel(
+        user_id=current_user.id,
+        title=album.title,
+        description=album.description
+    )
+    db.add(db_album)
+    await db.commit()
+    await db.refresh(db_album)
+    return db_album
+
+
+@router.post("/photos", response_model=UserPhotoSchema, status_code=status.HTTP_201_CREATED)
+async def add_photo(
+    photo: UserPhotoCreate,
+    current_user: UserModel = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """
+    Добавляет фотографию текущему пользователю. Можно указать album_id.
+    """
+    if photo.album_id:
+        result = await db.execute(
+            select(PhotoAlbumModel).where(
+                PhotoAlbumModel.id == photo.album_id,
+                PhotoAlbumModel.user_id == current_user.id
+            )
+        )
+        album = result.scalar_one_or_none()
+        if not album:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Album not found")
+
+    db_photo = UserPhotoModel(
+        user_id=current_user.id,
+        album_id=photo.album_id,
+        image_url=photo.image_url,
+        preview_url=photo.preview_url,
+        description=photo.description
+    )
+    db.add(db_photo)
+    await db.commit()
+    await db.refresh(db_photo)
+    return db_photo
 
 

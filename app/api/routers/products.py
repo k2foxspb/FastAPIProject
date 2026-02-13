@@ -1,5 +1,7 @@
 import uuid
+import io
 from pathlib import Path
+from PIL import Image
 
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from sqlalchemy import select, update, and_, func, desc
@@ -26,9 +28,9 @@ ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp"}
 MAX_IMAGE_SIZE = 2 * 1024 * 1024  # 2 097 152 байт
 
 
-async def save_product_image(file: UploadFile) -> str:
+async def save_product_image(file: UploadFile) -> tuple[str, str]:
     """
-    Сохраняет изображение товара и возвращает относительный URL.
+    Сохраняет изображение товара, генерирует миниатюру и возвращает их относительные URL.
     """
     if file.content_type not in ALLOWED_IMAGE_TYPES:
         raise HTTPException(HTTP_400_BAD_REQUEST, "Only JPG, PNG or WebP images are allowed")
@@ -38,23 +40,41 @@ async def save_product_image(file: UploadFile) -> str:
         raise HTTPException(HTTP_400_BAD_REQUEST, "Image is too large")
 
     extension = Path(file.filename or "").suffix.lower() or ".jpg"
-    file_name = f"{uuid.uuid4()}{extension}"
+    base_name = str(uuid.uuid4())
+    
+    # Сохранение оригинала
+    file_name = f"{base_name}{extension}"
     file_path = MEDIA_ROOT / file_name
     file_path.write_bytes(content)
+    
+    # Генерация миниатюры
+    thumb_name = f"{base_name}_thumb{extension}"
+    thumb_path = MEDIA_ROOT / thumb_name
+    
+    try:
+        with Image.open(io.BytesIO(content)) as img:
+            # Создаем миниатюру 200x200 (сохраняя пропорции)
+            img.thumbnail((200, 200))
+            img.save(thumb_path)
+    except Exception as e:
+        # Если не удалось создать миниатюру, используем оригинал как миниатюру
+        # Или можно логировать ошибку
+        thumb_name = file_name
 
-    return f"/media/products/{file_name}"
+    return f"/media/products/{file_name}", f"/media/products/{thumb_name}"
 
 
-def remove_product_image(url: str | None) -> None:
+def remove_product_image(url: str | None, thumb_url: str | None = None) -> None:
     """
-    Удаляет файл изображения, если он существует.
+    Удаляет файл изображения и миниатюры, если они существуют.
     """
-    if not url:
-        return
-    relative_path = url.lstrip("/")
-    file_path = BASE_DIR / relative_path
-    if file_path.exists():
-        file_path.unlink()
+    for image_url in [url, thumb_url]:
+        if not image_url:
+            continue
+        relative_path = image_url.lstrip("/")
+        file_path = BASE_DIR / relative_path
+        if file_path.exists():
+            file_path.unlink()
 
 
 @router.get("/", response_model=ProductList)
@@ -154,13 +174,14 @@ async def create_product(
                             detail="Category not found or inactive")
 
     # Сохранение изображения (если есть)
-    image_url = await save_product_image(image) if image else None
+    image_url, thumbnail_url = await save_product_image(image) if image else (None, None)
 
     # Создание товара
     db_product = ProductModel(
         **product.model_dump(),
         seller_id=current_user.id,
         image_url=image_url,
+        thumbnail_url=thumbnail_url,
     )
 
     db.add(db_product)
@@ -229,8 +250,10 @@ async def update_product(
     )
 
     if image:
-        remove_product_image(db_product.image_url)
-        db_product.image_url = await save_product_image(image)
+        remove_product_image(db_product.image_url, db_product.thumbnail_url)
+        image_url, thumbnail_url = await save_product_image(image)
+        db_product.image_url = image_url
+        db_product.thumbnail_url = thumbnail_url
 
     await db.commit()
     await db.refresh(db_product)  # Для консистентности данных
@@ -257,7 +280,7 @@ async def delete_product(
     await db.execute(
         update(ProductModel).where(ProductModel.id == product_id).values(is_active=False)
     )
-    remove_product_image(product.image_url)
+    remove_product_image(product.image_url, product.thumbnail_url)
 
     await db.commit()
     await db.refresh(product)  # Для возврата is_active = False

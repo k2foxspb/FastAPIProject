@@ -90,6 +90,39 @@ async def get_current_user(token: str = Depends(oauth2_scheme),
     return user
 
 
+async def verify_refresh_token(refresh_token: str, db: AsyncSession):
+    """
+    Проверяет refresh-токен и возвращает пользователя, если он валиден.
+    """
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate refresh token",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+    try:
+        payload = jwt.decode(refresh_token, SECRET_KEY, algorithms=[ALGORITHM])
+        email: str | None = payload.get("sub")
+        token_type: str | None = payload.get("token_type")
+
+        if email is None or token_type != "refresh":
+            raise credentials_exception
+
+    except (jwt.ExpiredSignatureError, jwt.PyJWTError):
+        raise credentials_exception
+
+    result = await db.scalars(
+        select(UserModel).where(
+            UserModel.email == email,
+            UserModel.is_active == True
+        )
+    )
+    user = result.first()
+    if user is None:
+        raise credentials_exception
+    return user
+
+
 
 async def get_current_seller(current_user: UserModel = Depends(get_current_user)):
     """

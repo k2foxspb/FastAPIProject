@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>WebSocket Test</title>
+    </head>
+    <body>
+        <h1>WebSocket Notifications Test</h1>
+        <div id="status">Status: Disconnected</div>
+        <div id="user-info"></div>
+        <input type="text" id="token" placeholder="Enter JWT Token" style="width: 300px;">
+        <button onclick="connect()">Connect</button>
+        <div id="messages">
+            <h3>Notifications:</h3>
+            <ul id="notif-list"></ul>
+        </div>
+
+        <script>
+            let ws;
+            function connect() {
+                const token = document.getElementById("token").value;
+                if (!token) {
+                    alert("Please enter a token");
+                    return;
+                }
+                
+                const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+                const wsUrl = `${protocol}//${window.location.host}/ws/notifications?token=${token}`;
+                
+                ws = new WebSocket(wsUrl);
+                
+                ws.onopen = function() {
+                    document.getElementById("status").innerText = "Status: Connected";
+                    document.getElementById("status").style.color = "green";
+                };
+                
+                ws.onmessage = function(event) {
+                    const data = JSON.parse(event.data);
+                    const li = document.createElement("li");
+                    li.innerText = JSON.stringify(data, null, 2);
+                    document.getElementById("notif-list").appendChild(li);
+                };
+                
+                ws.onclose = function() {
+                    document.getElementById("status").innerText = "Status: Disconnected";
+                    document.getElementById("status").style.color = "red";
+                };
+                
+                ws.onerror = function(err) {
+                    console.error("WebSocket error:", err);
+                    document.getElementById("status").innerText = "Status: Error";
+                };
+            }
+        </script>
+    </body>
+</html>

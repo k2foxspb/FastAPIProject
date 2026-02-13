@@ -46,6 +46,7 @@ class Product(BaseModel):
     description: str | None = Field(None, description="Описание товара")
     price: Decimal = Field(description="Цена товара в рублях", gt=0, decimal_places=2)
     image_url: str | None = Field(None, description="URL изображения товара")
+    thumbnail_url: str | None = Field(None, description="URL миниатюры изображения товара")
     stock: int = Field(description="Количество товара на складе")
     category_id: int = Field(description="ID категории")
     is_active: bool = Field(description="Активность товара")

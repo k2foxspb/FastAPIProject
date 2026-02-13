@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Chat Test</title>
+        <style>
+            #messages {
+                list-style-type: none;
+                margin: 0;
+                padding: 0;
+                height: 300px;
+                overflow-y: scroll;
+                border: 1px solid #ccc;
+            }
+            #messages li {
+                padding: 5px 10px;
+            }
+            #messages li:nth-child(odd) {
+                background: #eee;
+            }
+        </style>
+    </head>
+    <body>
+        <h1>WebSocket Chat Test</h1>
+        <label>Your Token: <input type="text" id="token" style="width: 300px;"></label><br><br>
+        <label>Receiver ID: <input type="number" id="receiverId"></label>
+        <button onclick="connect()">Connect</button>
+        <hr>
+        <ul id="messages"></ul>
+        <form action="" onsubmit="sendMessage(event)">
+            <input type="text" id="messageText" autocomplete="off" placeholder="Message or Emojis..."/>
+            <input type="file" id="fileInput" />
+            <button>Send</button>
+        </form>
+        <div style="margin-top: 10px;">
+            <button onclick="addEmoji('😊')">😊</button>
+            <button onclick="addEmoji('😂')">😂</button>
+            <button onclick="addEmoji('🚀')">🚀</button>
+            <button onclick="addEmoji('👍')">👍</button>
+            <button onclick="addEmoji('❤️')">❤️</button>
+        </div>
+
+        <script>
+            var ws = null;
+
+            function connect() {
+                var token = document.getElementById("token").value;
+                if (!token) {
+                    alert("Please enter a token");
+                    return;
+                }
+                ws = new WebSocket(`ws://${window.location.host}/chat/ws/${token}`);
+                
+                ws.onmessage = function(event) {
+                    var messages = document.getElementById('messages');
+                    var messageLi = document.createElement('li');
+                    var data = JSON.parse(event.data);
+                    
+                    var content = `From ${data.sender_id} to ${data.receiver_id}: `;
+                    if (data.message) {
+                        content += data.message;
+                    }
+                    
+                    if (data.file_path) {
+                        if (data.message_type === 'image') {
+                            content += `<br><img src="${data.file_path}" style="max-width: 200px;">`;
+                        } else if (data.message_type === 'video') {
+                            content += `<br><video src="${data.file_path}" controls style="max-width: 300px;"></video>`;
+                        } else {
+                            content += `<br><a href="${data.file_path}" target="_blank">File: ${data.file_path.split('/').pop()}</a>`;
+                        }
+                    }
+                    
+                    messageLi.innerHTML = content;
+                    messages.appendChild(messageLi);
+                    messages.scrollTop = messages.scrollHeight;
+                };
+
+                ws.onclose = function(event) {
+                    console.log("WS Closed", event);
+                    alert("WebSocket closed. Check console for details.");
+                };
+                
+                ws.onerror = function(event) {
+                    console.error("WS Error", event);
+                };
+            }
+
+            function addEmoji(emoji) {
+                var input = document.getElementById("messageText");
+                input.value += emoji;
+                input.focus();
+            }
+
+            async function sendMessage(event) {
+                event.preventDefault();
+                var input = document.getElementById("messageText");
+                var fileInput = document.getElementById("fileInput");
+                var receiverId = document.getElementById("receiverId").value;
+                
+                if (!ws || ws.readyState !== WebSocket.OPEN) {
+                    alert("Not connected");
+                    return;
+                }
+
+                var messageData = {
+                    receiver_id: parseInt(receiverId),
+                    message: input.value,
+                    file_path: null,
+                    message_type: "text"
+                };
+
+                // Если есть файл, сначала загружаем его
+                if (fileInput.files.length > 0) {
+                    var formData = new FormData();
+                    formData.append("file", fileInput.files[0]);
+                    
+                    try {
+                        const response = await fetch("/chat/upload", {
+                            method: "POST",
+                            body: formData
+                        });
+                        const result = await response.json();
+                        messageData.file_path = result.file_path;
+                        messageData.message_type = result.message_type;
+                    } catch (error) {
+                        console.error("Upload error:", error);
+                        alert("File upload failed");
+                        return;
+                    }
+                }
+
+                if (!messageData.message && !messageData.file_path) {
+                    return;
+                }
+
+                ws.send(JSON.stringify(messageData));
+                input.value = '';
+                fileInput.value = '';
+            }
+        </script>
+    </body>
+</html>

@@ -8,6 +8,8 @@ from app.api.routers import (
     cart,
     orders,
     payments,
+    notifications,
+    chat,
 )
 
 # Основной роутер для API v1
@@ -21,5 +23,7 @@ api_router.include_router(reviews.router, tags=["reviews"])
 api_router.include_router(cart.router, tags=["cart"])
 api_router.include_router(orders.router, tags=["orders"])
 api_router.include_router(payments.router, tags=["payments"])
+api_router.include_router(notifications.router, tags=["websocket"])
+api_router.include_router(chat.router, tags=["chat"])
 
 __all__ = ["api_router"]

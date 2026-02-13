@@ -10,6 +10,7 @@ from app.models import (Reviews as ReviewModel,
                         User as UserModel,
                         Product as ProductModel)
 from app.schemas.reviews import Review as ReviewSchema, Review, CreateReview
+from app.api.routers.notifications import manager
 
 router = APIRouter(
     prefix="/reviews",
@@ -59,6 +60,19 @@ async def create_review(review: CreateReview,
     await db.commit()
     await db.refresh(db_review)
     await db.refresh(product_result)
+
+    # Отправка уведомления продавцу о новом отзыве
+    await manager.send_personal_message(
+        {
+            "type": "new_review",
+            "product_id": product_result.id,
+            "product_name": product_result.name,
+            "rating": review.grade,
+            "comment": review.comment
+        },
+        product_result.seller_id
+    )
+
     return db_review
 
 @router.delete('/reviews/{review_id}')
