@@ -1,0 +1,38 @@
+{
+  "expo": {
+    "name": "FastAPI Expo",
+    "slug": "fastapi-expo-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "package": "com.yourname.fastapiexpo"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "apiUrl": "http://127.0.0.1:8000",
+      "eas": {
+        "projectId": "9e4ed2de-5ab1-47d0-a0ca-24f4f580e862"
+      }
+    },
+    "owner": "k2foxspb"
+  }
+}

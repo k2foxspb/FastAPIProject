@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "718858471098",
+    "project_id": "fokinfun-35b00",
+    "storage_bucket": "fokinfun-35b00.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:718858471098:android:b6f62b6ea79605d352a483",
+        "android_client_info": {
+          "package_name": "com.k2foxspb.fokinfun"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "718858471098-rfdjvej9thfm5q5pfqspegunbum06ef0.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCqElsAwKjvZDzCl1pxTp2xBTZsAKQVDkU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "718858471098-rfdjvej9thfm5q5pfqspegunbum06ef0.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

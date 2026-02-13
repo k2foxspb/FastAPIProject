@@ -28,18 +28,14 @@ def setup_middleware(app: FastAPI) -> None:
     app.add_middleware(TimingMiddleware)
 
     # CORS
-    origins = [
-        "http://127.0.0.1:8000",
-        "http://localhost:63342",
-        "https://example.com",
-    ]
+    origins = ["*"]
 
     app.add_middleware(
         CORSMiddleware,
         allow_origins=origins,
         allow_credentials=True,
-        allow_methods=["GET", "POST"],
-        allow_headers=["Authorization", "Content-Type"],
+        allow_methods=["*"],
+        allow_headers=["*"],
     )
 
     # Trusted Host
