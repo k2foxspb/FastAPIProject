@@ -4,10 +4,10 @@
     "slug": "fastapi-expo-app",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/logo1024.png",
     "userInterfaceStyle": "light",
     "splash": {
-      "image": "./assets/splash.png",
+      "image": "./assets/logo.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
@@ -19,14 +19,12 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./assets/logo1024.png",
         "backgroundColor": "#ffffff"
       },
       "package": "com.yourname.fastapiexpo"
     },
-    "web": {
-      "favicon": "./assets/favicon.png"
-    },
+
     "extra": {
       "apiUrl": "http://127.0.0.1:8000",
       "eas": {
