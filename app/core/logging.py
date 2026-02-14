@@ -16,10 +16,10 @@ def setup_logging() -> None:
     )
 
     # Файловое логирование
-    logger.add(
-        "info.log",
-        level="INFO",
-        rotation="10 MB",
-        retention="10 days",
-        compression="zip"
-    )
+    # logger.add(
+    #     "info.log",
+    #     level="INFO",
+    #     rotation="10 MB",
+    #     retention="10 days",
+    #     compression="zip"
+    # )
