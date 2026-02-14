@@ -24,6 +24,22 @@ export const usersApi = {
     });
   },
   getUsers: (search) => api.get('/users/', { params: { search } }),
+
+  // Альбомы
+  getAlbums: () => api.get('/users/albums'),
+  getAlbum: (id) => api.get(`/users/albums/${id}`),
+  createAlbum: (data) => api.post('/users/albums', data),
+  updateAlbum: (id, data) => api.patch(`/users/albums/${id}`, data),
+  deleteAlbum: (id) => api.delete(`/users/albums/${id}`),
+
+  // Фотографии
+  getPhoto: (id) => api.get(`/users/photos/${id}`),
+  addPhoto: (data) => api.post('/users/photos', data),
+  uploadPhoto: (formData) => api.post('/users/photos/upload', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  }),
+  updatePhoto: (id, data) => api.patch(`/users/photos/${id}`, data),
+  deletePhoto: (id) => api.delete(`/users/photos/${id}`),
 };
 
 export const productsApi = {

@@ -2,7 +2,15 @@
   "expo": {
     "plugins": [
       "@react-native-firebase/app",
-      "@react-native-firebase/messaging"
+      "@react-native-firebase/messaging",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Приложение запрашивает доступ к вашим фотографиям, чтобы вы могли делиться ими.",
+          "cameraPermission": "Приложение запрашивает доступ к камере, чтобы вы могли делать снимки.",
+          "microphonePermission": "Приложение запрашивает доступ к микрофону."
+        }
+      ]
     ],
     "name": "FastAPI Expo",
     "slug": "fastapi-expo-app",
@@ -21,7 +29,12 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.k2foxspb.fokinfun",
-      "googleServicesFile": "./GoogleService-Info.plist"
+      "googleServicesFile": "./GoogleService-Info.plist",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Приложение запрашивает доступ к камере, чтобы вы могли делать снимки.",
+        "NSMicrophoneUsageDescription": "Приложение запрашивает доступ к микрофону.",
+        "NSPhotoLibraryUsageDescription": "Приложение запрашивает доступ к вашим фотографиям, чтобы вы могли делиться ими."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -29,7 +42,13 @@
         "backgroundColor": "#ffffff"
       },
       "package": "com.k2foxspb.fokinfun",
-      "googleServicesFile": "./google-services.json"
+      "googleServicesFile": "./google-services.json",
+      "permissions": [
+        "CAMERA",
+        "RECORD_AUDIO",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
+      ]
     },
 
     "extra": {

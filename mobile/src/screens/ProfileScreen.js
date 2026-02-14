@@ -1,7 +1,8 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, Image, FlatList, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, Image, FlatList, ScrollView, TouchableOpacity } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import api, { usersApi } from '../api';
+import Icon from 'react-native-vector-icons/Ionicons';
 
 export default function ProfileScreen({ navigation }) {
   const [user, setUser] = useState(null);
@@ -49,20 +50,53 @@ export default function ProfileScreen({ navigation }) {
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Альбомы</Text>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Альбомы</Text>
+          <View style={{ flexDirection: 'row' }}>
+            <TouchableOpacity onPress={() => navigation.navigate('UploadPhoto')} style={{ marginRight: 15 }}>
+              <Icon name="camera-outline" size={28} color="#007AFF" />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => navigation.navigate('CreateAlbum')}>
+              <Icon name="add-circle-outline" size={28} color="#007AFF" />
+            </TouchableOpacity>
+          </View>
+        </View>
+
         {user.albums && user.albums.map(album => (
-          <View key={album.id} style={styles.album}>
-            <Text style={styles.albumTitle}>{album.title}</Text>
+          <TouchableOpacity 
+            key={album.id} 
+            style={styles.album}
+            onPress={() => navigation.navigate('AlbumDetail', { albumId: album.id })}
+          >
+            <View style={styles.albumTitleRow}>
+              <Text style={styles.albumTitle}>{album.title}</Text>
+              <Icon name="chevron-forward" size={20} color="#ccc" />
+            </View>
             <FlatList
               horizontal
               data={album.photos}
               keyExtractor={(item) => item.id.toString()}
               renderItem={({ item }) => (
-                <Image source={{ uri: item.image_url }} style={styles.photo} />
+                <TouchableOpacity onPress={() => navigation.navigate('PhotoDetail', { photoId: item.id })}>
+                  <Image source={{ uri: item.preview_url || item.image_url }} style={styles.photo} />
+                </TouchableOpacity>
               )}
+              showsHorizontalScrollIndicator={false}
             />
-          </View>
+          </TouchableOpacity>
         ))}
+
+        <Text style={[styles.sectionTitle, { marginTop: 20 }]}>Все фотографии</Text>
+        <View style={styles.photoGrid}>
+          {user.photos && user.photos.map(photo => (
+            <TouchableOpacity 
+              key={photo.id} 
+              onPress={() => navigation.navigate('PhotoDetail', { photoId: photo.id })}
+            >
+              <Image source={{ uri: photo.preview_url || photo.image_url }} style={styles.gridPhoto} />
+            </TouchableOpacity>
+          ))}
+        </View>
       </View>
     </ScrollView>
   );
@@ -76,8 +110,12 @@ const styles = StyleSheet.create({
   name: { fontSize: 20, fontWeight: 'bold' },
   role: { color: 'gray' },
   section: { padding: 20 },
-  sectionTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 10 },
+  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
+  sectionTitle: { fontSize: 18, fontWeight: 'bold' },
   album: { marginBottom: 20 },
-  albumTitle: { fontSize: 16, marginBottom: 5 },
+  albumTitleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 },
+  albumTitle: { fontSize: 16, fontWeight: '500' },
   photo: { width: 100, height: 100, marginRight: 10, borderRadius: 5 },
+  photoGrid: { flexDirection: 'row', flexWrap: 'wrap' },
+  gridPhoto: { width: 100, height: 100, margin: 5, borderRadius: 5 },
 });

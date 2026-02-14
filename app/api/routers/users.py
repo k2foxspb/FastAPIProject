@@ -6,7 +6,11 @@ from fastapi.security import OAuth2PasswordRequestForm
 
 from app.core.config import SECRET_KEY, ALGORITHM
 from app.models.users import User as UserModel, PhotoAlbum as PhotoAlbumModel, UserPhoto as UserPhotoModel
-from app.schemas.users import UserCreate, User as UserSchema, RefreshTokenRequest, PhotoAlbumCreate, PhotoAlbum as PhotoAlbumSchema, UserPhotoCreate, UserPhoto as UserPhotoSchema
+from app.schemas.users import (
+    UserCreate, User as UserSchema, RefreshTokenRequest, 
+    PhotoAlbumCreate, PhotoAlbumUpdate, PhotoAlbum as PhotoAlbumSchema, 
+    UserPhotoCreate, UserPhotoUpdate, UserPhoto as UserPhotoSchema
+)
 from app.api.dependencies import get_async_db
 from app.core.auth import (
     hash_password,
@@ -16,6 +20,12 @@ from app.core.auth import (
     get_current_user,
     verify_refresh_token
 )
+
+import os
+import uuid
+import io
+from PIL import Image
+from fastapi import UploadFile, File, Form
 
 from sqlalchemy.orm import selectinload
 
@@ -139,8 +149,13 @@ async def create_album(
     )
     db.add(db_album)
     await db.commit()
-    await db.refresh(db_album)
-    return db_album
+    # Eagerly load photos for the response model
+    result = await db.execute(
+        select(PhotoAlbumModel).where(PhotoAlbumModel.id == db_album.id).options(
+            selectinload(PhotoAlbumModel.photos)
+        )
+    )
+    return result.scalar_one()
 
 
 @router.post("/photos", response_model=UserPhotoSchema, status_code=status.HTTP_201_CREATED)
@@ -174,5 +189,265 @@ async def add_photo(
     await db.commit()
     await db.refresh(db_photo)
     return db_photo
+
+
+@router.get("/albums", response_model=list[PhotoAlbumSchema])
+async def get_my_albums(
+    current_user: UserModel = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """
+    Возвращает список альбомов текущего пользователя.
+    """
+    result = await db.execute(
+        select(PhotoAlbumModel).where(PhotoAlbumModel.user_id == current_user.id).options(
+            selectinload(PhotoAlbumModel.photos)
+        )
+    )
+    return result.scalars().all()
+
+
+@router.get("/albums/{album_id}", response_model=PhotoAlbumSchema)
+async def get_album(
+    album_id: int,
+    current_user: UserModel = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """
+    Возвращает информацию о конкретном альбоме текущего пользователя.
+    """
+    result = await db.execute(
+        select(PhotoAlbumModel).where(
+            PhotoAlbumModel.id == album_id,
+            PhotoAlbumModel.user_id == current_user.id
+        ).options(selectinload(PhotoAlbumModel.photos))
+    )
+    album = result.scalar_one_or_none()
+    if not album:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Album not found")
+    return album
+
+
+@router.patch("/albums/{album_id}", response_model=PhotoAlbumSchema)
+async def update_album(
+    album_id: int,
+    album_update: PhotoAlbumUpdate,
+    current_user: UserModel = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """
+    Обновляет информацию об альбоме.
+    """
+    result = await db.execute(
+        select(PhotoAlbumModel).where(
+            PhotoAlbumModel.id == album_id,
+            PhotoAlbumModel.user_id == current_user.id
+        )
+    )
+    db_album = result.scalar_one_or_none()
+    if not db_album:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Album not found")
+
+    update_data = album_update.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(db_album, key, value)
+
+    await db.commit()
+    # Eagerly load photos for the response model
+    result = await db.execute(
+        select(PhotoAlbumModel).where(PhotoAlbumModel.id == db_album.id).options(
+            selectinload(PhotoAlbumModel.photos)
+        )
+    )
+    return result.scalar_one()
+
+
+@router.delete("/albums/{album_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_album(
+    album_id: int,
+    current_user: UserModel = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """
+    Удаляет альбом пользователя. Фотографии удаляются каскадно.
+    """
+    result = await db.execute(
+        select(PhotoAlbumModel).where(
+            PhotoAlbumModel.id == album_id,
+            PhotoAlbumModel.user_id == current_user.id
+        )
+    )
+    db_album = result.scalar_one_or_none()
+    if not db_album:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Album not found")
+
+    await db.delete(db_album)
+    await db.commit()
+    return None
+
+
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+USER_MEDIA_ROOT = os.path.join(BASE_DIR, "app", "media", "users")
+os.makedirs(USER_MEDIA_ROOT, exist_ok=True)
+
+async def save_user_photo(file: UploadFile) -> tuple[str, str]:
+    file_extension = os.path.splitext(file.filename)[1]
+    unique_filename = f"{uuid.uuid4()}{file_extension}"
+    file_path = os.path.join(USER_MEDIA_ROOT, unique_filename)
+    
+    content = await file.read()
+    with open(file_path, "wb") as buffer:
+        buffer.write(content)
+    
+    # Миниатюра
+    thumb_filename = f"{os.path.splitext(unique_filename)[0]}_thumb{file_extension}"
+    thumb_path = os.path.join(USER_MEDIA_ROOT, thumb_filename)
+    try:
+        with Image.open(io.BytesIO(content)) as img:
+            img.thumbnail((400, 400))
+            img.save(thumb_path)
+    except Exception:
+        thumb_filename = unique_filename
+        
+    return f"/media/users/{unique_filename}", f"/media/users/{thumb_filename}"
+
+
+@router.post("/photos/upload", response_model=UserPhotoSchema, status_code=status.HTTP_201_CREATED)
+async def upload_photo(
+    file: UploadFile = File(...),
+    description: str | None = Form(None),
+    album_id: int | None = Form(None),
+    current_user: UserModel = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """
+    Загружает фотографию на сервер и создает запись в базе данных.
+    """
+    if album_id:
+        result = await db.execute(
+            select(PhotoAlbumModel).where(
+                PhotoAlbumModel.id == album_id,
+                PhotoAlbumModel.user_id == current_user.id
+            )
+        )
+        if not result.scalar_one_or_none():
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Album not found")
+
+    image_url, preview_url = await save_user_photo(file)
+
+    db_photo = UserPhotoModel(
+        user_id=current_user.id,
+        album_id=album_id,
+        image_url=image_url,
+        preview_url=preview_url,
+        description=description
+    )
+    db.add(db_photo)
+    await db.commit()
+    await db.refresh(db_photo)
+    return db_photo
+
+
+@router.get("/photos/{photo_id}", response_model=UserPhotoSchema)
+async def get_photo(
+    photo_id: int,
+    current_user: UserModel = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """
+    Возвращает информацию о фотографии.
+    """
+    result = await db.execute(
+        select(UserPhotoModel).where(
+            UserPhotoModel.id == photo_id,
+            UserPhotoModel.user_id == current_user.id
+        )
+    )
+    photo = result.scalar_one_or_none()
+    if not photo:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Photo not found")
+    return photo
+
+
+@router.patch("/photos/{photo_id}", response_model=UserPhotoSchema)
+async def update_photo(
+    photo_id: int,
+    photo_update: UserPhotoUpdate,
+    current_user: UserModel = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """
+    Обновляет описание или альбом фотографии.
+    """
+    result = await db.execute(
+        select(UserPhotoModel).where(
+            UserPhotoModel.id == photo_id,
+            UserPhotoModel.user_id == current_user.id
+        )
+    )
+    db_photo = result.scalar_one_or_none()
+    if not db_photo:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Photo not found")
+
+    update_data = photo_update.model_dump(exclude_unset=True)
+    
+    if "album_id" in update_data and update_data["album_id"] is not None:
+        # Проверяем что альбом принадлежит пользователю
+        album_result = await db.execute(
+            select(PhotoAlbumModel).where(
+                PhotoAlbumModel.id == update_data["album_id"],
+                PhotoAlbumModel.user_id == current_user.id
+            )
+        )
+        if not album_result.scalar_one_or_none():
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Target album not found")
+
+    for key, value in update_data.items():
+        setattr(db_photo, key, value)
+
+    await db.commit()
+    await db.refresh(db_photo)
+    return db_photo
+
+
+@router.delete("/photos/{photo_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_photo(
+    photo_id: int,
+    current_user: UserModel = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """
+    Удаляет фотографию пользователя.
+    """
+    result = await db.execute(
+        select(UserPhotoModel).where(
+            UserPhotoModel.id == photo_id,
+            UserPhotoModel.user_id == current_user.id
+        )
+    )
+    db_photo = result.scalar_one_or_none()
+    if not db_photo:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Photo not found")
+
+    await db.delete(db_photo)
+    await db.commit()
+    
+    # Удаление файлов с диска
+    try:
+        # Получаем пути
+        relative_image = db_photo.image_url.lstrip("/")
+        relative_preview = db_photo.preview_url.lstrip("/")
+        
+        image_path = os.path.join(BASE_DIR, "app", relative_image)
+        preview_path = os.path.join(BASE_DIR, "app", relative_preview)
+        
+        if os.path.exists(image_path):
+            os.remove(image_path)
+        if os.path.exists(preview_path) and preview_path != image_path:
+            os.remove(preview_path)
+    except Exception as e:
+        print(f"Error deleting files: {e}")
+        
+    return None
 
 

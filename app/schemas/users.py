@@ -19,6 +19,10 @@ class UserPhotoBase(BaseModel):
 class UserPhotoCreate(UserPhotoBase):
     pass
 
+class UserPhotoUpdate(BaseModel):
+    description: str | None = None
+    album_id: int | None = None
+
 class UserPhoto(UserPhotoBase):
     id: int
     created_at: datetime
@@ -32,44 +36,47 @@ class PhotoAlbumBase(BaseModel):
 class PhotoAlbumCreate(PhotoAlbumBase):
     pass
 
+class PhotoAlbumUpdate(BaseModel):
+    title: str | None = None
+    description: str | None = None
+
 class PhotoAlbum(PhotoAlbumBase):
     id: int
     user_id: int
     created_at: datetime
-    photos: list[UserPhoto] = Field(default_factory=list)
+    photos: list[UserPhoto] = []
     
     # Для превью альбома (последняя фотография)
     album_preview_url: str | None = None
     
     model_config = ConfigDict(from_attributes=True)
 
-    @field_validator('photos', mode='before')
-    @classmethod
-    def prevent_lazy_loading(cls, v: Any) -> Any:
-        try:
-            if v is None:
-                return []
-            iter(v)
-            return v
-        except Exception:
-            return []
-
     @classmethod
     def model_validate(cls, obj, **kwargs):
-        # Переопределяем для того чтобы вычислить album_preview_url
-        data = super().model_validate(obj, **kwargs)
-        try:
-            # Check if photos are loaded before accessing them
-            if hasattr(obj, 'photos'):
-                iter(obj.photos)
-                if obj.photos:
-                    # Сортируем по дате создания или по ID (последняя добавленная)
-                    sorted_photos = sorted(obj.photos, key=lambda x: x.created_at or x.id, reverse=True)
-                    data.album_preview_url = sorted_photos[0].preview_url
-        except Exception:
-            # If not loaded, album_preview_url remains None
-            pass
-        return data
+        # We need to be careful here. If we call super().model_validate(obj),
+        # Pydantic will try to access all fields, including 'photos'.
+        # To prevent MissingGreenlet, we can manually create the data dict.
+        
+        from sqlalchemy import inspect
+        insp = inspect(obj)
+        
+        # Get base fields
+        data = {
+            "id": obj.id,
+            "user_id": obj.user_id,
+            "title": obj.title,
+            "description": obj.description,
+            "created_at": obj.created_at,
+            "photos": []
+        }
+        
+        if 'photos' not in insp.unloaded:
+            data["photos"] = [UserPhoto.model_validate(p) for p in obj.photos]
+            if obj.photos:
+                sorted_photos = sorted(obj.photos, key=lambda x: x.created_at or x.id, reverse=True)
+                data["album_preview_url"] = sorted_photos[0].preview_url
+        
+        return cls.model_construct(**data)
 
 
 class User(BaseModel):
@@ -80,26 +87,35 @@ class User(BaseModel):
     status: str | None = "offline"
     avatar_url: str | None = None
     avatar_preview_url: str | None = None
-    photos: list[UserPhoto] = Field(default_factory=list)
-    albums: list[PhotoAlbum] = Field(default_factory=list)
+    photos: list[UserPhoto] = []
+    albums: list[PhotoAlbum] = []
     
     model_config = ConfigDict(from_attributes=True)
 
-    @field_validator('photos', 'albums', mode='before')
     @classmethod
-    def prevent_lazy_loading(cls, v: Any) -> Any:
-        try:
-            # Try to access the value to see if it's loaded
-            # For SQLAlchemy async, accessing an unloaded relationship
-            # outside of a greenlet will raise an error.
-            if v is None:
-                return []
-            # We just need to check if it's iterable without error
-            iter(v)
-            return v
-        except Exception:
-            # If any error occurs (like MissingGreenlet), return empty list
-            return []
+    def model_validate(cls, obj, **kwargs):
+        from sqlalchemy import inspect
+        insp = inspect(obj)
+        
+        data = {
+            "id": obj.id,
+            "email": obj.email,
+            "is_active": obj.is_active,
+            "role": obj.role,
+            "status": obj.status,
+            "avatar_url": obj.avatar_url,
+            "avatar_preview_url": obj.avatar_preview_url,
+            "photos": [],
+            "albums": []
+        }
+        
+        if 'photos' not in insp.unloaded:
+            data["photos"] = [UserPhoto.model_validate(p) for p in obj.photos]
+        
+        if 'albums' not in insp.unloaded:
+            data["albums"] = [PhotoAlbum.model_validate(a) for a in obj.albums]
+            
+        return cls.model_construct(**data)
 
 
 class RefreshTokenRequest(BaseModel):
