@@ -18,5 +18,9 @@ MAIL_PORT = int(os.getenv("MAIL_PORT", "587"))
 MAIL_SERVER = os.getenv("MAIL_SERVER")
 MAIL_FROM_NAME = os.getenv("MAIL_FROM_NAME", "FastAPI Project")
 DOMAIN = os.getenv("DOMAIN", "http://localhost:8000")
+REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
+REDIS_PORT = os.getenv("REDIS_PORT", "6379")
+CELERY_BROKER_URL = f"redis://{REDIS_HOST}:{REDIS_PORT}/0"
+CELERY_RESULT_BACKEND = f"redis://{REDIS_HOST}:{REDIS_PORT}/0"
 
 

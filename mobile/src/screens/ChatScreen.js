@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, FlatList, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, Image, Modal, Pressable, Alert, StatusBar } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import * as DocumentPicker from 'expo-document-picker';
 import { chatApi, usersApi } from '../api';
 import { API_BASE_URL } from '../constants';
 import { storage } from '../utils/storage';
@@ -8,6 +9,7 @@ import { useNotifications } from '../context/NotificationContext';
 import { uploadManager } from '../utils/uploadManager';
 import CachedMedia from '../components/CachedMedia';
 import VoiceMessage from '../components/VoiceMessage';
+import FileMessage from '../components/FileMessage';
 import { Video, ResizeMode, Audio } from 'expo-av';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
@@ -131,6 +133,42 @@ export default function ChatScreen({ route, navigation }) {
       };
       ws.current.send(JSON.stringify(msgData));
       setInputText('');
+    }
+  };
+
+  const pickAndUploadDocument = async () => {
+    if (selectionMode) return;
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: '*/*',
+        copyToCacheDirectory: true,
+      });
+
+      if (!result.canceled) {
+        for (const asset of result.assets) {
+          setUploadingProgress(0);
+          const uploadResult = await uploadManager.uploadFileResumable(
+            asset.uri,
+            asset.name,
+            asset.mimeType,
+            (progress) => setUploadingProgress(progress)
+          );
+
+          if (uploadResult.status === 'completed') {
+            const msgData = {
+              receiver_id: userId,
+              file_path: uploadResult.file_path,
+              message_type: uploadResult.message_type
+            };
+            ws.current.send(JSON.stringify(msgData));
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Document picking failed', error);
+      alert('Произошла ошибка при выборе или загрузке документа');
+    } finally {
+      setUploadingProgress(null);
     }
   };
 
@@ -384,10 +422,10 @@ export default function ChatScreen({ route, navigation }) {
             <CachedMedia item={item} onFullScreen={handleFullScreen} />
           )}
           {isVoice && (
-            <VoiceMessage item={item} />
+            <VoiceMessage item={item} currentUserId={currentUserIdLocal} />
           )}
           {isFile && (
-            <Text style={styles.fileLinkText}>📎 {item.file_path.split('/').pop()}</Text>
+            <FileMessage item={item} currentUserId={currentUserIdLocal} />
           )}
           {item.message && (
             <Text style={[
@@ -547,11 +585,18 @@ export default function ChatScreen({ route, navigation }) {
 
       <View style={[styles.inputContainer, { backgroundColor: colors.background, borderTopColor: colors.border, borderTopWidth: 1 }]}>
         <TouchableOpacity 
+          onPress={pickAndUploadDocument} 
+          style={styles.attachButton}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        >
+          <MaterialIcons name="insert-drive-file" size={24} color={colors.primary} />
+        </TouchableOpacity>
+        <TouchableOpacity 
           onPress={pickAndUploadFile} 
           style={styles.attachButton}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
-          <MaterialIcons name="add" size={24} color={colors.primary} />
+          <MaterialIcons name="image" size={24} color={colors.primary} />
         </TouchableOpacity>
         <TextInput
           style={[styles.input, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]}

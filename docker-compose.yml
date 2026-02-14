@@ -9,8 +9,31 @@ services:
     # Открываем порт 8000 внутри и снаружи
     ports:
       - "8000:8000"
+    environment:
+      - REDIS_HOST=redis
     depends_on:
       - db
+      - redis
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  celery_worker:
+    build:
+      context: .
+      dockerfile: ./app/Dockerfile
+    command: celery -A app.core.celery_app worker --loglevel=info
+    environment:
+      - REDIS_HOST=redis
+      - POSTGRES_USER=ecommerce_user
+      - POSTGRES_PASSWORD=xxxxxxxx
+      - POSTGRES_DB=ecommerce_db
+    depends_on:
+      - db
+      - redis
+
   db:
     image: postgres:15
     volumes:

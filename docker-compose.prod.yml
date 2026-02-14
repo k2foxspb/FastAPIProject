@@ -10,8 +10,32 @@ services:
 #    # Открываем порт 8000 внутри и снаружи
 #    ports:
 #      - '8000:8000'
+    environment:
+      - REDIS_HOST=redis
     depends_on:
       - db
+      - redis
+
+  redis:
+    image: redis:7-alpine
+    expose:
+      - "6379"
+    volumes:
+      - redis_data:/data
+
+  celery_worker:
+    build:
+      context: .
+      dockerfile: app/Dockerfile.prod.yml
+    command: celery -A app.core.celery_app worker --loglevel=info
+    environment:
+      - REDIS_HOST=redis
+      - POSTGRES_USER=ecommerce_user
+      - POSTGRES_PASSWORD=xxxxxxxx
+      - POSTGRES_DB=ecommerce_db
+    depends_on:
+      - db
+      - redis
 
   db:
     image: postgres:15
@@ -24,22 +48,12 @@ services:
 
   nginx:
     build: nginx
-    volumes:
-      - ./certbot/conf:/etc/letsencrypt
-      - ./certbot/www:/var/www/certbot
     ports:
       - '80:80'
     depends_on:
       - web
-  certbot:
-    image: certbot/certbot
-    volumes:
-      - ./certbot/conf:/etc/letsencrypt
-      - ./certbot/www:/var/www/certbot
-    command: certonly --webroot --webroot-path=/var/www/certbot/ --email ваш@email --agree-tos --no-eff-email -d имя_вашего_домена
-    depends_on:
-      - nginx
 
 volumes:
   postgres_data:
+  redis_data:
 

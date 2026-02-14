@@ -432,6 +432,8 @@ async def upload_chat_file(
         message_type = "video"
     elif file_extension_lower in [".m4a", ".mp3", ".wav", ".aac", ".amr", ".3gp"]:
         message_type = "voice"
+    elif file_extension_lower in [".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".txt", ".zip", ".rar"]:
+        message_type = "file"
         
     relative_path = f"/media/chat/{unique_filename}"
     return {"file_path": relative_path, "message_type": message_type}
