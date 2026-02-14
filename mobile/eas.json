@@ -12,7 +12,7 @@
       "distribution": "internal"
     },
     "production": {
-      "autoIncrement": True, 
+      "autoIncrement": true, 
       "distribution": "internal"
     }
   },
