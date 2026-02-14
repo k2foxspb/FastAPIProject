@@ -67,7 +67,8 @@ class PhotoAlbum(PhotoAlbumBase):
             "title": obj.title,
             "description": obj.description,
             "created_at": obj.created_at,
-            "photos": []
+            "photos": [],
+            "album_preview_url": None
         }
         
         if 'photos' not in insp.unloaded:
@@ -97,6 +98,7 @@ class User(BaseModel):
         from sqlalchemy import inspect
         insp = inspect(obj)
         
+        # Получаем базовые поля
         data = {
             "id": obj.id,
             "email": obj.email,
@@ -109,10 +111,15 @@ class User(BaseModel):
             "albums": []
         }
         
-        if 'photos' not in insp.unloaded:
+        # Проверяем, загружены ли связанные объекты, чтобы избежать MissingGreenletError
+        if 'photos' in insp.unloaded:
+            data["photos"] = []
+        else:
             data["photos"] = [UserPhoto.model_validate(p) for p in obj.photos]
         
-        if 'albums' not in insp.unloaded:
+        if 'albums' in insp.unloaded:
+            data["albums"] = []
+        else:
             data["albums"] = [PhotoAlbum.model_validate(a) for a in obj.albums]
             
         return cls.model_construct(**data)
