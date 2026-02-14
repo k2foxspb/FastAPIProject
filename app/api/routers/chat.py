@@ -201,8 +201,8 @@ async def get_chat_history(
     result = await db.execute(
         select(ChatMessage).where(
             or_(
-                and_(ChatMessage.sender_id == user_id, ChatMessage.receiver_id == other_user_id, ChatMessage.deleted_by_sender == 0),
-                and_(ChatMessage.sender_id == other_user_id, ChatMessage.receiver_id == user_id, ChatMessage.deleted_by_receiver == 0)
+                and_(ChatMessage.sender_id == user_id, ChatMessage.receiver_id == other_user_id, ChatMessage.deleted_by_sender == False),
+                and_(ChatMessage.sender_id == other_user_id, ChatMessage.receiver_id == user_id, ChatMessage.deleted_by_receiver == False)
             )
         ).order_by(ChatMessage.timestamp.desc())
         .offset(skip)
@@ -245,8 +245,8 @@ async def get_dialogs(
         last_msg_res = await db.execute(
             select(ChatMessage).where(
                 or_(
-                    and_(ChatMessage.sender_id == user_id, ChatMessage.receiver_id == p_id, ChatMessage.deleted_by_sender == 0),
-                    and_(ChatMessage.sender_id == p_id, ChatMessage.receiver_id == user_id, ChatMessage.deleted_by_receiver == 0)
+                    and_(ChatMessage.sender_id == user_id, ChatMessage.receiver_id == p_id, ChatMessage.deleted_by_sender == False),
+                    and_(ChatMessage.sender_id == p_id, ChatMessage.receiver_id == user_id, ChatMessage.deleted_by_receiver == False)
                 )
             ).order_by(ChatMessage.timestamp.desc()).limit(1)
         )
@@ -258,7 +258,7 @@ async def get_dialogs(
                 ChatMessage.sender_id == p_id,
                 ChatMessage.receiver_id == user_id,
                 ChatMessage.is_read == 0,
-                ChatMessage.deleted_by_receiver == 0
+                ChatMessage.deleted_by_receiver == False
             )
         )
         unread_count = unread_res.scalar()
@@ -352,7 +352,7 @@ async def delete_message(
         await db.delete(message)
     else:
         # Если удаляет получатель — помечаем удаленным только для него
-        message.deleted_by_receiver = 1
+        message.deleted_by_receiver = True
     
     await db.commit()
 
@@ -435,7 +435,7 @@ async def bulk_delete_messages(
                 except Exception as e:
                     print(f"Error deleting chat file: {e}")
         else:
-            msg.deleted_by_receiver = 1
+            msg.deleted_by_receiver = True
 
         deleted_ids.append(message_id)
         
@@ -622,7 +622,7 @@ async def upload_chunk(
         session.offset += len(content)
     
     if session.offset >= session.file_size:
-        session.is_completed = 1
+        session.is_completed = True
         # Перемещаем в постоянное хранилище
         final_dir = os.path.join(root_dir, "media", "chat")
         os.makedirs(final_dir, exist_ok=True)
