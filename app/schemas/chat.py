@@ -15,7 +15,7 @@ class ChatMessageResponse(ChatMessageBase):
     id: int
     sender_id: int
     timestamp: datetime
-    is_read: bool
+    is_read: int
 
     class Config:
         from_attributes = True

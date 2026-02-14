@@ -99,9 +99,9 @@ async def websocket_chat_endpoint(
                         .where(
                             ChatMessage.sender_id == other_id,
                             ChatMessage.receiver_id == user_id,
-                            ChatMessage.is_read == False
+                            ChatMessage.is_read == 0
                         )
-                        .values(is_read=True)
+                        .values(is_read=1)
                     )
                     await db.commit()
                     
@@ -145,7 +145,7 @@ async def websocket_chat_endpoint(
                     "file_path": file_path,
                     "message_type": message_type,
                     "timestamp": new_msg.timestamp.isoformat(),
-                    "is_read": False
+                    "is_read": 0
                 }
                 await manager.send_personal_message(response_data, receiver_id)
                 # Отправляем подтверждение отправителю
@@ -201,8 +201,8 @@ async def get_chat_history(
     result = await db.execute(
         select(ChatMessage).where(
             or_(
-                and_(ChatMessage.sender_id == user_id, ChatMessage.receiver_id == other_user_id, ChatMessage.deleted_by_sender == False),
-                and_(ChatMessage.sender_id == other_user_id, ChatMessage.receiver_id == user_id, ChatMessage.deleted_by_receiver == False)
+                and_(ChatMessage.sender_id == user_id, ChatMessage.receiver_id == other_user_id, ChatMessage.deleted_by_sender == 0),
+                and_(ChatMessage.sender_id == other_user_id, ChatMessage.receiver_id == user_id, ChatMessage.deleted_by_receiver == 0)
             )
         ).order_by(ChatMessage.timestamp.desc())
         .offset(skip)
@@ -245,8 +245,8 @@ async def get_dialogs(
         last_msg_res = await db.execute(
             select(ChatMessage).where(
                 or_(
-                    and_(ChatMessage.sender_id == user_id, ChatMessage.receiver_id == p_id, ChatMessage.deleted_by_sender == False),
-                    and_(ChatMessage.sender_id == p_id, ChatMessage.receiver_id == user_id, ChatMessage.deleted_by_receiver == False)
+                    and_(ChatMessage.sender_id == user_id, ChatMessage.receiver_id == p_id, ChatMessage.deleted_by_sender == 0),
+                    and_(ChatMessage.sender_id == p_id, ChatMessage.receiver_id == user_id, ChatMessage.deleted_by_receiver == 0)
                 )
             ).order_by(ChatMessage.timestamp.desc()).limit(1)
         )
@@ -257,8 +257,8 @@ async def get_dialogs(
             select(func.count(ChatMessage.id)).where(
                 ChatMessage.sender_id == p_id,
                 ChatMessage.receiver_id == user_id,
-                ChatMessage.is_read == False,
-                ChatMessage.deleted_by_receiver == False
+                ChatMessage.is_read == 0,
+                ChatMessage.deleted_by_receiver == 0
             )
         )
         unread_count = unread_res.scalar()
@@ -295,9 +295,9 @@ async def mark_messages_as_read(
         .where(
             ChatMessage.sender_id == other_user_id,
             ChatMessage.receiver_id == user_id,
-            ChatMessage.is_read == False
+            ChatMessage.is_read == 0
         )
-        .values(is_read=True)
+        .values(is_read=1)
     )
     await db.commit()
 
@@ -352,7 +352,7 @@ async def delete_message(
         await db.delete(message)
     else:
         # Если удаляет получатель — помечаем удаленным только для него
-        message.deleted_by_receiver = True
+        message.deleted_by_receiver = 1
     
     await db.commit()
 
@@ -435,7 +435,7 @@ async def bulk_delete_messages(
                 except Exception as e:
                     print(f"Error deleting chat file: {e}")
         else:
-            msg.deleted_by_receiver = True
+            msg.deleted_by_receiver = 1
 
         deleted_ids.append(message_id)
         
