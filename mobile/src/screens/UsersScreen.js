@@ -24,10 +24,7 @@ export default function UsersScreen({ navigation }) {
         renderItem={({ item }) => (
           <TouchableOpacity 
             style={styles.userItem}
-            onPress={() => navigation.navigate('Messages', { 
-              screen: 'Chat', 
-              params: { userId: item.id, userName: item.email } 
-            })}
+            onPress={() => navigation.navigate('UserProfile', { userId: item.id })}
           >
             <Text style={styles.userName}>{item.email}</Text>
             <Text style={styles.userRole}>{item.role}</Text>

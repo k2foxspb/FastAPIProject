@@ -9,6 +9,7 @@ import AlbumDetailScreen from '../screens/AlbumDetailScreen';
 import PhotoDetailScreen from '../screens/PhotoDetailScreen';
 import UploadPhotoScreen from '../screens/UploadPhotoScreen';
 import UsersScreen from '../screens/UsersScreen';
+import UserProfileScreen from '../screens/UserProfileScreen';
 import ChatListScreen from '../screens/ChatListScreen';
 import ChatScreen from '../screens/ChatScreen';
 import FeedScreen from '../screens/FeedScreen';
@@ -47,6 +48,15 @@ function ProfileStack() {
   );
 }
 
+function UsersStack() {
+  return (
+    <Stack.Navigator>
+      <Stack.Screen name="UsersMain" component={UsersScreen} options={{ title: 'Пользователи' }} />
+      <Stack.Screen name="UserProfile" component={UserProfileScreen} options={{ title: 'Профиль пользователя' }} />
+    </Stack.Navigator>
+  );
+}
+
 export default function TabNavigator() {
   return (
     <Tab.Navigator
@@ -67,7 +77,7 @@ export default function TabNavigator() {
       })}
     >
       <Tab.Screen name="Feed" component={FeedScreen} options={{ title: 'Новости' }} />
-      <Tab.Screen name="Users" component={UsersScreen} options={{ title: 'Пользователи' }} />
+      <Tab.Screen name="Users" component={UsersStack} options={{ title: 'Пользователи', headerShown: false }} />
       <Tab.Screen name="Messages" component={ChatStack} options={{ title: 'Чат', headerShown: false }} />
       <Tab.Screen name="Profile" component={ProfileStack} options={{ title: 'Профиль', headerShown: false }} />
     </Tab.Navigator>

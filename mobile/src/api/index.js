@@ -23,7 +23,9 @@ export const usersApi = {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
   },
+  // Пользователи
   getUsers: (search) => api.get('/users/', { params: { search } }),
+  getUser: (id) => api.get(`/users/${id}`),
 
   // Альбомы
   getAlbums: () => api.get('/users/albums'),

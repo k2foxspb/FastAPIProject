@@ -32,6 +32,42 @@ from sqlalchemy.orm import selectinload
 router = APIRouter(prefix="/users", tags=["users"])
 
 
+@router.get("/", response_model=list[UserSchema])
+async def get_users(
+    search: str | None = None,
+    db: AsyncSession = Depends(get_async_db)
+):
+    """
+    Возвращает список всех активных пользователей.
+    """
+    query = select(UserModel).where(UserModel.is_active == True)
+    if search:
+        query = query.where(UserModel.email.ilike(f"%{search}%"))
+    
+    result = await db.execute(query)
+    return result.scalars().all()
+
+
+@router.get("/{user_id}", response_model=UserSchema)
+async def get_user_profile(
+    user_id: int,
+    db: AsyncSession = Depends(get_async_db)
+):
+    """
+    Возвращает публичный профиль пользователя по его ID.
+    """
+    result = await db.execute(
+        select(UserModel).where(UserModel.id == user_id, UserModel.is_active == True).options(
+            selectinload(UserModel.photos),
+            selectinload(UserModel.albums).selectinload(PhotoAlbumModel.photos)
+        )
+    )
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    return user
+
+
 @router.get("/me", response_model=UserSchema)
 async def get_me(current_user: UserModel = Depends(get_current_user), db: AsyncSession = Depends(get_async_db)):
     """
