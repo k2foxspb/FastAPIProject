@@ -7,8 +7,8 @@ from starlette.responses import HTMLResponse
 from starlette.templating import Jinja2Templates
 from starlette.websockets import WebSocketDisconnect, WebSocket
 
-from app.celery.celery_app import celery
-from app.celery.tasks import call_background_task
+from app.core.celery_app import celery_app as celery
+from app.tasks.example_tasks import send_notification as call_background_task
 
 
 router = APIRouter(prefix="", tags=["health"])
@@ -53,19 +53,7 @@ async def session_delete(request: Request):
 @router.get("/test-celery")
 async def test_celery_task():
     """Тестовый эндпоинт для проверки Celery."""
-    call_background_task.delay('test message')
-    call_background_task.apply_async(args=['test message'], countdown=60 * 5)
-    task_datetime = datetime.now(timezone.utc) + timedelta(minutes=10)
-    call_background_task.apply_async(args=['test message'], eta=task_datetime)
-    celery.conf.beat_schedule = {
-        'run-me-background-task': {
-            'task': 'app.celery.tasks.call_background_task',
-            'schedule': 60.0,
-            'args': ('Test text message',)
-        }
-    }
-    logger.info("Celery task dispatched")
-
+    call_background_task.delay('test message', 'test user')
     return {"message": "Task sent to Celery"}
 templates = Jinja2Templates(directory="app/templates")
 @router.get("/", response_class=HTMLResponse)

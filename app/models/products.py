@@ -4,9 +4,15 @@ from sqlalchemy import String, Numeric, ForeignKey, DateTime, func, Computed, In
 from sqlalchemy.dialects.postgresql import TSVECTOR
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from typing import TYPE_CHECKING
 from app.database import Base
-from app.models import Category, CartItem
-from app.models.orders import OrderItem
+
+if TYPE_CHECKING:
+    from app.models.categories import Category
+    from app.models.cart_items import CartItem
+    from app.models.users import User
+    from app.models.reviews import Reviews
+    from app.models.orders import OrderItem
 
 
 class Product(Base):
@@ -44,7 +50,7 @@ class Product(Base):
 
     cart_items: Mapped[list["CartItem"]] = relationship("CartItem", back_populates="product",
                                                         cascade="all, delete-orphan")
-    category: Mapped["Category"] = relationship(back_populates="products")  # New
-    seller = relationship("User", back_populates="products")
-    review = relationship("Reviews", back_populates="product")
+    category: Mapped["Category"] = relationship("Category", back_populates="products")  # New
+    seller: Mapped["User"] = relationship("User", back_populates="products")
+    review: Mapped[list["Reviews"]] = relationship("Reviews", back_populates="product")
     order_items: Mapped[list["OrderItem"]] = relationship("OrderItem", back_populates="product")

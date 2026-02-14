@@ -2,9 +2,14 @@ from datetime import datetime
 from sqlalchemy import Boolean, Integer, String, ForeignKey, DateTime
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from typing import TYPE_CHECKING
 from app.database import Base
-from app.models import Product, Reviews, CartItem
-from app.models.orders import Order
+
+if TYPE_CHECKING:
+    from app.models.products import Product
+    from app.models.reviews import Reviews
+    from app.models.cart_items import CartItem
+    from app.models.orders import Order
 
 class User(Base):
     __tablename__ = "users"

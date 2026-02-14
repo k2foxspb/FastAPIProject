@@ -4,7 +4,12 @@ from decimal import Decimal
 from sqlalchemy import ForeignKey, String, Numeric, DateTime, func, Integer
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from typing import TYPE_CHECKING
 from app.database import Base
+
+if TYPE_CHECKING:
+    from app.models.users import User
+    from app.models.products import Product
 
 
 class Order(Base):
