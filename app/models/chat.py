@@ -14,7 +14,7 @@ class ChatMessage(Base):
     file_path: Mapped[str] = mapped_column(String, nullable=True)
     message_type: Mapped[str] = mapped_column(String, default="text") # text, image, file
     timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    is_read: Mapped[bool] = mapped_column(Integer, default=0) # 0 = false, 1 = true
+    is_read: Mapped[bool] = mapped_column(Boolean, default=False)
     deleted_by_sender: Mapped[bool] = mapped_column(Boolean, default=False)
     deleted_by_receiver: Mapped[bool] = mapped_column(Boolean, default=False)
 

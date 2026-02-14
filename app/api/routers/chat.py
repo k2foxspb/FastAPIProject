@@ -20,6 +20,7 @@ from app.schemas.chat import (
     BulkDeleteMessagesRequest
 )
 from app.api.routers.notifications import manager as notifications_manager
+from app.core.fcm import send_fcm_notification
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -87,7 +88,36 @@ async def websocket_chat_endpoint(
             data = await websocket.receive_text()
             message_data = json.loads(data)
             
-            # Ожидаем формат {"receiver_id": int, "message": str, "file_path": str, "message_type": str}
+            # Обработка разных типов сообщений через WebSocket
+            msg_type = message_data.get("type", "message")
+
+            if msg_type == "mark_read":
+                other_id = message_data.get("other_id")
+                if other_id:
+                    await db.execute(
+                        update(ChatMessage)
+                        .where(
+                            ChatMessage.sender_id == other_id,
+                            ChatMessage.receiver_id == user_id,
+                            ChatMessage.is_read == False
+                        )
+                        .values(is_read=True)
+                    )
+                    await db.commit()
+                    
+                    # Уведомляем отправителя
+                    await notifications_manager.send_personal_message({
+                        "type": "your_messages_read",
+                        "data": {"reader_id": user_id}
+                    }, int(other_id))
+                    
+                    await manager.send_personal_message({
+                        "type": "messages_read",
+                        "reader_id": user_id
+                    }, int(other_id))
+                continue
+
+            # Стандартная отправка сообщения
             receiver_id = message_data.get("receiver_id")
             content = message_data.get("message")
             file_path = message_data.get("file_path")
@@ -126,6 +156,30 @@ async def websocket_chat_endpoint(
                     "type": "new_message",
                     "data": response_data
                 }, receiver_id)
+
+                # Отправляем Пуш через FCM, если получатель не подключен к WebSocket
+                # Находим получателя, чтобы взять его fcm_token
+                receiver_result = await db.execute(select(UserModel).where(UserModel.id == receiver_id))
+                receiver = receiver_result.scalar_one_or_none()
+                if receiver and receiver.fcm_token:
+                    # Находим отправителя для имени
+                    sender_result = await db.execute(select(UserModel).where(UserModel.id == user_id))
+                    sender = sender_result.scalar_one_or_none()
+                    sender_name = f"{sender.first_name} {sender.last_name}" if sender and (sender.first_name or sender.last_name) else "Новое сообщение"
+                    
+                    # Если сообщение пустое (только файл), пишем тип файла
+                    body = content if content else f"Отправил {message_type}"
+                    
+                    await send_fcm_notification(
+                        token=receiver.fcm_token,
+                        title=sender_name,
+                        body=body,
+                        sender_id=user_id,
+                        data={
+                            "chat_id": str(user_id),
+                            "message_id": str(new_msg.id)
+                        }
+                    )
 
     except WebSocketDisconnect:
         manager.disconnect(websocket, user_id)
@@ -203,7 +257,7 @@ async def get_dialogs(
             select(func.count(ChatMessage.id)).where(
                 ChatMessage.sender_id == p_id,
                 ChatMessage.receiver_id == user_id,
-                ChatMessage.is_read == 0,
+                ChatMessage.is_read == False,
                 ChatMessage.deleted_by_receiver == False
             )
         )
@@ -241,9 +295,9 @@ async def mark_messages_as_read(
         .where(
             ChatMessage.sender_id == other_user_id,
             ChatMessage.receiver_id == user_id,
-            ChatMessage.is_read == 0
+            ChatMessage.is_read == False
         )
-        .values(is_read=1)
+        .values(is_read=True)
     )
     await db.commit()
 
@@ -252,6 +306,17 @@ async def mark_messages_as_read(
         "type": "messages_read",
         "data": {"from_user_id": other_user_id}
     }, user_id)
+
+    # Уведомляем отправителя о том, что его сообщения прочитаны
+    await notifications_manager.send_personal_message({
+        "type": "your_messages_read",
+        "data": {"reader_id": user_id}
+    }, other_user_id)
+    
+    await manager.send_personal_message({
+        "type": "messages_read",
+        "reader_id": user_id
+    }, other_user_id)
 
     return {"status": "ok"}
 

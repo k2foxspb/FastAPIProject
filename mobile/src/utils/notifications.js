@@ -62,6 +62,12 @@ export function setupCloudMessaging() {
       );
     });
 
+    // Обработка обновления токена
+    msg.onTokenRefresh(token => {
+      console.log('FCM Token refreshed:', token);
+      updateServerFcmToken(token);
+    });
+
     // Обработка клика по уведомлению (когда приложение было в фоне)
     msg.onNotificationOpenedApp(remoteMessage => {
       console.log('Notification caused app to open from background state:', remoteMessage.notification);
@@ -100,12 +106,14 @@ export async function getFcmToken() {
   }
 }
 
-export async function updateServerFcmToken() {
+export async function updateServerFcmToken(passedToken = null) {
   try {
-    const token = await getFcmToken();
+    const token = passedToken || await getFcmToken();
     if (token) {
       await usersApi.updateFcmToken(token);
-      console.log('FCM Token updated on server');
+      console.log('FCM Token updated on server:', token);
+    } else {
+      console.log('updateServerFcmToken: No token available to update');
     }
   } catch (error) {
     console.error('Failed to update FCM token on server:', error);

@@ -41,7 +41,30 @@ export default function ChatScreen({ route, navigation }) {
   const LIMIT = 15;
   const ws = useRef(null);
   const videoPlayerRef = useRef(null);
-  const { fetchDialogs, currentUserId } = useNotifications();
+  const { fetchDialogs, currentUserId, setActiveChatId } = useNotifications();
+
+  // Звук для нового сообщения в чате
+  const playMessageSound = async () => {
+    try {
+      const { sound } = await Audio.Sound.createAsync(
+        require('../../assets/sounds/message.mp3')
+      );
+      await sound.playAsync();
+      // Выгружаем звук из памяти после воспроизведения
+      sound.setOnPlaybackStatusUpdate((status) => {
+        if (status.didJustFinish) {
+          sound.unloadAsync();
+        }
+      });
+    } catch (error) {
+      console.log('Error playing message sound', error);
+    }
+  };
+
+  useEffect(() => {
+    setActiveChatId(userId);
+    return () => setActiveChatId(null);
+  }, [userId]);
 
   useEffect(() => {
     const initChat = async () => {
@@ -79,6 +102,14 @@ export default function ChatScreen({ route, navigation }) {
           setMessages(prev => prev.filter(m => m.id !== message.message_id));
           return;
         }
+
+        if (message.type === 'messages_read') {
+          // Обновляем статус прочтения у наших сообщений
+          setMessages(prev => prev.map(m => 
+            (m.sender_id === currentUserId || m.sender_id === currentUserIdLocal) ? { ...m, is_read: true } : m
+          ));
+          return;
+        }
         
         if (message.sender_id === userId || (message.sender_id !== userId && message.receiver_id === userId)) {
           // Если мы в этом чате, то сообщение от собеседника или наше подтверждение
@@ -88,8 +119,17 @@ export default function ChatScreen({ route, navigation }) {
           });
           setSkip(prev => prev + 1);
           
-          // Если сообщение от собеседника, помечаем как прочитанное
+          // Если сообщение от собеседника, помечаем как прочитанное и играем звук
           if (message.sender_id === userId) {
+            playMessageSound();
+            // Отправляем через WS что прочитали для мгновенного обновления у отправителя
+            if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+              ws.current.send(JSON.stringify({
+                type: 'mark_read',
+                other_id: userId
+              }));
+            }
+            // Также вызываем API для обновления в БД и счетчиков
             chatApi.markAsRead(userId, accessToken).then(() => fetchDialogs());
           }
         }
@@ -436,6 +476,22 @@ export default function ChatScreen({ route, navigation }) {
               {item.message}
             </Text>
           )}
+          <View style={styles.messageFooter}>
+            <Text style={[
+              styles.messageTime, 
+              isReceived ? {color: colors.textSecondary} : {color: 'rgba(255,255,255,0.7)'}
+            ]}>
+              {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            </Text>
+            {!isReceived && (
+              <MaterialIcons 
+                name={item.is_read ? "done-all" : "done"} 
+                size={14} 
+                color={item.is_read ? "#4CAF50" : "rgba(255,255,255,0.7)"} 
+                style={styles.statusIcon}
+              />
+            )}
+          </View>
         </View>
       </Pressable>
     );
@@ -708,6 +764,20 @@ const styles = StyleSheet.create({
   sent: { alignSelf: 'flex-end', borderBottomRightRadius: 4 },
   received: { alignSelf: 'flex-start', borderBottomLeftRadius: 4 },
   messageText: { fontSize: 16, lineHeight: 22 },
+  messageFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    marginTop: 2,
+    alignSelf: 'flex-end',
+  },
+  messageTime: {
+    fontSize: 10,
+    marginRight: 4,
+  },
+  statusIcon: {
+    marginLeft: 2,
+  },
   inputContainer: { flexDirection: 'row', padding: 10, backgroundColor: '#fff' },
   selectionHeader: {
     flex: 1,

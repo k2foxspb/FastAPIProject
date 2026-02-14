@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, TextInput, StyleSheet, TouchableOpacity, Alert, KeyboardAvoidingView, Platform } from 'react-native';
 import { usersApi, setAuthToken } from '../api';
 import { useNotifications } from '../context/NotificationContext';
+import { updateServerFcmToken } from '../utils/notifications';
 import { storage } from '../utils/storage';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
@@ -34,6 +35,8 @@ export default function LoginScreen({ navigation }) {
       setAuthToken(token);
       // Подключаемся к WebSocket уведомлениям
       connect(token);
+      // Обновляем FCM токен на сервере сразу после входа
+      updateServerFcmToken();
       // После успешного входа заменяем экран на профиль
       navigation.replace('ProfileMain');
     } catch (e) {
