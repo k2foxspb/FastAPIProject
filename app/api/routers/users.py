@@ -185,11 +185,32 @@ async def update_me(
 async def create_user(user: UserCreate, db: AsyncSession = Depends(get_async_db)):
     """
     Регистрирует нового пользователя с ролью 'buyer' или 'seller'.
-    После регистрации отправляет email для подтверждения.
+    Если пользователь с таким email уже существует и не активен, повторно отправляет письмо для подтверждения.
     """
-    # Проверка уникальности email
-    result = await db.scalars(select(UserModel).where(UserModel.email == user.email))
-    if result.first():
+    # Проверка существования пользователя
+    result = await db.execute(select(UserModel).where(UserModel.email == user.email))
+    existing_user = result.scalar_one_or_none()
+
+    if existing_user:
+        if not existing_user.is_active:
+            # Если пользователь не активен, генерируем новый токен и отправляем письмо повторно
+            verification_token = create_access_token(data={"sub": existing_user.email, "type": "verification"})
+            await send_verification_email(existing_user.email, verification_token)
+            
+            # Возвращаем существующего пользователя с 200 OK вместо 201 Created для индикации "повтора"
+            # Но так как у нас status_code=201_CREATED захардкожен в декораторе, 
+            # мы можем либо сменить декоратор, либо оставить как есть. 
+            # FastAPI позволяет вернуть Response для переопределения статуса.
+            from fastapi.responses import JSONResponse
+            from fastapi.encoders import jsonable_encoder
+            return JSONResponse(
+                status_code=status.HTTP_200_OK,
+                content={
+                    "message": "User already registered but not verified. Verification email resent.",
+                    "user": jsonable_encoder(UserSchema.model_validate(existing_user))
+                }
+            )
+        
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
                             detail="Email already registered")
 
