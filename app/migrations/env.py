@@ -20,7 +20,16 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 # Set the sqlalchemy.url from the config
-config.set_main_option("sqlalchemy.url", DATABASE_URL)
+db_url = DATABASE_URL
+# If running locally and POSTGRES_HOST is 'db' (docker name), fallback to localhost
+if "db:5432" in db_url:
+    import socket
+    try:
+        socket.gethostbyname("db")
+    except socket.gaierror:
+        db_url = db_url.replace("db:5432", "localhost:5432")
+
+config.set_main_option("sqlalchemy.url", db_url)
 
 # add your model's MetaData object here
 # for 'autogenerate' support
