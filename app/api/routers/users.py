@@ -21,7 +21,7 @@ from app.core.auth import (
     get_current_user,
     verify_refresh_token
 )
-from app.utils.email import send_verification_email
+from app.utils.emails import send_verification_email
 
 import os
 import uuid
