@@ -18,7 +18,7 @@ export async function requestUserPermission() {
 
 export function setupCloudMessaging() {
   try {
-    // Обработка уведомлений, когда приложение на переднем плане
+    // Обработка уведомлений, когда приложение на переднем переднем плане
     messaging().onMessage(async remoteMessage => {
       Alert.alert('Новое уведомление', remoteMessage.notification.body);
     });
@@ -40,7 +40,12 @@ export function setupCloudMessaging() {
 }
 
 export async function getFcmToken() {
-  const token = await messaging().getToken();
-  console.log('FCM Token:', token);
-  return token;
+  try {
+    const token = await messaging().getToken();
+    console.log('FCM Token:', token);
+    return token;
+  } catch (error) {
+    console.error('Failed to get FCM token:', error);
+    return null;
+  }
 }

@@ -3,16 +3,19 @@ import json
 import os
 import uuid
 import io
+from datetime import datetime
 from PIL import Image
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, UploadFile, File, Form
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, UploadFile, File, Form, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, or_, and_
+from sqlalchemy import select, or_, and_, func, update
 import jwt
 
 from app.core.config import SECRET_KEY, ALGORITHM
 from app.api.dependencies import get_async_db
 from app.models.chat import ChatMessage
-from app.schemas.chat import ChatMessageCreate, ChatMessageResponse
+from app.models.users import User as UserModel
+from app.schemas.chat import ChatMessageCreate, ChatMessageResponse, DialogResponse
+from app.api.routers.notifications import manager as notifications_manager
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -92,11 +95,18 @@ async def websocket_chat_endpoint(
                     "message": content,
                     "file_path": file_path,
                     "message_type": message_type,
-                    "timestamp": new_msg.timestamp.isoformat()
+                    "timestamp": new_msg.timestamp.isoformat(),
+                    "is_read": False
                 }
                 await manager.send_personal_message(response_data, receiver_id)
                 # Отправляем подтверждение отправителю
                 await manager.send_personal_message(response_data, user_id)
+
+                # Уведомляем через глобальный WS уведомлений
+                await notifications_manager.send_personal_message({
+                    "type": "new_message",
+                    "data": response_data
+                }, receiver_id)
 
     except WebSocketDisconnect:
         manager.disconnect(websocket, user_id)
@@ -122,6 +132,98 @@ async def get_chat_history(
         ).order_by(ChatMessage.timestamp.asc())
     )
     return result.scalars().all()
+
+@router.get("/dialogs", response_model=List[DialogResponse])
+async def get_dialogs(
+    token: str,
+    db: AsyncSession = Depends(get_async_db)
+):
+    user_id = await get_user_from_token(token)
+    if user_id is None:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    # Находим всех собеседников
+    # Сначала те, кому мы писали
+    sent_to = select(ChatMessage.receiver_id).where(ChatMessage.sender_id == user_id)
+    # Потом те, кто нам писал
+    received_from = select(ChatMessage.sender_id).where(ChatMessage.receiver_id == user_id)
+    
+    # Объединяем id собеседников
+    partners_query = select(sent_to.union(received_from))
+    partners_result = await db.execute(partners_query)
+    partner_ids = partners_result.scalars().all()
+
+    dialogs = []
+    for p_id in partner_ids:
+        if p_id == user_id: continue # На всякий случай
+
+        # Получаем данные пользователя
+        user_res = await db.execute(select(UserModel).where(UserModel.id == p_id))
+        partner = user_res.scalar_one_or_none()
+        if not partner: continue
+
+        # Последнее сообщение в диалоге
+        last_msg_res = await db.execute(
+            select(ChatMessage).where(
+                or_(
+                    and_(ChatMessage.sender_id == user_id, ChatMessage.receiver_id == p_id),
+                    and_(ChatMessage.sender_id == p_id, ChatMessage.receiver_id == user_id)
+                )
+            ).order_by(ChatMessage.timestamp.desc()).limit(1)
+        )
+        last_msg = last_msg_res.scalar_one_or_none()
+        
+        # Кол-во непрочитанных от этого пользователя
+        unread_res = await db.execute(
+            select(func.count(ChatMessage.id)).where(
+                ChatMessage.sender_id == p_id,
+                ChatMessage.receiver_id == user_id,
+                ChatMessage.is_read == 0
+            )
+        )
+        unread_count = unread_res.scalar()
+
+        dialogs.append({
+            "user_id": p_id,
+            "email": partner.email,
+            "avatar_url": getattr(partner, 'avatar_url', None), # Используем getattr если поля нет в модели
+            "last_message": last_msg.message if last_msg and last_msg.message else "[Файл]",
+            "last_message_time": last_msg.timestamp if last_msg else datetime.utcnow(),
+            "unread_count": unread_count or 0
+        })
+
+    # Сортируем по времени последнего сообщения
+    dialogs.sort(key=lambda x: x["last_message_time"], reverse=True)
+    return dialogs
+
+@router.post("/mark-as-read/{other_user_id}")
+async def mark_messages_as_read(
+    other_user_id: int,
+    token: str,
+    db: AsyncSession = Depends(get_async_db)
+):
+    user_id = await get_user_from_token(token)
+    if user_id is None:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    await db.execute(
+        update(ChatMessage)
+        .where(
+            ChatMessage.sender_id == other_user_id,
+            ChatMessage.receiver_id == user_id,
+            ChatMessage.is_read == 0
+        )
+        .values(is_read=1)
+    )
+    await db.commit()
+
+    # Уведомляем пользователя об обновлении счетчиков
+    await notifications_manager.send_personal_message({
+        "type": "messages_read",
+        "data": {"from_user_id": other_user_id}
+    }, user_id)
+
+    return {"status": "ok"}
 
 @router.post("/upload")
 async def upload_chat_file(

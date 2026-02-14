@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { API_BASE_URL } from '../constants';
+import { storage } from '../utils/storage';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -23,6 +24,7 @@ export const usersApi = {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
   },
+  refreshAccessToken: (refreshToken) => api.post('/users/refresh-token-access', { refresh_token: refreshToken }),
   // Пользователи
   getUsers: (search) => api.get('/users/', { params: { search } }),
   getUser: (id) => api.get(`/users/${id}`),
@@ -50,6 +52,8 @@ export const productsApi = {
 
 export const chatApi = {
   getHistory: (userId, token) => api.get(`/chat/history/${userId}`, { params: { token } }),
+  getDialogs: (token) => api.get('/chat/dialogs', { params: { token } }),
+  markAsRead: (userId, token) => api.post(`/chat/mark-as-read/${userId}`, {}, { params: { token } }),
   uploadFile: (formData) => api.post('/chat/upload', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
   }),
@@ -58,7 +62,33 @@ export const chatApi = {
 // Добавляем перехватчик для отладки сетевых ошибок
 api.interceptors.response.use(
   response => response,
-  error => {
+  async error => {
+    const originalRequest = error.config;
+
+    // Если ошибка 401 и это не повторный запрос и у нас есть refresh_token
+    if (error.response?.status === 401 && !originalRequest._retry) {
+      originalRequest._retry = true;
+      try {
+        const refreshToken = await storage.getRefreshToken();
+        if (refreshToken) {
+          const res = await usersApi.refreshAccessToken(refreshToken);
+          const newAccessToken = res.data.access_token;
+          
+          if (newAccessToken) {
+            await storage.saveTokens(newAccessToken, refreshToken);
+            setAuthToken(newAccessToken);
+            originalRequest.headers['Authorization'] = `Bearer ${newAccessToken}`;
+            return api(originalRequest);
+          }
+        }
+      } catch (refreshError) {
+        console.error('Failed to refresh token:', refreshError);
+        // Если не удалось обновить токен, выходим из системы
+        await storage.clearTokens();
+        setAuthToken(null);
+      }
+    }
+
     console.log('[API Error Detail]:', {
       message: error.message,
       config: {

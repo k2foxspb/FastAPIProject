@@ -1,18 +1,28 @@
 import React, { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, Image, FlatList, ScrollView, TouchableOpacity } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import api, { usersApi } from '../api';
+import api, { usersApi, setAuthToken } from '../api';
 import Icon from 'react-native-vector-icons/Ionicons';
+import { useNotifications } from '../context/NotificationContext';
+import { storage } from '../utils/storage';
 
 export default function ProfileScreen({ navigation }) {
   const [user, setUser] = useState(null);
   const [error, setError] = useState(null);
+  const { disconnect } = useNotifications();
+
+  const handleLogout = async () => {
+    await storage.clearTokens();
+    setAuthToken(null);
+    disconnect();
+    navigation.replace('Login');
+  };
 
   useFocusEffect(
     useCallback(() => {
       // Если токена нет в заголовках axios, сразу редиректим
       if (!api.defaults.headers.common['Authorization']) {
-        navigation.replace('Login');
+        handleLogout();
         return;
       }
 
@@ -23,7 +33,7 @@ export default function ProfileScreen({ navigation }) {
           const status = err?.response?.status;
           if (status === 401) {
             // Не авторизован — отправляем на экран входа
-            navigation.replace('Login');
+            handleLogout();
           } else {
             setError('Не удалось загрузить профиль');
             console.log(err);

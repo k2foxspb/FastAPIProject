@@ -1,6 +1,7 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
+import { View } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
 
 import ProfileScreen from '../screens/ProfileScreen';
@@ -57,7 +58,11 @@ function UsersStack() {
   );
 }
 
+import { useNotifications } from '../context/NotificationContext';
+
 export default function TabNavigator() {
+  const { unreadTotal } = useNotifications();
+
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
@@ -78,7 +83,15 @@ export default function TabNavigator() {
     >
       <Tab.Screen name="Feed" component={FeedScreen} options={{ title: 'Новости' }} />
       <Tab.Screen name="Users" component={UsersStack} options={{ title: 'Пользователи', headerShown: false }} />
-      <Tab.Screen name="Messages" component={ChatStack} options={{ title: 'Чат', headerShown: false }} />
+      <Tab.Screen 
+        name="Messages" 
+        component={ChatStack} 
+        options={{ 
+          title: 'Чат', 
+          headerShown: false,
+          tabBarBadge: unreadTotal > 0 ? unreadTotal : null
+        }} 
+      />
       <Tab.Screen name="Profile" component={ProfileStack} options={{ title: 'Профиль', headerShown: false }} />
     </Tab.Navigator>
   );

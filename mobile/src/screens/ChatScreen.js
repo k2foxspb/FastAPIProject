@@ -2,30 +2,54 @@ import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, FlatList, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform } from 'react-native';
 import { chatApi } from '../api';
 import { API_BASE_URL } from '../constants';
+import { storage } from '../utils/storage';
+import { useNotifications } from '../context/NotificationContext';
 
 export default function ChatScreen({ route }) {
   const { userId, userName } = route.params;
   const [messages, setMessages] = useState([]);
   const [inputText, setInputText] = useState('');
+  const [token, setToken] = useState(null);
   const ws = useRef(null);
-  const token = 'YOUR_JWT_TOKEN'; // В реальном приложении брать из хранилища
+  const { fetchDialogs } = useNotifications();
 
   useEffect(() => {
-    // Загрузка истории
-    chatApi.getHistory(userId, token).then(res => setMessages(res.data));
+    const initChat = async () => {
+      const accessToken = await storage.getAccessToken();
+      setToken(accessToken);
 
-    // WebSocket соединение
-    const wsUrl = `ws://${API_BASE_URL.replace('http://', '').replace('https://', '')}/chat/ws/${token}`;
-    ws.current = new WebSocket(wsUrl);
+      // Загрузка истории
+      chatApi.getHistory(userId, accessToken).then(res => setMessages(res.data));
 
-    ws.current.onmessage = (e) => {
-      const message = JSON.parse(e.data);
-      if (message.sender_id === userId || message.receiver_id === userId) {
-        setMessages(prev => [...prev, message]);
-      }
+      // Помечаем как прочитанные
+      chatApi.markAsRead(userId, accessToken).then(() => fetchDialogs());
+
+      // WebSocket соединение
+      const wsUrl = `ws://${API_BASE_URL.replace('http://', '').replace('https://', '')}/chat/ws/${accessToken}`;
+      ws.current = new WebSocket(wsUrl);
+
+      ws.current.onmessage = (e) => {
+        const message = JSON.parse(e.data);
+        if (message.sender_id === userId || (message.sender_id !== userId && message.receiver_id === userId)) {
+          // Если мы в этом чате, то сообщение от собеседника или наше подтверждение
+          setMessages(prev => {
+            if (prev.find(m => m.id === message.id)) return prev;
+            return [...prev, message];
+          });
+          
+          // Если сообщение от собеседника, помечаем как прочитанное
+          if (message.sender_id === userId) {
+            chatApi.markAsRead(userId, accessToken).then(() => fetchDialogs());
+          }
+        }
+      };
     };
 
-    return () => ws.current.close();
+    initChat();
+
+    return () => {
+      if (ws.current) ws.current.close();
+    };
   }, [userId]);
 
   const sendMessage = () => {

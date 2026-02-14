@@ -1,11 +1,14 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, StyleSheet, TouchableOpacity, Alert } from 'react-native';
 import { usersApi, setAuthToken } from '../api';
+import { useNotifications } from '../context/NotificationContext';
+import { storage } from '../utils/storage';
 
 export default function LoginScreen({ navigation }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const { connect } = useNotifications();
 
   const onLogin = async () => {
     if (!username || !password) {
@@ -16,10 +19,17 @@ export default function LoginScreen({ navigation }) {
       setLoading(true);
       const res = await usersApi.login(username, password);
       const token = res.data?.access_token;
+      const refreshToken = res.data?.refresh_token;
       if (!token) {
         throw new Error('Токен не получен');
       }
+      
+      // Сохраняем токены для будущих сессий
+      await storage.saveTokens(token, refreshToken);
+      
       setAuthToken(token);
+      // Подключаемся к WebSocket уведомлениям
+      connect(token);
       // После успешного входа заменяем экран на профиль
       navigation.replace('ProfileMain');
     } catch (e) {

@@ -61,14 +61,11 @@ async def update_user_status(user_id: int, status: str, db: AsyncSession):
 @router.websocket("/notifications")
 async def websocket_endpoint(
     websocket: WebSocket,
-    token: str = None,
     db: AsyncSession = Depends(get_async_db)
 ):
-    # Если токен передан в query параметрах
-    if token is None:
-        token = websocket.query_params.get("token")
+    token = websocket.query_params.get("token")
 
-    if not token:
+    if not token or token == "null" or token == "undefined":
         await websocket.close(code=4003)
         return
 

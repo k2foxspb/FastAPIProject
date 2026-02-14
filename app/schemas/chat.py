@@ -15,6 +15,15 @@ class ChatMessageResponse(ChatMessageBase):
     id: int
     sender_id: int
     timestamp: datetime
+    is_read: bool
 
     class Config:
         from_attributes = True
+
+class DialogResponse(BaseModel):
+    user_id: int
+    email: str
+    avatar_url: Optional[str] = None
+    last_message: str
+    last_message_time: datetime
+    unread_count: int
