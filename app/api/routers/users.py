@@ -254,13 +254,20 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(),
     """
     Аутентифицирует пользователя и возвращает JWT с email, role и id.
     """
-    result = await db.scalars(
-        select(UserModel).where(UserModel.email == form_data.username, UserModel.is_active == True))
-    user = result.first()
+    result = await db.execute(select(UserModel).where(UserModel.email == form_data.username))
+    user = result.scalar_one_or_none()
+    
     if not user or not verify_password(form_data.password, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Email not verified. Please check your email for verification link.",
             headers={"WWW-Authenticate": "Bearer"},
         )
     access_token = create_access_token(data={"sub": user.email, "role": user.role, "id": user.id})
