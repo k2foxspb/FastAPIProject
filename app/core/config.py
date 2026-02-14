@@ -20,6 +20,8 @@ MAIL_FROM_NAME = os.getenv("MAIL_FROM_NAME", "FastAPI Project")
 DOMAIN = os.getenv("DOMAIN", "http://79.133.183.129")
 CORS_ORIGINS = [
     "http://79.133.183.129",
+    "http://fokin.fan",
+    "https://fokin.fan",
     "http://localhost",
     "http://localhost:3000",
     "http://127.0.0.1",
@@ -27,6 +29,7 @@ CORS_ORIGINS = [
 ]
 ALLOWED_HOSTS = [
     "79.133.183.129",
+    "fokin.fan",
     "localhost",
     "127.0.0.1",
     "web",  # Для внутренних запросов Docker
