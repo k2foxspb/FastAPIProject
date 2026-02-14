@@ -4,8 +4,8 @@ import { NavigationContainer } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
 import TabNavigator from './src/navigation/TabNavigator';
 import { requestUserPermission, setupCloudMessaging, updateServerFcmToken } from './src/utils/notifications';
-import { NotificationProvider, useNotifications } from './src/context/NotificationContext';
-import { ThemeProvider, useTheme } from './src/context/ThemeContext';
+import { NotificationProvider, useNotifications } from './src/context/NotificationContext.js';
+import { ThemeProvider, useTheme } from './src/context/ThemeContext.js';
 import { storage } from './src/utils/storage';
 import { setAuthToken } from './src/api';
 

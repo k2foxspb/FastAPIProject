@@ -21,8 +21,8 @@ import RegisterScreen from '../screens/RegisterScreen';
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
 
-import { useNotifications } from '../context/NotificationContext';
-import { useTheme } from '../context/ThemeContext';
+import { useNotifications } from '../context/NotificationContext.js';
+import { useTheme } from '../context/ThemeContext.js';
 import { theme as themeConstants } from '../constants/theme';
 
 import { getFocusedRouteNameFromRoute } from '@react-navigation/native';
