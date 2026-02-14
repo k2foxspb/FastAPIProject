@@ -5,11 +5,10 @@ from app.core.config import (
     MAIL_USERNAME, MAIL_PASSWORD, MAIL_FROM, 
     MAIL_PORT, MAIL_SERVER, MAIL_FROM_NAME, DOMAIN
 )
-import logging
-
-logger = logging.getLogger(__name__)
+from loguru import logger
 
 async def send_verification_email(email: str, token: str):
+    logger.info(f"Sending verification email to {email}")
     verification_url = f"{DOMAIN}/api/users/verify-email?token={token}"
     
     message = MIMEMultipart("alternative")
