@@ -10,8 +10,14 @@ services:
 #    # Открываем порт 8000 внутри и снаружи
 #    ports:
 #      - '8000:8000'
+    env_file:
+      - .env
     environment:
-      - REDIS_HOST=redis
+      - REDIS_HOST=${REDIS_HOST:-redis}
+      - POSTGRES_HOST=${POSTGRES_HOST:-db}
+      - POSTGRES_USER=${POSTGRES_USER:-ecommerce_user}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-xxxxxxxx}
+      - POSTGRES_DB=${POSTGRES_DB:-ecommerce_db}
     depends_on:
       - db
       - redis
@@ -28,11 +34,14 @@ services:
       context: .
       dockerfile: app/Dockerfile.prod.yml
     command: celery -A app.core.celery_app worker --loglevel=info
+    env_file:
+      - .env
     environment:
-      - REDIS_HOST=redis
-      - POSTGRES_USER=ecommerce_user
-      - POSTGRES_PASSWORD=xxxxxxxx
-      - POSTGRES_DB=ecommerce_db
+      - REDIS_HOST=${REDIS_HOST:-redis}
+      - POSTGRES_HOST=${POSTGRES_HOST:-db}
+      - POSTGRES_USER=${POSTGRES_USER:-ecommerce_user}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-xxxxxxxx}
+      - POSTGRES_DB=${POSTGRES_DB:-ecommerce_db}
     depends_on:
       - db
       - redis
@@ -41,10 +50,12 @@ services:
     image: postgres:15
     volumes:
       - postgres_data:/var/lib/postgresql/data/
+    env_file:
+      - .env
     environment:
-      - POSTGRES_USER=ecommerce_user
-      - POSTGRES_PASSWORD=xxxxxxxx
-      - POSTGRES_DB=ecommerce_db
+      - POSTGRES_USER=${POSTGRES_USER:-ecommerce_user}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-xxxxxxxx}
+      - POSTGRES_DB=${POSTGRES_DB:-ecommerce_db}
 
   nginx:
     build: nginx

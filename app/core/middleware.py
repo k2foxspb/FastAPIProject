@@ -48,7 +48,7 @@ def setup_middleware(app: FastAPI) -> None:
     # Sessions
     app.add_middleware(
         SessionMiddleware,
-        secret_key="7UzGQS7woBazLUtVQJG39ywOP7J7lkPkB0UmDhMgBR8="  # Лучше перенести в .env
+        secret_key=config.os.getenv("SESSION_SECRET_KEY", "7UzGQS7woBazLUtVQJG39ywOP7J7lkPkB0UmDhMgBR8=")
     )
 # мидлвар на основе функции
 # @app.middleware("http")

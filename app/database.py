@@ -13,8 +13,7 @@ SessionLocal = sessionmaker(bind=engine)
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy.orm import DeclarativeBase
 
-# Строка подключения для PostgreSQl
-DATABASE_URL = "postgresql+asyncpg://ecommerce_user:xxxxxxxx@localhost:5432/ecommerce_db"
+from app.core.config import DATABASE_URL
 
 # Создаём Engine
 async_engine = create_async_engine(DATABASE_URL, echo=True)

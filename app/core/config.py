@@ -4,8 +4,8 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 load_dotenv()
-SECRET_KEY = 'ksdjfksdf'
-ALGORITHM = "HS256"
+SECRET_KEY = os.getenv("SECRET_KEY", "ksdjfksdf")
+ALGORITHM = os.getenv("ALGORITHM", "HS256")
 
 YOOKASSA_SHOP_ID = os.getenv("YOOKASSA_SHOP_ID")
 YOOKASSA_SECRET_KEY = os.getenv("YOOKASSA_SECRET_KEY")
@@ -33,6 +33,15 @@ ALLOWED_HOSTS = [
 ]
 REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
 REDIS_PORT = os.getenv("REDIS_PORT", "6379")
+
+POSTGRES_USER = os.getenv("POSTGRES_USER", "ecommerce_user")
+POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "xxxxxxxx")
+POSTGRES_DB = os.getenv("POSTGRES_DB", "ecommerce_db")
+POSTGRES_HOST = os.getenv("POSTGRES_HOST", "db")
+POSTGRES_PORT = os.getenv("POSTGRES_PORT", "5432")
+
+DATABASE_URL = f"postgresql+asyncpg://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
+
 CELERY_BROKER_URL = f"redis://{REDIS_HOST}:{REDIS_PORT}/0"
 CELERY_RESULT_BACKEND = f"redis://{REDIS_HOST}:{REDIS_PORT}/0"
 
