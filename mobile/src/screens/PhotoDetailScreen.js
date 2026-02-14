@@ -1,54 +1,95 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, Image, TouchableOpacity, Alert, TextInput, ScrollView, Picker } from 'react-native';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { 
+  View, 
+  Text, 
+  StyleSheet, 
+  Image, 
+  TouchableOpacity, 
+  Alert, 
+  ScrollView, 
+  Dimensions, 
+  FlatList,
+  ActivityIndicator,
+  StatusBar
+} from 'react-native';
 import { usersApi } from '../api';
-import Icon from 'react-native-vector-icons/Ionicons';
+import { Ionicons as Icon } from '@expo/vector-icons';
+import { getFullUrl } from '../utils/urlHelper';
+import { useTheme } from '../context/ThemeContext';
+import { theme as themeConstants } from '../constants/theme';
+
+const { width, height } = Dimensions.get('window');
 
 export default function PhotoDetailScreen({ route, navigation }) {
-  const { photoId } = route.params;
-  const [photo, setPhoto] = useState(null);
-  const [albums, setAlbums] = useState([]);
-  const [isEditing, setIsEditing] = useState(false);
-  const [description, setDescription] = useState('');
-  const [albumId, setAlbumId] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const { theme } = useTheme();
+  const colors = themeConstants[theme];
+  const { photoId, initialPhotos, albumId, isOwner } = route.params;
+  const [photos, setPhotos] = useState(initialPhotos || []);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [showDescription, setShowDescription] = useState(false);
+  const [loading, setLoading] = useState(!initialPhotos);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState([]);
+  const flatListRef = useRef(null);
 
-  useEffect(() => {
-    fetchData();
-  }, [photoId]);
+  const fetchAlbumPhotos = useCallback(async () => {
+    if (initialPhotos) {
+      const idx = initialPhotos.findIndex(p => p.id === photoId);
+      if (idx !== -1) setCurrentIndex(idx);
+      return;
+    }
 
-  const fetchData = async () => {
     try {
-      const [photoRes, albumsRes] = await Promise.all([
-        usersApi.getPhoto(photoId),
-        usersApi.getAlbums()
-      ]);
-      setPhoto(photoRes.data);
-      setDescription(photoRes.data.description || '');
-      setAlbumId(photoRes.data.album_id);
-      setAlbums(albumsRes.data);
+      setLoading(true);
+      const photoRes = await usersApi.getPhoto(photoId);
+      const targetAlbumId = photoRes.data.album_id;
+      
+      if (targetAlbumId) {
+        const albumRes = await usersApi.getAlbum(targetAlbumId);
+        const albumPhotos = albumRes.data.photos || [];
+        setPhotos(albumPhotos);
+        const idx = albumPhotos.findIndex(p => p.id === photoId);
+        if (idx !== -1) setCurrentIndex(idx);
+      } else {
+        setPhotos([photoRes.data]);
+        setCurrentIndex(0);
+      }
     } catch (err) {
-      Alert.alert('Ошибка', 'Не удалось загрузить данные фотографии');
+      console.error('Error fetching photos:', err);
+      Alert.alert('Ошибка', 'Не удалось загрузить фотографии');
       navigation.goBack();
     } finally {
       setLoading(false);
     }
+  }, [photoId, initialPhotos, navigation]);
+
+  useEffect(() => {
+    fetchAlbumPhotos();
+  }, [fetchAlbumPhotos]);
+
+  const toggleDescription = () => {
+    if (selectionMode) return;
+    setShowDescription(!showDescription);
   };
 
-  const handleUpdate = async () => {
-    try {
-      await usersApi.updatePhoto(photoId, { description, album_id: albumId });
-      setIsEditing(false);
-      fetchData();
-      Alert.alert('Успех', 'Фотография обновлена');
-    } catch (err) {
-      Alert.alert('Ошибка', 'Не удалось обновить фотографию');
-    }
+  const toggleSelection = (id) => {
+    setSelectedIds(prev => 
+      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+    );
   };
 
-  const handleDelete = () => {
+  const enterSelectionMode = () => {
+    setSelectionMode(true);
+    setShowDescription(false);
+    setSelectedIds([photos[currentIndex].id]);
+  };
+
+  const deletePhotos = async () => {
+    const idsToDelete = selectionMode ? selectedIds : [photos[currentIndex].id];
+    
     Alert.alert(
-      'Удаление фотографии',
-      'Вы уверены, что хотите удалить эту фотографию?',
+      'Удаление',
+      `Вы уверены, что хотите удалить ${idsToDelete.length} фото?`,
       [
         { text: 'Отмена', style: 'cancel' },
         { 
@@ -56,10 +97,27 @@ export default function PhotoDetailScreen({ route, navigation }) {
           style: 'destructive',
           onPress: async () => {
             try {
-              await usersApi.deletePhoto(photoId);
-              navigation.goBack();
+              if (idsToDelete.length === 1) {
+                await usersApi.deletePhoto(idsToDelete[0]);
+              } else {
+                await usersApi.bulkDeletePhotos(idsToDelete);
+              }
+              
+              const remainingPhotos = photos.filter(p => !idsToDelete.includes(p.id));
+              if (remainingPhotos.length === 0) {
+                navigation.goBack();
+              } else {
+                setPhotos(remainingPhotos);
+                setSelectionMode(false);
+                setSelectedIds([]);
+                // Adjust currentIndex if necessary
+                if (currentIndex >= remainingPhotos.length) {
+                  setCurrentIndex(remainingPhotos.length - 1);
+                }
+              }
             } catch (err) {
-              Alert.alert('Ошибка', 'Не удалось удалить фотографию');
+              console.error(err);
+              Alert.alert('Ошибка', 'Не удалось удалить фотографии');
             }
           }
         }
@@ -67,99 +125,173 @@ export default function PhotoDetailScreen({ route, navigation }) {
     );
   };
 
-  if (loading || !photo) {
+  const renderItem = ({ item, index }) => {
+    const isSelected = selectedIds.includes(item.id);
     return (
-      <View style={styles.center}>
-        <Text>Загрузка...</Text>
+      <View style={styles.slide}>
+        <ScrollView
+          maximumZoomScale={5}
+          minimumZoomScale={1}
+          centerContent={true}
+          showsHorizontalScrollIndicator={false}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scrollContent}
+          onStartShouldSetResponder={() => true}
+          onResponderTerminationRequest={() => true}
+          scrollEnabled={false} // Disable internal scroll to let FlatList handle swipes
+        >
+          <TouchableOpacity 
+            activeOpacity={1} 
+            onPress={selectionMode ? () => toggleSelection(item.id) : toggleDescription}
+            onLongPress={isOwner && !selectionMode ? enterSelectionMode : null}
+            style={styles.imageWrapper}
+          >
+            <Image 
+              source={{ uri: getFullUrl(item.image_url) }} 
+              style={[
+                styles.fullPhoto,
+                isSelected && { opacity: 0.7 }
+              ]} 
+              resizeMode="contain" 
+            />
+            {selectionMode && (
+              <View style={styles.selectionOverlay}>
+                <Icon 
+                  name={isSelected ? "checkbox" : "square-outline"} 
+                  size={30} 
+                  color={isSelected ? colors.primary : "#fff"} 
+                />
+              </View>
+            )}
+          </TouchableOpacity>
+        </ScrollView>
+      </View>
+    );
+  };
+
+  if (loading) {
+    return (
+      <View style={[styles.container, styles.center]}>
+        <ActivityIndicator size="large" color="#fff" />
       </View>
     );
   }
 
   return (
-    <ScrollView style={styles.container}>
-      <Image source={{ uri: photo.image_url }} style={styles.fullPhoto} resizeMode="contain" />
+    <View style={styles.container}>
+      <StatusBar hidden={!showDescription} />
       
-      <View style={styles.info}>
-        {isEditing ? (
-          <View style={styles.editForm}>
-            <Text style={styles.label}>Описание:</Text>
-            <TextInput
-              style={styles.input}
-              value={description}
-              onChangeText={setDescription}
-              placeholder="Введите описание"
-              multiline
-            />
-            
-            <Text style={styles.label}>Альбом:</Text>
-            <View style={styles.pickerContainer}>
-              {/* Используем простой текст, если нет Picker в стандартной поставке, но обычно он есть */}
-              {albums.map(album => (
-                <TouchableOpacity 
-                  key={album.id} 
-                  style={[styles.albumOption, albumId === album.id && styles.albumSelected]}
-                  onPress={() => setAlbumId(album.id)}
-                >
-                  <Text style={albumId === album.id ? styles.albumTextSelected : null}>{album.title}</Text>
-                </TouchableOpacity>
-              ))}
-              <TouchableOpacity 
-                style={[styles.albumOption, albumId === null && styles.albumSelected]}
-                onPress={() => setAlbumId(null)}
-              >
-                <Text style={albumId === null ? styles.albumTextSelected : null}>Без альбома</Text>
-              </TouchableOpacity>
-            </View>
+      <FlatList
+        ref={flatListRef}
+        data={photos}
+        renderItem={renderItem}
+        keyExtractor={(item) => item.id.toString()}
+        horizontal
+        pagingEnabled
+        showsHorizontalScrollIndicator={false}
+        initialScrollIndex={currentIndex > 0 ? currentIndex : undefined}
+        getItemLayout={(data, index) => ({
+          length: width,
+          offset: width * index,
+          index,
+        })}
+        onMomentumScrollEnd={(e) => {
+          const newIndex = Math.round(e.nativeEvent.contentOffset.x / width);
+          setCurrentIndex(newIndex);
+        }}
+        removeClippedSubviews={true}
+        scrollEventThrottle={16}
+      />
 
-            <View style={styles.buttonRow}>
-              <TouchableOpacity style={[styles.btn, styles.saveBtn]} onPress={handleUpdate}>
-                <Text style={styles.btnText}>Сохранить</Text>
+      {/* Верхняя панель управления */}
+      {(showDescription || selectionMode) && (
+        <View style={[styles.header, selectionMode && { backgroundColor: 'rgba(0,0,0,0.8)' }]}>
+          <TouchableOpacity 
+            style={styles.backButton} 
+            onPress={() => selectionMode ? setSelectionMode(false) : navigation.goBack()}
+          >
+            <Icon name={selectionMode ? "close-outline" : "chevron-back"} size={35} color="#fff" />
+          </TouchableOpacity>
+          
+          <Text style={styles.headerTitle}>
+            {selectionMode ? `Выбрано: ${selectedIds.length}` : `${currentIndex + 1} из ${photos.length}`}
+          </Text>
+
+          <View style={styles.headerRight}>
+            {isOwner && (
+              <TouchableOpacity onPress={deletePhotos} style={styles.headerButton}>
+                <Icon name="trash-outline" size={28} color="#fff" />
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.btn, styles.cancelBtn]} onPress={() => setIsEditing(false)}>
-                <Text style={styles.btnText}>Отмена</Text>
-              </TouchableOpacity>
-            </View>
+            )}
           </View>
-        ) : (
-          <View>
-            <View style={styles.titleRow}>
-              <Text style={styles.description}>{photo.description || 'Нет описания'}</Text>
-              <View style={styles.actions}>
-                <TouchableOpacity onPress={() => setIsEditing(true)}>
-                  <Icon name="create-outline" size={24} color="#007AFF" />
-                </TouchableOpacity>
-                <TouchableOpacity onPress={handleDelete} style={{ marginLeft: 15 }}>
-                  <Icon name="trash-outline" size={24} color="#FF3B30" />
-                </TouchableOpacity>
-              </View>
+        </View>
+      )}
+
+      {/* Описание (показывается по тапу) */}
+      {showDescription && photos[currentIndex] && (
+        <View style={[styles.descriptionContainer, { backgroundColor: 'rgba(0,0,0,0.6)' }]}>
+          <ScrollView style={styles.descriptionContent}>
+            <View style={styles.descriptionHeader}>
+              <Text style={styles.descriptionText}>
+                {photos[currentIndex].description || 'Нет описания'}
+              </Text>
+              {photos[currentIndex].is_private && (
+                <Icon name="lock-closed" size={16} color="#fff" style={{ marginLeft: 8 }} />
+              )}
             </View>
-            <Text style={styles.date}>Добавлено: {new Date(photo.created_at).toLocaleDateString()}</Text>
-          </View>
-        )}
-      </View>
-    </ScrollView>
+            <Text style={styles.dateText}>
+              {new Date(photos[currentIndex].created_at).toLocaleDateString()}
+            </Text>
+          </ScrollView>
+        </View>
+      )}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000' },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  fullPhoto: { width: '100%', height: 400 },
-  info: { padding: 20, backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, minHeight: 300 },
-  titleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-  description: { fontSize: 18, flex: 1, marginRight: 10 },
-  actions: { flexDirection: 'row' },
-  date: { color: '#999', marginTop: 10 },
-  editForm: { width: '100' },
-  label: { fontWeight: 'bold', marginBottom: 5, marginTop: 10 },
-  input: { borderWidth: 1, borderColor: '#ccc', borderRadius: 5, padding: 10, marginBottom: 10 },
-  pickerContainer: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: 20 },
-  albumOption: { padding: 8, borderWidth: 1, borderColor: '#ccc', borderRadius: 20, marginRight: 10, marginBottom: 10 },
-  albumSelected: { backgroundColor: '#007AFF', borderColor: '#007AFF' },
-  albumTextSelected: { color: '#fff' },
-  buttonRow: { flexDirection: 'row', justifyContent: 'flex-end' },
-  btn: { padding: 10, borderRadius: 5, marginLeft: 10, minWidth: 80, alignItems: 'center' },
-  saveBtn: { backgroundColor: '#4CD964' },
-  cancelBtn: { backgroundColor: '#8E8E93' },
-  btnText: { color: '#fff', fontWeight: 'bold' },
+  center: { justifyContent: 'center', alignItems: 'center' },
+  slide: { width: width, height: height },
+  scrollContent: { flexGrow: 1, justifyContent: 'center' },
+  imageWrapper: { width: width, height: height, justifyContent: 'center' },
+  selectionOverlay: {
+    position: 'absolute',
+    top: 120,
+    right: 20,
+    zIndex: 20
+  },
+  fullPhoto: { width: '100%', height: '100%' },
+  header: { 
+    position: 'absolute', 
+    top: 0, 
+    left: 0, 
+    right: 0, 
+    paddingTop: 40,
+    paddingBottom: 10,
+    paddingHorizontal: 20,
+    flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.3)',
+    zIndex: 10
+  },
+  headerTitle: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
+  headerRight: { flexDirection: 'row', alignItems: 'center' },
+  headerButton: { padding: 5, marginLeft: 15 },
+  backButton: { padding: 5 },
+  descriptionContainer: { 
+    position: 'absolute', 
+    bottom: 0, 
+    left: 0, 
+    right: 0, 
+    maxHeight: '30%',
+    padding: 20,
+    borderTopLeftRadius: 15,
+    borderTopRightRadius: 15
+  },
+  descriptionContent: { width: '100%' },
+  descriptionHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 5 },
+  descriptionText: { color: '#fff', fontSize: 16, lineHeight: 22 },
+  dateText: { color: '#ccc', fontSize: 12, marginTop: 10 },
 });

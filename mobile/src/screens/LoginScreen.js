@@ -1,10 +1,14 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, StyleSheet, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, TextInput, StyleSheet, TouchableOpacity, Alert, KeyboardAvoidingView, Platform } from 'react-native';
 import { usersApi, setAuthToken } from '../api';
 import { useNotifications } from '../context/NotificationContext';
 import { storage } from '../utils/storage';
+import { useTheme } from '../context/ThemeContext';
+import { theme as themeConstants } from '../constants/theme';
 
 export default function LoginScreen({ navigation }) {
+  const { theme } = useTheme();
+  const colors = themeConstants[theme];
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -41,34 +45,55 @@ export default function LoginScreen({ navigation }) {
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Вход</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="Логин или email"
-        autoCapitalize="none"
-        value={username}
-        onChangeText={setUsername}
-      />
-      <TextInput
-        style={styles.input}
-        placeholder="Пароль"
-        secureTextEntry
-        value={password}
-        onChangeText={setPassword}
-      />
-      <TouchableOpacity style={[styles.button, loading && styles.buttonDisabled]} onPress={onLogin} disabled={loading}>
-        <Text style={styles.buttonText}>{loading ? 'Входим…' : 'Войти'}</Text>
-      </TouchableOpacity>
-    </View>
+    <KeyboardAvoidingView 
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'} 
+      style={[styles.container, { backgroundColor: colors.background }]}
+    >
+      <View style={styles.inner}>
+        <Text style={[styles.title, { color: colors.text }]}>Вход</Text>
+        <TextInput
+          style={[styles.input, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]}
+          placeholder="Логин или email"
+          placeholderTextColor={colors.textSecondary}
+          autoCapitalize="none"
+          value={username}
+          onChangeText={setUsername}
+        />
+        <TextInput
+          style={[styles.input, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]}
+          placeholder="Пароль"
+          placeholderTextColor={colors.textSecondary}
+          secureTextEntry
+          value={password}
+          onChangeText={setPassword}
+        />
+        <TouchableOpacity 
+          style={[styles.button, { backgroundColor: colors.primary }, loading && styles.buttonDisabled]} 
+          onPress={onLogin} 
+          disabled={loading}
+        >
+          <Text style={styles.buttonText}>{loading ? 'Входим…' : 'Войти'}</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity 
+          style={styles.linkButton} 
+          onPress={() => navigation.navigate('Register')}
+        >
+          <Text style={[styles.linkText, { color: colors.primary }]}>Нет аккаунта? Зарегистрироваться</Text>
+        </TouchableOpacity>
+      </View>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, justifyContent: 'center', padding: 24, backgroundColor: '#fff' },
-  title: { fontSize: 24, fontWeight: 'bold', marginBottom: 24, textAlign: 'center' },
-  input: { height: 48, borderWidth: 1, borderColor: '#ddd', borderRadius: 8, paddingHorizontal: 12, marginBottom: 12 },
-  button: { height: 48, backgroundColor: '#007AFF', borderRadius: 8, alignItems: 'center', justifyContent: 'center', marginTop: 8 },
+  container: { flex: 1 },
+  inner: { flex: 1, justifyContent: 'center', padding: 24 },
+  title: { fontSize: 28, fontWeight: 'bold', marginBottom: 32, textAlign: 'center' },
+  input: { height: 52, borderWidth: 1, borderRadius: 12, paddingHorizontal: 16, marginBottom: 16, fontSize: 16 },
+  button: { height: 52, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginTop: 8, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4 },
   buttonDisabled: { opacity: 0.7 },
-  buttonText: { color: '#fff', fontWeight: '600', fontSize: 16 },
+  buttonText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
+  linkButton: { marginTop: 20, alignItems: 'center' },
+  linkText: { fontSize: 16, fontWeight: '600' },
 });

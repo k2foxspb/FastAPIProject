@@ -7,9 +7,10 @@ from fastapi.security import OAuth2PasswordRequestForm
 from app.core.config import SECRET_KEY, ALGORITHM
 from app.models.users import User as UserModel, PhotoAlbum as PhotoAlbumModel, UserPhoto as UserPhotoModel
 from app.schemas.users import (
-    UserCreate, User as UserSchema, RefreshTokenRequest, 
+    UserCreate, UserUpdate, User as UserSchema, RefreshTokenRequest, 
     PhotoAlbumCreate, PhotoAlbumUpdate, PhotoAlbum as PhotoAlbumSchema, 
-    UserPhotoCreate, UserPhotoUpdate, UserPhoto as UserPhotoSchema
+    UserPhotoCreate, UserPhotoUpdate, UserPhoto as UserPhotoSchema,
+    FCMTokenUpdate, BulkDeletePhotosRequest
 )
 from app.api.dependencies import get_async_db
 from app.core.auth import (
@@ -20,12 +21,14 @@ from app.core.auth import (
     get_current_user,
     verify_refresh_token
 )
+from app.utils.email import send_verification_email
 
 import os
 import uuid
 import io
 from PIL import Image
 from fastapi import UploadFile, File, Form
+from datetime import datetime
 
 from sqlalchemy.orm import selectinload
 
@@ -40,35 +43,27 @@ async def get_users(
     """
     Возвращает список всех активных пользователей.
     """
-    query = select(UserModel).where(UserModel.is_active == True)
+    query = select(UserModel).where(UserModel.is_active == True).options(
+        selectinload(UserModel.photos),
+        selectinload(UserModel.albums).selectinload(PhotoAlbumModel.photos)
+    )
     if search:
         query = query.where(UserModel.email.ilike(f"%{search}%"))
     
     result = await db.execute(query)
-    return result.scalars().all()
+    users = result.scalars().all()
+
+    # Скрываем приватный контент для общего списка
+    for user in users:
+        user.photos = [p for p in user.photos if not p.is_private]
+        user.albums = [a for a in user.albums if not a.is_private]
+        for album in user.albums:
+            album.photos = [p for p in album.photos if not p.is_private]
+
+    return users
 
 
-@router.get("/{user_id}", response_model=UserSchema)
-async def get_user_profile(
-    user_id: int,
-    db: AsyncSession = Depends(get_async_db)
-):
-    """
-    Возвращает публичный профиль пользователя по его ID.
-    """
-    result = await db.execute(
-        select(UserModel).where(UserModel.id == user_id, UserModel.is_active == True).options(
-            selectinload(UserModel.photos),
-            selectinload(UserModel.albums).selectinload(PhotoAlbumModel.photos)
-        )
-    )
-    user = result.scalar_one_or_none()
-    if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    return user
-
-
-@router.get("/me", response_model=UserSchema)
+@router.get("/me")
 async def get_me(current_user: UserModel = Depends(get_current_user), db: AsyncSession = Depends(get_async_db)):
     """
     Возвращает информацию о текущем пользователе, включая его альбомы и фотографии.
@@ -81,13 +76,116 @@ async def get_me(current_user: UserModel = Depends(get_current_user), db: AsyncS
         )
     )
     user = result.scalar_one_or_none()
-    return user
+    
+    try:
+        # Пытаемся валидировать вручную для отладки, если возникнет ошибка
+        print(f"DEBUG: Manual validation for user {user.email}")
+        validated_user = UserSchema.model_validate(user)
+        print(f"DEBUG: Manual validation success for {user.email}")
+        return validated_user
+    except Exception as e:
+        print(f"Validation error in get_me for {user.email}: {e}")
+        # Если Pydantic бросает ValidationError, мы увидим детали
+        import traceback
+        traceback.print_exc()
+        # Возвращаем словарь напрямую, чтобы избежать повторной валидации response_model
+        data = {
+            "id": int(getattr(user, "id", 0)),
+            "email": str(getattr(user, "email", "")),
+            "first_name": getattr(user, "first_name", None),
+            "last_name": getattr(user, "last_name", None),
+            "is_active": bool(getattr(user, "is_active", True)),
+            "role": str(getattr(user, "role", "buyer")),
+            "status": str(getattr(user, "status", "offline")),
+            "avatar_url": getattr(user, "avatar_url", None),
+            "avatar_preview_url": getattr(user, "avatar_preview_url", None),
+            "photos": [],
+            "albums": []
+        }
+        return data
+
+
+@router.patch("/me", response_model=UserSchema)
+async def update_me(
+    email: str | None = Form(None),
+    first_name: str | None = Form(None),
+    last_name: str | None = Form(None),
+    role: str | None = Form(None),
+    status: str | None = Form(None),
+    avatar: UploadFile = File(None),
+    current_user: UserModel = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """
+    Обновляет информацию о текущем пользователе.
+    """
+    if email:
+        current_user.email = email
+    if first_name is not None:
+        current_user.first_name = first_name
+    if last_name is not None:
+        current_user.last_name = last_name
+    if role:
+        current_user.role = role
+    if status:
+        current_user.status = status
+    
+    if avatar:
+        # Сохраняем аватарку (используем существующую функцию сохранения фото)
+        image_url, preview_url = await save_user_photo(avatar)
+        current_user.avatar_url = image_url
+        current_user.avatar_preview_url = preview_url
+
+        # Добавляем аватарку в историю (альбом "Аватарки")
+        # Ищем существующий альбом
+        album_res = await db.execute(
+            select(PhotoAlbumModel).where(
+                PhotoAlbumModel.user_id == current_user.id,
+                PhotoAlbumModel.title == "Аватарки"
+            )
+        )
+        avatar_album = album_res.scalar_one_or_none()
+        
+        if not avatar_album:
+            avatar_album = PhotoAlbumModel(
+                user_id=current_user.id,
+                title="Аватарки",
+                description="История моих аватарок",
+                is_private=False
+            )
+            db.add(avatar_album)
+            await db.flush() # Получаем ID альбома
+            
+        # Создаем запись о фото
+        new_avatar_photo = UserPhotoModel(
+            user_id=current_user.id,
+            album_id=avatar_album.id,
+            image_url=image_url,
+            preview_url=preview_url,
+            description=f"Аватарка от {datetime.now().strftime('%d.%m.%Y %H:%M')}",
+            is_private=False
+        )
+        db.add(new_avatar_photo)
+    
+    await db.commit()
+    await db.refresh(current_user)
+    
+    # Подгружаем связанные данные для схемы
+    result = await db.execute(
+        select(UserModel).where(UserModel.id == current_user.id).options(
+            selectinload(UserModel.photos),
+            selectinload(UserModel.albums).selectinload(PhotoAlbumModel.photos)
+        )
+    )
+    user = result.scalar_one()
+    return UserSchema.model_validate(user)
 
 
 @router.post("/", response_model=UserSchema, status_code=status.HTTP_201_CREATED)
 async def create_user(user: UserCreate, db: AsyncSession = Depends(get_async_db)):
     """
     Регистрирует нового пользователя с ролью 'buyer' или 'seller'.
+    После регистрации отправляет email для подтверждения.
     """
     # Проверка уникальности email
     result = await db.scalars(select(UserModel).where(UserModel.email == user.email))
@@ -96,16 +194,58 @@ async def create_user(user: UserCreate, db: AsyncSession = Depends(get_async_db)
                             detail="Email already registered")
 
     # Создание объекта пользователя с хешированным паролем
+    # is_active=False по умолчанию в модели
     db_user = UserModel(
         email=user.email,
         hashed_password=hash_password(user.password),
+        first_name=user.first_name,
+        last_name=user.last_name,
         role=user.role
     )
 
     # Добавление в сессию и сохранение в базе
     db.add(db_user)
     await db.commit()
+    await db.refresh(db_user)
+
+    # Генерация токена подтверждения
+    verification_token = create_access_token(data={"sub": db_user.email, "type": "verification"})
+    
+    # Отправка письма
+    await send_verification_email(db_user.email, verification_token)
+
     return db_user
+
+
+@router.get("/verify-email")
+async def verify_email(token: str, db: AsyncSession = Depends(get_async_db)):
+    """
+    Подтверждает email пользователя по токену.
+    """
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        email: str = payload.get("sub")
+        token_type: str = payload.get("type")
+        if email is None or token_type != "verification":
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid token")
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Token has expired")
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid token")
+
+    result = await db.scalars(select(UserModel).where(UserModel.email == email))
+    user = result.first()
+
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    
+    if user.is_active:
+        return {"message": "Email already verified"}
+
+    user.is_active = True
+    await db.commit()
+
+    return {"message": "Email successfully verified"}
 
 
 @router.post("/token")
@@ -125,6 +265,7 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(),
         )
     access_token = create_access_token(data={"sub": user.email, "role": user.role, "id": user.id})
     refresh_token = create_refresh_token(data={"sub": user.email, "role": user.role, "id": user.id})
+    print(f"DEBUG: Created tokens for {user.email}: access={access_token[:20]}... refresh={refresh_token[:20]}...")
     return {"access_token": access_token, "refresh_token": refresh_token, "token_type": "bearer"}
 
 @router.post("/refresh-token")
@@ -181,7 +322,8 @@ async def create_album(
     db_album = PhotoAlbumModel(
         user_id=current_user.id,
         title=album.title,
-        description=album.description
+        description=album.description,
+        is_private=album.is_private
     )
     db.add(db_album)
     await db.commit()
@@ -219,7 +361,8 @@ async def add_photo(
         album_id=photo.album_id,
         image_url=photo.image_url,
         preview_url=photo.preview_url,
-        description=photo.description
+        description=photo.description,
+        is_private=photo.is_private
     )
     db.add(db_photo)
     await db.commit()
@@ -240,7 +383,13 @@ async def get_my_albums(
             selectinload(PhotoAlbumModel.photos)
         )
     )
-    return result.scalars().all()
+    albums = result.scalars().all()
+    
+    try:
+        validated_albums = [PhotoAlbumSchema.model_validate(a) for a in albums]
+        return validated_albums
+    except Exception as e:
+        raise e
 
 
 @router.get("/albums/{album_id}", response_model=PhotoAlbumSchema)
@@ -250,17 +399,23 @@ async def get_album(
     db: AsyncSession = Depends(get_async_db)
 ):
     """
-    Возвращает информацию о конкретном альбоме текущего пользователя.
+    Возвращает информацию о конкретном альбоме.
+    Если альбом приватный, доступ разрешен только владельцу.
     """
+    from sqlalchemy import or_
     result = await db.execute(
         select(PhotoAlbumModel).where(
             PhotoAlbumModel.id == album_id,
-            PhotoAlbumModel.user_id == current_user.id
+            or_(
+                PhotoAlbumModel.user_id == current_user.id,
+                PhotoAlbumModel.is_private == False
+            )
         ).options(selectinload(PhotoAlbumModel.photos))
     )
     album = result.scalar_one_or_none()
     if not album:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Album not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Album not found or access denied")
+    
     return album
 
 
@@ -322,8 +477,24 @@ async def delete_album(
     return None
 
 
+@router.post("/fcm-token", response_model=dict)
+async def update_fcm_token(
+    body: FCMTokenUpdate,
+    current_user: UserModel = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """
+    Обновляет FCM токен для текущего пользователя.
+    """
+    current_user.fcm_token = body.fcm_token
+    await db.commit()
+    return {"status": "ok"}
+
+
+# Настройка путей для медиа
+# Мы используем абсолютный путь относительно корня приложения (папка app)
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-USER_MEDIA_ROOT = os.path.join(BASE_DIR, "app", "media", "users")
+USER_MEDIA_ROOT = os.path.join(BASE_DIR, "media", "users")
 os.makedirs(USER_MEDIA_ROOT, exist_ok=True)
 
 async def save_user_photo(file: UploadFile) -> tuple[str, str]:
@@ -353,13 +524,17 @@ async def upload_photo(
     file: UploadFile = File(...),
     description: str | None = Form(None),
     album_id: int | None = Form(None),
+    is_private: bool = Form(False),
     current_user: UserModel = Depends(get_current_user),
     db: AsyncSession = Depends(get_async_db)
 ):
     """
     Загружает фотографию на сервер и создает запись в базе данных.
     """
+    print(f"DEBUG: upload_photo called by {current_user.email}")
+    print(f"DEBUG: file: {file.filename}, size: {file.size if hasattr(file, 'size') else 'unknown'}")
     if album_id:
+        print(f"DEBUG: album_id: {album_id}")
         result = await db.execute(
             select(PhotoAlbumModel).where(
                 PhotoAlbumModel.id == album_id,
@@ -367,20 +542,30 @@ async def upload_photo(
             )
         )
         if not result.scalar_one_or_none():
+            print(f"DEBUG: Album {album_id} not found for user {current_user.id}")
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Album not found")
 
-    image_url, preview_url = await save_user_photo(file)
+    try:
+        image_url, preview_url = await save_user_photo(file)
+        print(f"DEBUG: Photo saved: {image_url}, {preview_url}")
+    except Exception as e:
+        print(f"DEBUG: Error saving photo: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Error saving photo: {str(e)}")
 
     db_photo = UserPhotoModel(
         user_id=current_user.id,
         album_id=album_id,
         image_url=image_url,
         preview_url=preview_url,
-        description=description
+        description=description,
+        is_private=is_private
     )
     db.add(db_photo)
     await db.commit()
     await db.refresh(db_photo)
+    print(f"DEBUG: Photo record created in DB: {db_photo.id}")
     return db_photo
 
 
@@ -392,16 +577,22 @@ async def get_photo(
 ):
     """
     Возвращает информацию о фотографии.
+    Если фото приватное, доступ разрешен только владельцу.
     """
+    from sqlalchemy import or_
     result = await db.execute(
         select(UserPhotoModel).where(
             UserPhotoModel.id == photo_id,
-            UserPhotoModel.user_id == current_user.id
+            or_(
+                UserPhotoModel.user_id == current_user.id,
+                UserPhotoModel.is_private == False
+            )
         )
     )
     photo = result.scalar_one_or_none()
     if not photo:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Photo not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Photo not found or access denied")
+    
     return photo
 
 
@@ -474,8 +665,8 @@ async def delete_photo(
         relative_image = db_photo.image_url.lstrip("/")
         relative_preview = db_photo.preview_url.lstrip("/")
         
-        image_path = os.path.join(BASE_DIR, "app", relative_image)
-        preview_path = os.path.join(BASE_DIR, "app", relative_preview)
+        image_path = os.path.join(BASE_DIR, relative_image)
+        preview_path = os.path.join(BASE_DIR, relative_preview)
         
         if os.path.exists(image_path):
             os.remove(image_path)
@@ -485,5 +676,77 @@ async def delete_photo(
         print(f"Error deleting files: {e}")
         
     return None
+
+
+@router.post("/photos/bulk-delete", status_code=status.HTTP_204_NO_CONTENT)
+async def bulk_delete_photos(
+    request: BulkDeletePhotosRequest,
+    current_user: UserModel = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """
+    Удаляет несколько фотографий пользователя за один запрос.
+    """
+    result = await db.execute(
+        select(UserPhotoModel).where(
+            UserPhotoModel.id.in_(request.photo_ids),
+            UserPhotoModel.user_id == current_user.id
+        )
+    )
+    db_photos = result.scalars().all()
+    
+    if not db_photos:
+        return None
+
+    # Сохраняем пути к файлам перед удалением из базы
+    paths_to_delete = []
+    for photo in db_photos:
+        paths_to_delete.append(photo.image_url)
+        paths_to_delete.append(photo.preview_url)
+        await db.delete(photo)
+    
+    await db.commit()
+    
+    # Удаление файлов с диска
+    for path in paths_to_delete:
+        try:
+            relative_path = path.lstrip("/")
+            full_path = os.path.join(BASE_DIR, relative_path)
+            if os.path.exists(full_path):
+                os.remove(full_path)
+        except Exception as e:
+            print(f"Error deleting file {path}: {e}")
+            
+    return None
+
+
+@router.get("/{user_id}", response_model=UserSchema)
+async def get_user_profile(
+    user_id: int,
+    current_user: UserModel = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """
+    Возвращает публичный профиль пользователя по его ID.
+    Приватные альбомы и фото скрываются, если запрашивает не владелец.
+    """
+    result = await db.execute(
+        select(UserModel).where(UserModel.id == user_id, UserModel.is_active == True).options(
+            selectinload(UserModel.photos),
+            selectinload(UserModel.albums).selectinload(PhotoAlbumModel.photos)
+        )
+    )
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    
+    # Если это не профиль текущего пользователя, фильтруем приватный контент
+    if user.id != current_user.id:
+        user.photos = [p for p in user.photos if not p.is_private]
+        user.albums = [a for a in user.albums if not a.is_private]
+        for album in user.albums:
+            album.photos = [p for p in album.photos if not p.is_private]
+            
+    return user
 
 

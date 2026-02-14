@@ -1,51 +1,113 @@
+import firebase from '@react-native-firebase/app';
 import messaging from '@react-native-firebase/messaging';
-import { Alert } from 'react-native';
+import { Alert, Platform } from 'react-native';
+import { usersApi } from '../api';
+import { firebaseApp } from './firebaseInit';
+
+// Ensure Firebase is initialized before accessing messaging()
+const getMessaging = () => {
+  if (Platform.OS === 'web') return null;
+
+  try {
+    // Check if we have any initialized apps
+    if (firebase.apps.length === 0) {
+      console.log('getMessaging: No apps found, trying to initialize via firebaseInit...');
+      if (!firebaseApp) {
+        console.error('getMessaging: firebaseApp is null, messaging not available');
+        return null;
+      }
+    }
+    return messaging();
+  } catch (e) {
+    console.error('getMessaging: Failed to get messaging instance:', e.message);
+    return null;
+  }
+};
 
 export async function requestUserPermission() {
+  if (Platform.OS === 'web') return false;
   try {
-    const authStatus = await messaging().requestPermission();
+    const msg = getMessaging();
+    if (!msg) return false;
+    const authStatus = await msg.requestPermission();
     const enabled =
       authStatus === messaging.AuthorizationStatus.AUTHORIZED ||
       authStatus === messaging.AuthorizationStatus.PROVISIONAL;
 
     if (enabled) {
       console.log('Authorization status:', authStatus);
+      return true;
     }
+    return false;
   } catch (error) {
     console.error('Permission request failed:', error);
+    return false;
   }
 }
 
 export function setupCloudMessaging() {
+  if (Platform.OS === 'web') return;
   try {
-    // Обработка уведомлений, когда приложение на переднем переднем плане
-    messaging().onMessage(async remoteMessage => {
-      Alert.alert('Новое уведомление', remoteMessage.notification.body);
+    const msg = getMessaging();
+    if (!msg) {
+      console.log('Messaging not available during setupCloudMessaging, will skip for now.');
+      return;
+    }
+    // Обработка уведомлений, когда приложение на переднем плане
+    const unsubscribe = msg.onMessage(async remoteMessage => {
+      console.log('Foreground message received:', remoteMessage);
+      Alert.alert(
+        remoteMessage.notification?.title || 'Новое уведомление',
+        remoteMessage.notification?.body || ''
+      );
     });
 
     // Обработка клика по уведомлению (когда приложение было в фоне)
-    messaging().onNotificationOpenedApp(remoteMessage => {
+    msg.onNotificationOpenedApp(remoteMessage => {
       console.log('Notification caused app to open from background state:', remoteMessage.notification);
     });
 
     // Обработка уведомления, которое открыло приложение из закрытого состояния
-    messaging().getInitialNotification().then(remoteMessage => {
+    msg.getInitialNotification().then(remoteMessage => {
       if (remoteMessage) {
         console.log('Notification caused app to open from quit state:', remoteMessage.notification);
       }
     }).catch(err => console.error('getInitialNotification failed:', err));
+
+    return unsubscribe;
   } catch (error) {
     console.error('Firebase messaging setup failed:', error);
   }
 }
 
 export async function getFcmToken() {
+  if (Platform.OS === 'web') return null;
   try {
-    const token = await messaging().getToken();
+    const msg = getMessaging();
+    if (!msg) return null;
+    
+    // Register for remote notifications on iOS
+    if (Platform.OS === 'ios') {
+      await msg.registerDeviceForRemoteMessages();
+    }
+
+    const token = await msg.getToken();
     console.log('FCM Token:', token);
     return token;
   } catch (error) {
     console.error('Failed to get FCM token:', error);
     return null;
+  }
+}
+
+export async function updateServerFcmToken() {
+  try {
+    const token = await getFcmToken();
+    if (token) {
+      await usersApi.updateFcmToken(token);
+      console.log('FCM Token updated on server');
+    }
+  } catch (error) {
+    console.error('Failed to update FCM token on server:', error);
   }
 }

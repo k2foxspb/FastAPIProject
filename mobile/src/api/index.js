@@ -14,20 +14,31 @@ export const setAuthToken = (token) => {
   }
 };
 
+// Функция для инициализации токена из хранилища
+export const initAuth = async () => {
+  const token = await storage.getAccessToken();
+  if (token) {
+    setAuthToken(token);
+  }
+};
+
 export const usersApi = {
   getMe: () => api.get('/users/me'),
   login: (username, password) => {
-    const formData = new FormData();
-    formData.append('username', username);
-    formData.append('password', password);
-    return api.post('/users/token', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
+    const params = new URLSearchParams();
+    params.append('username', username);
+    params.append('password', password);
+    return api.post('/users/token', params, {
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
     });
   },
   refreshAccessToken: (refreshToken) => api.post('/users/refresh-token-access', { refresh_token: refreshToken }),
   // Пользователи
   getUsers: (search) => api.get('/users/', { params: { search } }),
   getUser: (id) => api.get(`/users/${id}`),
+  register: (userData) => api.post('/users/', userData),
 
   // Альбомы
   getAlbums: () => api.get('/users/albums'),
@@ -39,11 +50,25 @@ export const usersApi = {
   // Фотографии
   getPhoto: (id) => api.get(`/users/photos/${id}`),
   addPhoto: (data) => api.post('/users/photos', data),
-  uploadPhoto: (formData) => api.post('/users/photos/upload', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-  }),
+  uploadPhoto: (formData) => {
+    return api.post('/users/photos/upload', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+      timeout: 60000, 
+      maxContentLength: Infinity,
+      maxBodyLength: Infinity,
+    });
+  },
   updatePhoto: (id, data) => api.patch(`/users/photos/${id}`, data),
   deletePhoto: (id) => api.delete(`/users/photos/${id}`),
+  bulkDeletePhotos: (photoIds) => api.post('/users/photos/bulk-delete', { photo_ids: photoIds }),
+  updateFcmToken: (token) => api.post('/users/fcm-token', { fcm_token: token }),
+  updateMe: (formData) => api.patch('/users/me', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  }),
 };
 
 export const productsApi = {
@@ -51,19 +76,45 @@ export const productsApi = {
 };
 
 export const chatApi = {
-  getHistory: (userId, token) => api.get(`/chat/history/${userId}`, { params: { token } }),
+  getHistory: (userId, token, limit = 15, skip = 0) => api.get(`/chat/history/${userId}`, { params: { token, limit, skip } }),
   getDialogs: (token) => api.get('/chat/dialogs', { params: { token } }),
   markAsRead: (userId, token) => api.post(`/chat/mark-as-read/${userId}`, {}, { params: { token } }),
-  uploadFile: (formData) => api.post('/chat/upload', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-  }),
+  deleteMessage: (messageId, token) => api.delete(`/chat/message/${messageId}`, { params: { token } }),
+  bulkDeleteMessages: (messageIds, token) => api.post('/chat/messages/bulk-delete', { message_ids: messageIds }, { params: { token } }),
+  uploadFile: (formData) => api.post('/chat/upload', formData),
+  initUpload: (data, token) => api.post('/chat/upload/init', data, { params: { token } }),
+  getUploadStatus: (uploadId, token) => api.get(`/chat/upload/status/${uploadId}`, { params: { token } }),
 };
+
+api.interceptors.request.use(
+  async config => {
+    // В React Native axios иногда плохо определяет FormData, если заголовок не задан явно
+    // Но если мы задаем его вручную, мы НЕ должны добавлять boundary, axios/XMLHttpRequest сделает это сам,
+    // если мы передаем FormData. Однако, в некоторых версиях RN/Axios есть баг, 
+    // когда заголовок теряется или ставится application/json.
+    
+    // Проверяем наличие токена перед каждым запросом, если он еще не установлен
+    if (!config.headers['Authorization']) {
+      const token = await storage.getAccessToken();
+      if (token) {
+        config.headers['Authorization'] = `Bearer ${token}`;
+      }
+    }
+    console.log(`[API Request]: ${config.method?.toUpperCase()} ${config.url}`);
+    return config;
+  },
+  error => Promise.reject(error)
+);
 
 // Добавляем перехватчик для отладки сетевых ошибок
 api.interceptors.response.use(
-  response => response,
+  response => {
+    console.log(`[API Success]: ${response.config.method?.toUpperCase()} ${response.config.url} - ${response.status}`);
+    return response;
+  },
   async error => {
     const originalRequest = error.config;
+    console.log(`[API Error]: ${originalRequest?.method?.toUpperCase()} ${originalRequest?.url} - Status: ${error.response?.status}, Message: ${error.message}`);
 
     // Если ошибка 401 и это не повторный запрос и у нас есть refresh_token
     if (error.response?.status === 401 && !originalRequest._retry) {

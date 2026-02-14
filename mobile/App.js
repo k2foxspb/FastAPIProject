@@ -3,13 +3,15 @@ import React, { useEffect } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
 import TabNavigator from './src/navigation/TabNavigator';
-import { requestUserPermission, setupCloudMessaging } from './src/utils/notifications';
+import { requestUserPermission, setupCloudMessaging, updateServerFcmToken } from './src/utils/notifications';
 import { NotificationProvider, useNotifications } from './src/context/NotificationContext';
+import { ThemeProvider, useTheme } from './src/context/ThemeContext';
 import { storage } from './src/utils/storage';
 import { setAuthToken } from './src/api';
 
 function AppContent() {
   const { connect } = useNotifications();
+  const { theme } = useTheme();
 
   useEffect(() => {
     requestUserPermission();
@@ -21,6 +23,8 @@ function AppContent() {
       if (token) {
         setAuthToken(token);
         connect(token);
+        // Обновляем FCM токен на сервере после авторизации
+        updateServerFcmToken();
       }
     };
     checkSession();
@@ -28,7 +32,7 @@ function AppContent() {
 
   return (
     <NavigationContainer>
-      <StatusBar style="auto" />
+      <StatusBar style={theme === 'dark' ? 'light' : 'dark'} backgroundColor={theme === 'dark' ? '#000000' : '#FFFFFF'} />
       <TabNavigator />
     </NavigationContainer>
   );
@@ -36,8 +40,10 @@ function AppContent() {
 
 export default function App() {
   return (
-    <NotificationProvider>
-      <AppContent />
-    </NotificationProvider>
+    <ThemeProvider>
+      <NotificationProvider>
+        <AppContent />
+      </NotificationProvider>
+    </ThemeProvider>
   );
 }

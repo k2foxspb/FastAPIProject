@@ -12,13 +12,16 @@ class User(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     email: Mapped[str] = mapped_column(String, unique=True, index=True, nullable=False)
     hashed_password: Mapped[str] = mapped_column(String, nullable=False)
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    first_name: Mapped[str | None] = mapped_column(String, nullable=True)
+    last_name: Mapped[str | None] = mapped_column(String, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=False)
     role: Mapped[str] = mapped_column(String, default="buyer")  # "buyer" or "seller"
     status: Mapped[str] = mapped_column(String, default="offline", nullable=True)
     last_seen: Mapped[str] = mapped_column(String, nullable=True)
 
     avatar_url: Mapped[str | None] = mapped_column(String, nullable=True)
     avatar_preview_url: Mapped[str | None] = mapped_column(String, nullable=True)
+    fcm_token: Mapped[str | None] = mapped_column(String, nullable=True)
 
     products: Mapped[list["Product"]] = relationship("Product", back_populates="seller")
     reviews: Mapped[list["Reviews"]] = relationship("Reviews", back_populates="user")
@@ -35,6 +38,7 @@ class PhotoAlbum(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     title: Mapped[str] = mapped_column(String, nullable=False)
     description: Mapped[str | None] = mapped_column(String, nullable=True)
+    is_private: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     user: Mapped["User"] = relationship("User", back_populates="albums")
@@ -50,6 +54,7 @@ class UserPhoto(Base):
     image_url: Mapped[str] = mapped_column(String, nullable=False)
     preview_url: Mapped[str] = mapped_column(String, nullable=False)
     description: Mapped[str | None] = mapped_column(String, nullable=True)
+    is_private: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     user: Mapped["User"] = relationship("User", back_populates="photos")
