@@ -4,7 +4,7 @@ from sqlalchemy import select, update
 from starlette import status
 
 from app.core.auth import get_current_admin
-from app.models import User as UserNodel
+from app.models.users import User as UserNodel
 from app.models.categories import Category as CategoryModel
 from app.schemas.categories import Category as CategorySchema, CategoryCreate
 from sqlalchemy.ext.asyncio import AsyncSession

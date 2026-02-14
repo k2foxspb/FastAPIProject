@@ -6,9 +6,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_buyer, get_current_user
 from app.api.dependencies import get_async_db
-from app.models import (Reviews as ReviewModel,
-                        User as UserModel,
-                        Product as ProductModel)
+from app.models.reviews import Reviews as ReviewModel
+from app.models.users import User as UserModel
+from app.models.products import Product as ProductModel
 from app.schemas.reviews import Review as ReviewSchema, Review, CreateReview
 from app.api.routers.notifications import manager
 

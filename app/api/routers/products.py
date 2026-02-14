@@ -10,9 +10,11 @@ from starlette.status import HTTP_201_CREATED, HTTP_404_NOT_FOUND, HTTP_200_OK, 
 from app.core.auth import get_current_seller
 from app.api.dependencies import get_async_db
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.models import Product as ProductModel, Category as CategoryModel, User as UserModel
+from app.models.products import Product as ProductModel
+from app.models.categories import Category as CategoryModel
+from app.models.users import User as UserModel
 from app.schemas.products import Product as ProductShema, ProductCreate, ProductList
-from app.models import Reviews as ReviewsModel
+from app.models.reviews import Reviews as ReviewsModel
 from app.schemas.reviews import Review
 
 # Создаём маршрутизатор для товаров
