@@ -27,23 +27,19 @@ def setup_middleware(app: FastAPI) -> None:
     # Timing middleware
     app.add_middleware(TimingMiddleware)
 
-    # CORSMiddleware can sometimes cause issues with WebSockets if origins are not explicitly listed
-    # origins = ["*"]
-    # For WebSockets, it's often better to be more specific or ensure middleware order is correct.
-    # However, since we're using wildcard, we should at least allow everything properly.
-    
+    # CORS configuration
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
+        allow_origins=config.CORS_ORIGINS,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
     )
 
-    # Trusted Host - widened for debugging
+    # Trusted Host
     app.add_middleware(
         TrustedHostMiddleware,
-        allowed_hosts=["*"]
+        allowed_hosts=config.ALLOWED_HOSTS
     )
 
     # GZip compression
@@ -66,3 +62,5 @@ def setup_middleware(app: FastAPI) -> None:
 
 
 
+
+from app.core import config
