@@ -69,6 +69,8 @@ async def send_email(email: str, subject: str, text: str, html: str | None = Non
     message["Subject"] = subject
     message["From"] = f"{MAIL_FROM_NAME} <{MAIL_FROM}>"
     message["To"] = email
+    message["Message-ID"] = smtplib.utils.make_msgid(domain=MAIL_SERVER.split('.')[-2] + '.' + MAIL_SERVER.split('.')[-1] if '.' in MAIL_SERVER else 'localhost')
+    message["Date"] = smtplib.utils.formatdate(localtime=True)
     message["List-Unsubscribe"] = f"<{DOMAIN}/unsubscribe>"
 
     part1 = MIMEText(text, "plain")
