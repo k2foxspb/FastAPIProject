@@ -11,52 +11,56 @@ from loguru import logger
 async def send_verification_email(email: str, token: str):
     logger.info(f"Sending verification email to {email}")
     verification_url = f"{DOMAIN}/api/users/verify-email?token={token}"
-    subject = f"Подтверждение регистрации на {MAIL_FROM_NAME}"
+    subject = f"Подтверждение регистрации — {MAIL_FROM_NAME}"
     
     text = f"""Здравствуйте!
 
-Благодарим вас за регистрацию в {MAIL_FROM_NAME}.
-Чтобы завершить создание учетной записи и подтвердить ваш адрес электронной почты, пожалуйста, перейдите по следующей ссылке:
+Добро пожаловать в {MAIL_FROM_NAME}!
 
+Мы рады, что вы присоединились к нашему сообществу. Чтобы начать пользоваться всеми возможностями вашего аккаунта, нам нужно подтвердить, что этот адрес электронной почты принадлежит именно вам.
+
+Пожалуйста, подтвердите вашу почту, перейдя по ссылке:
 {verification_url}
 
-Если вы не регистрировались на нашем сайте, просто проигнорируйте это письмо.
+Если вы не регистрировались в нашей системе, просто проигнорируйте это письмо. Оно было отправлено автоматически.
 
 С уважением,
 Команда {MAIL_FROM_NAME}
+{DOMAIN}
 """
     html = f"""
     <html>
-      <head>
-        <style>
-          .button {{
-            background-color: #4CAF50;
-            border: none;
-            color: white;
-            padding: 15px 32px;
-            text-align: center;
-            text-decoration: none;
-            display: inline-block;
-            font-size: 16px;
-            margin: 4px 2px;
-            cursor: pointer;
-            border-radius: 8px;
-          }}
-        </style>
-      </head>
-      <body>
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #ddd; border-radius: 10px;">
-          <h2 style="color: #333;">Подтверждение регистрации</h2>
-          <p>Здравствуйте!</p>
-          <p>Благодарим вас за регистрацию в <strong>{MAIL_FROM_NAME}</strong>.</p>
-          <p>Для завершения регистрации, пожалуйста, подтвердите ваш адрес электронной почты, нажав на кнопку ниже:</p>
-          <div style="text-align: center; margin: 30px 0;">
-            <a href="{verification_url}" class="button" style="color: white;">Подтвердить почту</a>
+      <body style="font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #333; background-color: #f9f9f9; padding: 20px;">
+        <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; padding: 40px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); border: 1px solid #eef2f5;">
+          <div style="text-align: center; margin-bottom: 30px;">
+            <h1 style="color: #1a73e8; margin: 0; font-size: 28px;">{MAIL_FROM_NAME}</h1>
           </div>
-          <p style="font-size: 12px; color: #777;">Если кнопка не работает, скопируйте и вставьте следующую ссылку в адресную строку браузера:<br>
-          <a href="{verification_url}">{verification_url}</a></p>
-          <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
-          <p style="font-size: 12px; color: #999;">Вы получили это письмо, потому что этот адрес был указан при регистрации в {MAIL_FROM_NAME}. Если это были не вы, просто проигнорируйте это сообщение.</p>
+          
+          <h2 style="color: #2c3e50; margin-top: 0; font-weight: 600;">Подтверждение регистрации</h2>
+          <p style="font-size: 16px;">Здравствуйте!</p>
+          <p style="font-size: 16px;">Благодарим вас за проявленный интерес и регистрацию в проекте <strong>{MAIL_FROM_NAME}</strong>.</p>
+          <p style="font-size: 16px;">Для активации вашего профиля и обеспечения безопасности аккаунта, пожалуйста, подтвердите ваш адрес электронной почты:</p>
+          
+          <div style="text-align: center; margin: 35px 0;">
+            <a href="{verification_url}" style="background-color: #1a73e8; color: #ffffff; padding: 16px 32px; text-decoration: none; font-size: 16px; font-weight: bold; border-radius: 6px; display: inline-block; transition: background-color 0.3s;">
+              Активировать аккаунт
+            </a>
+          </div>
+          
+          <p style="font-size: 14px; color: #5f6368;">Если кнопка выше не работает, скопируйте эту ссылку в браузер:</p>
+          <p style="font-size: 13px; word-break: break-all; color: #1a73e8;">
+            <a href="{verification_url}" style="color: #1a73e8;">{verification_url}</a>
+          </p>
+          
+          <hr style="border: none; border-top: 1px solid #edf2f7; margin: 30px 0;">
+          
+          <p style="font-size: 12px; color: #70757a; text-align: center;">
+            Вы получили это письмо, так как этот адрес был указан при регистрации на сайте {DOMAIN}.<br>
+            Если это были не вы, просто удалите это сообщение.
+          </p>
+          <p style="font-size: 12px; color: #b0b8bf; text-align: center; margin-top: 15px;">
+            © 2026 {MAIL_FROM_NAME}. Все права защищены.
+          </p>
         </div>
       </body>
     </html>
@@ -72,16 +76,18 @@ async def send_email(email: str, subject: str, text: str, html: str | None = Non
     message["To"] = email
     
     # Генерация Message-ID
-    domain = 'localhost'
+    msg_id_domain = 'localhost'
     if MAIL_SERVER and '.' in MAIL_SERVER:
         parts = MAIL_SERVER.split('.')
         if len(parts) >= 2:
-            domain = '.'.join(parts[-2:])
+            msg_id_domain = '.'.join(parts[-2:])
     
-    message["Message-ID"] = make_msgid(domain=domain)
+    message["Message-ID"] = make_msgid(domain=msg_id_domain)
     message["Date"] = formatdate(localtime=True)
     message["X-Priority"] = "3"  # Normal
     message["X-Mailer"] = "Python smtplib / FastAPI"
+    message["Precedence"] = "bulk"
+    message["Auto-Submitted"] = "auto-generated"
     message["List-Unsubscribe"] = f"<{DOMAIN}/unsubscribe>"
 
     part1 = MIMEText(text, "plain")
