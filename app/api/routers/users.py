@@ -198,7 +198,12 @@ async def create_user(user: UserCreate, background_tasks: BackgroundTasks, db: A
             verification_token = create_access_token(data={"sub": existing_user.email, "type": "verification"})
             
             # Отправка письма через Celery
-            send_verification_email_task.delay(existing_user.email, verification_token)
+            try:
+                send_verification_email_task.delay(existing_user.email, verification_token)
+            except Exception as e:
+                print(f"Error sending email task for existing user: {e}")
+                # Если Celery упал, отправим асинхронно через FastAPI как запасной вариант
+                background_tasks.add_task(send_verification_email, existing_user.email, verification_token)
             
             # Возвращаем существующего пользователя с 200 OK
             # Но так как у нас status_code=201_CREATED захардкожен в декораторе, 
@@ -235,20 +240,32 @@ async def create_user(user: UserCreate, background_tasks: BackgroundTasks, db: A
     # Генерация токена подтверждения
     verification_token = create_access_token(data={"sub": db_user.email, "type": "verification"})
     
-    # Отправка письма через Celery
-    send_verification_email_task.delay(db_user.email, verification_token)
+    # Отправка письма
+    try:
+        send_verification_email_task.delay(db_user.email, verification_token)
+    except Exception as e:
+        print(f"Failed to send verification email via Celery: {e}")
+        # Запасной вариант - фоновая задача FastAPI
+        background_tasks.add_task(send_verification_email, db_user.email, verification_token)
 
     return UserSchema.model_validate(db_user)
 
 
 @router.get("/test-email-send")
-async def test_email_send(email: str):
+async def test_email_send(email: str, background_tasks: BackgroundTasks):
     """
     Эндпоинт для проверки отправки почты через Celery.
     """
     token = "test-token-123"
-    send_verification_email_task.delay(email, token)
-    return {"message": f"Test email scheduled via Celery for {email}. Check celery_worker logs for results."}
+    try:
+        send_verification_email_task.delay(email, token)
+        message = f"Test email scheduled via Celery for {email}."
+    except Exception as e:
+        print(f"Test email Celery failed: {e}")
+        background_tasks.add_task(send_verification_email, email, token)
+        message = f"Test email scheduled via FastAPI BackgroundTasks for {email} (Celery failed)."
+    
+    return {"message": message}
 
 
 @router.get("/verify-email")

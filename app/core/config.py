@@ -39,7 +39,7 @@ ALLOWED_HOSTS = [
     "web",  # Для внутренних запросов Docker
     "*",    # Разрешаем все хосты временно для отладки, если TrustedHostMiddleware мешает
 ]
-REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
+REDIS_HOST = os.getenv("REDIS_HOST", "redis")
 REDIS_PORT = os.getenv("REDIS_PORT", "6379")
 
 POSTGRES_USER = os.getenv("POSTGRES_USER", "ecommerce_user")
