@@ -36,7 +36,7 @@ from sqlalchemy.orm import selectinload
 router = APIRouter(prefix="/users", tags=["users"])
 
 
-@router.get("/", response_model=list[UserSchema])
+@router.get("", response_model=list[UserSchema])
 async def get_users(
     search: str | None = None,
     db: AsyncSession = Depends(get_async_db)

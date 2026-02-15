@@ -17,12 +17,12 @@ router = APIRouter(
     tags=["reviews"],
 )
 
-@router.get('/', response_model=list[ReviewSchema])
+@router.get('', response_model=list[ReviewSchema])
 async def get_review(db: AsyncSession = Depends(get_async_db)):
     result = await db.scalars(select(ReviewModel).where(ReviewModel.is_active == True))
     return result.all()
 
-@router.post('/', response_model=Review)
+@router.post('', response_model=Review)
 async def create_review(review: CreateReview,
                         db: AsyncSession = Depends(get_async_db),
                         current_buyer: UserModel = Depends(get_current_buyer)

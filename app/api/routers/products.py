@@ -79,7 +79,7 @@ def remove_product_image(url: str | None, thumb_url: str | None = None) -> None:
             file_path.unlink()
 
 
-@router.get("/", response_model=ProductList)
+@router.get("", response_model=ProductList)
 async def get_all_products(
         page: int = Query(1, ge=1),
         page_size: int = Query(20, ge=1, le=100),

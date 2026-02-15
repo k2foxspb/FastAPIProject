@@ -27,9 +27,19 @@ def setup_middleware(app: FastAPI) -> None:
     # ProxyFix for HTTPS
     @app.middleware("http")
     async def proxy_fix(request, call_next):
-        if request.headers.get("x-forwarded-proto") == "https":
-            # Принудительно устанавливаем https в scope, если Nginx передал соответствующий заголовок
-            request.scope["scheme"] = "https"
+        # Handle X-Forwarded-Proto
+        proto = request.headers.get("x-forwarded-proto")
+        if proto:
+            request.scope["scheme"] = proto
+        
+        # Handle X-Forwarded-Host
+        host = request.headers.get("x-forwarded-host")
+        if host:
+            request.scope["headers"] = [
+                (k, v) if k != b"host" else (b"host", host.encode())
+                for k, v in request.scope["headers"]
+            ]
+            
         return await call_next(request)
 
     # Timing middleware
