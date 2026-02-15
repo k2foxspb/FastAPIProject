@@ -1,0 +1,26 @@
+from datetime import datetime
+from pydantic import Field, BaseModel, ConfigDict
+
+class NewsCreate(BaseModel):
+    title: str = Field(min_length=3, max_length=200)
+    content: str = Field(min_length=10)
+    image_url: str | None = None
+
+class NewsUpdate(BaseModel):
+    title: str | None = None
+    content: str | None = None
+    image_url: str | None = None
+    is_active: bool | None = None
+
+class News(BaseModel):
+    id: int
+    title: str
+    content: str
+    image_url: str | None = None
+    author_id: int
+    moderation_status: str
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
