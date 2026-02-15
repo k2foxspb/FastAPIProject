@@ -225,6 +225,11 @@ async def create_user(user: UserCreate, background_tasks: BackgroundTasks, db: A
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
                             detail="Email already registered")
 
+    # Запрещаем регистрацию как owner или admin через обычный эндпоинт
+    if user.role in ["owner", "admin"]:
+         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                            detail="Cannot register as owner or admin via this endpoint")
+
     # Создание объекта пользователя с хешированным паролем
     # is_active=False по умолчанию в модели
     db_user = UserModel(

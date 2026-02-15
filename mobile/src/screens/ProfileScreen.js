@@ -141,6 +141,19 @@ export default function ProfileScreen({ navigation }) {
                   </TouchableOpacity>
                 </View>
 
+                {user.role === 'admin' || user.role === 'owner' ? (
+                  <TouchableOpacity 
+                    style={[styles.menuItem, { borderBottomWidth: 1, borderBottomColor: colors.border }]} 
+                    onPress={() => {
+                      setSettingsVisible(false);
+                      navigation.navigate('Admin');
+                    }}
+                  >
+                    <Icon name="shield-checkmark-outline" size={22} color={colors.primary} />
+                    <Text style={[styles.menuItemText, { color: colors.text }]}>Админ-панель</Text>
+                  </TouchableOpacity>
+                ) : null}
+
                 <TouchableOpacity 
                   style={[styles.menuItem, { borderBottomWidth: 1, borderBottomColor: colors.border }]} 
                   onPress={handleEditProfile}

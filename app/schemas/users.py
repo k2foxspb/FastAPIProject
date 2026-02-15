@@ -8,8 +8,8 @@ class UserCreate(BaseModel):
     password: str = Field(min_length=8, description="Пароль (минимум 8 символов)")
     first_name: str | None = Field(default=None, description="Имя")
     last_name: str | None = Field(default=None, description="Фамилия")
-    role: str = Field(default="buyer", pattern="^(buyer|seller|admin)$",
-                      description="Роль: 'buyer' или 'seller' или администратор")
+    role: str = Field(default="buyer", pattern="^(buyer|seller|admin|owner)$",
+                      description="Роль: 'buyer', 'seller', 'admin' или 'owner'")
 
 
 class UserUpdate(BaseModel):
@@ -160,6 +160,16 @@ class PhotoAlbum(PhotoAlbumBase):
             raise e
 
 
+class AdminPermissionCreate(BaseModel):
+    admin_id: int
+    model_name: str
+
+class AdminPermission(BaseModel):
+    id: int
+    admin_id: int
+    model_name: str
+    model_config = ConfigDict(from_attributes=True)
+
 class User(BaseModel):
     id: int
     email: str # Changed from EmailStr to str for flexibility
@@ -174,6 +184,7 @@ class User(BaseModel):
     fcm_token: str | None = None
     photos: list[UserPhoto] = []
     albums: list[PhotoAlbum] = []
+    admin_permissions: list[AdminPermission] = []
     
     model_config = ConfigDict(from_attributes=True)
 
@@ -195,7 +206,8 @@ class User(BaseModel):
                     "avatar_preview_url": obj.get("avatar_preview_url"),
                     "fcm_token": obj.get("fcm_token"),
                     "photos": obj.get("photos", []),
-                    "albums": obj.get("albums", [])
+                    "albums": obj.get("albums", []),
+                    "admin_permissions": obj.get("admin_permissions", [])
                 }
                 return cls(**data)
                 
@@ -213,7 +225,8 @@ class User(BaseModel):
                 "avatar_preview_url": getattr(obj, "avatar_preview_url", None),
                 "fcm_token": getattr(obj, "fcm_token", None),
                 "photos": [],
-                "albums": []
+                "albums": [],
+                "admin_permissions": []
             }
             
             # Проверяем, загружены ли связанные объекты, чтобы избежать MissingGreenletError
@@ -230,6 +243,11 @@ class User(BaseModel):
                         albums = getattr(obj, "albums", [])
                         if albums:
                             data["albums"] = [PhotoAlbum.model_validate(a) for a in albums]
+
+                    if 'admin_permissions' not in insp.unloaded:
+                        perms = getattr(obj, "admin_permissions", [])
+                        if perms:
+                            data["admin_permissions"] = [AdminPermission.model_validate(p) for p in perms]
             except Exception as e:
                 print(f"DEBUG: Error inspecting user relationships: {e}")
                 

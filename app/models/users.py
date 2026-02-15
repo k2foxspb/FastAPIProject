@@ -20,7 +20,7 @@ class User(Base):
     first_name: Mapped[str | None] = mapped_column(String, nullable=True)
     last_name: Mapped[str | None] = mapped_column(String, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=False)
-    role: Mapped[str] = mapped_column(String, default="buyer")  # "buyer" or "seller"
+    role: Mapped[str] = mapped_column(String, default="buyer")  # "buyer", "seller", "admin", "owner"
     status: Mapped[str] = mapped_column(String, default="offline", nullable=True)
     last_seen: Mapped[str] = mapped_column(String, nullable=True)
 
@@ -34,6 +34,17 @@ class User(Base):
     orders: Mapped[list["Order"]] = relationship("Order", back_populates="user", cascade="all, delete-orphan")
     photos: Mapped[list["UserPhoto"]] = relationship("UserPhoto", back_populates="user", cascade="all, delete-orphan")
     albums: Mapped[list["PhotoAlbum"]] = relationship("PhotoAlbum", back_populates="user", cascade="all, delete-orphan")
+    admin_permissions: Mapped[list["AdminPermission"]] = relationship("AdminPermission", back_populates="admin", cascade="all, delete-orphan")
+
+
+class AdminPermission(Base):
+    __tablename__ = "admin_permissions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    admin_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    model_name: Mapped[str] = mapped_column(String, nullable=False)  # Название модели, к которой разрешен доступ
+
+    admin: Mapped["User"] = relationship("User", back_populates="admin_permissions")
 
 
 class PhotoAlbum(Base):

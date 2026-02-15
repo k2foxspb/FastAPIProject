@@ -11,6 +11,8 @@ from app.api.routers import (
     notifications,
     chat,
     tasks,
+    admin,
+    news,
 )
 
 # Основной роутер для API v1
@@ -27,5 +29,7 @@ api_router.include_router(payments.router, tags=["payments"])
 api_router.include_router(notifications.router, tags=["websocket"])
 api_router.include_router(chat.router, tags=["chat"])
 api_router.include_router(tasks.router, tags=["tasks"])
+api_router.include_router(admin.router, tags=["admin"])
+api_router.include_router(news.router, tags=["news"])
 
 __all__ = ["api_router"]

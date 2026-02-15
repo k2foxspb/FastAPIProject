@@ -75,6 +75,22 @@ export const productsApi = {
   getProducts: (params) => api.get('/products/', { params }),
 };
 
+export const newsApi = {
+  getNews: () => api.get('/news'),
+  getNewsDetail: (id) => api.get(`/news/${id}`),
+  createNews: (data) => api.post('/news', data),
+  updateNews: (id, data) => api.patch(`/news/${id}`, data),
+  deleteNews: (id) => api.delete(`/news/${id}`),
+};
+
+export const adminApi = {
+  getUsers: () => api.get('/admin/users'),
+  updateUserRole: (id, role) => api.patch(`/admin/users/${id}/role`, null, { params: { role } }),
+  getPendingModeration: () => api.get('/admin/moderation/pending'),
+  approveObject: (model, id) => api.post(`/admin/moderation/approve/${model}/${id}`),
+  rejectObject: (model, id) => api.post(`/admin/moderation/reject/${model}/${id}`),
+};
+
 export const chatApi = {
   getHistory: (userId, token, limit = 15, skip = 0) => api.get(`/chat/history/${userId}`, { params: { token, limit, skip } }),
   getDialogs: (token) => api.get('/chat/dialogs', { params: { token } }),

@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, FlatList, Image, StyleSheet, ScrollView } from 'react-native';
-import { productsApi } from '../api';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, Text, FlatList, Image, StyleSheet, ScrollView, RefreshControl } from 'react-native';
+import { productsApi, newsApi } from '../api';
 import { getFullUrl } from '../utils/urlHelper';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
@@ -9,25 +9,49 @@ export default function FeedScreen() {
   const { theme } = useTheme();
   const colors = themeConstants[theme];
   const [products, setProducts] = useState([]);
-  const [news, setNews] = useState([
-    { id: 1, title: 'Добро пожаловать в наш магазин!', date: '13.02.2026' },
-    { id: 2, title: 'Скидки на все товары до конца недели!', date: '12.02.2026' },
-  ]);
+  const [news, setNews] = useState([]);
+  const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => {
-    productsApi.getProducts().then(res => setProducts(res.data)).catch(err => console.log(err));
+  const loadData = useCallback(async () => {
+    try {
+      const [productsRes, newsRes] = await Promise.all([
+        productsApi.getProducts(),
+        newsApi.getNews()
+      ]);
+      setProducts(productsRes.data.items || productsRes.data);
+      setNews(newsRes.data);
+    } catch (err) {
+      console.log(err);
+    }
   }, []);
 
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await loadData();
+    setRefreshing(false);
+  };
+
   return (
-    <ScrollView style={[styles.container, { backgroundColor: colors.background }]}>
+    <ScrollView 
+      style={[styles.container, { backgroundColor: colors.background }]}
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+      }
+    >
       <View style={styles.section}>
         <Text style={[styles.sectionTitle, { color: colors.text }]}>Последние новости</Text>
-        {news.map(item => (
+        {news.length > 0 ? news.map(item => (
           <View key={item.id} style={[styles.newsCard, { backgroundColor: colors.card, borderColor: colors.border, borderWidth: theme === 'dark' ? 1 : 0 }]}>
             <Text style={[styles.newsTitle, { color: colors.text }]}>{item.title}</Text>
-            <Text style={[styles.newsDate, { color: colors.textSecondary }]}>{item.date}</Text>
+            <Text style={[styles.newsDate, { color: colors.textSecondary }]}>{new Date(item.created_at).toLocaleDateString()}</Text>
           </View>
-        ))}
+        )) : (
+          <Text style={{ color: colors.textSecondary }}>Нет новостей</Text>
+        )}
       </View>
 
       <View style={styles.section}>

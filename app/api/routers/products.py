@@ -98,7 +98,7 @@ async def get_all_products(
             detail="min_price не может быть больше max_price",
         )
 
-    filters = [ProductModel.is_active.is_(True)]
+    filters = [ProductModel.is_active.is_(True), ProductModel.moderation_status == "approved"]
 
     if category_id is not None:
         filters.append(ProductModel.category_id == category_id)
@@ -185,6 +185,7 @@ async def create_product(
         seller_id=current_user.id,
         image_url=image_url,
         thumbnail_url=thumbnail_url,
+        moderation_status="pending"
     )
 
     db.add(db_product)
@@ -257,6 +258,9 @@ async def update_product(
         image_url, thumbnail_url = await save_product_image(image)
         db_product.image_url = image_url
         db_product.thumbnail_url = thumbnail_url
+
+    if current_user.role not in ["admin", "owner"]:
+        db_product.moderation_status = "pending"
 
     await db.commit()
     await db.refresh(db_product)  # Для консистентности данных

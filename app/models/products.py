@@ -25,6 +25,7 @@ class Product(Base):
     image_url: Mapped[str | None] = mapped_column(String(200), nullable=True)
     thumbnail_url: Mapped[str | None] = mapped_column(String(200), nullable=True)
     stock: Mapped[int] = mapped_column(nullable=False)
+    moderation_status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False) # "pending", "approved", "rejected"
     is_active: Mapped[bool] = mapped_column(default=True)
     category_id: Mapped[int] = mapped_column(ForeignKey("categories.id"), nullable=False)  # New
     seller_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
