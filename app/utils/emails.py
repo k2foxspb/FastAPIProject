@@ -10,30 +10,21 @@ from loguru import logger
 
 async def send_verification_email(email: str, token: str):
     logger.info(f"Sending verification email to {email}")
-    verification_url = f"{DOMAIN}/api/users/verify-email?token={token}"
-    subject = "Код подтверждения регистрации"
+    verification_url = f"{DOMAIN}/users/verify-email?token={token}"
+    subject = "Код подтверждения"
     
     text = f"""Здравствуйте!
 
-Для подтверждения регистрации в приложении, пожалуйста, перейдите по ссылке:
+Для завершения регистрации, пожалуйста, перейдите по ссылке:
 {verification_url}
 
-Если вы не запрашивали регистрацию, просто удалите это письмо.
-
-Команда проекта."""
+Если вы не запрашивали это письмо, просто проигнорируйте его."""
     
     html = f"""
     <html>
-      <body style="font-family: Arial, sans-serif; line-height: 1.5; color: #333;">
-        <p>Здравствуйте!</p>
-        <p>Для подтверждения вашей регистрации, пожалуйста, нажмите на ссылку ниже:</p>
-        <p><a href="{verification_url}" style="color: #1a73e8; font-weight: bold; text-decoration: none;">Подтвердить регистрацию</a></p>
-        <br>
-        <p>Если ссылка не открывается, скопируйте её в браузер:</p>
-        <p style="font-size: 12px; color: #666;">{verification_url}</p>
-        <br>
-        <hr style="border: none; border-top: 1px solid #eee;">
-        <p style="font-size: 11px; color: #999;">Проект FastAPI. Это автоматическое сообщение.</p>
+      <body>
+        <p>Для подтверждения регистрации перейдите по ссылке:</p>
+        <p><a href="{verification_url}">{verification_url}</a></p>
       </body>
     </html>
     """
@@ -54,14 +45,7 @@ async def send_email(email: str, subject: str, text: str, html: str | None = Non
     
     message["Message-ID"] = make_msgid(domain=msg_id_domain)
     message["Date"] = formatdate(localtime=True)
-    message["X-Priority"] = "3"  # Normal
-    message["X-Mailer"] = "Python smtplib"
     
-    # Эти заголовки иногда триггерят спам-фильтры, если настроены неверно
-    # message["Precedence"] = "bulk"
-    # message["Auto-Submitted"] = "auto-generated"
-    # message["List-Unsubscribe"] = f"<{DOMAIN}/unsubscribe>"
-
     part1 = MIMEText(text, "plain", "utf-8")
     message.attach(part1)
     
