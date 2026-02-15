@@ -16,6 +16,13 @@ services:
       - POSTGRES_USER=${POSTGRES_USER:-ecommerce_user}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-xxxxxxxx}
       - POSTGRES_DB=${POSTGRES_DB:-ecommerce_db}
+      - MAIL_USERNAME=${MAIL_USERNAME}
+      - MAIL_PASSWORD=${MAIL_PASSWORD}
+      - MAIL_FROM=${MAIL_FROM}
+      - MAIL_PORT=${MAIL_PORT}
+      - MAIL_SERVER=${MAIL_SERVER}
+      - MAIL_FROM_NAME=${MAIL_FROM_NAME}
+      - DOMAIN=${DOMAIN}
     depends_on:
       - db
       - redis
@@ -38,6 +45,13 @@ services:
       - POSTGRES_USER=${POSTGRES_USER:-ecommerce_user}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-xxxxxxxx}
       - POSTGRES_DB=${POSTGRES_DB:-ecommerce_db}
+      - MAIL_USERNAME=${MAIL_USERNAME}
+      - MAIL_PASSWORD=${MAIL_PASSWORD}
+      - MAIL_FROM=${MAIL_FROM}
+      - MAIL_PORT=${MAIL_PORT}
+      - MAIL_SERVER=${MAIL_SERVER}
+      - MAIL_FROM_NAME=${MAIL_FROM_NAME}
+      - DOMAIN=${DOMAIN}
     depends_on:
       - db
       - redis

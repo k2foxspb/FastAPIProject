@@ -1,5 +1,6 @@
 import asyncio
 import time
+import os
 from app.core.celery_app import celery_app
 from app.utils.emails import send_email
 from loguru import logger
@@ -10,6 +11,7 @@ def send_notification(email: str, message: str):
     logger.info(f"Starting Celery task send_notification for {email}")
     try:
         subject = "Уведомление от FastAPI Project"
+        logger.info(f"Using SMTP server: {os.getenv('MAIL_SERVER')} with user: {os.getenv('MAIL_USERNAME')}")
         # Выполняем асинхронную функцию в синхронном контексте Celery
         asyncio.run(send_email(email, subject, message))
         
