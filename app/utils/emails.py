@@ -10,13 +10,8 @@ from loguru import logger
 async def send_verification_email(email: str, token: str):
     logger.info(f"Sending verification email to {email}")
     verification_url = f"{DOMAIN}/api/users/verify-email?token={token}"
+    subject = f"Подтверждение регистрации на {MAIL_FROM_NAME}"
     
-    message = MIMEMultipart("alternative")
-    message["Subject"] = f"Подтверждение регистрации на {MAIL_FROM_NAME}"
-    message["From"] = f"{MAIL_FROM_NAME} <{MAIL_FROM}>"
-    message["To"] = email
-    message["List-Unsubscribe"] = f"<{DOMAIN}/unsubscribe>" # Good practice
-
     text = f"""Здравствуйте!
 
 Благодарим вас за регистрацию в {MAIL_FROM_NAME}.
@@ -65,22 +60,32 @@ async def send_verification_email(email: str, token: str):
       </body>
     </html>
     """
+    await send_email(email, subject, text, html)
+
+async def send_email(email: str, subject: str, text: str, html: str | None = None):
+    logger.info(f"Sending email to {email} with subject: {subject}")
+    
+    message = MIMEMultipart("alternative")
+    message["Subject"] = subject
+    message["From"] = f"{MAIL_FROM_NAME} <{MAIL_FROM}>"
+    message["To"] = email
+    message["List-Unsubscribe"] = f"<{DOMAIN}/unsubscribe>"
 
     part1 = MIMEText(text, "plain")
-    part2 = MIMEText(html, "html")
     message.attach(part1)
-    message.attach(part2)
+    
+    if html:
+        part2 = MIMEText(html, "html")
+        message.attach(part2)
 
     if not MAIL_SERVER:
-        logger.warning(f"MAIL_SERVER не настроен. Ссылка для подтверждения ({email}): {verification_url}")
-        print(f"DEBUG: Ссылка для подтверждения ({email}): {verification_url}")
+        logger.warning(f"MAIL_SERVER не настроен. Email to {email}: {subject}")
         return
 
     try:
         # Используем SMTP_SSL для порта 465 (Mail.ru)
         if MAIL_PORT == 465:
             logger.info(f"Connecting to {MAIL_SERVER}:{MAIL_PORT} using SSL")
-            # Set timeout for connection
             server = smtplib.SMTP_SSL(MAIL_SERVER, MAIL_PORT, timeout=20)
             try:
                 if MAIL_PASSWORD:
@@ -102,5 +107,4 @@ async def send_verification_email(email: str, token: str):
         logger.info(f"Email successfully sent to {email}")
     except Exception as e:
         logger.error(f"Ошибка при отправке почты на {email}: {e}")
-        # Пробрасываем ошибку дальше, чтобы FastAPI мог её обработать или логировать
         raise e
