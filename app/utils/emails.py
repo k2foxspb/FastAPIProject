@@ -1,6 +1,7 @@
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.utils import make_msgid, formatdate
 from app.core.config import (
     MAIL_USERNAME, MAIL_PASSWORD, MAIL_FROM, 
     MAIL_PORT, MAIL_SERVER, MAIL_FROM_NAME, DOMAIN
@@ -69,8 +70,8 @@ async def send_email(email: str, subject: str, text: str, html: str | None = Non
     message["Subject"] = subject
     message["From"] = f"{MAIL_FROM_NAME} <{MAIL_FROM}>"
     message["To"] = email
-    message["Message-ID"] = smtplib.utils.make_msgid(domain=MAIL_SERVER.split('.')[-2] + '.' + MAIL_SERVER.split('.')[-1] if '.' in MAIL_SERVER else 'localhost')
-    message["Date"] = smtplib.utils.formatdate(localtime=True)
+    message["Message-ID"] = make_msgid(domain=MAIL_SERVER.split('.')[-2] + '.' + MAIL_SERVER.split('.')[-1] if MAIL_SERVER and '.' in MAIL_SERVER else 'localhost')
+    message["Date"] = formatdate(localtime=True)
     message["List-Unsubscribe"] = f"<{DOMAIN}/unsubscribe>"
 
     part1 = MIMEText(text, "plain")
