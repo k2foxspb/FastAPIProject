@@ -51,10 +51,10 @@ async def session_delete(request: Request):
 
 # Тестовый эндпоинт для Celery (удалите в продакшене)
 @router.get("/test-celery")
-async def test_celery_task():
+async def test_celery_task(email: str = "k2foxspb@mail.ru"):
     """Тестовый эндпоинт для проверки Celery."""
-    call_background_task.delay('test message', 'test user')
-    return {"message": "Task sent to Celery"}
+    call_background_task.delay(email, 'Это тестовое сообщение из эндпоинта health-check')
+    return {"message": f"Task sent to Celery for {email}"}
 templates = Jinja2Templates(directory="app/templates")
 @router.get("/", response_class=HTMLResponse)
 def read_index(request: Request):
