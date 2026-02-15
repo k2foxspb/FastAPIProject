@@ -188,6 +188,7 @@ async def create_user(user: UserCreate, background_tasks: BackgroundTasks, db: A
     Регистрирует нового пользователя с ролью 'buyer' или 'seller'.
     Если пользователь с таким email уже существует и не активен, повторно отправляет письмо для подтверждения.
     """
+    print(f"DEBUG: create_user called for email: {user.email}")
     # Проверка существования пользователя
     result = await db.execute(select(UserModel).where(UserModel.email == user.email))
     existing_user = result.scalar_one_or_none()
