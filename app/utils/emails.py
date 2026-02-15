@@ -11,57 +11,29 @@ from loguru import logger
 async def send_verification_email(email: str, token: str):
     logger.info(f"Sending verification email to {email}")
     verification_url = f"{DOMAIN}/api/users/verify-email?token={token}"
-    subject = f"Подтверждение регистрации — {MAIL_FROM_NAME}"
+    subject = "Код подтверждения регистрации"
     
     text = f"""Здравствуйте!
 
-Добро пожаловать в {MAIL_FROM_NAME}!
-
-Мы рады, что вы присоединились к нашему сообществу. Чтобы начать пользоваться всеми возможностями вашего аккаунта, нам нужно подтвердить, что этот адрес электронной почты принадлежит именно вам.
-
-Пожалуйста, подтвердите вашу почту, перейдя по ссылке:
+Для подтверждения регистрации в приложении, пожалуйста, перейдите по ссылке:
 {verification_url}
 
-Если вы не регистрировались в нашей системе, просто проигнорируйте это письмо. Оно было отправлено автоматически.
+Если вы не запрашивали регистрацию, просто удалите это письмо.
 
-С уважением,
-Команда {MAIL_FROM_NAME}
-{DOMAIN}
-"""
+Команда проекта."""
+    
     html = f"""
     <html>
-      <body style="font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #333; background-color: #f9f9f9; padding: 20px;">
-        <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; padding: 40px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); border: 1px solid #eef2f5;">
-          <div style="text-align: center; margin-bottom: 30px;">
-            <h1 style="color: #1a73e8; margin: 0; font-size: 28px;">{MAIL_FROM_NAME}</h1>
-          </div>
-          
-          <h2 style="color: #2c3e50; margin-top: 0; font-weight: 600;">Подтверждение регистрации</h2>
-          <p style="font-size: 16px;">Здравствуйте!</p>
-          <p style="font-size: 16px;">Благодарим вас за проявленный интерес и регистрацию в проекте <strong>{MAIL_FROM_NAME}</strong>.</p>
-          <p style="font-size: 16px;">Для активации вашего профиля и обеспечения безопасности аккаунта, пожалуйста, подтвердите ваш адрес электронной почты:</p>
-          
-          <div style="text-align: center; margin: 35px 0;">
-            <a href="{verification_url}" style="background-color: #1a73e8; color: #ffffff; padding: 16px 32px; text-decoration: none; font-size: 16px; font-weight: bold; border-radius: 6px; display: inline-block; transition: background-color 0.3s;">
-              Активировать аккаунт
-            </a>
-          </div>
-          
-          <p style="font-size: 14px; color: #5f6368;">Если кнопка выше не работает, скопируйте эту ссылку в браузер:</p>
-          <p style="font-size: 13px; word-break: break-all; color: #1a73e8;">
-            <a href="{verification_url}" style="color: #1a73e8;">{verification_url}</a>
-          </p>
-          
-          <hr style="border: none; border-top: 1px solid #edf2f7; margin: 30px 0;">
-          
-          <p style="font-size: 12px; color: #70757a; text-align: center;">
-            Вы получили это письмо, так как этот адрес был указан при регистрации на сайте {DOMAIN}.<br>
-            Если это были не вы, просто удалите это сообщение.
-          </p>
-          <p style="font-size: 12px; color: #b0b8bf; text-align: center; margin-top: 15px;">
-            © 2026 {MAIL_FROM_NAME}. Все права защищены.
-          </p>
-        </div>
+      <body style="font-family: Arial, sans-serif; line-height: 1.5; color: #333;">
+        <p>Здравствуйте!</p>
+        <p>Для подтверждения вашей регистрации, пожалуйста, нажмите на ссылку ниже:</p>
+        <p><a href="{verification_url}" style="color: #1a73e8; font-weight: bold; text-decoration: none;">Подтвердить регистрацию</a></p>
+        <br>
+        <p>Если ссылка не открывается, скопируйте её в браузер:</p>
+        <p style="font-size: 12px; color: #666;">{verification_url}</p>
+        <br>
+        <hr style="border: none; border-top: 1px solid #eee;">
+        <p style="font-size: 11px; color: #999;">Проект FastAPI. Это автоматическое сообщение.</p>
       </body>
     </html>
     """
