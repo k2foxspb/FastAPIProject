@@ -22,6 +22,7 @@ from app.core.auth import (
     verify_refresh_token
 )
 from app.utils.emails import send_verification_email
+from app.tasks.example_tasks import send_verification_email_task
 
 import os
 import uuid
@@ -195,9 +196,11 @@ async def create_user(user: UserCreate, background_tasks: BackgroundTasks, db: A
         if not existing_user.is_active:
             # Если пользователь не активен, генерируем новый токен и отправляем письмо повторно
             verification_token = create_access_token(data={"sub": existing_user.email, "type": "verification"})
-            background_tasks.add_task(send_verification_email, existing_user.email, verification_token)
             
-            # Возвращаем существующего пользователя с 200 OK вместо 201 Created для индикации "повтора"
+            # Отправка письма через Celery
+            send_verification_email_task.delay(existing_user.email, verification_token)
+            
+            # Возвращаем существующего пользователя с 200 OK
             # Но так как у нас status_code=201_CREATED захардкожен в декораторе, 
             # мы можем либо сменить декоратор, либо оставить как есть. 
             # FastAPI позволяет вернуть Response для переопределения статуса.
@@ -232,20 +235,20 @@ async def create_user(user: UserCreate, background_tasks: BackgroundTasks, db: A
     # Генерация токена подтверждения
     verification_token = create_access_token(data={"sub": db_user.email, "type": "verification"})
     
-    # Отправка письма в фоновом режиме
-    background_tasks.add_task(send_verification_email, db_user.email, verification_token)
+    # Отправка письма через Celery
+    send_verification_email_task.delay(db_user.email, verification_token)
 
     return UserSchema.model_validate(db_user)
 
 
 @router.get("/test-email-send")
-async def test_email_send(email: str, background_tasks: BackgroundTasks):
+async def test_email_send(email: str):
     """
-    Эндпоинт для проверки отправки почты.
+    Эндпоинт для проверки отправки почты через Celery.
     """
     token = "test-token-123"
-    background_tasks.add_task(send_verification_email, email, token)
-    return {"message": f"Test email scheduled for {email}. Check server logs for results."}
+    send_verification_email_task.delay(email, token)
+    return {"message": f"Test email scheduled via Celery for {email}. Check celery_worker logs for results."}
 
 
 @router.get("/verify-email")

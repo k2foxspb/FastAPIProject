@@ -70,8 +70,18 @@ async def send_email(email: str, subject: str, text: str, html: str | None = Non
     message["Subject"] = subject
     message["From"] = f"{MAIL_FROM_NAME} <{MAIL_FROM}>"
     message["To"] = email
-    message["Message-ID"] = make_msgid(domain=MAIL_SERVER.split('.')[-2] + '.' + MAIL_SERVER.split('.')[-1] if MAIL_SERVER and '.' in MAIL_SERVER else 'localhost')
+    
+    # Генерация Message-ID
+    domain = 'localhost'
+    if MAIL_SERVER and '.' in MAIL_SERVER:
+        parts = MAIL_SERVER.split('.')
+        if len(parts) >= 2:
+            domain = '.'.join(parts[-2:])
+    
+    message["Message-ID"] = make_msgid(domain=domain)
     message["Date"] = formatdate(localtime=True)
+    message["X-Priority"] = "3"  # Normal
+    message["X-Mailer"] = "Python smtplib / FastAPI"
     message["List-Unsubscribe"] = f"<{DOMAIN}/unsubscribe>"
 
     part1 = MIMEText(text, "plain")
