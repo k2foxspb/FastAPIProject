@@ -1,8 +1,23 @@
 #!/bin/bash
 
-if ! [ -x "$(command -v docker-compose)" ]; then
-  echo 'Error: docker-compose is not installed.' >&2
+# Helper function to run docker-compose or docker compose
+run_docker_compose() {
+  if docker compose version >/dev/null 2>&1; then
+    docker compose "$@"
+  else
+    docker-compose "$@"
+  fi
+}
+
+if ! [ -x "$(command -v docker-compose)" ] && ! docker compose version >/dev/null 2>&1; then
+  echo 'Error: docker compose is not installed.' >&2
   exit 1
+fi
+
+# Check if we are in /root, which often causes issues with Docker (especially Snap)
+if [[ $PWD == /root/* ]]; then
+  echo "Warning: Project is located in /root. Docker might have trouble accessing files here."
+  echo "If you get 'permission denied' on docker-compose.prod.yml, consider moving the project to /home/$USER/"
 fi
 
 domains=(fokin.fan)
@@ -30,7 +45,7 @@ fi
 echo "### Creating dummy certificate for $domains ..."
 path="/etc/letsencrypt/live/$domains"
 mkdir -p "$data_path/conf/live/$domains"
-docker-compose -f docker-compose.prod.yml --env-file /dev/null run --rm --entrypoint "\
+run_docker_compose -f docker-compose.prod.yml --env-file /dev/null run --rm --entrypoint "\
   openssl req -x509 -nodes -newkey rsa:1024 -days 1\
     -keyout '$path/privkey.pem' \
     -out '$path/fullchain.pem' \
@@ -39,11 +54,11 @@ echo
 
 
 echo "### Starting nginx ..."
-docker-compose -f docker-compose.prod.yml --env-file /dev/null up --force-recreate -d nginx
+run_docker_compose -f docker-compose.prod.yml --env-file /dev/null up --force-recreate -d nginx
 echo
 
 echo "### Deleting dummy certificate for $domains ..."
-docker-compose -f docker-compose.prod.yml --env-file /dev/null run --rm --entrypoint "\
+run_docker_compose -f docker-compose.prod.yml --env-file /dev/null run --rm --entrypoint "\
   rm -rf /etc/letsencrypt/live/$domains" certbot
 echo
 
@@ -64,7 +79,7 @@ esac
 # Enable staging mode if needed
 if [ "$staging" != "0" ]; then staging_arg="--staging"; fi
 
-docker-compose -f docker-compose.prod.yml --env-file /dev/null run --rm --entrypoint "\
+run_docker_compose -f docker-compose.prod.yml --env-file /dev/null run --rm --entrypoint "\
   certbot certonly --webroot -w /var/www/certbot \
     $staging_arg \
     $email_arg \
@@ -75,4 +90,4 @@ docker-compose -f docker-compose.prod.yml --env-file /dev/null run --rm --entryp
 echo
 
 echo "### Reloading nginx ..."
-docker-compose -f docker-compose.prod.yml --env-file /dev/null exec nginx nginx -s reload
+run_docker_compose -f docker-compose.prod.yml --env-file /dev/null exec nginx nginx -s reload
