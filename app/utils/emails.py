@@ -79,19 +79,21 @@ async def send_verification_email(email: str, token: str):
     try:
         # Используем SMTP_SSL для порта 465 (Mail.ru)
         if MAIL_PORT == 465:
+            logger.info(f"Connecting to {MAIL_SERVER}:{MAIL_PORT} using SSL")
             with smtplib.SMTP_SSL(MAIL_SERVER, MAIL_PORT) as server:
                 if MAIL_PASSWORD:
                     server.login(MAIL_USERNAME, MAIL_PASSWORD)
                 server.sendmail(MAIL_FROM, email, message.as_string())
         else:
             # Для порта 587 используем STARTTLS
+            logger.info(f"Connecting to {MAIL_SERVER}:{MAIL_PORT} using STARTTLS")
             with smtplib.SMTP(MAIL_SERVER, MAIL_PORT) as server:
                 if MAIL_PASSWORD:
                     server.starttls()
                     server.login(MAIL_USERNAME, MAIL_PASSWORD)
                 server.sendmail(MAIL_FROM, email, message.as_string())
+        logger.info(f"Email successfully sent to {email}")
     except Exception as e:
-        logger.error(f"Ошибка при отправке почты: {e}")
-        print(f"DEBUG Error sending email: {e}")
-        # Не бросаем исключение, чтобы не прерывать регистрацию, 
-        # но в логах будет информация. В проде лучше бросать или логировать серьезно.
+        logger.error(f"Ошибка при отправке почты на {email}: {e}")
+        # Пробрасываем ошибку дальше, чтобы FastAPI мог её обработать или логировать
+        raise e

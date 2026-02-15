@@ -195,7 +195,11 @@ async def create_user(user: UserCreate, db: AsyncSession = Depends(get_async_db)
         if not existing_user.is_active:
             # Если пользователь не активен, генерируем новый токен и отправляем письмо повторно
             verification_token = create_access_token(data={"sub": existing_user.email, "type": "verification"})
-            await send_verification_email(existing_user.email, verification_token)
+            try:
+                await send_verification_email(existing_user.email, verification_token)
+            except Exception as e:
+                from loguru import logger
+                logger.error(f"Failed to resend verification email to {existing_user.email}: {e}")
             
             # Возвращаем существующего пользователя с 200 OK вместо 201 Created для индикации "повтора"
             # Но так как у нас status_code=201_CREATED захардкожен в декораторе, 
@@ -233,7 +237,15 @@ async def create_user(user: UserCreate, db: AsyncSession = Depends(get_async_db)
     verification_token = create_access_token(data={"sub": db_user.email, "type": "verification"})
     
     # Отправка письма
-    await send_verification_email(db_user.email, verification_token)
+    try:
+        await send_verification_email(db_user.email, verification_token)
+    except Exception as e:
+        # Если почта не отправилась, мы всё равно создали пользователя, 
+        # но нам нужно сообщить об этом или залогировать.
+        # В данном случае, так как пользователь уже в БД, мы можем вернуть 201, 
+        # но с предупреждением в логах.
+        from loguru import logger
+        logger.error(f"Failed to send verification email to {db_user.email}: {e}")
 
     return UserSchema.model_validate(db_user)
 
