@@ -1,5 +1,5 @@
 import jwt
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from fastapi.security import OAuth2PasswordRequestForm
@@ -182,7 +182,7 @@ async def update_me(
 
 
 @router.post("/", response_model=UserSchema, status_code=status.HTTP_201_CREATED)
-async def create_user(user: UserCreate, db: AsyncSession = Depends(get_async_db)):
+async def create_user(user: UserCreate, background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_async_db)):
     """
     Регистрирует нового пользователя с ролью 'buyer' или 'seller'.
     Если пользователь с таким email уже существует и не активен, повторно отправляет письмо для подтверждения.
@@ -195,11 +195,7 @@ async def create_user(user: UserCreate, db: AsyncSession = Depends(get_async_db)
         if not existing_user.is_active:
             # Если пользователь не активен, генерируем новый токен и отправляем письмо повторно
             verification_token = create_access_token(data={"sub": existing_user.email, "type": "verification"})
-            try:
-                await send_verification_email(existing_user.email, verification_token)
-            except Exception as e:
-                from loguru import logger
-                logger.error(f"Failed to resend verification email to {existing_user.email}: {e}")
+            background_tasks.add_task(send_verification_email, existing_user.email, verification_token)
             
             # Возвращаем существующего пользователя с 200 OK вместо 201 Created для индикации "повтора"
             # Но так как у нас status_code=201_CREATED захардкожен в декораторе, 
@@ -236,18 +232,20 @@ async def create_user(user: UserCreate, db: AsyncSession = Depends(get_async_db)
     # Генерация токена подтверждения
     verification_token = create_access_token(data={"sub": db_user.email, "type": "verification"})
     
-    # Отправка письма
-    try:
-        await send_verification_email(db_user.email, verification_token)
-    except Exception as e:
-        # Если почта не отправилась, мы всё равно создали пользователя, 
-        # но нам нужно сообщить об этом или залогировать.
-        # В данном случае, так как пользователь уже в БД, мы можем вернуть 201, 
-        # но с предупреждением в логах.
-        from loguru import logger
-        logger.error(f"Failed to send verification email to {db_user.email}: {e}")
+    # Отправка письма в фоновом режиме
+    background_tasks.add_task(send_verification_email, db_user.email, verification_token)
 
     return UserSchema.model_validate(db_user)
+
+
+@router.get("/test-email-send")
+async def test_email_send(email: str, background_tasks: BackgroundTasks):
+    """
+    Эндпоинт для проверки отправки почты.
+    """
+    token = "test-token-123"
+    background_tasks.add_task(send_verification_email, email, token)
+    return {"message": f"Test email scheduled for {email}. Check server logs for results."}
 
 
 @router.get("/verify-email")
