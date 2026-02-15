@@ -72,11 +72,11 @@ async def send_email(email: str, subject: str, text: str, html: str | None = Non
     
     message = MIMEMultipart("alternative")
     message["Subject"] = subject
-    message["From"] = f"{MAIL_FROM_NAME} <{MAIL_FROM}>"
+    message["From"] = MAIL_FROM
     message["To"] = email
     
     # Генерация Message-ID. Важно использовать домен отправителя, а не localhost
-    msg_id_domain = 'fokin.fun'
+    msg_id_domain = 'mail.ru'
     if MAIL_FROM and '@' in MAIL_FROM:
         msg_id_domain = MAIL_FROM.split('@')[-1]
     
@@ -88,7 +88,7 @@ async def send_email(email: str, subject: str, text: str, html: str | None = Non
     # Эти заголовки иногда триггерят спам-фильтры, если настроены неверно
     # message["Precedence"] = "bulk"
     # message["Auto-Submitted"] = "auto-generated"
-    message["List-Unsubscribe"] = f"<{DOMAIN}/unsubscribe>"
+    # message["List-Unsubscribe"] = f"<{DOMAIN}/unsubscribe>"
 
     part1 = MIMEText(text, "plain", "utf-8")
     message.attach(part1)
