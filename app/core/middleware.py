@@ -30,17 +30,17 @@ def setup_middleware(app: FastAPI) -> None:
     # CORS configuration
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=config.CORS_ORIGINS,
+        allow_origins=["*"],
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
     )
 
     # Trusted Host
-    app.add_middleware(
-        TrustedHostMiddleware,
-        allowed_hosts=config.ALLOWED_HOSTS
-    )
+    # app.add_middleware(
+    #     TrustedHostMiddleware,
+    #     allowed_hosts=config.ALLOWED_HOSTS
+    # )
 
     # GZip compression
     app.add_middleware(GZipMiddleware, minimum_size=1000)

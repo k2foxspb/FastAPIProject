@@ -20,6 +20,7 @@ MAIL_FROM_NAME = os.getenv("MAIL_FROM_NAME", "FastAPI Project")
 DOMAIN = os.getenv("DOMAIN", "http://79.133.183.129")
 CORS_ORIGINS = [
     "http://79.133.183.129",
+    "https://79.133.183.129",
     "http://fokin.fan",
     "https://fokin.fan",
     "http://localhost",
@@ -33,6 +34,7 @@ ALLOWED_HOSTS = [
     "localhost",
     "127.0.0.1",
     "web",  # Для внутренних запросов Docker
+    "*",    # Разрешаем все хосты временно для отладки, если TrustedHostMiddleware мешает
 ]
 REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
 REDIS_PORT = os.getenv("REDIS_PORT", "6379")
