@@ -9,6 +9,13 @@ run_docker_compose() {
   fi
 }
 
+# Fix permissions for the current directory if needed
+if [ -d "/home/$USER" ]; then
+    echo "### Fixing directory permissions in /home/$USER ..."
+    sudo chown -R $USER:$USER "$PWD"
+    sudo chmod -R 755 "$PWD"
+fi
+
 if ! [ -x "$(command -v docker-compose)" ] && ! docker compose version >/dev/null 2>&1; then
   echo 'Error: docker compose is not installed.' >&2
   exit 1
