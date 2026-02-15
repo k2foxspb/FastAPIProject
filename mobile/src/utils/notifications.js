@@ -109,13 +109,29 @@ export async function getFcmToken() {
 export async function updateServerFcmToken(passedToken = null) {
   try {
     const token = passedToken || await getFcmToken();
-    if (token) {
-      await usersApi.updateFcmToken(token);
-      console.log('FCM Token updated on server:', token);
-    } else {
+    if (!token) {
       console.log('updateServerFcmToken: No token available to update');
+      return;
+    }
+
+    // Проверяем наличие токена авторизации в axios
+    const hasAuth = usersApi.updateFcmToken.toString().includes('Authorization') || true; // Просто напоминание
+    
+    console.log('updateServerFcmToken: Attempting to send token to server...');
+    const response = await usersApi.updateFcmToken(token);
+    
+    if (response.data && response.data.status === 'ok') {
+      console.log('FCM Token updated on server SUCCESSFULLY:', token);
+    } else {
+      console.log('FCM Token update response:', response.data);
     }
   } catch (error) {
-    console.error('Failed to update FCM token on server:', error);
+    if (error.response) {
+      console.error('Failed to update FCM token on server (Response Error):', error.response.status, error.response.data);
+    } else if (error.request) {
+      console.error('Failed to update FCM token on server (No Response):', error.message);
+    } else {
+      console.error('Failed to update FCM token on server (Setup Error):', error.message);
+    }
   }
 }
