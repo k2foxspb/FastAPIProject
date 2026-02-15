@@ -60,7 +60,7 @@ async def get_users(
         for album in user.albums:
             album.photos = [p for p in album.photos if not p.is_private]
 
-    return users
+    return [UserSchema.model_validate(u) for u in users]
 
 
 @router.get("/me")
@@ -235,7 +235,7 @@ async def create_user(user: UserCreate, db: AsyncSession = Depends(get_async_db)
     # Отправка письма
     await send_verification_email(db_user.email, verification_token)
 
-    return db_user
+    return UserSchema.model_validate(db_user)
 
 
 @router.get("/verify-email")
@@ -775,6 +775,6 @@ async def get_user_profile(
         for album in user.albums:
             album.photos = [p for p in album.photos if not p.is_private]
             
-    return user
+    return UserSchema.model_validate(user)
 
 

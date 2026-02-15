@@ -133,7 +133,7 @@ class PhotoAlbum(PhotoAlbumBase):
             from sqlalchemy import inspect
             try:
                 insp = inspect(obj)
-                if 'photos' not in insp.unloaded:
+                if insp is not None and 'photos' not in insp.unloaded:
                     photos = getattr(obj, "photos", [])
                     if photos:
                         validated_photos = []
@@ -220,15 +220,16 @@ class User(BaseModel):
             from sqlalchemy import inspect
             try:
                 insp = inspect(obj)
-                if 'photos' not in insp.unloaded:
-                    photos = getattr(obj, "photos", [])
-                    if photos:
-                        data["photos"] = [UserPhoto.model_validate(p) for p in photos]
-                
-                if 'albums' not in insp.unloaded:
-                    albums = getattr(obj, "albums", [])
-                    if albums:
-                        data["albums"] = [PhotoAlbum.model_validate(a) for a in albums]
+                if insp is not None:
+                    if 'photos' not in insp.unloaded:
+                        photos = getattr(obj, "photos", [])
+                        if photos:
+                            data["photos"] = [UserPhoto.model_validate(p) for p in photos]
+                    
+                    if 'albums' not in insp.unloaded:
+                        albums = getattr(obj, "albums", [])
+                        if albums:
+                            data["albums"] = [PhotoAlbum.model_validate(a) for a in albums]
             except Exception as e:
                 print(f"DEBUG: Error inspecting user relationships: {e}")
                 
