@@ -24,6 +24,14 @@ class TimingMiddleware:
 def setup_middleware(app: FastAPI) -> None:
     """Настройка всех middleware для приложения."""
 
+    # ProxyFix for HTTPS
+    @app.middleware("http")
+    async def proxy_fix(request, call_next):
+        if request.headers.get("x-forwarded-proto") == "https":
+            # Принудительно устанавливаем https в scope, если Nginx передал соответствующий заголовок
+            request.scope["scheme"] = "https"
+        return await call_next(request)
+
     # Timing middleware
     app.add_middleware(TimingMiddleware)
 

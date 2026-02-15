@@ -93,7 +93,8 @@ export default function ChatScreen({ route, navigation }) {
       usersApi.getMe().then(res => setCurrentUserIdLocal(res.data.id)).catch(err => console.log(err));
 
       // WebSocket соединение
-      const wsUrl = `ws://${API_BASE_URL.replace('http://', '').replace('https://', '')}/chat/ws/${accessToken}`;
+      const protocol = API_BASE_URL.startsWith('https') ? 'wss://' : 'ws://';
+      const wsUrl = `${protocol}${API_BASE_URL.replace('http://', '').replace('https://', '')}/chat/ws/${accessToken}`;
       ws.current = new WebSocket(wsUrl);
 
       ws.current.onmessage = (e) => {

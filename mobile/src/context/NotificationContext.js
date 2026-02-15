@@ -65,7 +65,8 @@ export const NotificationProvider = ({ children }) => {
       ws.current.close();
     }
 
-    const wsUrl = `ws://${API_BASE_URL.replace('http://', '').replace('https://', '')}/ws/notifications?token=${token}`;
+    const protocol = API_BASE_URL.startsWith('https') ? 'wss://' : 'ws://';
+    const wsUrl = `${protocol}${API_BASE_URL.replace('http://', '').replace('https://', '')}/ws/notifications?token=${token}`;
     console.log('Connecting to notifications WS:', wsUrl.split('?')[0] + '?token=***');
     
     ws.current = new WebSocket(wsUrl);
