@@ -27,7 +27,7 @@ if [[ $PWD == /root/* ]]; then
   echo "If you get 'permission denied' on docker-compose.prod.yml, consider moving the project to /home/$USER/"
 fi
 
-domains=(fokin.fan)
+domains=(fokin.fun)
 rsa_key_size=4096
 data_path="/etc/letsencrypt"
 email="k2fox@yandex.ru" # Замените на вашу почту
