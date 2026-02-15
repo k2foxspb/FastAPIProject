@@ -75,26 +75,26 @@ async def send_email(email: str, subject: str, text: str, html: str | None = Non
     message["From"] = f"{MAIL_FROM_NAME} <{MAIL_FROM}>"
     message["To"] = email
     
-    # Генерация Message-ID
-    msg_id_domain = 'localhost'
-    if MAIL_SERVER and '.' in MAIL_SERVER:
-        parts = MAIL_SERVER.split('.')
-        if len(parts) >= 2:
-            msg_id_domain = '.'.join(parts[-2:])
+    # Генерация Message-ID. Важно использовать домен отправителя, а не localhost
+    msg_id_domain = 'fokin.fun'
+    if MAIL_FROM and '@' in MAIL_FROM:
+        msg_id_domain = MAIL_FROM.split('@')[-1]
     
     message["Message-ID"] = make_msgid(domain=msg_id_domain)
     message["Date"] = formatdate(localtime=True)
     message["X-Priority"] = "3"  # Normal
-    message["X-Mailer"] = "Python smtplib / FastAPI"
-    message["Precedence"] = "bulk"
-    message["Auto-Submitted"] = "auto-generated"
+    message["X-Mailer"] = "Python smtplib"
+    
+    # Эти заголовки иногда триггерят спам-фильтры, если настроены неверно
+    # message["Precedence"] = "bulk"
+    # message["Auto-Submitted"] = "auto-generated"
     message["List-Unsubscribe"] = f"<{DOMAIN}/unsubscribe>"
 
-    part1 = MIMEText(text, "plain")
+    part1 = MIMEText(text, "plain", "utf-8")
     message.attach(part1)
     
     if html:
-        part2 = MIMEText(html, "html")
+        part2 = MIMEText(html, "html", "utf-8")
         message.attach(part2)
 
     if not MAIL_SERVER:
