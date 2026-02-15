@@ -27,6 +27,20 @@ def setup_middleware(app: FastAPI) -> None:
     # ProxyFix for HTTPS
     @app.middleware("http")
     async def proxy_fix(request, call_next):
+        # Handle trailing slash: remove it if it's not the root path
+        if request.url.path != "/" and request.url.path.endswith("/"):
+            from fastapi.responses import RedirectResponse
+            # Determine status code: 301 for GET, 308 for others to preserve method
+            status_code = 301 if request.method == "GET" else 308
+            
+            # Construct new URL without trailing slash
+            # We use request.url to preserve query parameters
+            url = request.url
+            new_path = url.path.rstrip("/")
+            new_url = str(url.replace(path=new_path))
+            
+            return RedirectResponse(url=new_url, status_code=status_code)
+
         # Handle X-Forwarded-Proto
         proto = request.headers.get("x-forwarded-proto")
         if proto:
