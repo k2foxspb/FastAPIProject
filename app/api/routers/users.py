@@ -37,6 +37,7 @@ router = APIRouter(prefix="/users", tags=["users"])
 
 
 @router.get("", response_model=list[UserSchema])
+@router.get("/", response_model=list[UserSchema], include_in_schema=False)
 async def get_users(
     search: str | None = None,
     db: AsyncSession = Depends(get_async_db)
@@ -183,6 +184,7 @@ async def update_me(
 
 
 @router.post("/", response_model=UserSchema, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=UserSchema, status_code=status.HTTP_201_CREATED, include_in_schema=False)
 async def create_user(user: UserCreate, background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_async_db)):
     """
     Регистрирует нового пользователя с ролью 'buyer' или 'seller'.
@@ -305,6 +307,7 @@ async def verify_email(token: str, db: AsyncSession = Depends(get_async_db)):
 
 
 @router.post("/token")
+@router.post("/token/", include_in_schema=False)
 async def login(form_data: OAuth2PasswordRequestForm = Depends(),
                 db: AsyncSession = Depends(get_async_db)):
     """
