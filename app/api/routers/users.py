@@ -241,10 +241,14 @@ async def create_user(user: UserCreate, background_tasks: BackgroundTasks, db: A
     verification_token = create_access_token(data={"sub": db_user.email, "type": "verification"})
     
     # Отправка письма
+    print(f"DEBUG: Attempting to send verification email to {db_user.email} via Celery")
     try:
-        send_verification_email_task.delay(db_user.email, verification_token)
+        task = send_verification_email_task.delay(db_user.email, verification_token)
+        print(f"DEBUG: Celery task sent successfully. Task ID: {task.id}")
     except Exception as e:
         print(f"Failed to send verification email via Celery: {e}")
+        import traceback
+        traceback.print_exc()
         # Запасной вариант - фоновая задача FastAPI
         background_tasks.add_task(send_verification_email, db_user.email, verification_token)
 
