@@ -16,7 +16,8 @@ class TimingMiddleware:
 
     async def __call__(self, scope, receive, send):
         if scope["type"] == "http":
-            print(f"Incoming request: {scope['method']} {scope['path']}")
+            # Выводим вообще все запросы максимально заметно
+            print(f">>>>> [HTTP REQUEST]: {scope['method']} {scope['path']} <<<<<")
         start_time = time.time()
         await self.app(scope, receive, send)
         duration = time.time() - start_time
