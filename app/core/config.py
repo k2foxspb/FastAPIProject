@@ -21,6 +21,8 @@ DOMAIN = os.getenv("DOMAIN", "http://79.133.183.129")
 CORS_ORIGINS = [
     "http://79.133.183.129",
     "https://79.133.183.129",
+    "http://fokin.fun",
+    "https://fokin.fun",
     "http://fokin.fan",
     "https://fokin.fan",
     "http://localhost",
@@ -30,6 +32,7 @@ CORS_ORIGINS = [
 ]
 ALLOWED_HOSTS = [
     "79.133.183.129",
+    "fokin.fun",
     "fokin.fan",
     "localhost",
     "127.0.0.1",
