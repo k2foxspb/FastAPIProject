@@ -19,20 +19,8 @@ export default function UserProfileScreen({ route, navigation }) {
   const fetchUser = useCallback(async () => {
     try {
       setLoading(true);
-      const [userRes, meRes] = await Promise.all([
-        usersApi.getUser(userId),
-        usersApi.getMe()
-      ]);
-      
-      const userData = userRes.data;
-      const me = meRes.data;
-      
-      // Determine friendship status
-      // Note: Backend needs to provide this or we calculate it from relationships
-      // For now, let's assume backend might return friendship_status if we updated it
-      // or we use the sent_friend_requests/received_friend_requests if they are in 'me'
-      
-      setUser(userData);
+      const userRes = await usersApi.getUser(userId);
+      setUser(userRes.data);
       setError(null);
     } catch (err) {
       setError('Не удалось загрузить профиль пользователя');

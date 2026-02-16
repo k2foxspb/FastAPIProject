@@ -799,6 +799,7 @@ async def bulk_delete_photos(
 
 
 @router.get("/{user_id}", response_model=UserSchema)
+@router.get("/{user_id}/", response_model=UserSchema, include_in_schema=False)
 async def get_user_profile(
     user_id: int,
     current_user: UserModel = Depends(get_current_user),
@@ -854,6 +855,7 @@ async def get_user_profile(
 # --- Friends Endpoints ---
 
 @router.post("/friends/request/{user_id}", response_model=FriendshipSchema)
+@router.post("/friends/request/{user_id}/", response_model=FriendshipSchema, include_in_schema=False)
 async def send_friend_request(
     user_id: int,
     current_user: UserModel = Depends(get_current_user),
@@ -913,6 +915,7 @@ async def send_friend_request(
     return new_friendship
 
 @router.post("/friends/accept/{sender_id}", response_model=FriendshipSchema)
+@router.post("/friends/accept/{sender_id}/", response_model=FriendshipSchema, include_in_schema=False)
 async def accept_friend_request(
     sender_id: int,
     current_user: UserModel = Depends(get_current_user),
@@ -959,6 +962,7 @@ async def accept_friend_request(
     return friendship
 
 @router.post("/friends/reject/{sender_id}", status_code=204)
+@router.post("/friends/reject/{sender_id}/", status_code=204, include_in_schema=False)
 async def reject_friend_request(
     sender_id: int,
     current_user: UserModel = Depends(get_current_user),
@@ -982,6 +986,7 @@ async def reject_friend_request(
     return None
 
 @router.delete("/friends/{friend_id}", status_code=204)
+@router.delete("/friends/{friend_id}/", status_code=204, include_in_schema=False)
 async def delete_friend(
     friend_id: int,
     current_user: UserModel = Depends(get_current_user),
@@ -1006,6 +1011,7 @@ async def delete_friend(
     return None
 
 @router.get("/friends/list", response_model=list[UserSchema])
+@router.get("/friends/list/", response_model=list[UserSchema], include_in_schema=False)
 async def get_friends_list(
     current_user: UserModel = Depends(get_current_user),
     db: AsyncSession = Depends(get_async_db)
@@ -1041,6 +1047,7 @@ async def get_friends_list(
     return [UserSchema.model_validate(f) for f in friends]
 
 @router.get("/friends/requests", response_model=list[UserSchema])
+@router.get("/friends/requests/", response_model=list[UserSchema], include_in_schema=False)
 async def get_friend_requests(
     current_user: UserModel = Depends(get_current_user),
     db: AsyncSession = Depends(get_async_db)
