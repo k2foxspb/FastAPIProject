@@ -6,6 +6,7 @@ class ChatMessageBase(BaseModel):
     receiver_id: int
     message: Optional[str] = None
     file_path: Optional[str] = None
+    attachments: Optional[list[dict]] = None
     message_type: str = "text"
 
 class ChatMessageCreate(ChatMessageBase):

@@ -121,9 +121,19 @@ async def websocket_chat_endpoint(
             receiver_id = message_data.get("receiver_id")
             content = message_data.get("message")
             file_path = message_data.get("file_path")
+            attachments = message_data.get("attachments")  # список объектов {file_path, type}
             message_type = message_data.get("message_type", "text")
             
-            if receiver_id and (content or file_path):
+            if receiver_id and (content or file_path or (attachments and len(attachments) > 0)):
+                # Если пришли вложения списком и тип не задан явно — считаем это медиа-группой
+                if attachments and len(attachments) > 0 and (message_type == "text" or not message_type):
+                    message_type = "media_group"
+                    # Сохраняем вложения как JSON-строку в file_path для совместимости БД
+                    try:
+                        file_path = json.dumps(attachments)
+                    except Exception:
+                        file_path = None
+                
                 # Сохраняем в базу
                 new_msg = ChatMessage(
                     sender_id=user_id,
@@ -136,7 +146,7 @@ async def websocket_chat_endpoint(
                 await db.commit()
                 await db.refresh(new_msg)
 
-                # Отправляем получателю
+                # Готовим данные ответа
                 response_data = {
                     "id": new_msg.id,
                     "sender_id": user_id,
@@ -147,6 +157,13 @@ async def websocket_chat_endpoint(
                     "timestamp": new_msg.timestamp.isoformat(),
                     "is_read": 0
                 }
+                # В ответ добавляем attachments как список, если это media_group
+                if message_type == "media_group":
+                    try:
+                        response_data["attachments"] = attachments or json.loads(file_path or "[]")
+                    except Exception:
+                        response_data["attachments"] = []
+                
                 await manager.send_personal_message(response_data, receiver_id)
                 # Отправляем подтверждение отправителю
                 await manager.send_personal_message(response_data, user_id)
@@ -208,7 +225,28 @@ async def get_chat_history(
         .offset(skip)
         .limit(limit)
     )
-    messages = result.scalars().all()
+    db_messages = result.scalars().all()
+
+    # Преобразуем в словари и добавим attachments для media_group
+    messages = []
+    for m in db_messages:
+        item = {
+            "id": m.id,
+            "sender_id": m.sender_id,
+            "receiver_id": m.receiver_id,
+            "message": m.message,
+            "file_path": m.file_path,
+            "message_type": m.message_type,
+            "timestamp": m.timestamp,
+            "is_read": m.is_read
+        }
+        if m.message_type == "media_group" and m.file_path:
+            try:
+                item["attachments"] = json.loads(m.file_path)
+            except Exception:
+                item["attachments"] = []
+        messages.append(item)
+
     # Возвращаем в обратном хронологическом порядке для FlatList inverted
     return messages
 
@@ -649,6 +687,7 @@ async def upload_chunk(
     
     if session.offset >= session.file_size:
         session.is_completed = True
+        session.offset = session.file_size
         # Перемещаем в постоянное хранилище
         final_dir = os.path.join(root_dir, "media", "chat")
         os.makedirs(final_dir, exist_ok=True)

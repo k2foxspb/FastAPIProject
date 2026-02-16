@@ -14,7 +14,7 @@ import { Video, ResizeMode, Audio } from 'expo-av';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
-import { formatStatus, formatName } from '../utils/formatters';
+import { formatStatus, formatName, formatFileSize } from '../utils/formatters';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function ChatScreen({ route, navigation }) {
@@ -26,9 +26,15 @@ export default function ChatScreen({ route, navigation }) {
   const [inputText, setInputText] = useState('');
   const [token, setToken] = useState(null);
   const [uploadingProgress, setUploadingProgress] = useState(null);
+  const [uploadingData, setUploadingData] = useState({ loaded: 0, total: 0, uri: null, mimeType: null });
   const [activeUploadId, setActiveUploadId] = useState(null);
   const [fullScreenMedia, setFullScreenMedia] = useState(null);
   const [loadingMore, setLoadingMore] = useState(false);
+  // Групповая отправка медиа
+  const [batchMode, setBatchMode] = useState(false);
+  const [batchAttachments, setBatchAttachments] = useState([]); // [{file_path, type}]
+  const [batchTotal, setBatchTotal] = useState(0);
+  const [autoSendOnUpload, setAutoSendOnUpload] = useState(true);
   const [hasMore, setHasMore] = useState(true);
   const [skip, setSkip] = useState(0);
   const [interlocutor, setInterlocutor] = useState(null);
@@ -104,6 +110,12 @@ export default function ChatScreen({ route, navigation }) {
           const mainUpload = activeUploads[0];
           setActiveUploadId(mainUpload.upload_id);
           setUploadingProgress(mainUpload.currentOffset / mainUpload.fileSize);
+          setUploadingData({ 
+            loaded: mainUpload.currentOffset, 
+            total: mainUpload.fileSize,
+            uri: mainUpload.fileUri,
+            mimeType: mainUpload.mimeType
+          });
         }
       });
 
@@ -189,28 +201,41 @@ export default function ChatScreen({ route, navigation }) {
 
   useEffect(() => {
     if (activeUploadId) {
-      const unsubscribe = uploadManager.subscribe(activeUploadId, ({ progress, status, result }) => {
+      const unsubscribe = uploadManager.subscribe(activeUploadId, ({ progress, status, result, loaded, total }) => {
         setUploadingProgress(progress);
+        if (loaded !== undefined) setUploadingData(prev => ({ ...prev, loaded, total }));
+        
         if (status === 'completed') {
-          if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-            const msgData = {
-              receiver_id: userId,
-              file_path: result.file_path,
-              message_type: result.message_type
-            };
-            ws.current.send(JSON.stringify(msgData));
+          if (autoSendOnUpload) {
+            if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+              const msgData = {
+                receiver_id: userId,
+                file_path: result.file_path,
+                message_type: result.message_type
+              };
+              ws.current.send(JSON.stringify(msgData));
+            }
+          } else {
+            // Режим групповой отправки: копим вложения
+            setBatchAttachments(prev => ([...prev, { file_path: result.file_path, type: result.message_type }]));
           }
           setUploadingProgress(null);
           setActiveUploadId(null);
+          setUploadingData({ loaded: 0, total: 0, uri: null, mimeType: null });
         } else if (status === 'error') {
           setUploadingProgress(null);
           setActiveUploadId(null);
+          setUploadingData({ loaded: 0, total: 0, uri: null, mimeType: null });
           Alert.alert('Ошибка', 'Не удалось завершить загрузку файла');
+        } else if (status === 'cancelled') {
+          setUploadingProgress(null);
+          setActiveUploadId(null);
+          setUploadingData({ loaded: 0, total: 0, uri: null, mimeType: null });
         }
       });
       return () => unsubscribe();
     }
-  }, [activeUploadId, userId]);
+  }, [activeUploadId, userId, autoSendOnUpload]);
 
   const pickAndUploadDocument = async () => {
     if (selectionMode) return;
@@ -222,16 +247,14 @@ export default function ChatScreen({ route, navigation }) {
 
       if (!result.canceled) {
         for (const asset of result.assets) {
-          const uploadResult = await uploadManager.uploadFileResumable(
+          setUploadingData({ loaded: 0, total: asset.size || 0, uri: asset.uri, mimeType: asset.mimeType });
+          await uploadManager.uploadFileResumable(
             asset.uri,
             asset.name,
             asset.mimeType,
-            userId
+            userId,
+            (upload_id) => setActiveUploadId(upload_id)
           );
-          
-          if (uploadResult && uploadResult.upload_id) {
-            setActiveUploadId(uploadResult.upload_id);
-          }
         }
       }
     } catch (error) {
@@ -259,19 +282,52 @@ export default function ChatScreen({ route, navigation }) {
       });
 
       if (!result.canceled) {
-        for (const asset of result.assets) {
+        let assets = result.assets || [];
+        if (assets.length > 10) {
+          Alert.alert('Ограничение', 'Можно отправить не более 10 файлов за раз. Лишние будут проигнорированы.');
+          assets = assets.slice(0, 10);
+        }
+
+        if (assets.length > 1) {
+          setBatchMode(true);
+          setAutoSendOnUpload(false);
+          setBatchAttachments([]);
+          setBatchTotal(assets.length);
+        }
+
+        const attachmentsLocal = [];
+        for (const asset of assets) {
           const fileName = asset.uri.split('/').pop();
-          
-          const uploadResult = await uploadManager.uploadFileResumable(
+          setUploadingData({ loaded: 0, total: asset.fileSize || 0, uri: asset.uri, mimeType: asset.mimeType });
+          const res = await uploadManager.uploadFileResumable(
             asset.uri, 
             fileName, 
             asset.mimeType,
-            userId
+            userId,
+            (upload_id) => setActiveUploadId(upload_id)
           );
-
-          if (uploadResult && uploadResult.upload_id) {
-            setActiveUploadId(uploadResult.upload_id);
+          // На случай если авто-сабскрипция не успела — добавим вручную
+          if (res && res.status === 'completed' && !autoSendOnUpload) {
+            attachmentsLocal.push({ file_path: res.file_path, type: res.message_type });
           }
+        }
+
+        if (!autoSendOnUpload) {
+          const all = [...attachmentsLocal];
+          // Объединим с тем, что накопилось через подписку
+          all.push(...batchAttachments);
+          if (ws.current && ws.current.readyState === WebSocket.OPEN && all.length > 0) {
+            ws.current.send(JSON.stringify({
+              receiver_id: userId,
+              attachments: all,
+              message_type: 'media_group'
+            }));
+          }
+          // Сброс режимов
+          setBatchMode(false);
+          setAutoSendOnUpload(true);
+          setBatchAttachments([]);
+          setBatchTotal(0);
         }
       }
   } catch (error) {
@@ -367,17 +423,15 @@ export default function ChatScreen({ route, navigation }) {
     try {
       const fileName = `voice_${Date.now()}.m4a`;
       const mimeType = 'audio/m4a';
+      setUploadingData({ loaded: 0, total: 0, uri: uri, mimeType: mimeType });
       
-      const uploadResult = await uploadManager.uploadFileResumable(
+      await uploadManager.uploadFileResumable(
         uri, 
         fileName, 
         mimeType,
-        userId
+        userId,
+        (upload_id) => setActiveUploadId(upload_id)
       );
-
-      if (uploadResult && uploadResult.upload_id) {
-        setActiveUploadId(uploadResult.upload_id);
-      }
     } catch (error) {
       console.error('Voice upload failed', error);
       Alert.alert('Ошибка', 'Не удалось загрузить голосовое сообщение');
@@ -387,6 +441,11 @@ export default function ChatScreen({ route, navigation }) {
   };
 
   const renderMessageItem = ({ item, index }) => {
+    // Если это первый элемент в FlatList (index === 0) и у нас есть активная загрузка,
+    // можем отрисовать "заглушку" сообщения.
+    // Но лучше просто добавить ее в начало списка сообщений виртуально.
+    // Однако, FlatList inverted, так что index 0 - это последнее сообщение.
+    
     const isImage = item.message_type === 'image';
     const isVideo = item.message_type === 'video';
     const isVoice = item.message_type === 'voice';
@@ -428,16 +487,38 @@ export default function ChatScreen({ route, navigation }) {
     };
 
     return (
-      <Pressable 
-        onPress={handlePress}
-        onLongPress={handleLongPress}
-        style={[
-          styles.messageWrapper,
-          isReceived ? styles.receivedWrapper : styles.sentWrapper,
-          isSelected && { backgroundColor: colors.primary + '20' },
-          isGrouped && { marginTop: -2 }
-        ]}
-      >
+      <View>
+        {index === 0 && uploadingProgress !== null && uploadingData.uri && (
+          <View style={[
+            styles.messageWrapper, 
+            styles.sentWrapper,
+            { opacity: 0.7 }
+          ]}>
+            <View style={[styles.messageBubble, styles.sent, { backgroundColor: colors.primary }]}>
+              {uploadingData.mimeType?.startsWith('image/') ? (
+                <Image source={{ uri: uploadingData.uri }} style={{ width: 200, height: 150, borderRadius: 10 }} resizeMode="cover" />
+              ) : (
+                <View style={{ flexDirection: 'row', alignItems: 'center', padding: 10 }}>
+                  <MaterialIcons name="insert-drive-file" size={24} color="#fff" />
+                  <Text style={{ color: '#fff', marginLeft: 10 }}>Загрузка файла...</Text>
+                </View>
+              )}
+              <View style={styles.messageFooter}>
+                <Text style={[styles.messageTime, { color: 'rgba(255,255,255,0.7)' }]}>Отправка...</Text>
+              </View>
+            </View>
+          </View>
+        )}
+        <Pressable 
+          onPress={handlePress}
+          onLongPress={handleLongPress}
+          style={[
+            styles.messageWrapper,
+            isReceived ? styles.receivedWrapper : styles.sentWrapper,
+            isSelected && { backgroundColor: colors.primary + '20' },
+            isGrouped && { marginTop: -2 }
+          ]}
+        >
         {isReceived && (
           <View style={styles.avatarContainer}>
             {!isGrouped ? (
@@ -475,8 +556,41 @@ export default function ChatScreen({ route, navigation }) {
               />
             </View>
           )}
-          {(isImage || isVideo) && (
-            <CachedMedia item={item} onFullScreen={handleFullScreen} />
+          {/* Медиа-группа */}
+          {item.attachments && item.attachments.length > 0 ? (
+            <View style={{ width: 260, height: 200 }}>
+              <FlatList
+                data={item.attachments}
+                keyExtractor={(_, idx) => `${item.id}_att_${idx}`}
+                horizontal
+                pagingEnabled
+                showsHorizontalScrollIndicator={false}
+                renderItem={({ item: att }) => (
+                  <Pressable onPress={() => handleFullScreen(att.file_path || att.uri, att.type)}>
+                    {att.type === 'image' ? (
+                      <Image source={{ uri: att.file_path }} style={{ width: 260, height: 200, borderRadius: 12 }} resizeMode="cover" />
+                    ) : att.type === 'video' ? (
+                      <Video
+                        source={{ uri: att.file_path }}
+                        style={{ width: 260, height: 200, borderRadius: 12 }}
+                        resizeMode={ResizeMode.COVER}
+                        isMuted
+                        shouldPlay={false}
+                      />
+                    ) : (
+                      <View style={{ width: 260, height: 200, borderRadius: 12, justifyContent: 'center', alignItems: 'center', backgroundColor: '#0002' }}>
+                        <MaterialIcons name="insert-drive-file" size={36} color={isReceived ? colors.text : '#fff'} />
+                        <Text style={{ marginTop: 8, color: isReceived ? colors.text : '#fff' }}>Файл</Text>
+                      </View>
+                    )}
+                  </Pressable>
+                )}
+              />
+            </View>
+          ) : (
+            (isImage || isVideo) && (
+              <CachedMedia item={item} onFullScreen={handleFullScreen} />
+            )
           )}
           {isVoice && (
             <VoiceMessage item={item} currentUserId={currentUserIdLocal} />
@@ -511,6 +625,7 @@ export default function ChatScreen({ route, navigation }) {
           </View>
         </View>
       </Pressable>
+      </View>
     );
   };
 
@@ -606,8 +721,17 @@ export default function ChatScreen({ route, navigation }) {
       </View>
       {uploadingProgress !== null && (
         <View style={[styles.uploadProgressContainer, { backgroundColor: colors.background, borderColor: colors.border }]}>
-          <Text style={{ color: colors.text }}>Загрузка: {Math.round(uploadingProgress * 100)}%</Text>
-          <View style={[styles.progressBar, { width: `${uploadingProgress * 100}%`, backgroundColor: colors.primary }]} />
+          <View style={styles.uploadProgressInfo}>
+            <Text style={{ color: colors.text }}>
+              Загрузка: {formatFileSize(uploadingData.loaded)} / {formatFileSize(uploadingData.total)} ({Math.round(uploadingProgress * 100)}%)
+            </Text>
+            <TouchableOpacity onPress={() => uploadManager.cancelUpload(activeUploadId)}>
+              <MaterialIcons name="cancel" size={24} color={colors.error} />
+            </TouchableOpacity>
+          </View>
+          <View style={styles.progressBarBackground}>
+            <View style={[styles.progressBar, { width: `${uploadingProgress * 100}%`, backgroundColor: colors.primary }]} />
+          </View>
         </View>
       )}
       <FlatList
@@ -820,8 +944,27 @@ const styles = StyleSheet.create({
   sendButtonText: { color: '#007AFF', fontWeight: 'bold' },
   attachButton: { justifyContent: 'center', marginRight: 10, paddingHorizontal: 10 },
   attachButtonText: { fontSize: 24, color: '#007AFF' },
-  uploadProgressContainer: { padding: 10, backgroundColor: '#fff', borderBottomWidth: 1, borderColor: '#eee' },
-  progressBar: { height: 3, backgroundColor: '#007AFF', marginTop: 5 },
+  uploadProgressContainer: { 
+    padding: 10, 
+    backgroundColor: '#fff', 
+    borderBottomWidth: 1, 
+    borderColor: '#eee' 
+  },
+  uploadProgressInfo: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 5,
+  },
+  progressBarBackground: {
+    height: 4,
+    backgroundColor: '#eee',
+    borderRadius: 2,
+    overflow: 'hidden',
+  },
+  progressBar: { 
+    height: '100%', 
+  },
   fileLinkText: { color: '#fff', textDecorationLine: 'underline', marginBottom: 5 },
   fullScreenContainer: { flex: 1, backgroundColor: 'black', justifyContent: 'center', alignItems: 'center' },
   fullScreenImage: { width: '100%', height: '100%' },

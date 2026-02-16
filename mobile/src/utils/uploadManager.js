@@ -7,6 +7,7 @@ const CHUNK_SIZE = 1024 * 1024; // 1MB
 
 const listeners = new Map(); // uploadId -> Set of callbacks
 const activeUploads = new Map(); // uploadId -> boolean (is uploading)
+const abortControllers = new Map(); // uploadId -> AbortController
 
 export const uploadManager = {
   /**
@@ -29,16 +30,39 @@ export const uploadManager = {
     }
   },
 
-  notifyProgress(uploadId, progress, status = 'uploading', result = null) {
+  notifyProgress(uploadId, progress, status = 'uploading', result = null, extra = {}) {
     if (listeners.has(uploadId)) {
-      listeners.get(uploadId).forEach(cb => cb({ progress, status, result }));
+      // Защита от NaN
+      const safeProgress = isNaN(progress) ? 0 : progress;
+      console.log(`[UploadManager] Notifying progress for ${uploadId}: ${safeProgress}, status: ${status}`);
+      listeners.get(uploadId).forEach(cb => cb({ 
+        progress: safeProgress, 
+        status, 
+        result,
+        ...extra
+      }));
     }
+  },
+
+  /**
+   * Отменить загрузку
+   */
+  cancelUpload(uploadId) {
+    if (abortControllers.has(uploadId)) {
+      console.log(`[UploadManager] Cancelling upload ${uploadId}`);
+      abortControllers.get(uploadId).abort();
+      abortControllers.delete(uploadId);
+      activeUploads.delete(uploadId);
+      this.notifyProgress(uploadId, 0, 'cancelled');
+      return true;
+    }
+    return false;
   },
 
   /**
    * Загружает файл по частям с возможностью возобновления
    */
-  async uploadFileResumable(fileUri, fileName, mimeType, receiverId) {
+  async uploadFileResumable(fileUri, fileName, mimeType, receiverId, onInit) {
     const token = await storage.getAccessToken();
     const fileInfo = await FileSystem.getInfoAsync(fileUri);
     const fileSize = fileInfo.size;
@@ -51,6 +75,9 @@ export const uploadManager = {
     }, token);
 
     const { upload_id } = initRes.data;
+    
+    // Вызываем колбэк сразу после получения ID
+    if (onInit) onInit(upload_id);
     
     // Сохраняем метаданные загрузки для возможности восстановления
     const uploadInfo = {
@@ -69,44 +96,71 @@ export const uploadManager = {
   },
 
   async runUploadLoop(uploadId, fileUri, startOffset, fileSize, token) {
-    if (activeUploads.get(uploadId)) return; // Уже загружается
+    if (activeUploads.get(uploadId)) {
+      console.log(`[UploadManager] Upload ${uploadId} is already running`);
+      return;
+    }
     activeUploads.set(uploadId, true);
+    const controller = new AbortController();
+    abortControllers.set(uploadId, controller);
+    
+    console.log(`[UploadManager] Starting upload loop for ${uploadId} from offset ${startOffset}`);
 
-    let currentOffset = startOffset;
+    let currentOffset = Number(startOffset) || 0;
+    const totalSize = Number(fileSize);
+
     try {
-      while (currentOffset < fileSize) {
-        const length = Math.min(CHUNK_SIZE, fileSize - currentOffset);
-        const chunkResult = await this.uploadChunk(uploadId, fileUri, currentOffset, length, token);
+      while (currentOffset < totalSize) {
+        // Проверяем не отменена ли загрузка
+        if (controller.signal.aborted) {
+          throw new Error('Upload cancelled');
+        }
+
+        const length = Math.min(CHUNK_SIZE, totalSize - currentOffset);
+        const chunkResult = await this.uploadChunk(uploadId, fileUri, currentOffset, length, token, controller.signal);
         
         if (chunkResult.status === 'completed') {
           activeUploads.delete(uploadId);
+          abortControllers.delete(uploadId);
           await storage.removeItem(`upload_info_${uploadId}`);
-          this.notifyProgress(uploadId, 1, 'completed', chunkResult);
+          this.notifyProgress(uploadId, 1, 'completed', chunkResult, { 
+            loaded: totalSize, 
+            total: totalSize 
+          });
           return chunkResult;
         }
         
-        currentOffset = chunkResult.offset;
-        this.notifyProgress(uploadId, currentOffset / fileSize);
+        currentOffset = Number(chunkResult.offset);
+        if (isNaN(currentOffset)) {
+          throw new Error('Server returned invalid offset (NaN)');
+        }
+
+        this.notifyProgress(uploadId, currentOffset / totalSize, 'uploading', null, {
+          loaded: currentOffset,
+          total: totalSize
+        });
       }
     } catch (error) {
       activeUploads.delete(uploadId);
-      this.notifyProgress(uploadId, currentOffset / fileSize, 'error');
-      throw error;
+      abortControllers.delete(uploadId);
+      if (error.name === 'AbortError' || error.message === 'Upload cancelled') {
+        console.log(`[UploadManager] Upload ${uploadId} caught cancellation`);
+        this.notifyProgress(uploadId, 0, 'cancelled');
+      } else {
+        this.notifyProgress(uploadId, currentOffset / totalSize, 'error');
+        throw error;
+      }
     } finally {
       activeUploads.delete(uploadId);
+      abortControllers.delete(uploadId);
     }
   },
 
-  async uploadChunk(uploadId, fileUri, offset, length, token) {
+  async uploadChunk(uploadId, fileUri, offset, length, token, signal) {
     // Pass token and offset as query params for better reliability
     const uploadUrl = `${API_BASE_URL}/chat/upload/chunk/${uploadId}?q_token=${encodeURIComponent(token)}&q_offset=${offset}`;
     
     try {
-      // For reliable chunking in React Native, we can read the file as base64 
-      // and convert it back to a Blob, or use a polyfill.
-      // But a more robust way for RN is to use a specific slice of the file.
-      // Fetching the whole file into a blob and then slicing is memory intensive for large files.
-      
       const fileData = await FileSystem.readAsStringAsync(fileUri, {
         encoding: FileSystem.EncodingType.Base64,
         position: offset,
@@ -114,12 +168,6 @@ export const uploadManager = {
       });
 
       const formData = new FormData();
-      // We send the base64 string. The backend will need to decode it if we send it as a field,
-      // or we can convert it to a "file" object that RN's FormData accepts.
-      
-      // In RN, you can append an object with uri, name, type to FormData.
-      // But since we have the actual data as base64, let's use a trick:
-      // Create a data URI and use that as the URI for the form data object.
       const chunkUri = `data:application/octet-stream;base64,${fileData}`;
 
       formData.append('chunk', {
@@ -135,7 +183,8 @@ export const uploadManager = {
         body: formData,
         headers: {
           'Accept': 'application/json',
-        }
+        },
+        signal: signal
       });
 
       if (!res.ok) {
