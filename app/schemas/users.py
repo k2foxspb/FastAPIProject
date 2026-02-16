@@ -226,6 +226,7 @@ class User(BaseModel):
                 "avatar_url": getattr(obj, "avatar_url", None),
                 "avatar_preview_url": getattr(obj, "avatar_preview_url", None),
                 "fcm_token": getattr(obj, "fcm_token", None),
+                "friendship_status": getattr(obj, "friendship_status", None),
                 "photos": [],
                 "albums": [],
                 "admin_permissions": []
