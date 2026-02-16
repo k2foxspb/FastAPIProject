@@ -10,9 +10,11 @@ from starlette.status import HTTP_201_CREATED, HTTP_404_NOT_FOUND, HTTP_200_OK, 
 from app.core.auth import get_current_seller
 from app.api.dependencies import get_async_db
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.models import Product as ProductModel, Category as CategoryModel, User as UserModel
+from app.models.products import Product as ProductModel
+from app.models.categories import Category as CategoryModel
+from app.models.users import User as UserModel
 from app.schemas.products import Product as ProductShema, ProductCreate, ProductList
-from app.models import Reviews as ReviewsModel
+from app.models.reviews import Reviews as ReviewsModel
 from app.schemas.reviews import Review
 
 # Создаём маршрутизатор для товаров
@@ -77,7 +79,8 @@ def remove_product_image(url: str | None, thumb_url: str | None = None) -> None:
             file_path.unlink()
 
 
-@router.get("/", response_model=ProductList)
+@router.get("", response_model=ProductList)
+@router.get("/", response_model=ProductList, include_in_schema=False)
 async def get_all_products(
         page: int = Query(1, ge=1),
         page_size: int = Query(20, ge=1, le=100),
@@ -95,7 +98,7 @@ async def get_all_products(
             detail="min_price не может быть больше max_price",
         )
 
-    filters = [ProductModel.is_active.is_(True)]
+    filters = [ProductModel.is_active.is_(True), ProductModel.moderation_status == "approved"]
 
     if category_id is not None:
         filters.append(ProductModel.category_id == category_id)
@@ -182,6 +185,7 @@ async def create_product(
         seller_id=current_user.id,
         image_url=image_url,
         thumbnail_url=thumbnail_url,
+        moderation_status="pending"
     )
 
     db.add(db_product)
@@ -254,6 +258,9 @@ async def update_product(
         image_url, thumbnail_url = await save_product_image(image)
         db_product.image_url = image_url
         db_product.thumbnail_url = thumbnail_url
+
+    if current_user.role not in ["admin", "owner"]:
+        db_product.moderation_status = "pending"
 
     await db.commit()
     await db.refresh(db_product)  # Для консистентности данных

@@ -1,7 +1,7 @@
 from typing import Dict, List
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import update
+from sqlalchemy import update, select
 import jwt
 from datetime import datetime
 
@@ -17,7 +17,7 @@ class ConnectionManager:
         self.active_connections: Dict[int, List[WebSocket]] = {}
 
     async def connect(self, websocket: WebSocket, user_id: int):
-        await websocket.accept()
+        # Removal of await websocket.accept() as it is handled by the endpoint
         if user_id not in self.active_connections:
             self.active_connections[user_id] = []
         self.active_connections[user_id].append(websocket)
@@ -43,10 +43,19 @@ manager = ConnectionManager()
 async def get_user_from_token(token: str, db: AsyncSession):
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        user_id: int = payload.get("id")
-        if user_id is None:
-            return None
-        return user_id
+        # Try both 'id' and 'sub' (if sub is an ID or if we need to lookup by email)
+        user_id = payload.get("id")
+        email = payload.get("sub")
+        
+        if user_id:
+            return int(user_id)
+        
+        if email:
+            # Fallback to lookup by email if id is missing
+            result = await db.execute(select(UserModel.id).where(UserModel.email == email))
+            return result.scalar_one_or_none()
+            
+        return None
     except jwt.PyJWTError:
         return None
 
@@ -60,31 +69,47 @@ async def update_user_status(user_id: int, status: str, db: AsyncSession):
 
 @router.websocket("/notifications")
 async def websocket_endpoint(
-    websocket: WebSocket,
-    token: str = None,
-    db: AsyncSession = Depends(get_async_db)
+    websocket: WebSocket
 ):
-    # Если токен передан в query параметрах
-    if token is None:
-        token = websocket.query_params.get("token")
-
-    if not token:
-        await websocket.close(code=4003)
-        return
-
-    user_id = await get_user_from_token(token, db)
-    if user_id is None:
-        await websocket.close(code=4003)
-        return
-
-    await manager.connect(websocket, user_id)
-    await update_user_status(user_id, "online", db)
+    # Accept the connection first to prevent 403 Forbidden on handshake
+    # Note: We must accept before we can reliably read query params or headers in some environments
+    await websocket.accept()
     
-    try:
-        while True:
-            # Ожидаем данных от кли ента (пинги илипросто поддерживаем соединение)
-            data = await websocket.receive_text()
-            # Можно добавить обработку входящих сообщений, если нужно
-    except WebSocketDisconnect:
-        manager.disconnect(websocket, user_id)
-        await update_user_status(user_id, "offline", db)
+    token = websocket.query_params.get("token")
+    print(f"WS Attempt: token={token[:10]}..." if token else "WS Attempt: no token")
+
+    if not token or token == "null" or token == "undefined":
+        print(f"WS Connection rejected: missing or invalid token ('{token}')")
+        await websocket.close(code=4003)
+        return
+
+    # Clean token (remove potential quotes if passed incorrectly)
+    token = token.strip().strip('"').strip("'")
+
+    from app.database import async_session_maker
+    async with async_session_maker() as db:
+        user_id = await get_user_from_token(token, db)
+        if user_id is None:
+            print(f"WS Connection rejected: invalid token payload for token: {token[:20]}...")
+            await websocket.close(code=4003)
+            return
+
+        await manager.connect(websocket, user_id)
+        print(f"WS Connected: user_id={user_id}")
+        await update_user_status(user_id, "online", db)
+        
+        try:
+            while True:
+                # Ожидаем данных от клиента (пинги или просто поддерживаем соединение)
+                data = await websocket.receive_text()
+                # Можно добавить обработку входящих сообщений, если нужно
+        except WebSocketDisconnect:
+            print(f"WS Disconnected: user_id={user_id}")
+            manager.disconnect(websocket, user_id)
+            async with async_session_maker() as db_off:
+                await update_user_status(user_id, "offline", db_off)
+        except Exception as e:
+            print(f"WS Error for user_id={user_id}: {e}")
+            manager.disconnect(websocket, user_id)
+            async with async_session_maker() as db_err:
+                await update_user_status(user_id, "offline", db_err)

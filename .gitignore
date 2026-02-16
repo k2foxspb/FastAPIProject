@@ -1,0 +1,8 @@
+.expo/
+.idea/
+.output.txt
+info.log
+__pycache__/
+*.pyc
+app/app/
+app/media/

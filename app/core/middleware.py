@@ -24,25 +24,41 @@ class TimingMiddleware:
 def setup_middleware(app: FastAPI) -> None:
     """Настройка всех middleware для приложения."""
 
+    # ProxyFix for HTTPS
+    @app.middleware("http")
+    async def proxy_fix(request, call_next):
+        # Handle X-Forwarded-Proto
+        proto = request.headers.get("x-forwarded-proto")
+        if proto:
+            request.scope["scheme"] = proto
+        
+        # Handle X-Forwarded-Host
+        host = request.headers.get("x-forwarded-host")
+        if host:
+            request.scope["headers"] = [
+                (k, v) if k != b"host" else (b"host", host.encode())
+                for k, v in request.scope["headers"]
+            ]
+            
+        return await call_next(request)
+
     # Timing middleware
     app.add_middleware(TimingMiddleware)
 
-    # CORS
-    origins = ["*"]
-
+    # CORS configuration
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=origins,
+        allow_origins=["*"],
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
     )
 
     # Trusted Host
-    app.add_middleware(
-        TrustedHostMiddleware,
-        allowed_hosts=["127.0.0.1", "localhost:8000", "*"]
-    )
+    # app.add_middleware(
+    #     TrustedHostMiddleware,
+    #     allowed_hosts=config.ALLOWED_HOSTS
+    # )
 
     # GZip compression
     app.add_middleware(GZipMiddleware, minimum_size=1000)
@@ -50,7 +66,7 @@ def setup_middleware(app: FastAPI) -> None:
     # Sessions
     app.add_middleware(
         SessionMiddleware,
-        secret_key="7UzGQS7woBazLUtVQJG39ywOP7J7lkPkB0UmDhMgBR8="  # Лучше перенести в .env
+        secret_key=config.os.getenv("SESSION_SECRET_KEY", "7UzGQS7woBazLUtVQJG39ywOP7J7lkPkB0UmDhMgBR8=")
     )
 # мидлвар на основе функции
 # @app.middleware("http")
@@ -64,3 +80,5 @@ def setup_middleware(app: FastAPI) -> None:
 
 
 
+
+from app.core import config

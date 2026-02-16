@@ -1,36 +1,26 @@
 {
   "project_info": {
-    "project_number": "718858471098",
-    "project_id": "fokinfun-35b00",
-    "storage_bucket": "fokinfun-35b00.firebasestorage.app"
+    "project_number": "176773891332",
+    "project_id": "fastapi-f628e",
+    "storage_bucket": "fastapi-f628e.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:718858471098:android:b6f62b6ea79605d352a483",
+        "mobilesdk_app_id": "1:176773891332:android:01174694c19132ed0ffc51",
         "android_client_info": {
           "package_name": "com.k2foxspb.fokinfun"
         }
       },
-      "oauth_client": [
-        {
-          "client_id": "718858471098-rfdjvej9thfm5q5pfqspegunbum06ef0.apps.googleusercontent.com",
-          "client_type": 3
-        }
-      ],
+      "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyCqElsAwKjvZDzCl1pxTp2xBTZsAKQVDkU"
+          "current_key": "AIzaSyAwKCJuxsxfnY6aloE5lnDn-triTVBswxE"
         }
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": [
-            {
-              "client_id": "718858471098-rfdjvej9thfm5q5pfqspegunbum06ef0.apps.googleusercontent.com",
-              "client_type": 3
-            }
-          ]
+          "other_platform_oauth_client": []
         }
       }
     }

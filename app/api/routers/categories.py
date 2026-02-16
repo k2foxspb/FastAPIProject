@@ -4,7 +4,7 @@ from sqlalchemy import select, update
 from starlette import status
 
 from app.core.auth import get_current_admin
-from app.models import User as UserNodel
+from app.models.users import User as UserNodel
 from app.models.categories import Category as CategoryModel
 from app.schemas.categories import Category as CategorySchema, CategoryCreate
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,7 +16,7 @@ router = APIRouter(
 )
 
 
-@router.post("/", response_model=CategorySchema, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=CategorySchema, status_code=status.HTTP_201_CREATED)
 async def create_category(category: CategoryCreate,
                           db: AsyncSession = Depends(get_async_db),
                           current_user: UserNodel=Depends(get_current_admin)):
@@ -39,7 +39,7 @@ async def create_category(category: CategoryCreate,
     return db_category
 
 
-@router.get("/", response_model=list[CategorySchema])
+@router.get("", response_model=list[CategorySchema])
 async def get_all_categories(db: AsyncSession = Depends(get_async_db)):
     """
     Возвращает список всех активных категорий.

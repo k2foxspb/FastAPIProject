@@ -1,0 +1,100 @@
+#!/bin/bash
+
+# Helper function to run docker-compose or docker compose
+run_docker_compose() {
+  if docker compose version >/dev/null 2>&1; then
+    docker compose "$@"
+  else
+    docker-compose "$@"
+  fi
+}
+
+# Fix permissions for the current directory if needed
+if [ -d "/home/$USER" ]; then
+    echo "### Fixing directory permissions in /home/$USER ..."
+    sudo chown -R $USER:$USER "$PWD"
+    sudo chmod -R 755 "$PWD"
+fi
+
+if ! [ -x "$(command -v docker-compose)" ] && ! docker compose version >/dev/null 2>&1; then
+  echo 'Error: docker compose is not installed.' >&2
+  exit 1
+fi
+
+# Check if we are in /root, which often causes issues with Docker (especially Snap)
+if [[ $PWD == /root/* ]]; then
+  echo "Warning: Project is located in /root. Docker might have trouble accessing files here."
+  echo "If you get 'permission denied' on docker-compose.prod.yml, consider moving the project to /home/$USER/"
+fi
+
+domains=(fokin.fun)
+rsa_key_size=4096
+data_path="/etc/letsencrypt"
+email="k2fox@yandex.ru" # Замените на вашу почту
+staging=0 # Поставьте 1 для тестирования, чтобы не исчерпать лимиты Let's Encrypt
+
+if [ -d "$data_path" ]; then
+  read -p "Existing data found for $domains. Continue and replace existing certificate? (y/N) " decision
+  if [ "$decision" != "Y" ] && [ "$decision" != "y" ]; then
+    exit
+  fi
+fi
+
+
+if [ ! -e "$data_path/conf/options-ssl-nginx.conf" ] || [ ! -e "$data_path/conf/ssl-dhparams.pem" ]; then
+  echo "### Downloading recommended TLS parameters ..."
+  mkdir -p "$data_path/conf"
+  curl -s https://raw.githubusercontent.com/certbot/certbot/master/certbot-nginx/certbot_nginx/_internal/tls_configs/options-ssl-nginx.conf > "$data_path/conf/options-ssl-nginx.conf"
+  curl -s https://raw.githubusercontent.com/certbot/certbot/master/certbot/certbot/ssl-dhparams.pem > "$data_path/conf/ssl-dhparams.pem"
+  echo
+fi
+
+echo "### Creating dummy certificate for $domains ..."
+path="/etc/letsencrypt/live/$domains"
+mkdir -p "$data_path/conf/live/$domains"
+run_docker_compose -f docker-compose.prod.yml --env-file /dev/null run --rm --entrypoint "\
+  openssl req -x509 -nodes -newkey rsa:1024 -days 1\
+    -keyout '$path/privkey.pem' \
+    -out '$path/fullchain.pem' \
+    -subj '/CN=localhost'" certbot
+echo
+
+
+echo "### Starting nginx ..."
+run_docker_compose -f docker-compose.prod.yml --env-file /dev/null up --force-recreate -d nginx
+echo
+
+echo "### Deleting dummy certificate for $domains ..."
+run_docker_compose -f docker-compose.prod.yml --env-file /dev/null run --rm --entrypoint "\
+  rm -rf /etc/letsencrypt/live/$domains" certbot
+echo
+
+
+echo "### Requesting Let's Encrypt certificate for $domains ..."
+# Join $domains to -d args
+domain_args=""
+for domain in "${domains[@]}"; do
+  domain_args="$domain_args -d $domain"
+done
+
+# Select appropriate email arg
+case "$email" in
+  "") email_arg="--register-unsafely-without-email" ;;
+  *) email_arg="--email $email" ;;
+esac
+
+# Enable staging mode if needed
+if [ "$staging" != "0" ]; then staging_arg="--staging"; fi
+
+run_docker_compose -f docker-compose.prod.yml --env-file /dev/null run --rm --entrypoint "\
+  certbot certonly --webroot -w /var/www/certbot \
+    $staging_arg \
+    $email_arg \
+    $domain_args \
+    --rsa-key-size $rsa_key_size \
+    --agree-tos \
+    --force-renewal" certbot
+echo
+
+echo "### Reloading nginx ..."
+run_docker_compose -f docker-compose.prod.yml --env-file /dev/null exec nginx nginx -s reload

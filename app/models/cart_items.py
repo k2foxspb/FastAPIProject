@@ -3,7 +3,12 @@ from datetime import datetime
 from sqlalchemy import DateTime, ForeignKey, Integer, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from typing import TYPE_CHECKING
 from app.database import Base
+
+if TYPE_CHECKING:
+    from app.models.users import User
+    from app.models.products import Product
 
 
 class CartItem(Base):

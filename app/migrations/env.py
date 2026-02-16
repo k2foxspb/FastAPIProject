@@ -9,6 +9,7 @@ from alembic import context
 
 from app.database import Base
 from app import models
+from app.core.config import DATABASE_URL
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
@@ -17,6 +18,18 @@ config = context.config
 # This line sets up loggers basically.
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
+
+# Set the sqlalchemy.url from the config
+db_url = DATABASE_URL
+# If running locally and POSTGRES_HOST is 'db' (docker name), fallback to localhost
+if "db:5432" in db_url:
+    import socket
+    try:
+        socket.gethostbyname("db")
+    except socket.gaierror:
+        db_url = db_url.replace("db:5432", "localhost:5432")
+
+config.set_main_option("sqlalchemy.url", db_url)
 
 # add your model's MetaData object here
 # for 'autogenerate' support

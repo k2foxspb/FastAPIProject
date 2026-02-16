@@ -6,9 +6,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_buyer, get_current_user
 from app.api.dependencies import get_async_db
-from app.models import (Reviews as ReviewModel,
-                        User as UserModel,
-                        Product as ProductModel)
+from app.models.reviews import Reviews as ReviewModel
+from app.models.users import User as UserModel
+from app.models.products import Product as ProductModel
 from app.schemas.reviews import Review as ReviewSchema, Review, CreateReview
 from app.api.routers.notifications import manager
 
@@ -17,12 +17,12 @@ router = APIRouter(
     tags=["reviews"],
 )
 
-@router.get('/', response_model=list[ReviewSchema])
+@router.get('', response_model=list[ReviewSchema])
 async def get_review(db: AsyncSession = Depends(get_async_db)):
     result = await db.scalars(select(ReviewModel).where(ReviewModel.is_active == True))
     return result.all()
 
-@router.post('/', response_model=Review)
+@router.post('', response_model=Review)
 async def create_review(review: CreateReview,
                         db: AsyncSession = Depends(get_async_db),
                         current_buyer: UserModel = Depends(get_current_buyer)

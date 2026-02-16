@@ -49,6 +49,7 @@ class Product(BaseModel):
     thumbnail_url: str | None = Field(None, description="URL миниатюры изображения товара")
     stock: int = Field(description="Количество товара на складе")
     category_id: int = Field(description="ID категории")
+    moderation_status: str = Field(description="Статус модерации: pending, approved, rejected")
     is_active: bool = Field(description="Активность товара")
     rating: float | None = Field(None, description="Рейтинг товара (от 0 до 5)")
 
