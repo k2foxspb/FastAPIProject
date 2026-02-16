@@ -19,8 +19,20 @@ export default function UserProfileScreen({ route, navigation }) {
   const fetchUser = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await usersApi.getUser(userId);
-      setUser(res.data);
+      const [userRes, meRes] = await Promise.all([
+        usersApi.getUser(userId),
+        usersApi.getMe()
+      ]);
+      
+      const userData = userRes.data;
+      const me = meRes.data;
+      
+      // Determine friendship status
+      // Note: Backend needs to provide this or we calculate it from relationships
+      // For now, let's assume backend might return friendship_status if we updated it
+      // or we use the sent_friend_requests/received_friend_requests if they are in 'me'
+      
+      setUser(userData);
       setError(null);
     } catch (err) {
       setError('Не удалось загрузить профиль пользователя');
@@ -29,6 +41,31 @@ export default function UserProfileScreen({ route, navigation }) {
       setLoading(false);
     }
   }, [userId]);
+
+  const handleFriendAction = async () => {
+    try {
+      if (!user.friendship_status) {
+        await usersApi.sendFriendRequest(user.id);
+      } else if (user.friendship_status === 'pending' || user.friendship_status === 'requested_by_me') {
+        await usersApi.rejectFriendRequest(user.id);
+      } else if (user.friendship_status === 'requested_by_them') {
+        await usersApi.acceptFriendRequest(user.id);
+      } else if (user.friendship_status === 'accepted') {
+        await usersApi.deleteFriend(user.id);
+      }
+      fetchUser();
+    } catch (err) {
+      console.log(err);
+    }
+  };
+
+  const getFriendButtonLabel = () => {
+    if (!user.friendship_status) return 'Добавить в друзья';
+    if (user.friendship_status === 'pending' || user.friendship_status === 'requested_by_me') return 'Отменить заявку';
+    if (user.friendship_status === 'requested_by_them') return 'Принять заявку';
+    if (user.friendship_status === 'accepted') return 'Удалить из друзей';
+    return 'Добавить в друзья';
+  };
 
   const openAvatarAlbum = () => {
     if (!user) return;
@@ -111,16 +148,30 @@ export default function UserProfileScreen({ route, navigation }) {
           <Text style={[styles.statusText, { color: colors.textSecondary }]}> • {formatStatus(user.status, user.last_seen)}</Text>
         </View>
         
-        <TouchableOpacity 
-          style={[styles.messageBtn, { backgroundColor: colors.primary }]}
-          onPress={() => navigation.navigate('Messages', { 
-            screen: 'Chat', 
-            params: { userId: user.id, userName: formatName(user) } 
-          })}
-        >
-          <Icon name="chatbubble-ellipses-outline" size={20} color="#fff" />
-          <Text style={styles.messageBtnText}>Написать сообщение</Text>
-        </TouchableOpacity>
+        <View style={styles.actionButtons}>
+          <TouchableOpacity 
+            style={[styles.friendBtn, { borderColor: colors.primary, borderWidth: 1 }]}
+            onPress={handleFriendAction}
+          >
+            <Icon 
+              name={user.friendship_status === 'accepted' ? "person-remove-outline" : "person-add-outline"} 
+              size={20} 
+              color={colors.primary} 
+            />
+            <Text style={[styles.friendBtnText, { color: colors.primary }]}>{getFriendButtonLabel()}</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={[styles.messageBtn, { backgroundColor: colors.primary }]}
+            onPress={() => navigation.navigate('Messages', { 
+              screen: 'Chat', 
+              params: { userId: user.id, userName: formatName(user) } 
+            })}
+          >
+            <Icon name="chatbubble-ellipses-outline" size={20} color="#fff" />
+            <Text style={styles.messageBtnText}>Написать</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <View style={styles.section}>
@@ -192,14 +243,24 @@ const styles = StyleSheet.create({
   roleContainer: { flexDirection: 'row', alignItems: 'center', marginBottom: 15 },
   role: { },
   statusText: { },
+  actionButtons: { flexDirection: 'row', width: '100%', justifyContent: 'center' },
+  friendBtn: { 
+    flexDirection: 'row', 
+    paddingHorizontal: 15, 
+    paddingVertical: 10, 
+    borderRadius: 20,
+    alignItems: 'center',
+    marginRight: 10
+  },
+  friendBtnText: { marginLeft: 5, fontWeight: '600' },
   messageBtn: { 
     flexDirection: 'row', 
-    paddingHorizontal: 20, 
+    paddingHorizontal: 15, 
     paddingVertical: 10, 
     borderRadius: 20,
     alignItems: 'center'
   },
-  messageBtnText: { color: '#fff', marginLeft: 8, fontWeight: '600' },
+  messageBtnText: { color: '#fff', marginLeft: 5, fontWeight: '600' },
   section: { padding: 20 },
   sectionTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 15 },
   album: { marginBottom: 20 },

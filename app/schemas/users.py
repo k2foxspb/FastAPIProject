@@ -182,6 +182,7 @@ class User(BaseModel):
     avatar_url: str | None = None
     avatar_preview_url: str | None = None
     fcm_token: str | None = None
+    friendship_status: str | None = None # "pending", "accepted", "requested_by_me", "requested_by_them", null
     photos: list[UserPhoto] = []
     albums: list[PhotoAlbum] = []
     admin_permissions: list[AdminPermission] = []
@@ -205,6 +206,7 @@ class User(BaseModel):
                     "avatar_url": obj.get("avatar_url"),
                     "avatar_preview_url": obj.get("avatar_preview_url"),
                     "fcm_token": obj.get("fcm_token"),
+                    "friendship_status": obj.get("friendship_status"),
                     "photos": obj.get("photos", []),
                     "albums": obj.get("albums", []),
                     "admin_permissions": obj.get("admin_permissions", [])
@@ -265,6 +267,16 @@ class RefreshTokenRequest(BaseModel):
 
 class FCMTokenUpdate(BaseModel):
     fcm_token: str
+
+
+class Friendship(BaseModel):
+    id: int
+    user_id: int
+    friend_id: int
+    status: str
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 

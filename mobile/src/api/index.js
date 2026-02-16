@@ -69,6 +69,13 @@ export const usersApi = {
       'Content-Type': 'multipart/form-data',
     },
   }),
+  // Друзья
+  sendFriendRequest: (userId) => api.post(`/users/friends/request/${userId}`),
+  acceptFriendRequest: (userId) => api.post(`/users/friends/accept/${userId}`),
+  rejectFriendRequest: (userId) => api.post(`/users/friends/reject/${userId}`),
+  deleteFriend: (userId) => api.delete(`/users/friends/${userId}`),
+  getFriendsList: () => api.get('/users/friends/list'),
+  getFriendRequests: () => api.get('/users/friends/requests'),
 };
 
 export const productsApi = {

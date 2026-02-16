@@ -36,6 +36,20 @@ class User(Base):
     albums: Mapped[list["PhotoAlbum"]] = relationship("PhotoAlbum", back_populates="user", cascade="all, delete-orphan")
     admin_permissions: Mapped[list["AdminPermission"]] = relationship("AdminPermission", back_populates="admin", cascade="all, delete-orphan")
 
+    # Friends relationships
+    sent_friend_requests: Mapped[list["Friendship"]] = relationship(
+        "Friendship",
+        foreign_keys="[Friendship.user_id]",
+        back_populates="sender",
+        cascade="all, delete-orphan"
+    )
+    received_friend_requests: Mapped[list["Friendship"]] = relationship(
+        "Friendship",
+        foreign_keys="[Friendship.friend_id]",
+        back_populates="receiver",
+        cascade="all, delete-orphan"
+    )
+
 
 class AdminPermission(Base):
     __tablename__ = "admin_permissions"
@@ -75,6 +89,19 @@ class UserPhoto(Base):
 
     user: Mapped["User"] = relationship("User", back_populates="photos")
     album: Mapped["PhotoAlbum"] = relationship("PhotoAlbum", back_populates="photos")
+
+
+class Friendship(Base):
+    __tablename__ = "friendships"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    friend_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    status: Mapped[str] = mapped_column(String, default="pending")  # "pending", "accepted"
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    sender: Mapped["User"] = relationship("User", foreign_keys=[user_id], back_populates="sent_friend_requests")
+    receiver: Mapped["User"] = relationship("User", foreign_keys=[friend_id], back_populates="received_friend_requests")
 
 
 

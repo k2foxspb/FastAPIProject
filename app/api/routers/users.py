@@ -1,16 +1,21 @@
 import jwt
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, delete, or_, and_
 from fastapi.security import OAuth2PasswordRequestForm
 
 from app.core.config import SECRET_KEY, ALGORITHM
-from app.models.users import User as UserModel, PhotoAlbum as PhotoAlbumModel, UserPhoto as UserPhotoModel
+from app.models.users import (
+    User as UserModel, 
+    PhotoAlbum as PhotoAlbumModel, 
+    UserPhoto as UserPhotoModel,
+    Friendship as FriendshipModel
+)
 from app.schemas.users import (
     UserCreate, UserUpdate, User as UserSchema, RefreshTokenRequest, 
     PhotoAlbumCreate, PhotoAlbumUpdate, PhotoAlbum as PhotoAlbumSchema, 
     UserPhotoCreate, UserPhotoUpdate, UserPhoto as UserPhotoSchema,
-    FCMTokenUpdate, BulkDeletePhotosRequest
+    FCMTokenUpdate, BulkDeletePhotosRequest, Friendship as FriendshipSchema
 )
 from app.api.dependencies import get_async_db
 from app.core.auth import (
@@ -21,6 +26,8 @@ from app.core.auth import (
     get_current_user,
     verify_refresh_token
 )
+from app.api.routers.notifications import manager as notification_manager
+from app.core.fcm import send_fcm_notification
 from app.utils.emails import send_verification_email
 from app.tasks.example_tasks import send_verification_email_task
 
@@ -818,6 +825,248 @@ async def get_user_profile(
         for album in user.albums:
             album.photos = [p for p in album.photos if not p.is_private]
             
-    return UserSchema.model_validate(user)
+    # Определяем статус дружбы
+    res_friend = await db.execute(
+        select(FriendshipModel).where(
+            or_(
+                and_(FriendshipModel.user_id == current_user.id, FriendshipModel.friend_id == user_id),
+                and_(FriendshipModel.user_id == user_id, FriendshipModel.friend_id == current_user.id)
+            )
+        )
+    )
+    friendship = res_friend.scalar_one_or_none()
+    
+    friendship_status = None
+    if friendship:
+        if friendship.status == "accepted":
+            friendship_status = "accepted"
+        elif friendship.user_id == current_user.id:
+            friendship_status = "requested_by_me"
+        else:
+            friendship_status = "requested_by_them"
+            
+    user_schema = UserSchema.model_validate(user)
+    user_schema.friendship_status = friendship_status
+    
+    return user_schema
+
+
+# --- Friends Endpoints ---
+
+@router.post("/friends/request/{user_id}", response_model=FriendshipSchema)
+async def send_friend_request(
+    user_id: int,
+    current_user: UserModel = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """
+    Отправляет заявку в друзья пользователю user_id.
+    """
+    if user_id == current_user.id:
+        raise HTTPException(status_code=400, detail="You cannot add yourself as a friend")
+
+    # Проверяем, существует ли пользователь
+    res = await db.execute(select(UserModel).where(UserModel.id == user_id))
+    target_user = res.scalar_one_or_none()
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Проверяем, нет ли уже отношений
+    res = await db.execute(
+        select(FriendshipModel).where(
+            or_(
+                and_(FriendshipModel.user_id == current_user.id, FriendshipModel.friend_id == user_id),
+                and_(FriendshipModel.user_id == user_id, FriendshipModel.friend_id == current_user.id)
+            )
+        )
+    )
+    existing = res.scalar_one_or_none()
+    if existing:
+        return FriendshipSchema.model_validate(existing)
+
+    new_friendship = FriendshipModel(
+        user_id=current_user.id,
+        friend_id=user_id,
+        status="pending"
+    )
+    db.add(new_friendship)
+    await db.commit()
+    await db.refresh(new_friendship)
+
+    # Уведомления
+    msg = {
+        "type": "friend_request",
+        "sender_id": current_user.id,
+        "sender_name": f"{current_user.first_name} {current_user.last_name}" if current_user.first_name else current_user.email,
+        "message": "sent you a friend request"
+    }
+    await notification_manager.send_personal_message(msg, user_id)
+    
+    if target_user.fcm_token:
+        await send_fcm_notification(
+            token=target_user.fcm_token,
+            title="Новая заявка в друзья",
+            body=f"{msg['sender_name']} хочет добавить вас в друзья",
+            data=msg
+        )
+
+    return new_friendship
+
+@router.post("/friends/accept/{sender_id}", response_model=FriendshipSchema)
+async def accept_friend_request(
+    sender_id: int,
+    current_user: UserModel = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """
+    Принимает заявку в друзья от sender_id.
+    """
+    res = await db.execute(
+        select(FriendshipModel).where(
+            FriendshipModel.user_id == sender_id,
+            FriendshipModel.friend_id == current_user.id,
+            FriendshipModel.status == "pending"
+        )
+    )
+    friendship = res.scalar_one_or_none()
+    if not friendship:
+        raise HTTPException(status_code=404, detail="Friend request not found")
+
+    friendship.status = "accepted"
+    await db.commit()
+    await db.refresh(friendship)
+
+    # Уведомление отправителю
+    res = await db.execute(select(UserModel).where(UserModel.id == sender_id))
+    sender = res.scalar_one_or_none()
+    
+    msg = {
+        "type": "friend_accept",
+        "sender_id": current_user.id,
+        "sender_name": f"{current_user.first_name} {current_user.last_name}" if current_user.first_name else current_user.email,
+        "message": "accepted your friend request"
+    }
+    await notification_manager.send_personal_message(msg, sender_id)
+    
+    if sender and sender.fcm_token:
+        await send_fcm_notification(
+            token=sender.fcm_token,
+            title="Заявка принята",
+            body=f"{msg['sender_name']} принял вашу заявку в друзья",
+            data=msg
+        )
+
+    return friendship
+
+@router.post("/friends/reject/{sender_id}", status_code=204)
+async def reject_friend_request(
+    sender_id: int,
+    current_user: UserModel = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """
+    Отклоняет или удаляет заявку в друзья.
+    """
+    res = await db.execute(
+        select(FriendshipModel).where(
+            or_(
+                and_(FriendshipModel.user_id == sender_id, FriendshipModel.friend_id == current_user.id),
+                and_(FriendshipModel.user_id == current_user.id, FriendshipModel.friend_id == sender_id)
+            )
+        )
+    )
+    friendship = res.scalar_one_or_none()
+    if friendship:
+        await db.delete(friendship)
+        await db.commit()
+    return None
+
+@router.delete("/friends/{friend_id}", status_code=204)
+async def delete_friend(
+    friend_id: int,
+    current_user: UserModel = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """
+    Удаляет пользователя из друзей.
+    """
+    res = await db.execute(
+        select(FriendshipModel).where(
+            or_(
+                and_(FriendshipModel.user_id == current_user.id, FriendshipModel.friend_id == friend_id),
+                and_(FriendshipModel.user_id == friend_id, FriendshipModel.friend_id == current_user.id)
+            ),
+            FriendshipModel.status == "accepted"
+        )
+    )
+    friendship = res.scalar_one_or_none()
+    if friendship:
+        await db.delete(friendship)
+        await db.commit()
+    return None
+
+@router.get("/friends/list", response_model=list[UserSchema])
+async def get_friends_list(
+    current_user: UserModel = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """
+    Возвращает список друзей.
+    """
+    # Находим все принятые дружбы
+    res = await db.execute(
+        select(FriendshipModel).where(
+            or_(FriendshipModel.user_id == current_user.id, FriendshipModel.friend_id == current_user.id),
+            FriendshipModel.status == "accepted"
+        )
+    )
+    friendships = res.scalars().all()
+    friend_ids = []
+    for f in friendships:
+        if f.user_id == current_user.id:
+            friend_ids.append(f.friend_id)
+        else:
+            friend_ids.append(f.user_id)
+    
+    if not friend_ids:
+        return []
+        
+    res = await db.execute(
+        select(UserModel).where(UserModel.id.in_(friend_ids)).options(
+            selectinload(UserModel.photos),
+            selectinload(UserModel.albums).selectinload(PhotoAlbumModel.photos)
+        )
+    )
+    friends = res.scalars().all()
+    return [UserSchema.model_validate(f) for f in friends]
+
+@router.get("/friends/requests", response_model=list[UserSchema])
+async def get_friend_requests(
+    current_user: UserModel = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """
+    Возвращает список входящих заявок в друзья.
+    """
+    res = await db.execute(
+        select(FriendshipModel).where(
+            FriendshipModel.friend_id == current_user.id,
+            FriendshipModel.status == "pending"
+        )
+    )
+    friendships = res.scalars().all()
+    sender_ids = [f.user_id for f in friendships]
+    
+    if not sender_ids:
+        return []
+        
+    res = await db.execute(
+        select(UserModel).where(UserModel.id.in_(sender_ids)).options(
+            selectinload(UserModel.photos),
+            selectinload(UserModel.albums).selectinload(PhotoAlbumModel.photos)
+        )
+    )
+    senders = res.scalars().all()
+    return [UserSchema.model_validate(s) for s in senders]
 
 
