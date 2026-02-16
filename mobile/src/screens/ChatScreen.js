@@ -26,6 +26,7 @@ export default function ChatScreen({ route, navigation }) {
   const [inputText, setInputText] = useState('');
   const [token, setToken] = useState(null);
   const [uploadingProgress, setUploadingProgress] = useState(null);
+  const [activeUploadId, setActiveUploadId] = useState(null);
   const [fullScreenMedia, setFullScreenMedia] = useState(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
@@ -96,6 +97,15 @@ export default function ChatScreen({ route, navigation }) {
       const protocol = API_BASE_URL.startsWith('https') ? 'wss://' : 'ws://';
       const wsUrl = `${protocol}${API_BASE_URL.replace('http://', '').replace('https://', '')}/chat/ws/${accessToken}`;
       ws.current = new WebSocket(wsUrl);
+
+      // Проверка активных загрузок
+      uploadManager.getActiveUploadsForReceiver(userId).then(activeUploads => {
+        if (activeUploads.length > 0) {
+          const mainUpload = activeUploads[0];
+          setActiveUploadId(mainUpload.upload_id);
+          setUploadingProgress(mainUpload.currentOffset / mainUpload.fileSize);
+        }
+      });
 
       ws.current.onmessage = (e) => {
         const message = JSON.parse(e.data);
@@ -177,6 +187,31 @@ export default function ChatScreen({ route, navigation }) {
     }
   };
 
+  useEffect(() => {
+    if (activeUploadId) {
+      const unsubscribe = uploadManager.subscribe(activeUploadId, ({ progress, status, result }) => {
+        setUploadingProgress(progress);
+        if (status === 'completed') {
+          if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+            const msgData = {
+              receiver_id: userId,
+              file_path: result.file_path,
+              message_type: result.message_type
+            };
+            ws.current.send(JSON.stringify(msgData));
+          }
+          setUploadingProgress(null);
+          setActiveUploadId(null);
+        } else if (status === 'error') {
+          setUploadingProgress(null);
+          setActiveUploadId(null);
+          Alert.alert('Ошибка', 'Не удалось завершить загрузку файла');
+        }
+      });
+      return () => unsubscribe();
+    }
+  }, [activeUploadId, userId]);
+
   const pickAndUploadDocument = async () => {
     if (selectionMode) return;
     try {
@@ -187,21 +222,15 @@ export default function ChatScreen({ route, navigation }) {
 
       if (!result.canceled) {
         for (const asset of result.assets) {
-          setUploadingProgress(0);
           const uploadResult = await uploadManager.uploadFileResumable(
             asset.uri,
             asset.name,
             asset.mimeType,
-            (progress) => setUploadingProgress(progress)
+            userId
           );
-
-          if (uploadResult.status === 'completed') {
-            const msgData = {
-              receiver_id: userId,
-              file_path: uploadResult.file_path,
-              message_type: uploadResult.message_type
-            };
-            ws.current.send(JSON.stringify(msgData));
+          
+          if (uploadResult && uploadResult.upload_id) {
+            setActiveUploadId(uploadResult.upload_id);
           }
         }
       }
@@ -233,22 +262,15 @@ export default function ChatScreen({ route, navigation }) {
         for (const asset of result.assets) {
           const fileName = asset.uri.split('/').pop();
           
-          setUploadingProgress(0);
           const uploadResult = await uploadManager.uploadFileResumable(
             asset.uri, 
             fileName, 
             asset.mimeType,
-            (progress) => setUploadingProgress(progress)
+            userId
           );
 
-          if (uploadResult.status === 'completed') {
-            // Отправляем сообщение в чат с ссылкой на файл
-            const msgData = {
-              receiver_id: userId,
-              file_path: uploadResult.file_path,
-              message_type: uploadResult.message_type
-            };
-            ws.current.send(JSON.stringify(msgData));
+          if (uploadResult && uploadResult.upload_id) {
+            setActiveUploadId(uploadResult.upload_id);
           }
         }
       }
@@ -346,21 +368,15 @@ export default function ChatScreen({ route, navigation }) {
       const fileName = `voice_${Date.now()}.m4a`;
       const mimeType = 'audio/m4a';
       
-      setUploadingProgress(0);
       const uploadResult = await uploadManager.uploadFileResumable(
         uri, 
         fileName, 
         mimeType,
-        (progress) => setUploadingProgress(progress)
+        userId
       );
 
-      if (uploadResult.status === 'completed') {
-        const msgData = {
-          receiver_id: userId,
-          file_path: uploadResult.file_path,
-          message_type: 'voice'
-        };
-        ws.current.send(JSON.stringify(msgData));
+      if (uploadResult && uploadResult.upload_id) {
+        setActiveUploadId(uploadResult.upload_id);
       }
     } catch (error) {
       console.error('Voice upload failed', error);

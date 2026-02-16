@@ -534,6 +534,32 @@ async def init_upload(
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.get("/upload/active", response_model=List[dict])
+async def get_active_uploads(
+    token: str,
+    db: AsyncSession = Depends(get_async_db)
+):
+    user_id = await get_user_from_token(token, db)
+    if user_id is None:
+        raise HTTPException(status_code=401, detail="Invalid token")
+        
+    res = await db.execute(select(FileUploadSession).where(
+        FileUploadSession.user_id == user_id,
+        FileUploadSession.is_completed == False
+    ).order_by(FileUploadSession.created_at.desc()))
+    sessions = res.scalars().all()
+    
+    return [
+        {
+            "upload_id": s.id,
+            "filename": s.filename,
+            "file_size": s.file_size,
+            "offset": s.offset,
+            "mime_type": s.mime_type,
+            "created_at": s.created_at.isoformat()
+        } for s in sessions
+    ]
+
 @router.get("/upload/status/{upload_id}", response_model=UploadStatusResponse)
 async def get_upload_status(
     upload_id: str,

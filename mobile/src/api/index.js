@@ -117,6 +117,7 @@ export const chatApi = {
   uploadFile: (formData) => api.post('/chat/upload', formData),
   initUpload: (data, token) => api.post('/chat/upload/init', data, { params: { token } }),
   getUploadStatus: (uploadId, token) => api.get(`/chat/upload/status/${uploadId}`, { params: { token } }),
+  getActiveUploads: (token) => api.get('/chat/upload/active', { params: { token } }),
 };
 
 api.interceptors.request.use(

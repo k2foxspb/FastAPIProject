@@ -57,4 +57,12 @@ export const storage = {
       return null;
     }
   },
+
+  removeItem: async (key) => {
+    try {
+      await AsyncStorage.removeItem(key);
+    } catch (e) {
+      console.error(`Error removing item ${key}`, e);
+    }
+  },
 };

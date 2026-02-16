@@ -5,11 +5,40 @@ import { API_BASE_URL } from '../constants';
 
 const CHUNK_SIZE = 1024 * 1024; // 1MB
 
+const listeners = new Map(); // uploadId -> Set of callbacks
+const activeUploads = new Map(); // uploadId -> boolean (is uploading)
+
 export const uploadManager = {
+  /**
+   * Подписаться на прогресс загрузки
+   */
+  subscribe(uploadId, callback) {
+    if (!listeners.has(uploadId)) {
+      listeners.set(uploadId, new Set());
+    }
+    listeners.get(uploadId).add(callback);
+    return () => this.unsubscribe(uploadId, callback);
+  },
+
+  unsubscribe(uploadId, callback) {
+    if (listeners.has(uploadId)) {
+      listeners.get(uploadId).delete(callback);
+      if (listeners.get(uploadId).size === 0) {
+        listeners.delete(uploadId);
+      }
+    }
+  },
+
+  notifyProgress(uploadId, progress, status = 'uploading', result = null) {
+    if (listeners.has(uploadId)) {
+      listeners.get(uploadId).forEach(cb => cb({ progress, status, result }));
+    }
+  },
+
   /**
    * Загружает файл по частям с возможностью возобновления
    */
-  async uploadFileResumable(fileUri, fileName, mimeType, onProgress) {
+  async uploadFileResumable(fileUri, fileName, mimeType, receiverId) {
     const token = await storage.getAccessToken();
     const fileInfo = await FileSystem.getInfoAsync(fileUri);
     const fileSize = fileInfo.size;
@@ -22,33 +51,49 @@ export const uploadManager = {
     }, token);
 
     const { upload_id } = initRes.data;
-    let currentOffset = 0;
+    
+    // Сохраняем метаданные загрузки для возможности восстановления
+    const uploadInfo = {
+      upload_id,
+      fileUri,
+      fileName,
+      mimeType,
+      fileSize,
+      receiverId,
+      startTime: Date.now()
+    };
+    await storage.saveItem(`upload_info_${upload_id}`, JSON.stringify(uploadInfo));
+    
+    const result = await this.runUploadLoop(upload_id, fileUri, 0, fileSize, token);
+    return { ...result, upload_id };
+  },
 
-    // Сохраняем ID загрузки, чтобы можно было возобновить позже (упрощенно)
-    await storage.saveItem(`upload_${fileName}_${fileSize}`, upload_id);
+  async runUploadLoop(uploadId, fileUri, startOffset, fileSize, token) {
+    if (activeUploads.get(uploadId)) return; // Уже загружается
+    activeUploads.set(uploadId, true);
 
-    // 2. Цикл загрузки чанков
-    while (currentOffset < fileSize) {
-      const length = Math.min(CHUNK_SIZE, fileSize - currentOffset);
-      
-      // Читаем часть файла (базовое решение через FileSystem.uploadAsync)
-      // В идеале Expo FileSystem.readAsStringAsync с опциями length/position,
-      // но для простоты и надежности фоновой работы воспользуемся их стандартным механизмом если возможно,
-      // или будем резать файл на части (что накладно).
-      
-      // Для настоящей фоновой загрузки больших файлов лучше использовать TaskManager,
-      // но здесь мы реализуем надежный цикл с докачкой.
-
-      const chunkResult = await this.uploadChunk(upload_id, fileUri, currentOffset, length, token);
-      
-      if (chunkResult.status === 'completed') {
-        return chunkResult;
+    let currentOffset = startOffset;
+    try {
+      while (currentOffset < fileSize) {
+        const length = Math.min(CHUNK_SIZE, fileSize - currentOffset);
+        const chunkResult = await this.uploadChunk(uploadId, fileUri, currentOffset, length, token);
+        
+        if (chunkResult.status === 'completed') {
+          activeUploads.delete(uploadId);
+          await storage.removeItem(`upload_info_${uploadId}`);
+          this.notifyProgress(uploadId, 1, 'completed', chunkResult);
+          return chunkResult;
+        }
+        
+        currentOffset = chunkResult.offset;
+        this.notifyProgress(uploadId, currentOffset / fileSize);
       }
-      
-      currentOffset = chunkResult.offset;
-      if (onProgress) {
-        onProgress(currentOffset / fileSize);
-      }
+    } catch (error) {
+      activeUploads.delete(uploadId);
+      this.notifyProgress(uploadId, currentOffset / fileSize, 'error');
+      throw error;
+    } finally {
+      activeUploads.delete(uploadId);
     }
   },
 
@@ -109,25 +154,59 @@ export const uploadManager = {
   /**
    * Проверяет статус существующей загрузки и продолжает её
    */
-  async resumeUpload(uploadId, fileUri, fileName, onProgress) {
+  async resumeUpload(uploadId, fileUri, fileName, receiverId) {
     const token = await storage.getAccessToken();
     const statusRes = await chatApi.getUploadStatus(uploadId, token);
     const { offset, is_completed } = statusRes.data;
 
-    if (is_completed) return { status: 'completed' };
+    if (is_completed) {
+      await storage.removeItem(`upload_info_${uploadId}`);
+      return { status: 'completed' };
+    }
 
     const fileInfo = await FileSystem.getInfoAsync(fileUri);
     const fileSize = fileInfo.size;
     
-    let currentOffset = offset;
-    while (currentOffset < fileSize) {
-      const length = Math.min(CHUNK_SIZE, fileSize - currentOffset);
-      const chunkResult = await this.uploadChunk(uploadId, fileUri, currentOffset, length, token);
+    return this.runUploadLoop(uploadId, fileUri, offset, fileSize, token);
+  },
+
+  /**
+   * Находит и восстанавливает активные загрузки для конкретного получателя
+   */
+  async getActiveUploadsForReceiver(receiverId) {
+    const token = await storage.getAccessToken();
+    try {
+      const res = await chatApi.getActiveUploads(token);
+      const serverActiveUploads = res.data;
       
-      if (chunkResult.status === 'completed') return chunkResult;
-      
-      currentOffset = chunkResult.offset;
-      if (onProgress) onProgress(currentOffset / fileSize);
+      const recovered = [];
+      for (const serverUpload of serverActiveUploads) {
+        // Проверяем, есть ли у нас локальная информация об этой загрузке
+        const localInfoStr = await storage.getItem(`upload_info_${serverUpload.upload_id}`);
+        if (localInfoStr) {
+          const localInfo = JSON.parse(localInfoStr);
+          if (localInfo.receiverId === receiverId) {
+            recovered.push({
+              ...localInfo,
+              currentOffset: serverUpload.offset
+            });
+            
+            // Если она еще не запущена локально - запускаем
+            if (!activeUploads.get(serverUpload.upload_id)) {
+              this.resumeUpload(
+                serverUpload.upload_id, 
+                localInfo.fileUri, 
+                localInfo.fileName, 
+                localInfo.receiverId
+              ).catch(err => console.error(`Failed to resume upload ${serverUpload.upload_id}:`, err));
+            }
+          }
+        }
+      }
+      return recovered;
+    } catch (error) {
+      console.error('Error fetching active uploads:', error);
+      return [];
     }
   }
 };
