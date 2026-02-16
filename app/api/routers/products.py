@@ -147,7 +147,7 @@ async def get_all_products(
         products_stmt = (
             select(ProductModel)
             .where(*filters)
-            .order_by(ProductModel.id)
+            .order_by(desc(ProductModel.id))
             .offset((page - 1) * page_size)
             .limit(page_size)
         )
