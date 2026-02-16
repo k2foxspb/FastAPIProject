@@ -24,6 +24,7 @@ from app.core.auth import (
     create_access_token,
     create_refresh_token,
     get_current_user,
+    get_current_user_optional,
     verify_refresh_token
 )
 from app.api.routers.notifications import manager as notification_manager
@@ -47,7 +48,8 @@ router = APIRouter(prefix="/users", tags=["users"])
 @router.get("/", response_model=list[UserSchema], include_in_schema=False)
 async def get_users(
     search: str | None = None,
-    db: AsyncSession = Depends(get_async_db)
+    db: AsyncSession = Depends(get_async_db),
+    current_user: UserModel | None = Depends(get_current_user_optional)
 ):
     """
     Возвращает список всех активных пользователей.
@@ -63,13 +65,6 @@ async def get_users(
     
     result = await db.execute(query)
     users = result.scalars().all()
-
-    # Получаем текущего пользователя, если он авторизован
-    current_user = None
-    try:
-        current_user = await get_current_user(db=db)
-    except:
-        pass
 
     # Скрываем приватный контент для общего списка
     for user in users:

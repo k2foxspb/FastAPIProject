@@ -61,6 +61,28 @@ def create_refresh_token(data: dict):
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 
+async def get_current_user_optional(
+    token: str | None = Depends(OAuth2PasswordBearer(tokenUrl="users/token", auto_error=False)),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """
+    Необязательная версия получения текущего пользователя.
+    Не выбрасывает 401, если токен отсутствует или невалиден.
+    """
+    if not token:
+        return None
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        email: str = payload.get("sub")
+        if email is None:
+            return None
+        result = await db.scalars(
+            select(UserModel).where(UserModel.email == email, UserModel.is_active == True))
+        return result.first()
+    except:
+        return None
+
+
 async def get_current_user(token: str = Depends(oauth2_scheme),
                            db: AsyncSession = Depends(get_async_db)):
     """
