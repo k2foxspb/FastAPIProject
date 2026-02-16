@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, FlatList, TextInput, StyleSheet, TouchableOpacity, Image } from 'react-native';
 import { usersApi } from '../api';
 import { useTheme } from '../context/ThemeContext';
+import { useNotifications } from '../context/NotificationContext';
 import { theme as themeConstants } from '../constants/theme';
 import { API_BASE_URL } from '../constants';
 import { formatStatus, formatName } from '../utils/formatters';
@@ -9,6 +10,7 @@ import { formatStatus, formatName } from '../utils/formatters';
 export default function UsersScreen({ navigation }) {
   const { theme } = useTheme();
   const colors = themeConstants[theme];
+  const { fetchFriendRequestsCount } = useNotifications();
   const [users, setUsers] = useState([]);
   const [friends, setFriends] = useState([]);
   const [requests, setRequests] = useState([]);
@@ -24,11 +26,7 @@ export default function UsersScreen({ navigation }) {
     try {
       if (activeTab === 'all') {
         const res = await usersApi.getUsers(search);
-        if (currentUserId) {
-          setUsers(res.data.filter(u => u.id !== currentUserId));
-        } else {
-          setUsers(res.data);
-        }
+        setUsers(res.data.filter(u => u.friendship_status !== 'self'));
       } else {
         const [friendsRes, requestsRes] = await Promise.all([
           usersApi.getFriendsList(),
@@ -50,6 +48,7 @@ export default function UsersScreen({ navigation }) {
     try {
       await usersApi.acceptFriendRequest(userId);
       fetchData();
+      fetchFriendRequestsCount(); // Обновляем глобальный счетчик
     } catch (err) {
       console.log(err);
     }
@@ -59,6 +58,7 @@ export default function UsersScreen({ navigation }) {
     try {
       await usersApi.rejectFriendRequest(userId);
       fetchData();
+      fetchFriendRequestsCount(); // Обновляем глобальный счетчик
     } catch (err) {
       console.log(err);
     }
@@ -70,45 +70,55 @@ export default function UsersScreen({ navigation }) {
     return `${API_BASE_URL}${url}`;
   };
 
-  const renderUserItem = ({ item, isRequest = false }) => (
-    <TouchableOpacity 
-      style={[styles.userItem, { borderBottomColor: colors.border }]}
-      onPress={() => navigation.navigate('UserProfile', { userId: item.id })}
-    >
-      <View style={styles.avatarContainer}>
-        <Image 
-          source={{ uri: getAvatarUrl(item.avatar_preview_url || item.avatar_url) }} 
-          style={styles.avatar} 
-        />
-        {item.status === 'online' && (
-          <View style={[styles.onlineBadge, { backgroundColor: '#4CAF50', borderColor: colors.background }]} />
+  const renderUserItem = ({ item, isRequest = false }) => {
+    const getFriendshipText = () => {
+      if (item.friendship_status === 'accepted') return ' • Друзья';
+      if (item.friendship_status === 'requested_by_me') return ' • Заявка отправлена';
+      if (item.friendship_status === 'requested_by_them') return ' • Хочет в друзья';
+      return '';
+    };
+
+    return (
+      <TouchableOpacity 
+        style={[styles.userItem, { borderBottomColor: colors.border }]}
+        onPress={() => navigation.navigate('UserProfile', { userId: item.id })}
+      >
+        <View style={styles.avatarContainer}>
+          <Image 
+            source={{ uri: getAvatarUrl(item.avatar_preview_url || item.avatar_url) }} 
+            style={styles.avatar} 
+          />
+          {item.status === 'online' && (
+            <View style={[styles.onlineBadge, { backgroundColor: '#4CAF50', borderColor: colors.background }]} />
+          )}
+        </View>
+        <View style={styles.userInfo}>
+          <Text style={[styles.userName, { color: colors.text }]}>{formatName(item)}</Text>
+          <View style={styles.roleStatus}>
+            <Text style={[styles.userRole, { color: colors.textSecondary }]}>{item.role}</Text>
+            <Text style={[styles.statusText, { color: colors.textSecondary }]}> • {formatStatus(item.status, item.last_seen)}</Text>
+            <Text style={[styles.statusText, { color: colors.primary, fontWeight: 'bold' }]}>{getFriendshipText()}</Text>
+          </View>
+        </View>
+        {isRequest && (
+          <View style={styles.requestButtons}>
+            <TouchableOpacity 
+              style={[styles.actionButton, { backgroundColor: '#4CAF50' }]} 
+              onPress={() => handleAccept(item.id)}
+            >
+              <Text style={styles.actionButtonText}>✓</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={[styles.actionButton, { backgroundColor: '#F44336' }]} 
+              onPress={() => handleReject(item.id)}
+            >
+              <Text style={styles.actionButtonText}>✕</Text>
+            </TouchableOpacity>
+          </View>
         )}
-      </View>
-      <View style={styles.userInfo}>
-        <Text style={[styles.userName, { color: colors.text }]}>{formatName(item)}</Text>
-        <View style={styles.roleStatus}>
-          <Text style={[styles.userRole, { color: colors.textSecondary }]}>{item.role}</Text>
-          <Text style={[styles.statusText, { color: colors.textSecondary }]}> • {formatStatus(item.status, item.last_seen)}</Text>
-        </View>
-      </View>
-      {isRequest && (
-        <View style={styles.requestButtons}>
-          <TouchableOpacity 
-            style={[styles.actionButton, { backgroundColor: '#4CAF50' }]} 
-            onPress={() => handleAccept(item.id)}
-          >
-            <Text style={styles.actionButtonText}>✓</Text>
-          </TouchableOpacity>
-          <TouchableOpacity 
-            style={[styles.actionButton, { backgroundColor: '#F44336' }]} 
-            onPress={() => handleReject(item.id)}
-          >
-            <Text style={styles.actionButtonText}>✕</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-    </TouchableOpacity>
-  );
+      </TouchableOpacity>
+    );
+  };
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>

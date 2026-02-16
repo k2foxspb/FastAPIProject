@@ -137,7 +137,7 @@ function FeedStack() {
 }
 
 export default function TabNavigator() {
-  const { unreadTotal } = useNotifications();
+  const { unreadTotal, friendRequestsCount } = useNotifications();
   const { theme } = useTheme();
   const colors = themeConstants[theme];
 
@@ -178,7 +178,15 @@ export default function TabNavigator() {
           headerShown: false,
         }} 
       />
-      <Tab.Screen name="Users" component={UsersStack} options={{ title: 'Пользователи', headerShown: false }} />
+      <Tab.Screen 
+        name="Users" 
+        component={UsersStack} 
+        options={{ 
+          title: 'Пользователи', 
+          headerShown: false,
+          tabBarBadge: friendRequestsCount > 0 ? friendRequestsCount : null,
+        }} 
+      />
       <Tab.Screen 
         name="Messages" 
         component={ChatStack} 

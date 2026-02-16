@@ -54,7 +54,9 @@ async def get_users(
     """
     query = select(UserModel).where(UserModel.is_active == True).options(
         selectinload(UserModel.photos),
-        selectinload(UserModel.albums).selectinload(PhotoAlbumModel.photos)
+        selectinload(UserModel.albums).selectinload(PhotoAlbumModel.photos),
+        selectinload(UserModel.sent_friend_requests),
+        selectinload(UserModel.received_friend_requests)
     )
     if search:
         query = query.where(UserModel.email.ilike(f"%{search}%"))
@@ -62,12 +64,54 @@ async def get_users(
     result = await db.execute(query)
     users = result.scalars().all()
 
+    # Получаем текущего пользователя, если он авторизован
+    current_user = None
+    try:
+        current_user = await get_current_user(db=db)
+    except:
+        pass
+
     # Скрываем приватный контент для общего списка
     for user in users:
         user.photos = [p for p in user.photos if not p.is_private]
         user.albums = [a for a in user.albums if not a.is_private]
         for album in user.albums:
             album.photos = [p for p in album.photos if not p.is_private]
+        
+        # Определяем статус дружбы
+        if current_user:
+            if user.id == current_user.id:
+                user.friendship_status = "self"
+            else:
+                # Ищем среди отправленных текущим пользователем
+                res_sent = await db.execute(
+                    select(FriendshipModel).where(
+                        FriendshipModel.user_id == current_user.id,
+                        FriendshipModel.friend_id == user.id
+                    )
+                )
+                friendship = res_sent.scalar_one_or_none()
+                if friendship:
+                    if friendship.status == "accepted":
+                        user.friendship_status = "accepted"
+                    else:
+                        user.friendship_status = "requested_by_me"
+                else:
+                    # Ищем среди полученных текущим пользователем
+                    res_received = await db.execute(
+                        select(FriendshipModel).where(
+                            FriendshipModel.user_id == user.id,
+                            FriendshipModel.friend_id == current_user.id
+                        )
+                    )
+                    friendship = res_received.scalar_one_or_none()
+                    if friendship:
+                        if friendship.status == "accepted":
+                            user.friendship_status = "accepted"
+                        else:
+                            user.friendship_status = "requested_by_them"
+                    else:
+                        user.friendship_status = None
 
     return [UserSchema.model_validate(u) for u in users]
 

@@ -10,6 +10,7 @@ export const NotificationProvider = ({ children }) => {
   const [notifications, setNotifications] = useState([]);
   const [dialogs, setDialogs] = useState([]);
   const [unreadTotal, setUnreadTotal] = useState(0);
+  const [friendRequestsCount, setFriendRequestsCount] = useState(0);
   const [isConnected, setIsConnected] = useState(false);
   const [currentUserId, setCurrentUserId] = useState(null);
   const [activeChatId, setActiveChatId] = useState(null);
@@ -50,6 +51,20 @@ export const NotificationProvider = ({ children }) => {
     }
   };
 
+  const fetchFriendRequestsCount = async () => {
+    try {
+      const token = await storage.getAccessToken();
+      if (!token) return;
+      const res = await usersApi.getFriendRequests();
+      // Предполагаем, что API возвращает массив заявок
+      if (Array.isArray(res.data)) {
+        setFriendRequestsCount(res.data.length);
+      }
+    } catch (err) {
+      console.error('Failed to fetch friend requests count:', err);
+    }
+  };
+
   const connect = (token) => {
     if (!token || token === 'null' || token === 'undefined') {
       console.log('Skipping WS connect: no token');
@@ -84,6 +99,11 @@ export const NotificationProvider = ({ children }) => {
         if (payload.type === 'new_message' || payload.type === 'messages_read' || payload.type === 'your_messages_read') {
           // Обновляем список диалогов при получении нового сообщения или пометке о прочтении
           fetchDialogs();
+        }
+
+        if (payload.type === 'friend_request' || payload.type === 'friend_accept') {
+          // Обновляем счетчик заявок в друзья
+          fetchFriendRequestsCount();
         }
 
         if (payload.type === 'new_message') {
@@ -137,6 +157,7 @@ export const NotificationProvider = ({ children }) => {
   useEffect(() => {
     if (isConnected) {
       fetchDialogs();
+      fetchFriendRequestsCount();
     }
   }, [isConnected]);
 
@@ -145,7 +166,9 @@ export const NotificationProvider = ({ children }) => {
       notifications, 
       dialogs, 
       unreadTotal, 
+      friendRequestsCount,
       fetchDialogs, 
+      fetchFriendRequestsCount,
       isConnected, 
       connect, 
       disconnect,
