@@ -611,7 +611,7 @@ async def update_fcm_token(
 # Настройка путей для медиа
 # Мы используем абсолютный путь относительно корня приложения (папка app)
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-USER_MEDIA_ROOT = os.path.join(BASE_DIR, "media", "users")
+USER_MEDIA_ROOT = os.path.join(BASE_DIR, "app", "media", "users")
 os.makedirs(USER_MEDIA_ROOT, exist_ok=True)
 
 async def save_user_photo(file: UploadFile) -> tuple[str, str]:

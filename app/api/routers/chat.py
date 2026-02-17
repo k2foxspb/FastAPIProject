@@ -125,14 +125,18 @@ async def websocket_chat_endpoint(
             message_type = message_data.get("message_type", "text")
             
             if receiver_id and (content or file_path or (attachments and len(attachments) > 0)):
-                # Если пришли вложения списком и тип не задан явно — считаем это медиа-группой
-                if attachments and len(attachments) > 0 and (message_type == "text" or not message_type):
+                # Если пришли вложения списком — считаем это медиа-группой и сохраняем
+                if attachments and len(attachments) > 0:
                     message_type = "media_group"
                     # Сохраняем вложения как JSON-строку в file_path для совместимости БД
                     try:
                         file_path = json.dumps(attachments)
-                    except Exception:
+                        print(f"DEBUG: Saved media_group with {len(attachments)} attachments to file_path")
+                    except Exception as e:
+                        print(f"DEBUG: Failed to serialize attachments: {e}")
                         file_path = None
+                
+                print(f"DEBUG: Saving message: type={message_type}, receiver={receiver_id}, has_content={bool(content)}, file_path={file_path[:50] if file_path else None}")
                 
                 # Сохраняем в базу
                 new_msg = ChatMessage(

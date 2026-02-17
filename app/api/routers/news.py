@@ -17,7 +17,7 @@ from app.schemas.news import News as NewsSchema, NewsCreate, NewsUpdate
 router = APIRouter(prefix="/news", tags=["news"])
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
-MEDIA_ROOT = BASE_DIR / "media" / "news"
+MEDIA_ROOT = BASE_DIR / "app" / "media" / "news"
 MEDIA_ROOT.mkdir(parents=True, exist_ok=True)
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp"}
 MAX_IMAGE_SIZE = 2 * 1024 * 1024

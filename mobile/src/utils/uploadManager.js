@@ -169,7 +169,6 @@ export const uploadManager = {
 
       const formData = new FormData();
       const chunkUri = `data:application/octet-stream;base64,${fileData}`;
-
       formData.append('chunk', {
         uri: chunkUri,
         name: 'chunk',

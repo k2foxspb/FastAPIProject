@@ -252,6 +252,7 @@ export default function ChatScreen({ route, navigation }) {
         setAutoSendOnUpload(false);
         setBatchTotal(assets.length);
         setAttachmentsLocalCount(0);
+        const attachmentsLocal = [];
         
         for (const asset of assets) {
           setUploadingData({ 
@@ -262,24 +263,40 @@ export default function ChatScreen({ route, navigation }) {
           });
           setUploadingProgress(0);
           
-          const res = await uploadManager.uploadFileResumable(
-            asset.uri,
-            asset.name,
-            asset.mimeType,
-            userId,
-            (uid) => setActiveUploadId(uid)
-          );
+          try {
+            const res = await uploadManager.uploadFileResumable(
+              asset.uri,
+              asset.name,
+              asset.mimeType,
+              userId,
+              (uid) => setActiveUploadId(uid)
+            );
 
-          if (res && res.status === 'completed') {
-             setAttachmentsLocalCount(prev => prev + 1);
-             if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-                const msgData = {
-                  receiver_id: userId,
-                  file_path: res.file_path,
-                  message_type: res.message_type
-                };
-                ws.current.send(JSON.stringify(msgData));
-             }
+            if (res && res.status === 'completed') {
+               setAttachmentsLocalCount(prev => prev + 1);
+               attachmentsLocal.push({ file_path: res.file_path, type: res.message_type });
+            }
+          } catch (err) {
+            console.error('Failed to upload asset in batch', asset.name, err);
+          }
+        }
+
+        if (attachmentsLocal.length > 0) {
+          if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+            if (attachmentsLocal.length === 1) {
+              const msgData = {
+                receiver_id: userId,
+                file_path: attachmentsLocal[0].file_path,
+                message_type: attachmentsLocal[0].type
+              };
+              ws.current.send(JSON.stringify(msgData));
+            } else {
+              ws.current.send(JSON.stringify({
+                receiver_id: userId,
+                attachments: attachmentsLocal,
+                message_type: 'media_group'
+              }));
+            }
           }
         }
       }
@@ -334,17 +351,21 @@ export default function ChatScreen({ route, navigation }) {
           });
           setUploadingProgress(0);
           
-          const res = await uploadManager.uploadFileResumable(
-            asset.uri, 
-            fileName, 
-            asset.mimeType,
-            userId,
-            (upload_id) => setActiveUploadId(upload_id)
-          );
-          
-          if (res && res.status === 'completed') {
-            setAttachmentsLocalCount(prev => prev + 1);
-            attachmentsLocal.push({ file_path: res.file_path, type: res.message_type });
+          try {
+            const res = await uploadManager.uploadFileResumable(
+              asset.uri, 
+              fileName, 
+              asset.mimeType,
+              userId,
+              (upload_id) => setActiveUploadId(upload_id)
+            );
+            
+            if (res && res.status === 'completed') {
+              setAttachmentsLocalCount(prev => prev + 1);
+              attachmentsLocal.push({ file_path: res.file_path, type: res.message_type });
+            }
+          } catch (err) {
+            console.error('Failed to upload image/video in batch', fileName, err);
           }
         }
 
@@ -601,20 +622,25 @@ export default function ChatScreen({ route, navigation }) {
           )}
           {/* Медиа-группа */}
           {item.attachments && item.attachments.length > 0 ? (
-            <View style={{ width: 260, height: 200 }}>
+            <View style={{ width: 260, height: 210 }}>
               <FlatList
                 data={item.attachments}
                 keyExtractor={(_, idx) => `${item.id}_att_${idx}`}
                 horizontal
                 pagingEnabled
                 showsHorizontalScrollIndicator={false}
+                onMomentumScrollEnd={(e) => {
+                  const offset = e.nativeEvent.contentOffset.x;
+                  const index = Math.round(offset / 260);
+                  // Можно добавить локальный state для индекса, но для простоты оставим так
+                }}
                 renderItem={({ item: att }) => (
-                  <Pressable onPress={() => handleFullScreen(att.file_path || att.uri, att.type)}>
+                  <Pressable onPress={() => handleFullScreen(att.file_path.startsWith('http') ? att.file_path : `${API_BASE_URL}${att.file_path}`, att.type)}>
                     {att.type === 'image' ? (
-                      <Image source={{ uri: att.file_path }} style={{ width: 260, height: 200, borderRadius: 12 }} resizeMode="cover" />
+                      <Image source={{ uri: att.file_path.startsWith('http') ? att.file_path : `${API_BASE_URL}${att.file_path}` }} style={{ width: 260, height: 200, borderRadius: 12 }} resizeMode="cover" />
                     ) : att.type === 'video' ? (
                       <Video
-                        source={{ uri: att.file_path }}
+                        source={{ uri: att.file_path.startsWith('http') ? att.file_path : `${API_BASE_URL}${att.file_path}` }}
                         style={{ width: 260, height: 200, borderRadius: 12 }}
                         resizeMode={ResizeMode.COVER}
                         isMuted
@@ -629,6 +655,21 @@ export default function ChatScreen({ route, navigation }) {
                   </Pressable>
                 )}
               />
+              {item.attachments.length > 1 && (
+                <View style={{ 
+                  flexDirection: 'row', 
+                  justifyContent: 'center', 
+                  alignItems: 'center',
+                  marginTop: 4
+                }}>
+                  <Text style={{ 
+                    fontSize: 10, 
+                    color: isReceived ? colors.textSecondary : 'rgba(255,255,255,0.7)' 
+                  }}>
+                    {item.attachments.length} вложений • Свайп для просмотра
+                  </Text>
+                </View>
+              )}
             </View>
           ) : (
             (isImage || isVideo) && (
