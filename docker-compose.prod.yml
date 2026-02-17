@@ -41,7 +41,8 @@ services:
       context: .
       dockerfile: app/Dockerfile.prod.yml
     command: celery -A app.core.celery_app worker --loglevel=info
-
+    volumes:
+      - media_data:/app/app/media
     environment:
       - REDIS_HOST=${REDIS_HOST:-redis}
       - POSTGRES_HOST=${POSTGRES_HOST:-db}
@@ -89,4 +90,5 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  media_data:
 

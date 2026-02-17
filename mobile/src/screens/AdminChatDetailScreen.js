@@ -6,6 +6,9 @@ import { theme as themeConstants } from '../constants/theme';
 import api from '../api';
 import { getFullUrl } from '../utils/urlHelper';
 import { formatName } from '../utils/formatters';
+import CachedMedia from '../components/CachedMedia';
+import VoiceMessage from '../components/VoiceMessage';
+import FileMessage from '../components/FileMessage';
 
 export default function AdminChatDetailScreen({ route, navigation }) {
   const { u1, u2 } = route.params;
@@ -76,9 +79,27 @@ export default function AdminChatDetailScreen({ route, navigation }) {
           { backgroundColor: isU1 ? colors.primary : colors.surface, borderColor: colors.border },
           !isU1 && styles.u2Bubble
         ]}>
-          <Text style={[styles.messageText, { color: isU1 ? '#fff' : colors.text }]}>
-            {item.message}
-          </Text>
+          {/* Медиа-файлы */}
+          {(item.message_type === 'image' || item.message_type === 'video') && item.file_path ? (
+            <CachedMedia 
+              item={item} 
+              style={{ width: 200, height: 150, borderRadius: 10, overflow: 'hidden' }} 
+            />
+          ) : null}
+          {item.message_type === 'voice' && item.file_path ? (
+            <VoiceMessage item={item} currentUserId={u1.id} />
+          ) : null}
+          {item.message_type === 'file' && item.file_path ? (
+            <FileMessage item={item} currentUserId={u1.id} />
+          ) : null}
+
+          {/* Текст сообщения */}
+          {item.message ? (
+            <Text style={[styles.messageText, { color: isU1 ? '#fff' : colors.text, marginTop: 4 }]}>
+              {item.message}
+            </Text>
+          ) : null}
+
           <View style={styles.messageFooter}>
             <Text style={[styles.messageTime, { color: isU1 ? 'rgba(255,255,255,0.7)' : colors.textSecondary }]}>
               {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
