@@ -609,9 +609,10 @@ async def update_fcm_token(
 
 
 # Настройка путей для медиа
-# Мы используем абсолютный путь относительно корня приложения (папка app)
+# Предпочитаем явный MEDIA_ROOT из окружения, иначе считаем от корня приложения (папка app)
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-USER_MEDIA_ROOT = os.path.join(BASE_DIR, "media", "users")
+MEDIA_ROOT = os.getenv("MEDIA_ROOT", os.path.join(BASE_DIR, "media"))
+USER_MEDIA_ROOT = os.path.join(MEDIA_ROOT, "users")
 os.makedirs(USER_MEDIA_ROOT, exist_ok=True)
 
 async def save_user_photo(file: UploadFile) -> tuple[str, str]:
@@ -629,8 +630,15 @@ async def save_user_photo(file: UploadFile) -> tuple[str, str]:
     try:
         with Image.open(io.BytesIO(content)) as img:
             img.thumbnail((400, 400))
+            # Безопасное сохранение миниатюры; для JPEG конвертируем в RGB во избежание ошибок кодека
+            fmt_ext = file_extension.lower()
+            if fmt_ext in [".jpg", ".jpeg"] and img.mode in ("RGBA", "P"):
+                img = img.convert("RGB")
             img.save(thumb_path)
     except Exception:
+        thumb_filename = unique_filename
+    # Если по какой-то причине файл миниатюры не появился, используем оригинал
+    if not os.path.exists(os.path.join(USER_MEDIA_ROOT, thumb_filename)):
         thumb_filename = unique_filename
         
     return f"/media/users/{unique_filename}", f"/media/users/{thumb_filename}"

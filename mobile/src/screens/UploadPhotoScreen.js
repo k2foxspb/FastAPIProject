@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image, TextInput, Alert, ActivityIndicator, Platform, Switch } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Image, TextInput, Alert, ActivityIndicator, Platform, Switch, ScrollView } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { usersApi } from '../api';
 import { Ionicons as Icon } from '@expo/vector-icons';
