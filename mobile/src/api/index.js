@@ -119,6 +119,12 @@ export const adminApi = {
   getPendingModeration: () => api.get('/admin/moderation/pending'),
   approveObject: (model, id) => api.post(`/admin/moderation/approve/${model}/${id}`),
   rejectObject: (model, id) => api.post(`/admin/moderation/reject/${model}/${id}`),
+  uploadApp: (formData) => api.post('/admin/upload-app', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 120000,
+    maxContentLength: Infinity,
+    maxBodyLength: Infinity,
+  }),
 };
 
 export const chatApi = {

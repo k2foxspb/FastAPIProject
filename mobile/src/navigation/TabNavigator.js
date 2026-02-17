@@ -32,6 +32,7 @@ import AdminCategoriesScreen from '../screens/AdminCategoriesScreen';
 import AdminProductsScreen from '../screens/AdminProductsScreen';
 import AdminOrdersScreen from '../screens/AdminOrdersScreen';
 import AdminReviewsScreen from '../screens/AdminReviewsScreen';
+import AdminAppUploadScreen from '../screens/AdminAppUploadScreen';
 
 
 const Tab = createBottomTabNavigator();
@@ -97,6 +98,7 @@ function ProfileStack() {
       <Stack.Screen name="AdminChats" component={AdminChatsScreen} options={{ title: 'Чаты пользователей' }} />
       <Stack.Screen name="AdminChatDetail" component={AdminChatDetailScreen} options={{ title: 'Чат' }} />
       <Stack.Screen name="EditNews" component={EditNewsScreen} options={{ title: 'Редактировать новость' }} />
+      <Stack.Screen name="AdminAppUpload" component={AdminAppUploadScreen} options={{ title: 'Загрузить приложение' }} />
       <Stack.Screen 
         name="Login" 
         component={LoginScreen} 

@@ -1,12 +1,18 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import { Ionicons as Icon } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
+import { usersApi } from '../api';
 
 export default function AdminScreen({ navigation }) {
   const { theme } = useTheme();
   const colors = themeConstants[theme];
+  const [role, setRole] = useState(null);
+
+  useEffect(() => {
+    usersApi.getMe().then(res => setRole(res.data.role)).catch(() => setRole(null));
+  }, []);
 
   const adminMenu = [
     { title: 'Пользователи и Роли', icon: 'people-outline', screen: 'AdminUsers', ownerOnly: true },
@@ -17,7 +23,10 @@ export default function AdminScreen({ navigation }) {
     { title: 'Заказы', icon: 'receipt-outline', screen: 'AdminOrders' },
     { title: 'Отзывы', icon: 'star-outline', screen: 'AdminReviews' },
     { title: 'Чаты пользователей', icon: 'chatbubbles-outline', screen: 'AdminChats' },
+    { title: 'Загрузить новую версию приложения', icon: 'cloud-upload-outline', screen: 'AdminAppUpload', ownerOnly: true },
   ];
+
+  const filteredMenu = adminMenu.filter(item => !item.ownerOnly || role === 'owner');
 
   return (
     <ScrollView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -27,7 +36,7 @@ export default function AdminScreen({ navigation }) {
       </View>
 
       <View style={styles.menu}>
-        {adminMenu.map((item, index) => (
+        {filteredMenu.map((item, index) => (
           <TouchableOpacity
             key={index}
             style={[styles.menuItem, { backgroundColor: colors.surface, borderColor: colors.border }]}
