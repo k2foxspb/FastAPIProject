@@ -2,6 +2,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select, update
+from sqlalchemy.orm import joinedload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_buyer, get_current_user
@@ -17,10 +18,19 @@ router = APIRouter(
     tags=["reviews"],
 )
 
-@router.get('', response_model=list[ReviewSchema])
+@router.get("", response_model=list[ReviewSchema])
 async def get_review(db: AsyncSession = Depends(get_async_db)):
-    result = await db.scalars(select(ReviewModel).where(ReviewModel.is_active == True))
-    return result.all()
+    result = await db.execute(
+        select(ReviewModel)
+        .options(joinedload(ReviewModel.user))
+        .where(ReviewModel.is_active == True)
+    )
+    reviews = result.scalars().all()
+    for r in reviews:
+        r.first_name = r.user.first_name
+        r.last_name = r.user.last_name
+        r.avatar_url = r.user.avatar_url
+    return reviews
 
 @router.post('', response_model=Review)
 async def create_review(review: CreateReview,

@@ -12,6 +12,12 @@ class NewsUpdate(BaseModel):
     image_url: str | None = None
     is_active: bool | None = None
 
+class NewsImage(BaseModel):
+    id: int
+    image_url: str
+    thumbnail_url: str
+    model_config = ConfigDict(from_attributes=True)
+
 class News(BaseModel):
     id: int
     title: str
@@ -22,5 +28,6 @@ class News(BaseModel):
     is_active: bool
     created_at: datetime
     updated_at: datetime
+    images: list[NewsImage] = Field(default=[])
 
     model_config = ConfigDict(from_attributes=True)

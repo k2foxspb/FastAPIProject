@@ -50,7 +50,8 @@ export default function CartScreen({ navigation }) {
     try {
       setUpdating(true);
       await cartApi.updateItem(productId, newQuantity);
-      await loadCart();
+      const res = await cartApi.getCart();
+      setCart(res.data);
     } catch (err) {
       Alert.alert('Ошибка', 'Не удалось обновить количество');
     } finally {
@@ -71,7 +72,8 @@ export default function CartScreen({ navigation }) {
             try {
               setUpdating(true);
               await cartApi.removeItem(productId);
-              await loadCart();
+              const res = await cartApi.getCart();
+              setCart(res.data);
             } catch (err) {
               Alert.alert('Ошибка', 'Не удалось удалить товар');
             } finally {

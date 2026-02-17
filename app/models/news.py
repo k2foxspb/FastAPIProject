@@ -22,3 +22,15 @@ class News(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
     author: Mapped["User"] = relationship("User")
+    images: Mapped[list["NewsImage"]] = relationship("NewsImage", back_populates="news", cascade="all, delete-orphan")
+
+class NewsImage(Base):
+    __tablename__ = "news_images"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    news_id: Mapped[int] = mapped_column(ForeignKey("news.id", ondelete="CASCADE"), nullable=False)
+    image_url: Mapped[str] = mapped_column(String(200), nullable=False)
+    thumbnail_url: Mapped[str] = mapped_column(String(200), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    news: Mapped["News"] = relationship("News", back_populates="images")

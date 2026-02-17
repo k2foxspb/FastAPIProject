@@ -17,7 +17,7 @@ import ChatScreen from '../screens/ChatScreen';
 import FeedScreen from '../screens/FeedScreen';
 import CartScreen from '../screens/CartScreen';
 import OrdersScreen from '../screens/OrdersScreen';
-import EditNewsScreen from '../screens/EditNewsScreen';
+import NewsDetailScreen from '../screens/NewsDetailScreen';
 import EditProductScreen from '../screens/EditProductScreen';
 import ProductDetailScreen from '../screens/ProductDetailScreen';
 import LoginScreen from '../screens/LoginScreen';
@@ -139,7 +139,8 @@ function FeedStack() {
     >
       <Stack.Screen name="FeedMain" component={FeedScreen} options={{ title: 'Новости и Товары' }} />
       <Stack.Screen name="Cart" component={CartScreen} options={{ title: 'Корзина' }} />
-      <Stack.Screen name="EditNews" component={EditNewsScreen} options={{ title: 'Новость' }} />
+      <Stack.Screen name="NewsDetail" component={NewsDetailScreen} options={{ title: 'Новость' }} />
+      <Stack.Screen name="EditNews" component={EditNewsScreen} options={{ title: 'Редактировать новость' }} />
       <Stack.Screen name="EditProduct" component={EditProductScreen} options={{ title: 'Товар' }} />
       <Stack.Screen name="ProductDetail" component={ProductDetailScreen} options={{ title: 'О товаре' }} />
     </Stack.Navigator>

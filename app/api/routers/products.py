@@ -5,7 +5,7 @@ from PIL import Image
 
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from sqlalchemy import select, update, and_, func, desc
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import selectinload, joinedload
 from starlette.status import HTTP_201_CREATED, HTTP_404_NOT_FOUND, HTTP_200_OK, HTTP_400_BAD_REQUEST, HTTP_403_FORBIDDEN
 
 from app.core.auth import get_current_seller
@@ -364,7 +364,19 @@ async def delete_product(
 
 @router.get('/{product_id}/review', response_model=list[Review])
 async def get_reviews(product_id: int, db: AsyncSession = Depends(get_async_db)):
-    result = await db.scalars(
-        select(ReviewsModel).where(ReviewsModel.product_id == product_id).where(ReviewsModel.is_active == True)
+    result = await db.execute(
+        select(ReviewsModel)
+        .options(joinedload(ReviewsModel.user))
+        .where(ReviewsModel.product_id == product_id)
+        .where(ReviewsModel.is_active == True)
+        .order_by(ReviewsModel.comment_date.desc())
     )
-    return result.all()
+    reviews = result.scalars().all()
+    
+    # Заполняем поля из пользователя для схемы
+    for r in reviews:
+        r.first_name = r.user.first_name
+        r.last_name = r.user.last_name
+        r.avatar_url = r.user.avatar_url
+        
+    return reviews

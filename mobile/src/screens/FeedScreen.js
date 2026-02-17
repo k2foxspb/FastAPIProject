@@ -99,12 +99,18 @@ export default function FeedScreen({ navigation }) {
   const renderNewsItem = ({ item }) => (
     <TouchableOpacity 
       style={[styles.newsCard, { backgroundColor: colors.card, borderColor: colors.border, borderWidth: theme === 'dark' ? 1 : 0 }]}
-      onPress={() => canManageNews ? navigation.navigate('EditNews', { newsItem: item }) : null}
-      disabled={!canManageNews}
+      onPress={() => navigation.navigate('NewsDetail', { newsId: item.id, newsItem: item })}
     >
       <View style={styles.newsHeader}>
         <Text style={[styles.newsTitle, { color: colors.text }]}>{item.title}</Text>
-        {canManageNews && <Icon name="create-outline" size={20} color={colors.primary} />}
+        {canManageNews && (
+          <TouchableOpacity onPress={(e) => {
+            e.stopPropagation();
+            navigation.navigate('EditNews', { newsItem: item });
+          }}>
+            <Icon name="create-outline" size={20} color={colors.primary} />
+          </TouchableOpacity>
+        )}
       </View>
       <Text style={[styles.newsContent, { color: colors.text }]} numberOfLines={3}>{item.content}</Text>
       <Text style={[styles.newsDate, { color: colors.textSecondary }]}>{new Date(item.created_at).toLocaleDateString()}</Text>

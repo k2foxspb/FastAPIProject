@@ -99,7 +99,18 @@ export default function ProductDetailScreen({ route, navigation }) {
   const renderReview = ({ item }) => (
     <View style={[styles.reviewCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
       <View style={styles.reviewHeader}>
-        <Text style={[styles.reviewUser, { color: colors.text }]}>Пользователь #{item.user_id}</Text>
+        <TouchableOpacity 
+          onPress={() => navigation.navigate('UserProfile', { userId: item.user_id })}
+          style={styles.reviewUserContainer}
+        >
+          <Image 
+            source={{ uri: getFullUrl(item.avatar_url) || 'https://via.placeholder.com/40' }} 
+            style={styles.reviewAvatar} 
+          />
+          <Text style={[styles.reviewUser, { color: colors.text }]}>
+            {item.first_name ? `${item.first_name} ${item.last_name || ''}` : `Пользователь #${item.user_id}`}
+          </Text>
+        </TouchableOpacity>
         <View style={styles.stars}>
           {[1, 2, 3, 4, 5].map(s => (
             <Icon key={s} name={s <= item.grade ? "star" : "star-outline"} size={14} color="#FFD700" />
@@ -259,7 +270,9 @@ const styles = StyleSheet.create({
   addToCartText: { color: '#fff', fontSize: 18, fontWeight: 'bold', marginLeft: 10 },
   reviewsContainer: { marginTop: 20 },
   reviewCard: { padding: 15, borderRadius: 12, marginBottom: 15, borderWidth: 1 },
-  reviewHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
+  reviewHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
+  reviewUserContainer: { flexDirection: 'row', alignItems: 'center' },
+  reviewAvatar: { width: 30, height: 30, borderRadius: 15, marginRight: 10 },
   reviewUser: { fontWeight: 'bold' },
   stars: { flexDirection: 'row' },
   reviewComment: { fontSize: 15, marginBottom: 5 },
