@@ -9,9 +9,11 @@ from app.models.products import Product as ProductModel
 from app.models.news import News as NewsModel
 from app.models.orders import Order as OrderModel
 from app.models.reviews import Reviews as ReviewsModel
+from app.models.chat import ChatMessage as ChatMessageModel
 from app.schemas.users import User as UserSchema, AdminPermissionCreate, AdminPermission as AdminPermissionSchema
 from app.schemas.products import Product as ProductSchema
 from app.schemas.news import News as NewsSchema
+from app.schemas.chat import ChatMessageResponse, DialogResponse
 from app.api.dependencies import get_async_db
 from app.core.auth import get_current_owner, get_current_admin, check_admin_permission
 
@@ -98,7 +100,75 @@ async def revoke_permission(
 @router.get("/models")
 async def get_manageable_models():
     """Возвращает список моделей, которыми можно управлять."""
-    return ["categories", "products", "orders", "reviews", "users"]
+    return ["categories", "products", "orders", "reviews", "users", "chats"]
+
+# --- Чаты ---
+
+@router.get("/chats", response_model=list[dict])
+async def admin_get_all_dialogs(
+    allowed: bool = Depends(check_admin_permission("chats")),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """Возвращает все уникальные диалоги между пользователями."""
+    # Мы ищем все пары (min(sender_id, receiver_id), max(sender_id, receiver_id))
+    # Для простоты получим последние сообщения для каждой пары
+    from sqlalchemy import func
+    
+    # Подзапрос для получения последних сообщений в каждой паре
+    # В SQLite/PostgreSQL можно использовать разные подходы. 
+    # Здесь мы просто найдем все уникальные пары отправитель-получатель.
+    
+    result = await db.execute(select(ChatMessageModel).order_by(ChatMessageModel.timestamp.desc()))
+    messages = result.scalars().all()
+    
+    dialogs = {}
+    for msg in messages:
+        pair = tuple(sorted((msg.sender_id, msg.receiver_id)))
+        if pair not in dialogs:
+            # Находим данные пользователей
+            u1_res = await db.execute(select(UserModel).where(UserModel.id == pair[0]))
+            u2_res = await db.execute(select(UserModel).where(UserModel.id == pair[1]))
+            u1 = u1_res.scalar_one_or_none()
+            u2 = u2_res.scalar_one_or_none()
+            
+            dialogs[pair] = {
+                "user1": u1,
+                "user2": u2,
+                "last_message": msg.message or "[Файл]",
+                "last_message_time": msg.timestamp,
+                "pair": pair
+            }
+    
+    return list(dialogs.values())
+
+@router.get("/chats/{u1_id}/{u2_id}", response_model=list[ChatMessageResponse])
+async def admin_get_chat_history(
+    u1_id: int,
+    u2_id: int,
+    allowed: bool = Depends(check_admin_permission("chats")),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """Возвращает историю переписки между двумя пользователями."""
+    result = await db.execute(
+        select(ChatMessageModel)
+        .where(
+            ((ChatMessageModel.sender_id == u1_id) & (ChatMessageModel.receiver_id == u2_id)) |
+            ((ChatMessageModel.sender_id == u2_id) & (ChatMessageModel.receiver_id == u1_id))
+        )
+        .order_by(ChatMessageModel.timestamp.asc())
+    )
+    return result.scalars().all()
+
+@router.delete("/chats/messages/{message_id}")
+async def admin_delete_message(
+    message_id: int,
+    allowed: bool = Depends(check_admin_permission("chats")),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """Удаляет сообщение (полностью из базы)."""
+    await db.execute(delete(ChatMessageModel).where(ChatMessageModel.id == message_id))
+    await db.commit()
+    return {"message": "Message deleted"}
 
 # Пример для категорий
 @router.get("/categories")
@@ -137,6 +207,46 @@ async def admin_delete_product(
     await db.execute(delete(ProductModel).where(ProductModel.id == prod_id))
     await db.commit()
     return {"message": "Product deleted"}
+
+# --- Заказы ---
+
+@router.get("/orders")
+async def admin_get_orders(
+    allowed: bool = Depends(check_admin_permission("orders")),
+    db: AsyncSession = Depends(get_async_db)
+):
+    result = await db.execute(select(OrderModel).options(selectinload(OrderModel.items)))
+    return result.scalars().all()
+
+@router.delete("/orders/{order_id}")
+async def admin_delete_order(
+    order_id: int,
+    allowed: bool = Depends(check_admin_permission("orders")),
+    db: AsyncSession = Depends(get_async_db)
+):
+    await db.execute(delete(OrderModel).where(OrderModel.id == order_id))
+    await db.commit()
+    return {"message": "Order deleted"}
+
+# --- Отзывы ---
+
+@router.get("/reviews")
+async def admin_get_reviews(
+    allowed: bool = Depends(check_admin_permission("reviews")),
+    db: AsyncSession = Depends(get_async_db)
+):
+    result = await db.execute(select(ReviewsModel))
+    return result.scalars().all()
+
+@router.delete("/reviews/{review_id}")
+async def admin_delete_review(
+    review_id: int,
+    allowed: bool = Depends(check_admin_permission("reviews")),
+    db: AsyncSession = Depends(get_async_db)
+):
+    await db.execute(delete(ReviewsModel).where(ReviewsModel.id == review_id))
+    await db.commit()
+    return {"message": "Review deleted"}
 
 # --- Модерация ---
 

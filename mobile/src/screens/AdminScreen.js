@@ -16,6 +16,7 @@ export default function AdminScreen({ navigation }) {
     { title: 'Товары', icon: 'cart-outline', screen: 'AdminProducts' },
     { title: 'Заказы', icon: 'receipt-outline', screen: 'AdminOrders' },
     { title: 'Отзывы', icon: 'star-outline', screen: 'AdminReviews' },
+    { title: 'Чаты пользователей', icon: 'chatbubbles-outline', screen: 'AdminChats' },
   ];
 
   return (

@@ -19,11 +19,13 @@ import EditNewsScreen from '../screens/EditNewsScreen';
 import EditProductScreen from '../screens/EditProductScreen';
 import LoginScreen from '../screens/LoginScreen';
 import RegisterScreen from '../screens/RegisterScreen';
-// import AdminScreen from '../screens/AdminScreen';
-// import AdminUsersScreen from '../screens/AdminUsersScreen';
-// import AdminModerationScreen from '../screens/AdminModerationScreen';
-// import AdminNewsScreen from '../screens/AdminNewsScreen';
-// import EditNewsScreen from '../screens/EditNewsScreen';
+import AdminScreen from '../screens/AdminScreen';
+import AdminUsersScreen from '../screens/AdminUsersScreen';
+import AdminModerationScreen from '../screens/AdminModerationScreen';
+import AdminNewsScreen from '../screens/AdminNewsScreen';
+import AdminChatsScreen from '../screens/AdminChatsScreen';
+import AdminChatDetailScreen from '../screens/AdminChatDetailScreen';
+
 
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
@@ -75,11 +77,13 @@ function ProfileStack() {
       <Stack.Screen name="PhotoDetail" component={PhotoDetailScreen} options={{ title: 'Фотография' }} />
       <Stack.Screen name="UploadPhoto" component={UploadPhotoScreen} options={{ title: 'Загрузить фото' }} />
       <Stack.Screen name="EditProfile" component={EditProfileScreen} options={{ title: 'Редактировать профиль' }} />
-      {/* <Stack.Screen name="Admin" component={AdminScreen} options={{ title: 'Админка' }} />
+      <Stack.Screen name="Admin" component={AdminScreen} options={{ title: 'Админка' }} />
       <Stack.Screen name="AdminUsers" component={AdminUsersScreen} options={{ title: 'Пользователи' }} />
       <Stack.Screen name="AdminModeration" component={AdminModerationScreen} options={{ title: 'Модерация' }} />
       <Stack.Screen name="AdminNews" component={AdminNewsScreen} options={{ title: 'Новости' }} />
-      <Stack.Screen name="EditNews" component={EditNewsScreen} options={{ title: 'Редактировать новость' }} /> */}
+      <Stack.Screen name="AdminChats" component={AdminChatsScreen} options={{ title: 'Чаты пользователей' }} />
+      <Stack.Screen name="AdminChatDetail" component={AdminChatDetailScreen} options={{ title: 'Чат' }} />
+      <Stack.Screen name="EditNews" component={EditNewsScreen} options={{ title: 'Редактировать новость' }} />
       <Stack.Screen 
         name="Login" 
         component={LoginScreen} 
