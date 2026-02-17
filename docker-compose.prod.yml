@@ -27,7 +27,7 @@ services:
       - MAIL_FROM_NAME=${MAIL_FROM_NAME}
       - DOMAIN=${DOMAIN}
     depends_on:
-      - media_init
+
       - db
       - redis
 
@@ -59,7 +59,6 @@ services:
       - MAIL_FROM_NAME=${MAIL_FROM_NAME}
       - DOMAIN=${DOMAIN}
     depends_on:
-      - media_init
       - db
       - redis
 
