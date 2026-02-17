@@ -102,7 +102,9 @@ async def update_news(
     current_user: UserModel = Depends(get_current_user),
     db: AsyncSession = Depends(get_async_db)
 ):
-    result = await db.execute(select(NewsModel).where(NewsModel.id == news_id))
+    result = await db.execute(
+        select(NewsModel).options(selectinload(NewsModel.images)).where(NewsModel.id == news_id)
+    )
     db_news = result.scalar_one_or_none()
     if not db_news:
         raise HTTPException(status_code=404, detail="News not found")
@@ -121,7 +123,12 @@ async def update_news(
 
     await db.commit()
     await db.refresh(db_news)
-    return db_news
+    
+    # Reload with images to avoid lazy loading issues during serialization
+    result = await db.execute(
+        select(NewsModel).options(selectinload(NewsModel.images)).where(NewsModel.id == db_news.id)
+    )
+    return result.scalar_one()
 
 @router.delete("/{news_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_news(

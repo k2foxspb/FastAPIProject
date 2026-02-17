@@ -130,7 +130,7 @@ export default function CartScreen({ navigation }) {
         <View style={styles.quantityContainer}>
           <TouchableOpacity
             style={[styles.quantityButton, { backgroundColor: colors.border }]}
-            onPress={() => handleUpdateQuantity(item.product_id, item.quantity - 1)}
+            onPress={() => handleUpdateQuantity(item.product.id, item.quantity - 1)}
             disabled={updating}
           >
             <Icon name="remove" size={20} color={colors.text} />
@@ -138,14 +138,14 @@ export default function CartScreen({ navigation }) {
           <Text style={[styles.quantityText, { color: colors.text }]}>{item.quantity}</Text>
           <TouchableOpacity
             style={[styles.quantityButton, { backgroundColor: colors.border }]}
-            onPress={() => handleUpdateQuantity(item.product_id, item.quantity + 1)}
+            onPress={() => handleUpdateQuantity(item.product.id, item.quantity + 1)}
             disabled={updating}
           >
             <Icon name="add" size={20} color={colors.text} />
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.deleteButton}
-            onPress={() => handleRemoveItem(item.product_id)}
+            onPress={() => handleRemoveItem(item.product.id)}
             disabled={updating}
           >
             <Icon name="trash-outline" size={20} color={colors.error} />
@@ -182,7 +182,7 @@ export default function CartScreen({ navigation }) {
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <FlatList
         data={cart?.items || []}
-        keyExtractor={(item) => item?.product_id?.toString() || Math.random().toString()}
+        keyExtractor={(item) => item?.product?.id?.toString() || Math.random().toString()}
         renderItem={renderItem}
         contentContainerStyle={styles.listContent}
       />
