@@ -1,13 +1,5 @@
 name: fastapi-ecommerce-prod
 services:
-  media_init:
-    build:
-      context: .
-      dockerfile: app/Dockerfile.prod.yml
-    user: "0:0"
-    command: sh -c "mkdir -p /home/fast/app/media/users /home/fast/app/media/products /home/fast/app/media/news /home/fast/app/media/chat && chown -R fast:fast /home/fast/app/media"
-    volumes:
-      - media_data:/home/fast/app/media
 
   web:
     # Берем Dockerfile из каталога app
