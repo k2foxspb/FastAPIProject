@@ -2,13 +2,14 @@ import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Video, ResizeMode } from 'expo-av';
 
-const VideoPlayer = ({ uri, isMuted = false, isLooping = false, shouldPlay = false, style }) => {
+const VideoPlayer = ({ uri, isMuted = false, isLooping = false, shouldPlay = false, style, useNativeControls = false, resizeMode = ResizeMode.COVER }) => {
   return (
     <View style={[styles.container, style]}>
       <Video
         source={{ uri }}
         style={styles.video}
-        resizeMode={ResizeMode.COVER}
+        resizeMode={resizeMode}
+        useNativeControls={useNativeControls}
         isMuted={isMuted}
         isLooping={isLooping}
         shouldPlay={shouldPlay}

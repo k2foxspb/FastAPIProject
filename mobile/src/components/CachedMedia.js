@@ -6,19 +6,29 @@ import VideoPlayer from './VideoPlayer';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
 
-const CachedMedia = ({ item, onFullScreen }) => {
+const CachedMedia = ({ item, onFullScreen, style, resizeMode = "cover", useNativeControls = false, shouldPlay = true, isMuted = true }) => {
   const { theme } = useTheme();
   const colors = themeConstants[theme];
   const [localUri, setLocalUri] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  const remoteUri = `${API_BASE_URL}${item.file_path}`;
-  const fileName = item.file_path.split('/').pop();
+  const remoteUri = (item.file_path && (item.file_path.startsWith('http') || item.file_path.startsWith('file://') || item.file_path.startsWith('content://'))) ? item.file_path : (item.file_path ? `${API_BASE_URL}${item.file_path}` : '');
+  const fileName = item.file_path ? item.file_path.split('/').pop() : 'unknown';
   const localFileUri = `${FileSystem.cacheDirectory}${fileName}`;
 
   useEffect(() => {
+    if (!item.file_path) {
+      setLoading(false);
+      return;
+    }
     const loadMedia = async () => {
       try {
+        if (item.file_path && (item.file_path.startsWith('file://') || item.file_path.startsWith('content://'))) {
+          setLocalUri(item.file_path);
+          setLoading(false);
+          return;
+        }
+
         const fileInfo = await FileSystem.getInfoAsync(localFileUri);
         if (fileInfo.exists) {
           setLocalUri(fileInfo.uri);
@@ -41,20 +51,36 @@ const CachedMedia = ({ item, onFullScreen }) => {
 
   if (loading) {
     return (
-      <View style={[styles.loaderContainer, { backgroundColor: colors.surface }]}>
+      <View style={[styles.loaderContainer, style || { backgroundColor: colors.surface }]}>
         <ActivityIndicator size="small" color={colors.primary} />
       </View>
     );
   }
 
-  const isVideo = item.message_type === 'video';
+  const isVideo = item.message_type === 'video' || item.type === 'video';
 
   return (
-    <TouchableOpacity onPress={() => onFullScreen(localUri, item.message_type)}>
+    <TouchableOpacity 
+      disabled={!onFullScreen} 
+      onPress={() => onFullScreen && onFullScreen(localUri, item.message_type || item.type)}
+      style={style}
+    >
       {isVideo ? (
-        <VideoPlayer uri={localUri} isMuted={true} isLooping={true} shouldPlay={true} />
+        <VideoPlayer 
+          uri={localUri} 
+          isMuted={isMuted} 
+          isLooping={!useNativeControls} 
+          shouldPlay={shouldPlay} 
+          style={style || styles.thumbnail}
+          useNativeControls={useNativeControls}
+          resizeMode={resizeMode}
+        />
       ) : (
-        <Image source={{ uri: localUri }} style={styles.thumbnail} />
+        <Image 
+          source={{ uri: localUri }} 
+          style={style || styles.thumbnail} 
+          resizeMode={resizeMode}
+        />
       )}
     </TouchableOpacity>
   );

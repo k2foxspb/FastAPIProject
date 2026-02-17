@@ -42,7 +42,9 @@ async def _get_cart_item(
 ) -> CartItemModel | None:
     result = await db.scalars(
         select(CartItemModel)
-        .options(selectinload(CartItemModel.product))
+        .options(
+            selectinload(CartItemModel.product).selectinload(ProductModel.images)
+        )
         .where(
             CartItemModel.user_id == user_id,
             CartItemModel.product_id == product_id,
@@ -58,7 +60,9 @@ async def get_cart(
 ):
     result = await db.scalars(
         select(CartItemModel)
-        .options(selectinload(CartItemModel.product))
+        .options(
+            selectinload(CartItemModel.product).selectinload(ProductModel.images)
+        )
         .where(CartItemModel.user_id == current_user.id)
         .order_by(CartItemModel.id)
     )

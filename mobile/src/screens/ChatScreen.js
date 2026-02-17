@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, FlatList, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, Image, Modal, Pressable, Alert, StatusBar } from 'react-native';
+import { View, Text, FlatList, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, Image, Modal, Pressable, Alert, StatusBar, Dimensions } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import { chatApi, usersApi } from '../api';
@@ -28,7 +28,8 @@ export default function ChatScreen({ route, navigation }) {
   const [uploadingProgress, setUploadingProgress] = useState(null);
   const [uploadingData, setUploadingData] = useState({ loaded: 0, total: 0, uri: null, mimeType: null });
   const [activeUploadId, setActiveUploadId] = useState(null);
-  const [fullScreenMedia, setFullScreenMedia] = useState(null);
+  const [fullScreenMedia, setFullScreenMedia] = useState(null); // { index, list }
+  const [allMedia, setAllMedia] = useState([]);
   const [loadingMore, setLoadingMore] = useState(false);
   // Групповая отправка медиа
   const [batchMode, setBatchMode] = useState(false);
@@ -50,6 +51,8 @@ export default function ChatScreen({ route, navigation }) {
   const ws = useRef(null);
   const videoPlayerRef = useRef(null);
   const { fetchDialogs, currentUserId, setActiveChatId } = useNotifications();
+  const screenWidth = Dimensions.get('window').width;
+  const [currentMediaIndex, setCurrentMediaIndex] = useState(0);
 
   // Звук для нового сообщения в чате
   const playMessageSound = async () => {
@@ -82,6 +85,7 @@ export default function ChatScreen({ route, navigation }) {
       // Загрузка начальной истории
       try {
         const res = await chatApi.getHistory(userId, accessToken, LIMIT, 0);
+        console.log(`[ChatScreen] Loaded initial history: ${res.data.length} messages`);
         setMessages(res.data);
         setSkip(res.data.length);
         if (res.data.length < LIMIT) {
@@ -121,41 +125,52 @@ export default function ChatScreen({ route, navigation }) {
       });
 
       ws.current.onmessage = (e) => {
-        const message = JSON.parse(e.data);
-        if (message.type === 'message_deleted') {
-          setMessages(prev => prev.filter(m => m.id !== message.message_id));
-          return;
-        }
-
-        if (message.type === 'messages_read') {
-          // Обновляем статус прочтения у наших сообщений
-          setMessages(prev => prev.map(m => 
-            (m.sender_id === currentUserId || m.sender_id === currentUserIdLocal) ? { ...m, is_read: true } : m
-          ));
-          return;
-        }
-        
-        if (message.sender_id === userId || (message.sender_id !== userId && message.receiver_id === userId)) {
-          // Если мы в этом чате, то сообщение от собеседника или наше подтверждение
-          setMessages(prev => {
-            if (prev.find(m => m.id === message.id)) return prev;
-            return [message, ...prev];
-          });
-          setSkip(prev => prev + 1);
+        try {
+          const message = JSON.parse(e.data);
+          // Check if message is defined
+          if (!message) return;
           
-          // Если сообщение от собеседника, помечаем как прочитанное и играем звук
-          if (message.sender_id === userId) {
-            playMessageSound();
-            // Отправляем через WS что прочитали для мгновенного обновления у отправителя
-            if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-              ws.current.send(JSON.stringify({
-                type: 'mark_read',
-                other_id: userId
-              }));
-            }
-            // Также вызываем API для обновления в БД и счетчиков
-            chatApi.markAsRead(userId, accessToken).then(() => fetchDialogs());
+          console.log('[Chat WS] Received message:', message.id, message.message_type);
+          
+          if (message.type === 'message_deleted') {
+            setMessages(prev => prev.filter(m => m.id !== message.message_id));
+            return;
           }
+
+          if (message.type === 'messages_read') {
+            // Обновляем статус прочтения у наших сообщений
+            setMessages(prev => prev.map(m => 
+              (m.sender_id === currentUserId || m.sender_id === currentUserIdLocal) ? { ...m, is_read: true } : m
+            ));
+            return;
+          }
+          
+          if (message.sender_id === userId || (message.sender_id !== userId && message.receiver_id === userId)) {
+            // Если мы в этом чате, то сообщение от собеседника или наше подтверждение
+            setMessages(prev => {
+              if (prev.find(m => m.id === message.id)) return prev;
+              const newMessages = [message, ...prev];
+              console.log('[Chat WS] Updating messages state. New count:', newMessages.length);
+              return newMessages;
+            });
+            setSkip(prev => prev + 1);
+            
+            // Если сообщение от собеседника, помечаем как прочитанное и играем звук
+            if (message.sender_id === userId) {
+              playMessageSound();
+              // Отправляем через WS что прочитали для мгновенного обновления у отправителя
+              if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+                ws.current.send(JSON.stringify({
+                  type: 'mark_read',
+                  other_id: userId
+                }));
+              }
+              // Также вызываем API для обновления в БД и счетчиков
+              chatApi.markAsRead(userId, accessToken).then(() => fetchDialogs());
+            }
+          }
+        } catch (err) {
+          console.error('[Chat WS] Error processing message:', err);
         }
       };
     };
@@ -173,8 +188,12 @@ export default function ChatScreen({ route, navigation }) {
     setLoadingMore(true);
     try {
       const res = await chatApi.getHistory(userId, token, LIMIT, skip);
+      console.log(`[ChatScreen] Loaded ${res.data.length} more messages. Skip was ${skip}`);
       if (res.data.length > 0) {
-        setMessages(prev => [...prev, ...res.data]);
+        setMessages(prev => {
+           const newMsgs = res.data.filter(m => !prev.find(pm => pm.id === m.id));
+           return [...prev, ...newMsgs];
+        });
         setSkip(prev => prev + res.data.length);
       }
       if (res.data.length < LIMIT) {
@@ -184,6 +203,62 @@ export default function ChatScreen({ route, navigation }) {
       console.error('Failed to load more messages', error);
     } finally {
       setLoadingMore(false);
+    }
+  };
+
+  useEffect(() => {
+    // Собираем все медиафайлы из сообщений для полноэкранного просмотра
+    const media = [];
+    // messages отсортированы от новых к старым (inverted),
+    // для свайпа в плеере удобнее обратный порядок или учитывать это.
+    // Если мы хотим чтобы свайп вправо вел к более старым, оставляем так.
+    // Обычно в галереях свайп вправо - старее, влево - новее.
+    // Но для FlatList horizontal pagingEnabled: 
+    // index 0 - первый элемент, index 1 - второй (справа).
+    
+    // Пройдемся по сообщениям в правильном порядке (от новых к старым, как они в списке)
+    messages.forEach(msg => {
+      if (msg.message_type === 'media_group' && msg.attachments) {
+        msg.attachments.forEach(att => {
+          if (att.file_path) {
+            media.push({
+              uri: att.file_path.startsWith('http') ? att.file_path : `${API_BASE_URL}${att.file_path}`,
+              file_path: att.file_path,
+              type: att.type,
+              messageId: msg.id
+            });
+          }
+        });
+      } else if ((msg.message_type === 'image' || msg.message_type === 'video') && msg.file_path) {
+        media.push({
+          uri: msg.file_path.startsWith('http') ? msg.file_path : `${API_BASE_URL}${msg.file_path}`,
+          file_path: msg.file_path,
+          type: msg.message_type,
+          messageId: msg.id
+        });
+      }
+    });
+    setAllMedia(media);
+  }, [messages]);
+
+  const openFullScreen = (uri) => {
+    // Для видео/фото из кэша uri может быть локальным путем (file://...)
+    // Нам нужно сопоставить его с элементом в allMedia
+    const index = allMedia.findIndex(m => {
+      if (m.uri === uri) return true;
+      // Проверяем по имени файла, если uri локальный
+      const fileName = uri.split('/').pop();
+      const mFileName = m.uri.split('/').pop();
+      return fileName === mFileName;
+    });
+    
+    if (index !== -1) {
+      setCurrentMediaIndex(index);
+      setFullScreenMedia({ index, list: allMedia });
+    } else {
+      // Fallback если вдруг не нашли в общем списке
+      setCurrentMediaIndex(0);
+      setFullScreenMedia({ index: 0, list: [{ uri, type: 'image' }] });
     }
   };
 
@@ -404,7 +479,7 @@ export default function ChatScreen({ route, navigation }) {
 
   const getAvatarUrl = (url) => {
     if (!url) return 'https://via.placeholder.com/150';
-    if (url.startsWith('http')) return url;
+    if (url.startsWith('http') || url.startsWith('file://') || url.startsWith('content://')) return url;
     return `${API_BASE_URL}${url}`;
   };
 
@@ -528,7 +603,7 @@ export default function ChatScreen({ route, navigation }) {
         toggleSelection(item.id);
         return;
       }
-      setFullScreenMedia({ uri, type });
+      openFullScreen(uri);
     };
 
     const toggleSelection = (id) => {
@@ -622,54 +697,54 @@ export default function ChatScreen({ route, navigation }) {
           )}
           {/* Медиа-группа */}
           {item.attachments && item.attachments.length > 0 ? (
-            <View style={{ width: 260, height: 210 }}>
-              <FlatList
-                data={item.attachments}
-                keyExtractor={(_, idx) => `${item.id}_att_${idx}`}
-                horizontal
-                pagingEnabled
-                showsHorizontalScrollIndicator={false}
-                onMomentumScrollEnd={(e) => {
-                  const offset = e.nativeEvent.contentOffset.x;
-                  const index = Math.round(offset / 260);
-                  // Можно добавить локальный state для индекса, но для простоты оставим так
-                }}
-                renderItem={({ item: att }) => (
-                  <Pressable onPress={() => handleFullScreen(att.file_path.startsWith('http') ? att.file_path : `${API_BASE_URL}${att.file_path}`, att.type)}>
-                    {att.type === 'image' ? (
-                      <Image source={{ uri: att.file_path.startsWith('http') ? att.file_path : `${API_BASE_URL}${att.file_path}` }} style={{ width: 260, height: 200, borderRadius: 12 }} resizeMode="cover" />
-                    ) : att.type === 'video' ? (
-                      <Video
-                        source={{ uri: att.file_path.startsWith('http') ? att.file_path : `${API_BASE_URL}${att.file_path}` }}
-                        style={{ width: 260, height: 200, borderRadius: 12 }}
-                        resizeMode={ResizeMode.COVER}
-                        isMuted
-                        shouldPlay={false}
+            <View style={styles.mediaGridContainer}>
+              <View style={styles.mediaGrid}>
+                {item.attachments.map((att, idx) => {
+                  if (!att.file_path) return null;
+                  const attUri = att.file_path.startsWith('http') ? att.file_path : `${API_BASE_URL}${att.file_path}`;
+                  
+                  // Расчет размеров для сетки
+                  const count = item.attachments.length;
+                  let itemWidth = '100%';
+                  let itemHeight = 200;
+                  
+                  if (count === 2) {
+                    itemWidth = '49%';
+                    itemHeight = 150;
+                  } else if (count === 3) {
+                    if (idx === 0) {
+                      itemWidth = '100%';
+                      itemHeight = 150;
+                    } else {
+                      itemWidth = '49%';
+                      itemHeight = 100;
+                    }
+                  } else if (count >= 4) {
+                    itemWidth = '49%';
+                    itemHeight = 100;
+                  }
+
+                  return (
+                    <Pressable 
+                      key={`${item.id}_att_${idx}`}
+                      onPress={() => handleFullScreen(attUri, att.type)}
+                      style={{ 
+                        width: itemWidth, 
+                        height: itemHeight, 
+                        borderRadius: 8, 
+                        marginBottom: 4,
+                        overflow: 'hidden'
+                      }}
+                    >
+                      <CachedMedia 
+                        item={{ ...att, message_type: att.type }} 
+                        style={{ width: '100%', height: '100%' }}
+                        onFullScreen={() => handleFullScreen(attUri, att.type)}
                       />
-                    ) : (
-                      <View style={{ width: 260, height: 200, borderRadius: 12, justifyContent: 'center', alignItems: 'center', backgroundColor: '#0002' }}>
-                        <MaterialIcons name="insert-drive-file" size={36} color={isReceived ? colors.text : '#fff'} />
-                        <Text style={{ marginTop: 8, color: isReceived ? colors.text : '#fff' }}>Файл</Text>
-                      </View>
-                    )}
-                  </Pressable>
-                )}
-              />
-              {item.attachments.length > 1 && (
-                <View style={{ 
-                  flexDirection: 'row', 
-                  justifyContent: 'center', 
-                  alignItems: 'center',
-                  marginTop: 4
-                }}>
-                  <Text style={{ 
-                    fontSize: 10, 
-                    color: isReceived ? colors.textSecondary : 'rgba(255,255,255,0.7)' 
-                  }}>
-                    {item.attachments.length} вложений • Свайп для просмотра
-                  </Text>
-                </View>
-              )}
+                    </Pressable>
+                  );
+                })}
+              </View>
             </View>
           ) : (
             (isImage || isVideo) && (
@@ -833,34 +908,43 @@ export default function ChatScreen({ route, navigation }) {
         onRequestClose={() => setFullScreenMedia(null)}
       >
         <View style={styles.fullScreenContainer}>
+          <StatusBar hidden />
           <TouchableOpacity 
             style={styles.closeButton} 
             onPress={() => setFullScreenMedia(null)}
           >
             <MaterialIcons name="close" size={30} color="white" />
           </TouchableOpacity>
-          {fullScreenMedia?.type === 'video' ? (
-            <Video
-              ref={videoPlayerRef}
-              source={{ uri: fullScreenMedia.uri }}
-              style={styles.fullScreenVideo}
-              useNativeControls
-              resizeMode={ResizeMode.CONTAIN}
-              shouldPlay
-              onPlaybackStatusUpdate={(status) => {
-                if (status.didJustFinish) {
-                  // Автоматическая перемотка в начало по окончании
-                  videoPlayerRef.current?.setPositionAsync(0);
-                }
-              }}
-            />
-          ) : (
-            <Image 
-              source={{ uri: fullScreenMedia?.uri }} 
-              style={styles.fullScreenImage} 
-              resizeMode="contain" 
-            />
-          )}
+          
+          <FlatList
+            data={fullScreenMedia?.list || []}
+            horizontal
+            pagingEnabled
+            initialScrollIndex={fullScreenMedia?.index || 0}
+            getItemLayout={(_, index) => ({
+              length: screenWidth,
+              offset: screenWidth * index,
+              index,
+            })}
+            onMomentumScrollEnd={(e) => {
+              const index = Math.round(e.nativeEvent.contentOffset.x / screenWidth);
+              setCurrentMediaIndex(index);
+            }}
+            keyExtractor={(_, i) => `fs_media_${i}`}
+            showsHorizontalScrollIndicator={false}
+            renderItem={({ item: mediaItem, index }) => (
+              <View style={{ width: screenWidth, height: '100%', justifyContent: 'center', alignItems: 'center' }}>
+                <CachedMedia 
+                  item={mediaItem}
+                  style={styles.fullScreenVideo}
+                  resizeMode={ResizeMode.CONTAIN}
+                  useNativeControls={true}
+                  shouldPlay={currentMediaIndex === index}
+                  isMuted={false}
+                />
+              </View>
+            )}
+          />
         </View>
       </Modal>
 
@@ -985,6 +1069,15 @@ const styles = StyleSheet.create({
     width: 38,
     justifyContent: 'flex-end',
   },
+  mediaGridContainer: {
+    width: 260,
+    marginTop: 2,
+  },
+  mediaGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+  },
   messageBubble: { padding: 12, borderRadius: 18, maxWidth: '80%' },
   sent: { alignSelf: 'flex-end', borderBottomRightRadius: 4 },
   received: { alignSelf: 'flex-start', borderBottomLeftRadius: 4 },
@@ -1050,8 +1143,8 @@ const styles = StyleSheet.create({
     height: '100%', 
   },
   fileLinkText: { color: '#fff', textDecorationLine: 'underline', marginBottom: 5 },
-  fullScreenContainer: { flex: 1, backgroundColor: 'black', justifyContent: 'center', alignItems: 'center' },
+  fullScreenContainer: { flex: 1, backgroundColor: 'black' },
   fullScreenImage: { width: '100%', height: '100%' },
   fullScreenVideo: { width: '100%', height: '100%' },
-  closeButton: { position: 'absolute', top: 40, right: 20, zIndex: 1 },
+  closeButton: { position: 'absolute', top: 40, right: 20, zIndex: 10 },
 });
