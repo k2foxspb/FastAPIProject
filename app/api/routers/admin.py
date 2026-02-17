@@ -4,6 +4,7 @@ import shutil
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete, desc
 from sqlalchemy.orm import selectinload
+from app.utils import storage
 
 from app.models.users import User as UserModel, AdminPermission as AdminPermissionModel, PhotoAlbum as PhotoAlbumModel, AppVersion as AppVersionModel
 from app.models.categories import Category as CategoryModel
@@ -122,27 +123,24 @@ async def upload_app_version(
     db: AsyncSession = Depends(get_async_db)
 ):
     """Загружает новую версию мобильного приложения (только владелец)."""
-    # Определяем путь для сохранения файла
-    project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    app_dir = os.path.join(project_root, "media", "app")
-    os.makedirs(app_dir, exist_ok=True)
-
-    file_extension = os.path.splitext(file.filename)[1]
-    # Сохраняем файл с версией в названии для уникальности
+    # Имя файла по версии
+    file_extension = os.path.splitext(file.filename or "")[1] or ".apk"
     safe_version = version.replace(".", "_")
     filename = f"app_v{safe_version}{file_extension}"
-    file_path = os.path.join(app_dir, filename)
 
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+    # Сохраняем через абстракцию хранилища (S3 или локально)
+    url, _ = storage.save_file(
+        category="app",
+        filename_hint=filename,
+        fileobj=file.file,  # UploadFile.file — уже файловый объект
+        content_type=file.content_type or "application/octet-stream",
+        private=False,
+    )
 
-    # Относительный путь для доступа через /media
-    relative_path = f"/media/app/{filename}"
-
-    # Создаем запись в БД
+    # Создаем запись в БД, в file_path теперь кладем абсолютный URL для S3 или относительный /media для локального
     db_version = AppVersionModel(
         version=version,
-        file_path=relative_path
+        file_path=url
     )
     db.add(db_version)
     await db.commit()

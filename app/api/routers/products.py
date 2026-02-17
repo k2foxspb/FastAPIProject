@@ -2,6 +2,7 @@ import uuid
 import io
 from pathlib import Path
 from PIL import Image
+from app.utils import storage
 
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from sqlalchemy import select, update, and_, func, desc
@@ -33,7 +34,7 @@ MAX_IMAGE_SIZE = 2 * 1024 * 1024  # 2 097 152 байт
 
 async def save_product_image(file: UploadFile) -> tuple[str, str]:
     """
-    Сохраняет изображение товара, генерирует миниатюру и возвращает их относительные URL.
+    Сохраняет изображение товара (через абстракцию хранилища), генерирует миниатюру и возвращает URL.
     """
     if file.content_type not in ALLOWED_IMAGE_TYPES:
         raise HTTPException(HTTP_400_BAD_REQUEST, "Only JPG, PNG or WebP images are allowed")
@@ -44,27 +45,36 @@ async def save_product_image(file: UploadFile) -> tuple[str, str]:
 
     extension = Path(file.filename or "").suffix.lower() or ".jpg"
     base_name = str(uuid.uuid4())
-    
-    # Сохранение оригинала
-    file_name = f"{base_name}{extension}"
-    file_path = MEDIA_ROOT / file_name
-    file_path.write_bytes(content)
-    
-    # Генерация миниатюры
-    thumb_name = f"{base_name}_thumb{extension}"
-    thumb_path = MEDIA_ROOT / thumb_name
-    
+
+    # Save original via storage
+    original_url, _ = storage.save_file(
+        category="products",
+        filename_hint=f"{base_name}{extension}",
+        fileobj=io.BytesIO(content),
+        content_type=file.content_type or "image/jpeg",
+        private=False,
+    )
+
+    # Generate thumbnail
+    thumb_url = original_url
     try:
         with Image.open(io.BytesIO(content)) as img:
-            # Создаем миниатюру 200x200 (сохраняя пропорции)
             img.thumbnail((200, 200))
-            img.save(thumb_path)
-    except Exception as e:
-        # Если не удалось создать миниатюру, используем оригинал как миниатюру
-        # Или можно логировать ошибку
-        thumb_name = file_name
+            thumb_buffer = io.BytesIO()
+            fmt = "JPEG" if extension in [".jpg", ".jpeg"] else None
+            img.save(thumb_buffer, format=fmt)
+            thumb_buffer.seek(0)
+            thumb_url, _ = storage.save_file(
+                category="products",
+                filename_hint=f"{base_name}_thumb{extension}",
+                fileobj=thumb_buffer,
+                content_type=file.content_type or "image/jpeg",
+                private=False,
+            )
+    except Exception:
+        thumb_url = original_url
 
-    return f"/media/products/{file_name}", f"/media/products/{thumb_name}"
+    return original_url, thumb_url
 
 
 def remove_product_image(url: str | None, thumb_url: str | None = None) -> None:

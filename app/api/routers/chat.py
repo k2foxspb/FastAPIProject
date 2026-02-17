@@ -21,6 +21,7 @@ from app.schemas.chat import (
 )
 from app.api.routers.notifications import manager as notifications_manager
 from app.core.fcm import send_fcm_notification
+from app.utils import storage
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -505,45 +506,51 @@ async def bulk_delete_messages(
 @router.post("/upload")
 async def upload_chat_file(
     file: UploadFile = File(...),
-    # db: AsyncSession = Depends(get_async_db) # Пока не используем, но может пригодиться для проверок
 ):
     # В реальном приложении здесь должна быть проверка токена
-    file_extension = os.path.splitext(file.filename)[1]
-    unique_filename = f"{uuid.uuid4()}{file_extension}"
-    
-    # Используем абсолютный путь относительно корня приложения
-    root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    chat_media_dir = os.path.join(root_dir, "media", "chat")
-    os.makedirs(chat_media_dir, exist_ok=True)
-    file_path = os.path.join(chat_media_dir, unique_filename)
-    
-    with open(file_path, "wb") as buffer:
-        content = await file.read()
-        buffer.write(content)
-    
+    file_extension = os.path.splitext(file.filename or "")[1]
+    content = await file.read()
+
     # Определяем тип сообщения на основе расширения
     message_type = "file"
     file_extension_lower = file_extension.lower()
     if file_extension_lower in [".jpg", ".jpeg", ".png", ".gif", ".webp"]:
         message_type = "image"
-        # Генерируем миниатюру для изображений в чате
-        thumb_filename = f"{os.path.splitext(unique_filename)[0]}_thumb{file_extension}"
-        thumb_path = os.path.join(chat_media_dir, thumb_filename)
-        try:
-            with Image.open(io.BytesIO(content)) as img:
-                img.thumbnail((200, 200))
-                img.save(thumb_path)
-        except Exception:
-            pass
     elif file_extension_lower in [".mp4", ".webm", ".ogg"]:
         message_type = "video"
     elif file_extension_lower in [".m4a", ".mp3", ".wav", ".aac", ".amr", ".3gp"]:
         message_type = "voice"
-    elif file_extension_lower in [".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".txt", ".zip", ".rar"]:
-        message_type = "file"
-        
-    relative_path = f"/media/chat/{unique_filename}"
-    return {"file_path": relative_path, "message_type": message_type}
+
+    # Сохраняем оригинал через абстракцию хранилища
+    base_name = str(uuid.uuid4())
+    original_url, _ = storage.save_file(
+        category="chat",
+        filename_hint=f"{base_name}{file_extension or ''}",
+        fileobj=io.BytesIO(content),
+        content_type=file.content_type or "application/octet-stream",
+        private=False,
+    )
+
+    # Если это изображение — создаем миниатюру (необязательно возвращать)
+    if message_type == "image":
+        try:
+            with Image.open(io.BytesIO(content)) as img:
+                img.thumbnail((200, 200))
+                thumb_buffer = io.BytesIO()
+                fmt = "JPEG" if file_extension_lower in [".jpg", ".jpeg"] else None
+                img.save(thumb_buffer, format=fmt)
+                thumb_buffer.seek(0)
+                _thumb_url, _ = storage.save_file(
+                    category="chat",
+                    filename_hint=f"{base_name}_thumb{file_extension or ''}",
+                    fileobj=thumb_buffer,
+                    content_type=file.content_type or "image/jpeg",
+                    private=False,
+                )
+        except Exception:
+            pass
+
+    return {"file_path": original_url, "message_type": message_type}
 
 @router.post("/upload/init", response_model=UploadSessionResponse)
 async def init_upload(
@@ -692,16 +699,22 @@ async def upload_chunk(
     if session.offset >= session.file_size:
         session.is_completed = True
         session.offset = session.file_size
-        # Перемещаем в постоянное хранилище
-        final_dir = os.path.join(root_dir, "media", "chat")
-        os.makedirs(final_dir, exist_ok=True)
-        
+        # Загружаем собранный файл в постоянное хранилище (S3/локально)
         file_extension = os.path.splitext(session.filename)[1]
-        unique_filename = f"{uuid.uuid4()}{file_extension}"
-        final_path = os.path.join(final_dir, unique_filename)
-        
-        os.rename(file_path, final_path)
-        
+        unique_name = f"{uuid.uuid4()}{file_extension}"
+        with open(file_path, "rb") as f_in:
+            url, _ = storage.save_file(
+                category="chat",
+                filename_hint=unique_name,
+                fileobj=f_in,
+                content_type=session.mime_type or "application/octet-stream",
+                private=False,
+            )
+        try:
+            os.remove(file_path)
+        except Exception:
+            pass
+
         # Определяем тип (по аналогии с обычным upload)
         message_type = "file"
         if file_extension.lower() in [".jpg", ".jpeg", ".png", ".gif", ".webp"]:
@@ -714,7 +727,7 @@ async def upload_chunk(
         await db.commit()
         return {
             "status": "completed",
-            "file_path": f"/media/chat/{unique_filename}",
+            "file_path": url,
             "message_type": message_type
         }
     

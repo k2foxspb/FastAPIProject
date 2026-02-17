@@ -27,6 +27,15 @@ services:
       - MAIL_FROM_NAME=${MAIL_FROM_NAME}
       - DOMAIN=${DOMAIN}
       - MEDIA_ROOT=/home/fast/app/media
+      # S3 media storage
+      - MEDIA_STORAGE=${MEDIA_STORAGE:-s3}
+      - YC_S3_ENDPOINT=${YC_S3_ENDPOINT}
+      - YC_S3_REGION=${YC_S3_REGION}
+      - YC_S3_BUCKET=${YC_S3_BUCKET}
+      - YC_S3_ACCESS_KEY_ID=${YC_S3_ACCESS_KEY_ID}
+      - YC_S3_SECRET_ACCESS_KEY=${YC_S3_SECRET_ACCESS_KEY}
+      - YC_S3_DEFAULT_ACL=${YC_S3_DEFAULT_ACL:-public-read}
+      - YC_S3_PUBLIC_BASE_URL=${YC_S3_PUBLIC_BASE_URL}
     depends_on:
 
       - db
@@ -60,6 +69,15 @@ services:
       - MAIL_FROM_NAME=${MAIL_FROM_NAME}
       - DOMAIN=${DOMAIN}
       - MEDIA_ROOT=/home/fast/app/media
+      # S3 media storage
+      - MEDIA_STORAGE=${MEDIA_STORAGE:-s3}
+      - YC_S3_ENDPOINT=${YC_S3_ENDPOINT}
+      - YC_S3_REGION=${YC_S3_REGION}
+      - YC_S3_BUCKET=${YC_S3_BUCKET}
+      - YC_S3_ACCESS_KEY_ID=${YC_S3_ACCESS_KEY_ID}
+      - YC_S3_SECRET_ACCESS_KEY=${YC_S3_SECRET_ACCESS_KEY}
+      - YC_S3_DEFAULT_ACL=${YC_S3_DEFAULT_ACL:-public-read}
+      - YC_S3_PUBLIC_BASE_URL=${YC_S3_PUBLIC_BASE_URL}
     depends_on:
       - db
       - redis

@@ -7,6 +7,7 @@ import uuid
 import io
 from pathlib import Path
 from PIL import Image
+from app.utils import storage
 
 from app.api.dependencies import get_async_db
 from app.core.auth import get_current_user, get_current_admin
@@ -41,18 +42,35 @@ async def save_news_image(file: UploadFile) -> tuple[str, str]:
         raise HTTPException(400, "Image is too large")
     extension = Path(file.filename or "").suffix.lower() or ".jpg"
     base_name = str(uuid.uuid4())
-    file_name = f"{base_name}{extension}"
-    file_path = MEDIA_ROOT / file_name
-    file_path.write_bytes(content)
-    thumb_name = f"{base_name}_thumb{extension}"
-    thumb_path = MEDIA_ROOT / thumb_name
+
+    # Save original via storage abstraction
+    original_url, _ = storage.save_file(
+        category="news",
+        filename_hint=f"{base_name}{extension}",
+        fileobj=io.BytesIO(content),
+        content_type=file.content_type or "image/jpeg",
+        private=False,
+    )
+
+    # Try to produce thumbnail
+    thumb_url = original_url
     try:
         with Image.open(io.BytesIO(content)) as img:
             img.thumbnail((400, 400))
-            img.save(thumb_path)
+            thumb_buffer = io.BytesIO()
+            fmt = "JPEG" if extension in [".jpg", ".jpeg"] else None
+            img.save(thumb_buffer, format=fmt)
+            thumb_buffer.seek(0)
+            thumb_url, _ = storage.save_file(
+                category="news",
+                filename_hint=f"{base_name}_thumb{extension}",
+                fileobj=thumb_buffer,
+                content_type=file.content_type or "image/jpeg",
+                private=False,
+            )
     except Exception:
-        thumb_name = file_name
-    return f"/media/news/{file_name}", f"/media/news/{thumb_name}"
+        thumb_url = original_url
+    return original_url, thumb_url
 
 @router.get("", response_model=list[NewsSchema])
 async def get_news(db: AsyncSession = Depends(get_async_db)):

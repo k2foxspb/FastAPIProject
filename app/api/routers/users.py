@@ -38,6 +38,7 @@ import io
 from PIL import Image
 from fastapi import UploadFile, File, Form
 from datetime import datetime
+from app.utils import storage
 
 from sqlalchemy.orm import selectinload
 
@@ -650,40 +651,50 @@ async def update_fcm_token(
     return {"status": "ok"}
 
 
-# Настройка путей для медиа
-# Предпочитаем явный MEDIA_ROOT из окружения, иначе считаем от корня приложения (папка app)
+# Локальные пути остаются для режима local, но основная логика сохранения вынесена в app.utils.storage
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 MEDIA_ROOT = os.getenv("MEDIA_ROOT", os.path.join(BASE_DIR, "media"))
 USER_MEDIA_ROOT = os.path.join(MEDIA_ROOT, "users")
 os.makedirs(USER_MEDIA_ROOT, exist_ok=True)
 
 async def save_user_photo(file: UploadFile) -> tuple[str, str]:
-    file_extension = os.path.splitext(file.filename)[1]
-    unique_filename = f"{uuid.uuid4()}{file_extension}"
-    file_path = os.path.join(USER_MEDIA_ROOT, unique_filename)
-    
+    file_extension = os.path.splitext(file.filename or "")[1] or ".jpg"
+    original_name = f"{uuid.uuid4()}{file_extension}"
     content = await file.read()
-    with open(file_path, "wb") as buffer:
-        buffer.write(content)
-    
-    # Миниатюра
-    thumb_filename = f"{os.path.splitext(unique_filename)[0]}_thumb{file_extension}"
-    thumb_path = os.path.join(USER_MEDIA_ROOT, thumb_filename)
+
+    # Сохраняем оригинал через абстракцию хранилища
+    original_url, _ = storage.save_file(
+        category="users",
+        filename_hint=original_name,
+        fileobj=io.BytesIO(content),
+        content_type=file.content_type or "image/jpeg",
+        private=False,
+    )
+
+    # Пытаемся создать миниатюру
+    thumb_name = f"{os.path.splitext(original_name)[0]}_thumb{file_extension}"
+    thumb_url = original_url
     try:
         with Image.open(io.BytesIO(content)) as img:
             img.thumbnail((400, 400))
-            # Безопасное сохранение миниатюры; для JPEG конвертируем в RGB во избежание ошибок кодека
-            fmt_ext = file_extension.lower()
-            if fmt_ext in [".jpg", ".jpeg"] and img.mode in ("RGBA", "P"):
+            if file_extension.lower() in [".jpg", ".jpeg"] and img.mode in ("RGBA", "P"):
                 img = img.convert("RGB")
-            img.save(thumb_path)
+            thumb_buffer = io.BytesIO()
+            # Определяем формат по расширению
+            fmt = "JPEG" if file_extension.lower() in [".jpg", ".jpeg"] else None
+            img.save(thumb_buffer, format=fmt)
+            thumb_buffer.seek(0)
+            thumb_url, _ = storage.save_file(
+                category="users",
+                filename_hint=thumb_name,
+                fileobj=thumb_buffer,
+                content_type=file.content_type or "image/jpeg",
+                private=False,
+            )
     except Exception:
-        thumb_filename = unique_filename
-    # Если по какой-то причине файл миниатюры не появился, используем оригинал
-    if not os.path.exists(os.path.join(USER_MEDIA_ROOT, thumb_filename)):
-        thumb_filename = unique_filename
-        
-    return f"/media/users/{unique_filename}", f"/media/users/{thumb_filename}"
+        thumb_url = original_url
+
+    return original_url, thumb_url
 
 
 @router.post("/photos/upload", response_model=UserPhotoSchema, status_code=status.HTTP_201_CREATED)
