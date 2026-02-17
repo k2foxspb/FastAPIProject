@@ -60,6 +60,16 @@ export const usersApi = {
       maxBodyLength: Infinity,
     });
   },
+  bulkUploadPhotos: (formData) => {
+    return api.post('/users/photos/bulk-upload', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+      timeout: 120000, 
+      maxContentLength: Infinity,
+      maxBodyLength: Infinity,
+    });
+  },
   updatePhoto: (id, data) => api.patch(`/users/photos/${id}`, data),
   deletePhoto: (id) => api.delete(`/users/photos/${id}`),
   bulkDeletePhotos: (photoIds) => api.post('/users/photos/bulk-delete', { photo_ids: photoIds }),

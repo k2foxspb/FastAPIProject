@@ -10,7 +10,7 @@ export default function UploadPhotoScreen({ route, navigation }) {
   const { theme } = useTheme();
   const colors = themeConstants[theme];
   const { albumId } = route.params || {};
-  const [image, setImage] = useState(null);
+  const [images, setImages] = useState([]); // Изменено: теперь массив
   const [description, setDescription] = useState('');
   const [isPrivate, setIsPrivate] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -25,12 +25,12 @@ export default function UploadPhotoScreen({ route, navigation }) {
 
       let result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
-        allowsEditing: true,
+        allowsMultipleSelection: true, // Разрешаем выбор нескольких фото
         quality: 0.8,
       });
 
       if (!result.canceled) {
-        setImage(result.assets[0]);
+        setImages(result.assets); // Сохраняем все выбранные ассеты
       }
     } catch (e) {
       console.log(e);
@@ -39,7 +39,7 @@ export default function UploadPhotoScreen({ route, navigation }) {
   };
 
   const handleUpload = async () => {
-    if (!image) {
+    if (images.length === 0) {
       Alert.alert('Ошибка', 'Выберите изображение');
       return;
     }
@@ -47,16 +47,17 @@ export default function UploadPhotoScreen({ route, navigation }) {
     setUploading(true);
     const formData = new FormData();
     
-    // Формируем объект файла для FormData
-    const uri = image.uri;
-    const name = uri.split('/').pop();
-    const match = /\.(\w+)$/.exec(name);
-    const type = match ? `image/${match[1]}` : `image`;
+    images.forEach((image, index) => {
+      const uri = image.uri;
+      const name = uri.split('/').pop() || `photo_${index}.jpg`;
+      const match = /\.(\w+)$/.exec(name);
+      const type = match ? `image/${match[1]}` : `image/jpeg`;
 
-    formData.append('file', {
-      uri: Platform.OS === 'ios' ? uri.replace('file://', '') : uri,
-      name,
-      type,
+      formData.append('files', {
+        uri: Platform.OS === 'ios' ? uri.replace('file://', '') : uri,
+        name,
+        type,
+      });
     });
     
     if (description) {
@@ -68,45 +69,82 @@ export default function UploadPhotoScreen({ route, navigation }) {
     formData.append('is_private', isPrivate.toString());
 
     try {
-      const res = await usersApi.uploadPhoto(formData);
-      Alert.alert('Успех', 'Фотография загружена');
+      if (images.length === 1) {
+        // Если выбрано одно фото, можно использовать старый метод или новый
+        // Для единообразия и тестирования нового метода используем bulkUploadPhotos
+        // Но старый метод принимает 'file' а не 'files', поэтому пересоздаем formData для одного файла
+        // Или просто всегда используем bulkUploadPhotos с 'files'
+        await usersApi.bulkUploadPhotos(formData);
+      } else {
+        await usersApi.bulkUploadPhotos(formData);
+      }
+      
+      Alert.alert('Успех', `${images.length} фото загружено`);
       navigation.goBack();
     } catch (err) {
-      Alert.alert('Ошибка', 'Не удалось загрузить фотографию. ' + (err.message || 'Попробуйте еще раз.'));
+      Alert.alert('Ошибка', 'Не удалось загрузить фотографии. ' + (err.message || 'Попробуйте еще раз.'));
     } finally {
       setUploading(false);
     }
   };
 
+  const removeImage = (index) => {
+    const newImages = [...images];
+    newImages.splice(index, 1);
+    setImages(newImages);
+  };
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <TouchableOpacity 
-        style={[styles.imagePicker, { backgroundColor: colors.surface, borderColor: colors.border }]} 
-        onPress={pickImage}
-      >
-        {image ? (
-          <Image source={{ uri: image.uri }} style={styles.preview} />
-        ) : (
-          <View style={styles.placeholder}>
-            <Icon name="camera-outline" size={50} color={colors.textSecondary} />
-            <Text style={[styles.placeholderText, { color: colors.textSecondary }]}>Выбрать фото</Text>
+      <View style={styles.imagePickerContainer}>
+        {images.length > 0 ? (
+          <View style={styles.imageListContainer}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
+              {images.map((img, index) => (
+                <View key={index} style={styles.previewWrapper}>
+                  <Image source={{ uri: img.uri }} style={styles.previewThumbnail} />
+                  <TouchableOpacity 
+                    style={[styles.removeBadge, { backgroundColor: colors.error }]} 
+                    onPress={() => removeImage(index)}
+                  >
+                    <Icon name="close" size={16} color="#fff" />
+                  </TouchableOpacity>
+                </View>
+              ))}
+              <TouchableOpacity 
+                style={[styles.addMoreBtn, { backgroundColor: colors.surface, borderColor: colors.border }]} 
+                onPress={pickImage}
+              >
+                <Icon name="add" size={30} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </ScrollView>
           </View>
+        ) : (
+          <TouchableOpacity 
+            style={[styles.imagePicker, { backgroundColor: colors.surface, borderColor: colors.border }]} 
+            onPress={pickImage}
+          >
+            <View style={styles.placeholder}>
+              <Icon name="camera-outline" size={50} color={colors.textSecondary} />
+              <Text style={[styles.placeholderText, { color: colors.textSecondary }]}>Выбрать фото</Text>
+            </View>
+          </TouchableOpacity>
         )}
-      </TouchableOpacity>
+      </View>
 
       <View style={styles.form}>
-        <Text style={[styles.label, { color: colors.text }]}>Описание:</Text>
+        <Text style={[styles.label, { color: colors.text }]}>Описание (для всех фото):</Text>
         <TextInput
           style={[styles.input, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]}
           value={description}
           onChangeText={setDescription}
-          placeholder="О чем это фото?"
+          placeholder="О чем эти фото?"
           placeholderTextColor={colors.textSecondary}
           multiline
         />
 
         <View style={[styles.switchContainer, { borderBottomColor: colors.border }]}>
-          <Text style={[styles.label, { color: colors.text, marginBottom: 0 }]}>Приватная фотография</Text>
+          <Text style={[styles.label, { color: colors.text, marginBottom: 0 }]}>Приватные фотографии</Text>
           <Switch
             value={isPrivate}
             onValueChange={setIsPrivate}
@@ -116,14 +154,16 @@ export default function UploadPhotoScreen({ route, navigation }) {
         </View>
 
         <TouchableOpacity 
-          style={[styles.uploadBtn, { backgroundColor: colors.primary }, (!image || uploading) && styles.disabledBtn]} 
+          style={[styles.uploadBtn, { backgroundColor: colors.primary }, (images.length === 0 || uploading) && styles.disabledBtn]} 
           onPress={handleUpload}
-          disabled={!image || uploading}
+          disabled={images.length === 0 || uploading}
         >
           {uploading ? (
             <ActivityIndicator color="#fff" />
           ) : (
-            <Text style={styles.uploadBtnText}>Загрузить</Text>
+            <Text style={styles.uploadBtnText}>
+              {images.length > 1 ? `Загрузить ${images.length} фото` : 'Загрузить'}
+            </Text>
           )}
         </TouchableOpacity>
       </View>
@@ -133,6 +173,51 @@ export default function UploadPhotoScreen({ route, navigation }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 20 },
+  imagePickerContainer: {
+    marginBottom: 20,
+  },
+  imageListContainer: {
+    height: 150,
+    marginBottom: 20,
+  },
+  horizontalScroll: {
+    flexDirection: 'row',
+  },
+  previewWrapper: {
+    width: 120,
+    height: 120,
+    marginRight: 10,
+    position: 'relative',
+  },
+  previewThumbnail: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 8,
+  },
+  removeBadge: {
+    position: 'absolute',
+    top: -5,
+    right: -5,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 1,
+  },
+  addMoreBtn: {
+    width: 120,
+    height: 120,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   imagePicker: {
     width: '100%',
     height: 300,

@@ -686,6 +686,58 @@ async def upload_photo(
     return db_photo
 
 
+@router.post("/photos/bulk-upload", response_model=list[UserPhotoSchema], status_code=status.HTTP_201_CREATED)
+async def bulk_upload_photos(
+    files: list[UploadFile] = File(...),
+    description: str | None = Form(None),
+    album_id: int | None = Form(None),
+    is_private: bool = Form(False),
+    current_user: UserModel = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """
+    Загружает несколько фотографий на сервер и создает записи в базе данных.
+    """
+    print(f"DEBUG: bulk_upload_photos called by {current_user.email}, count: {len(files)}")
+    
+    if album_id:
+        result = await db.execute(
+            select(PhotoAlbumModel).where(
+                PhotoAlbumModel.id == album_id,
+                PhotoAlbumModel.user_id == current_user.id
+            )
+        )
+        if not result.scalar_one_or_none():
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Album not found")
+
+    db_photos = []
+    for file in files:
+        try:
+            image_url, preview_url = await save_user_photo(file)
+            db_photo = UserPhotoModel(
+                user_id=current_user.id,
+                album_id=album_id,
+                image_url=image_url,
+                preview_url=preview_url,
+                description=description,
+                is_private=is_private
+            )
+            db.add(db_photo)
+            db_photos.append(db_photo)
+        except Exception as e:
+            print(f"DEBUG: Error saving photo {file.filename}: {e}")
+            # В случае ошибки с одним файлом продолжаем с другими или прерываем? 
+            # Для простоты прервем, если это критично, или просто пропустим.
+            # Здесь выберем прерывание с откатом (транзакция db поможет).
+            raise HTTPException(status_code=500, detail=f"Error saving photo {file.filename}: {str(e)}")
+
+    await db.commit()
+    for photo in db_photos:
+        await db.refresh(photo)
+        
+    return db_photos
+
+
 @router.get("/photos/{photo_id}", response_model=UserPhotoSchema)
 async def get_photo(
     photo_id: int,

@@ -1,6 +1,7 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, FlatList, Image, TouchableOpacity, Alert, TextInput, ScrollView, Switch } from 'react-native';
+import { View, Text, StyleSheet, FlatList, Image, TouchableOpacity, Alert, TextInput, ScrollView, Switch, Platform } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
+import * as ImagePicker from 'expo-image-picker';
 import { usersApi } from '../api';
 import { Ionicons as Icon } from '@expo/vector-icons';
 import { getFullUrl } from '../utils/urlHelper';
@@ -163,6 +164,45 @@ export default function AlbumDetailScreen({ route, navigation }) {
           <TouchableOpacity 
             style={[styles.addPhotoBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
             onPress={() => navigation.navigate('UploadPhoto', { albumId: album.id })}
+            onLongPress={async () => {
+              // Быстрая загрузка нескольких фото при долгом нажатии
+              try {
+                const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+                if (status !== 'granted') return;
+                
+                let result = await ImagePicker.launchImageLibraryAsync({
+                  mediaTypes: ['images'],
+                  allowsMultipleSelection: true,
+                  quality: 0.8,
+                });
+
+                if (!result.canceled && result.assets.length > 0) {
+                  setLoading(true);
+                  const formData = new FormData();
+                  result.assets.forEach((image, index) => {
+                    const uri = image.uri;
+                    const name = uri.split('/').pop() || `photo_${index}.jpg`;
+                    const match = /\.(\w+)$/.exec(name);
+                    const type = match ? `image/${match[1]}` : `image/jpeg`;
+                    formData.append('files', {
+                      uri: Platform.OS === 'ios' ? uri.replace('file://', '') : uri,
+                      name,
+                      type,
+                    });
+                  });
+                  formData.append('album_id', albumId.toString());
+                  formData.append('is_private', isPrivate.toString());
+                  
+                  await usersApi.bulkUploadPhotos(formData);
+                  fetchAlbum();
+                  Alert.alert('Успех', `${result.assets.length} фото загружено`);
+                }
+              } catch (e) {
+                Alert.alert('Ошибка', 'Не удалось загрузить фото');
+              } finally {
+                setLoading(false);
+              }
+            }}
           >
             <Icon name="add" size={40} color={colors.textSecondary} />
           </TouchableOpacity>
