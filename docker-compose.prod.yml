@@ -26,6 +26,7 @@ services:
       - MAIL_SERVER=${MAIL_SERVER}
       - MAIL_FROM_NAME=${MAIL_FROM_NAME}
       - DOMAIN=${DOMAIN}
+      - MEDIA_ROOT=/home/fast/app/media
     depends_on:
 
       - db
@@ -58,6 +59,7 @@ services:
       - MAIL_SERVER=${MAIL_SERVER}
       - MAIL_FROM_NAME=${MAIL_FROM_NAME}
       - DOMAIN=${DOMAIN}
+      - MEDIA_ROOT=/home/fast/app/media
     depends_on:
       - db
       - redis
