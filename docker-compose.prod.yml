@@ -8,7 +8,7 @@ services:
     # Запускаем сервер Gunicorn
     command: gunicorn app.main:app --workers 4 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000
     volumes:
-      - media_data:/app/app/media
+      - media_data:/home/fast/app/media
     # Открываем порт 8000 внутри и снаружи
 #    ports:
 #      - '8000:8000'
@@ -42,7 +42,7 @@ services:
       dockerfile: app/Dockerfile.prod.yml
     command: celery -A app.core.celery_app worker --loglevel=info
     volumes:
-      - media_data:/app/app/media
+      - media_data:/home/fast/app/media
     environment:
       - REDIS_HOST=${REDIS_HOST:-redis}
       - POSTGRES_HOST=${POSTGRES_HOST:-db}
@@ -77,6 +77,7 @@ services:
     volumes:
       - /etc/letsencrypt:/etc/letsencrypt:ro
       - /var/www/certbot:/var/www/certbot:ro
+      - media_data:/home/fast/app/media:ro
     depends_on:
       - web
 

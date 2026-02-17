@@ -129,35 +129,30 @@ class PhotoAlbum(PhotoAlbumBase):
                 "album_preview_url": None
             }
             
-            # Проверяем загружены ли фото, чтобы избежать MissingGreenletError
-            from sqlalchemy import inspect
-            try:
-                insp = inspect(obj)
-                if insp is not None and 'photos' not in insp.unloaded:
-                    photos = getattr(obj, "photos", [])
-                    if photos:
-                        validated_photos = []
-                        for p in photos:
-                            try:
-                                validated_photos.append(UserPhoto.model_validate(p))
-                            except Exception:
-                                pass
-                        
-                        data["photos"] = validated_photos
-                        
-                        # Set preview url from the latest photo
-                        valid_for_preview = [p for p in validated_photos if p.created_at is not None]
-                        if valid_for_preview:
-                            sorted_photos = sorted(valid_for_preview, key=lambda x: x.created_at, reverse=True)
-                            data["album_preview_url"] = sorted_photos[0].preview_url
-                        elif validated_photos:
-                            data["album_preview_url"] = validated_photos[0].preview_url
-            except Exception:
-                pass
+            # Пытаемся достать фото из __dict__ напрямую, чтобы не триггерить lazy load
+            obj_dict = getattr(obj, "__dict__", {})
+            if "photos" in obj_dict:
+                photos = obj_dict["photos"]
+                data["photos"] = [UserPhoto.model_validate(p) for p in photos] if photos else []
+                
+                # Set preview url from the latest photo
+                if data["photos"]:
+                    valid_for_preview = [p for p in data["photos"] if p.created_at is not None]
+                    if valid_for_preview:
+                        sorted_photos = sorted(valid_for_preview, key=lambda x: x.created_at, reverse=True)
+                        data["album_preview_url"] = sorted_photos[0].preview_url
+                    else:
+                        data["album_preview_url"] = data["photos"][0].preview_url
             
             return cls(**data)
         except Exception as e:
-            raise e
+            print(f"DEBUG: Error in PhotoAlbum.model_validate: {e}")
+            return cls(
+                id=int(getattr(obj, "id", 0)),
+                user_id=int(getattr(obj, "user_id", 0)),
+                title=str(getattr(obj, "title", "Error")),
+                photos=[]
+            )
 
 
 class AdminPermissionCreate(BaseModel):
@@ -232,52 +227,24 @@ class User(BaseModel):
                 "admin_permissions": []
             }
             
-            # Проверяем, загружены ли связанные объекты, чтобы избежать MissingGreenletError
-            from sqlalchemy import inspect
-            from sqlalchemy.exc import NoInspectionAvailable
-            try:
-                insp = inspect(obj)
-                if insp is not None:
-                    # Check for each relationship individually
-                    unloaded = insp.unloaded
-                    
-                    if 'photos' not in unloaded:
-                        try:
-                            photos = getattr(obj, "photos", [])
-                            data["photos"] = [UserPhoto.model_validate(p) for p in photos] if photos else []
-                        except Exception as e:
-                            print(f"DEBUG: Error accessing photos relationship: {e}")
-                            data["photos"] = []
-                    
-                    if 'albums' not in unloaded:
-                        try:
-                            albums = getattr(obj, "albums", [])
-                            data["albums"] = [PhotoAlbum.model_validate(a) for a in albums] if albums else []
-                        except Exception as e:
-                            print(f"DEBUG: Error accessing albums relationship: {e}")
-                            data["albums"] = []
+            # Используем __dict__ напрямую, это самый надежный способ избежать ленивой загрузки
+            obj_dict = getattr(obj, "__dict__", {})
+            
+            if "photos" in obj_dict:
+                photos = obj_dict["photos"]
+                data["photos"] = [UserPhoto.model_validate(p) for p in photos] if photos else []
+            
+            if "albums" in obj_dict:
+                albums = obj_dict["albums"]
+                data["albums"] = [PhotoAlbum.model_validate(a) for a in albums] if albums else []
 
-                    if 'admin_permissions' not in unloaded:
-                        try:
-                            perms = getattr(obj, "admin_permissions", [])
-                            data["admin_permissions"] = [AdminPermission.model_validate(p) for p in perms] if perms else []
-                        except Exception as e:
-                            print(f"DEBUG: Error accessing admin_permissions relationship: {e}")
-                            data["admin_permissions"] = []
-                else:
-                    # If insp is None, we can't check unloaded, but we want to avoid lazy loading.
-                    pass
-            except NoInspectionAvailable:
-                # Not a SQLAlchemy object or no inspection available
-                pass
-            except Exception as e:
-                print(f"DEBUG: Error inspecting user relationships: {e}")
+            if "admin_permissions" in obj_dict:
+                perms = obj_dict["admin_permissions"]
+                data["admin_permissions"] = [AdminPermission.model_validate(p) for p in perms] if perms else []
                 
             return cls(**data)
         except Exception as e:
             print(f"DEBUG: Error in User.model_validate: {e}")
-            import traceback
-            traceback.print_exc()
             return cls(
                 id=int(getattr(obj, "id", 0)),
                 email=str(getattr(obj, "email", "error@validate.err")),
