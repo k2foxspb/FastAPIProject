@@ -14,7 +14,7 @@ class News(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     content: Mapped[str] = mapped_column(String, nullable=False)
-    image_url: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    image_url: Mapped[str | None] = mapped_column(String, nullable=True)
     author_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     moderation_status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False) # "pending", "approved", "rejected"
     is_active: Mapped[bool] = mapped_column(default=True)
@@ -29,8 +29,8 @@ class NewsImage(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     news_id: Mapped[int] = mapped_column(ForeignKey("news.id", ondelete="CASCADE"), nullable=False)
-    image_url: Mapped[str] = mapped_column(String(200), nullable=False)
-    thumbnail_url: Mapped[str] = mapped_column(String(200), nullable=False)
+    image_url: Mapped[str] = mapped_column(String, nullable=False)
+    thumbnail_url: Mapped[str] = mapped_column(String, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     news: Mapped["News"] = relationship("News", back_populates="images")

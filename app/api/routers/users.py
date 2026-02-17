@@ -889,19 +889,30 @@ async def delete_photo(
     await db.delete(db_photo)
     await db.commit()
     
-    # Удаление файлов с диска
+    # Удаление файлов
     try:
-        # Получаем пути
-        relative_image = db_photo.image_url.lstrip("/")
-        relative_preview = db_photo.preview_url.lstrip("/")
-        
-        image_path = os.path.join(BASE_DIR, relative_image)
-        preview_path = os.path.join(BASE_DIR, relative_preview)
-        
-        if os.path.exists(image_path):
-            os.remove(image_path)
-        if os.path.exists(preview_path) and preview_path != image_path:
-            os.remove(preview_path)
+        # Используем абстракцию хранилища для удаления
+        from app.utils import storage
+        # В UserPhoto мы не храним ключи отдельно, поэтому пытаемся извлечь ключ из URL
+        # или передаем как есть, если это локальный путь
+        if db_photo.image_url.startswith("http"):
+            # Для S3 извлекаем ключ (category/filename)
+            # URL: https://storage.yandexcloud.net/bucket/users/file.jpg -> users/file.jpg
+            parts = db_photo.image_url.split("/")
+            if len(parts) > 4:
+                key = "/".join(parts[4:])
+                storage.delete("users", key)
+        else:
+            storage.delete("users", db_photo.image_url)
+
+        if db_photo.preview_url and db_photo.preview_url != db_photo.image_url:
+            if db_photo.preview_url.startswith("http"):
+                parts = db_photo.preview_url.split("/")
+                if len(parts) > 4:
+                    key = "/".join(parts[4:])
+                    storage.delete("users", key)
+            else:
+                storage.delete("users", db_photo.preview_url)
     except Exception as e:
         print(f"Error deleting files: {e}")
         
@@ -937,13 +948,17 @@ async def bulk_delete_photos(
     
     await db.commit()
     
-    # Удаление файлов с диска
+    # Удаление файлов
+    from app.utils import storage
     for path in paths_to_delete:
         try:
-            relative_path = path.lstrip("/")
-            full_path = os.path.join(BASE_DIR, relative_path)
-            if os.path.exists(full_path):
-                os.remove(full_path)
+            if path.startswith("http"):
+                parts = path.split("/")
+                if len(parts) > 4:
+                    key = "/".join(parts[4:])
+                    storage.delete("users", key)
+            else:
+                storage.delete("users", path)
         except Exception as e:
             print(f"Error deleting file {path}: {e}")
             

@@ -173,6 +173,34 @@ async def delete_news(
     if db_news.author_id != current_user.id and current_user.role not in ["admin", "owner"]:
         raise HTTPException(status_code=403, detail="Not enough permissions")
 
+    # Соберём URL для удаления до удаления записей из БД
+    paths_to_delete: list[str] = []
+    if db_news.image_url:
+        paths_to_delete.append(db_news.image_url)
+    imgs_res = await db.execute(select(NewsImageModel).where(NewsImageModel.news_id == news_id))
+    for img in imgs_res.scalars().all():
+        paths_to_delete.append(img.image_url)
+        if img.thumbnail_url and img.thumbnail_url != img.image_url:
+            paths_to_delete.append(img.thumbnail_url)
+
     await db.delete(db_news)
     await db.commit()
+
+    # Удаление файлов из хранилища
+    try:
+        from app.utils import storage as _storage
+        for path in paths_to_delete:
+            try:
+                if path.startswith("http"):
+                    parts = path.split("/")
+                    if len(parts) > 4:
+                        key = "/".join(parts[4:])
+                        _storage.delete("news", key)
+                else:
+                    _storage.delete("news", path)
+            except Exception as e:
+                print(f"news.delete: failed to delete {path}: {e}")
+    except Exception as e:
+        print(f"news.delete: storage error: {e}")
+
     return None

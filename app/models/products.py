@@ -22,8 +22,8 @@ class Product(Base):
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     description: Mapped[str | None] = mapped_column(String(500), nullable=True)
     price: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
-    image_url: Mapped[str | None] = mapped_column(String(200), nullable=True)
-    thumbnail_url: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    image_url: Mapped[str | None] = mapped_column(String, nullable=True)
+    thumbnail_url: Mapped[str | None] = mapped_column(String, nullable=True)
     stock: Mapped[int] = mapped_column(nullable=False)
     moderation_status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False) # "pending", "approved", "rejected"
     is_active: Mapped[bool] = mapped_column(default=True)
@@ -62,8 +62,8 @@ class ProductImage(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     product_id: Mapped[int] = mapped_column(ForeignKey("products.id", ondelete="CASCADE"), nullable=False)
-    image_url: Mapped[str] = mapped_column(String(200), nullable=False)
-    thumbnail_url: Mapped[str] = mapped_column(String(200), nullable=False)
+    image_url: Mapped[str] = mapped_column(String, nullable=False)
+    thumbnail_url: Mapped[str] = mapped_column(String, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     product: Mapped["Product"] = relationship("Product", back_populates="images")

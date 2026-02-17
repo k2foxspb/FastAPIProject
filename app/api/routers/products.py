@@ -79,15 +79,26 @@ async def save_product_image(file: UploadFile) -> tuple[str, str]:
 
 def remove_product_image(url: str | None, thumb_url: str | None = None) -> None:
     """
-    Удаляет файл изображения и миниатюры, если они существуют.
+    Удаляет файл(ы) изображения, поддерживает как локальные пути, так и S3/YC URL.
     """
+    from app.utils import storage as _storage
+
+    def _delete_by_path_or_url(p: str):
+        if p.startswith("http"):
+            parts = p.split("/")
+            if len(parts) > 4:
+                key = "/".join(parts[4:])  # products/...
+                _storage.delete("products", key)
+        else:
+            _storage.delete("products", p)
+
     for image_url in [url, thumb_url]:
         if not image_url:
             continue
-        relative_path = image_url.lstrip("/")
-        file_path = BASE_DIR / relative_path
-        if file_path.exists():
-            file_path.unlink()
+        try:
+            _delete_by_path_or_url(image_url)
+        except Exception as e:
+            print(f"remove_product_image: failed to delete {image_url}: {e}")
 
 
 @router.get("", response_model=ProductList)
