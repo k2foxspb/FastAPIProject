@@ -241,18 +241,34 @@ class User(BaseModel):
                         photos = getattr(obj, "photos", [])
                         if photos:
                             data["photos"] = [UserPhoto.model_validate(p) for p in photos]
+                        else:
+                            data["photos"] = []
                     
                     if 'albums' not in insp.unloaded:
                         albums = getattr(obj, "albums", [])
                         if albums:
                             data["albums"] = [PhotoAlbum.model_validate(a) for a in albums]
+                        else:
+                            data["albums"] = []
 
                     if 'admin_permissions' not in insp.unloaded:
                         perms = getattr(obj, "admin_permissions", [])
                         if perms:
                             data["admin_permissions"] = [AdminPermission.model_validate(p) for p in perms]
+                        else:
+                            data["admin_permissions"] = []
+                else:
+                    # If insp is None, we can't check unloaded, but we want to avoid lazy loading.
+                    # This happens for objects not attached to a session or similar.
+                    # We'll just leave them as empty lists.
+                    data["photos"] = []
+                    data["albums"] = []
+                    data["admin_permissions"] = []
             except Exception as e:
                 print(f"DEBUG: Error inspecting user relationships: {e}")
+                data["photos"] = []
+                data["albums"] = []
+                data["admin_permissions"] = []
                 
             return cls(**data)
         except Exception as e:

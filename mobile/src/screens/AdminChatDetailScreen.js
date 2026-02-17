@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, FlatList, Image, ActivityIndicator, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, StyleSheet, FlatList, Image, ActivityIndicator, TouchableOpacity, Alert, Modal, Pressable, Dimensions } from 'react-native';
 import { Ionicons as Icon } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
@@ -9,6 +9,7 @@ import { formatName } from '../utils/formatters';
 import CachedMedia from '../components/CachedMedia';
 import VoiceMessage from '../components/VoiceMessage';
 import FileMessage from '../components/FileMessage';
+import { Video, ResizeMode } from 'expo-av';
 
 export default function AdminChatDetailScreen({ route, navigation }) {
   const { u1, u2 } = route.params;
@@ -17,6 +18,8 @@ export default function AdminChatDetailScreen({ route, navigation }) {
   const { theme } = useTheme();
   const colors = themeConstants[theme];
   const flatListRef = useRef();
+  const [fullScreenMedia, setFullScreenMedia] = useState(null); // { uri, type }
+  const screen = Dimensions.get('window');
 
   useEffect(() => {
     navigation.setOptions({ title: `${formatName(u1)} & ${formatName(u2)}` });
@@ -63,6 +66,10 @@ export default function AdminChatDetailScreen({ route, navigation }) {
     const isU1 = item.sender_id === u1.id;
     const sender = isU1 ? u1 : u2;
 
+    const handleFullScreen = (uri, type) => {
+      setFullScreenMedia({ uri, type });
+    };
+
     return (
       <View style={[
         styles.messageWrapper, 
@@ -84,6 +91,9 @@ export default function AdminChatDetailScreen({ route, navigation }) {
             <CachedMedia 
               item={item} 
               style={{ width: 200, height: 150, borderRadius: 10, overflow: 'hidden' }} 
+              onFullScreen={handleFullScreen}
+              shouldPlay={false}
+              isMuted={true}
             />
           ) : null}
           {item.message_type === 'voice' && item.file_path ? (
@@ -137,6 +147,40 @@ export default function AdminChatDetailScreen({ route, navigation }) {
         contentContainerStyle={styles.list}
         onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
       />
+
+      {/* Full-screen media viewer */}
+      <Modal
+        visible={!!fullScreenMedia}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setFullScreenMedia(null)}
+      >
+        <View style={styles.fullScreenContainer}>
+          <Pressable style={styles.fullScreenBackdrop} onPress={() => setFullScreenMedia(null)} />
+          {fullScreenMedia && (
+            <View style={[styles.fullScreenContent, { width: screen.width, height: screen.height }]}>
+              {fullScreenMedia.type === 'video' ? (
+                <Video
+                  source={{ uri: fullScreenMedia.uri }}
+                  style={styles.fullScreenVideo}
+                  resizeMode={ResizeMode.CONTAIN}
+                  useNativeControls
+                  shouldPlay
+                />
+              ) : (
+                <Image
+                  source={{ uri: fullScreenMedia.uri }}
+                  style={styles.fullScreenImage}
+                  resizeMode="contain"
+                />
+              )}
+              <TouchableOpacity style={styles.fullScreenClose} onPress={() => setFullScreenMedia(null)}>
+                <Icon name="close" size={28} color="#fff" />
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -189,5 +233,33 @@ const styles = StyleSheet.create({
   },
   deleteBtn: {
     padding: 2
+  },
+  fullScreenContainer: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.95)',
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+  fullScreenBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.95)'
+  },
+  fullScreenContent: {
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+  fullScreenImage: {
+    width: '100%',
+    height: '100%'
+  },
+  fullScreenVideo: {
+    width: '100%',
+    height: '100%'
+  },
+  fullScreenClose: {
+    position: 'absolute',
+    top: 40,
+    right: 20,
+    padding: 8
   }
 });

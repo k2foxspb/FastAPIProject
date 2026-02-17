@@ -33,7 +33,9 @@ async def get_all_users(
         selectinload(UserModel.photos),
         selectinload(UserModel.albums)
     ))
-    return result.scalars().all()
+    users = result.scalars().all()
+    # Explicitly validate to catch errors early and ensure relationships are handled
+    return [UserSchema.model_validate(u) for u in users]
 
 @router.patch("/users/{user_id}/role")
 async def update_user_role(
