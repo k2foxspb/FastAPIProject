@@ -38,6 +38,7 @@ export default function ChatScreen({ route, navigation }) {
   const [hasMore, setHasMore] = useState(true);
   const [skip, setSkip] = useState(0);
   const [interlocutor, setInterlocutor] = useState(null);
+  const [attachmentsLocalCount, setAttachmentsLocalCount] = useState(0);
   const [currentUserIdLocal, setCurrentUserIdLocal] = useState(null);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState([]);
@@ -191,7 +192,7 @@ export default function ChatScreen({ route, navigation }) {
     if (inputText.trim()) {
       const msgData = {
         receiver_id: userId,
-        message: inputText,
+        message: inputText.trim(),
         message_type: 'text'
       };
       ws.current.send(JSON.stringify(msgData));
@@ -242,15 +243,25 @@ export default function ChatScreen({ route, navigation }) {
       const result = await DocumentPicker.getDocumentAsync({
         type: '*/*',
         copyToCacheDirectory: true,
-        multiple: true // Добавляем множественный выбор, если поддерживается
+        multiple: true
       });
 
       if (!result.canceled) {
-        setBatchMode(true); // Включаем режим батча, чтобы useEffect не мешал
-        for (const asset of result.assets) {
-          const uploadId = `doc_${Date.now()}`;
-          setUploadingData({ loaded: 0, total: asset.size || 0, uri: asset.uri, mimeType: asset.mimeType });
+        const assets = result.assets || [];
+        setBatchMode(true);
+        setAutoSendOnUpload(false);
+        setBatchTotal(assets.length);
+        setAttachmentsLocalCount(0);
+        
+        for (const asset of assets) {
+          setUploadingData({ 
+            loaded: 0, 
+            total: asset.size || 0, 
+            uri: asset.uri, 
+            mimeType: asset.mimeType 
+          });
           setUploadingProgress(0);
+          
           const res = await uploadManager.uploadFileResumable(
             asset.uri,
             asset.name,
@@ -259,7 +270,8 @@ export default function ChatScreen({ route, navigation }) {
             (uid) => setActiveUploadId(uid)
           );
 
-          if (res && res.status === 'completed' && autoSendOnUpload) {
+          if (res && res.status === 'completed') {
+             setAttachmentsLocalCount(prev => prev + 1);
              if (ws.current && ws.current.readyState === WebSocket.OPEN) {
                 const msgData = {
                   receiver_id: userId,
@@ -273,25 +285,28 @@ export default function ChatScreen({ route, navigation }) {
       }
     } catch (error) {
       console.error('Document picking failed', error);
-      alert('Произошла ошибка при выборе или загрузке документа');
+      Alert.alert('Ошибка', 'Произошла ошибка при выборе или загрузке документа');
     } finally {
       setBatchMode(false);
+      setAutoSendOnUpload(true);
       setUploadingProgress(null);
+      setActiveUploadId(null);
+      setBatchTotal(0);
+      setAttachmentsLocalCount(0);
     }
   };
 
   const pickAndUploadFile = async () => {
     if (selectionMode) return;
     try {
-      // Запрашиваем разрешение
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
-        alert('Извините, нам нужно разрешение на доступ к галерее, чтобы это работало!');
+        Alert.alert('Доступ запрещен', 'Нам нужно разрешение на доступ к галерее, чтобы это работало');
         return;
       }
 
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images', 'videos'], // Используем массив строк для надежности в SDK 54
+        mediaTypes: ['images', 'videos'],
         quality: 1,
         allowsMultipleSelection: true,
       });
@@ -303,16 +318,21 @@ export default function ChatScreen({ route, navigation }) {
           assets = assets.slice(0, 10);
         }
 
-        const attachmentsLocal = [];
         setBatchMode(true);
         setAutoSendOnUpload(false);
-        setBatchAttachments([]);
         setBatchTotal(assets.length);
+        setAttachmentsLocalCount(0);
+        const attachmentsLocal = [];
 
         for (const asset of assets) {
           const fileName = asset.uri.split('/').pop();
-          setUploadingData({ loaded: 0, total: asset.fileSize || asset.size || 0, uri: asset.uri, mimeType: asset.mimeType });
-          setUploadingProgress(0); // Сбрасываем прогресс для нового файла
+          setUploadingData({ 
+            loaded: 0, 
+            total: asset.fileSize || asset.size || 0, 
+            uri: asset.uri, 
+            mimeType: asset.mimeType 
+          });
+          setUploadingProgress(0);
           
           const res = await uploadManager.uploadFileResumable(
             asset.uri, 
@@ -323,6 +343,7 @@ export default function ChatScreen({ route, navigation }) {
           );
           
           if (res && res.status === 'completed') {
+            setAttachmentsLocalCount(prev => prev + 1);
             attachmentsLocal.push({ file_path: res.file_path, type: res.message_type });
           }
         }
@@ -344,18 +365,19 @@ export default function ChatScreen({ route, navigation }) {
                 }));
             }
           }
-          // Сброс режимов
-          setBatchMode(false);
-          setAutoSendOnUpload(true);
-          setBatchAttachments([]);
-          setBatchTotal(0);
         }
       }
-  } catch (error) {
+    } catch (error) {
       console.error('Upload or picking failed', error);
-      alert('Произошла ошибка при выборе или загрузке файла');
+      Alert.alert('Ошибка', 'Произошла ошибка при выборе или загрузке файла');
     } finally {
+      setBatchMode(false);
+      setAutoSendOnUpload(true);
+      setBatchAttachments([]);
+      setBatchTotal(0);
+      setAttachmentsLocalCount(0);
       setUploadingProgress(null);
+      setActiveUploadId(null);
     }
   };
 
@@ -509,7 +531,7 @@ export default function ChatScreen({ route, navigation }) {
 
     return (
       <View>
-        {index === 0 && uploadingProgress !== null && uploadingData.uri && (
+        {uploadingProgress !== null && uploadingData.uri && index === 0 && (
           <View style={[
             styles.messageWrapper, 
             styles.sentWrapper,
@@ -744,7 +766,7 @@ export default function ChatScreen({ route, navigation }) {
         <View style={[styles.uploadProgressContainer, { backgroundColor: colors.background, borderColor: colors.border }]}>
           <View style={styles.uploadProgressInfo}>
             <Text style={{ color: colors.text }}>
-              Загрузка: {formatFileSize(uploadingData.loaded)} / {formatFileSize(uploadingData.total)} ({Math.round(uploadingProgress * 100)}%)
+              {batchMode ? `Загрузка медиа (${attachmentsLocalCount + 1}/${batchTotal || 1}) - ${Math.round(uploadingProgress * 100)}%` : `Загрузка: ${formatFileSize(uploadingData.loaded)} / ${formatFileSize(uploadingData.total)} (${Math.round(uploadingProgress * 100)}%)`}
             </Text>
             <TouchableOpacity onPress={() => uploadManager.cancelUpload(activeUploadId)}>
               <MaterialIcons name="cancel" size={24} color={colors.error} />
