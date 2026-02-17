@@ -7,13 +7,14 @@ from app.models.users import User as UserModel, AdminPermission as AdminPermissi
 from app.models.categories import Category as CategoryModel
 from app.models.products import Product as ProductModel
 from app.models.news import News as NewsModel
-from app.models.orders import Order as OrderModel
+from app.models.orders import Order as OrderModel, OrderItem as OrderItemModel
 from app.models.reviews import Reviews as ReviewsModel
 from app.models.chat import ChatMessage as ChatMessageModel
 from app.schemas.users import User as UserSchema, AdminPermissionCreate, AdminPermission as AdminPermissionSchema
 from app.schemas.products import Product as ProductSchema
 from app.schemas.news import News as NewsSchema
 from app.schemas.chat import ChatMessageResponse, DialogResponse
+from app.schemas.orders import Order as OrderSchema
 from app.api.dependencies import get_async_db
 from app.core.auth import get_current_owner, get_current_admin, check_admin_permission
 
@@ -110,30 +111,25 @@ async def admin_get_all_dialogs(
     db: AsyncSession = Depends(get_async_db)
 ):
     """Возвращает все уникальные диалоги между пользователями."""
-    # Мы ищем все пары (min(sender_id, receiver_id), max(sender_id, receiver_id))
-    # Для простоты получим последние сообщения для каждой пары
-    from sqlalchemy import func
-    
-    # Подзапрос для получения последних сообщений в каждой паре
-    # В SQLite/PostgreSQL можно использовать разные подходы. 
-    # Здесь мы просто найдем все уникальные пары отправитель-получатель.
-    
-    result = await db.execute(select(ChatMessageModel).order_by(ChatMessageModel.timestamp.desc()))
+    # Получаем последние сообщения для каждой пары
+    # Используем подзапрос для производительности, но для SQLite/простоты можно и так:
+    result = await db.execute(
+        select(ChatMessageModel)
+        .options(selectinload(ChatMessageModel.sender), selectinload(ChatMessageModel.receiver))
+        .order_by(ChatMessageModel.timestamp.desc())
+    )
     messages = result.scalars().all()
     
     dialogs = {}
     for msg in messages:
         pair = tuple(sorted((msg.sender_id, msg.receiver_id)))
         if pair not in dialogs:
-            # Находим данные пользователей
-            u1_res = await db.execute(select(UserModel).where(UserModel.id == pair[0]))
-            u2_res = await db.execute(select(UserModel).where(UserModel.id == pair[1]))
-            u1 = u1_res.scalar_one_or_none()
-            u2 = u2_res.scalar_one_or_none()
+            u1 = UserSchema.model_validate(msg.sender)
+            u2 = UserSchema.model_validate(msg.receiver)
             
             dialogs[pair] = {
-                "user1": u1,
-                "user2": u2,
+                "user1": u1.model_dump(),
+                "user2": u2.model_dump(),
                 "last_message": msg.message or "[Файл]",
                 "last_message_time": msg.timestamp,
                 "pair": pair
@@ -171,7 +167,8 @@ async def admin_delete_message(
     return {"message": "Message deleted"}
 
 # Пример для категорий
-@router.get("/categories")
+from app.schemas.categories import Category as CategorySchema
+@router.get("/categories", response_model=list[CategorySchema])
 async def admin_get_categories(
     allowed: bool = Depends(check_admin_permission("categories")),
     db: AsyncSession = Depends(get_async_db)
@@ -190,12 +187,12 @@ async def admin_delete_category(
     return {"message": "Category deleted"}
 
 # Пример для товаров
-@router.get("/products")
+@router.get("/products", response_model=list[ProductSchema])
 async def admin_get_products(
     allowed: bool = Depends(check_admin_permission("products")),
     db: AsyncSession = Depends(get_async_db)
 ):
-    result = await db.execute(select(ProductModel))
+    result = await db.execute(select(ProductModel).options(selectinload(ProductModel.images)))
     return result.scalars().all()
 
 @router.delete("/products/{prod_id}")
@@ -210,12 +207,16 @@ async def admin_delete_product(
 
 # --- Заказы ---
 
-@router.get("/orders")
+@router.get("/orders", response_model=list[OrderSchema])
 async def admin_get_orders(
     allowed: bool = Depends(check_admin_permission("orders")),
     db: AsyncSession = Depends(get_async_db)
 ):
-    result = await db.execute(select(OrderModel).options(selectinload(OrderModel.items)))
+    result = await db.execute(
+        select(OrderModel).options(
+            selectinload(OrderModel.items).selectinload(OrderItemModel.product)
+        )
+    )
     return result.scalars().all()
 
 @router.delete("/orders/{order_id}")
@@ -229,14 +230,19 @@ async def admin_delete_order(
     return {"message": "Order deleted"}
 
 # --- Отзывы ---
-
-@router.get("/reviews")
+from app.schemas.reviews import Review as ReviewSchemaFull
+@router.get("/reviews", response_model=list[ReviewSchemaFull])
 async def admin_get_reviews(
     allowed: bool = Depends(check_admin_permission("reviews")),
     db: AsyncSession = Depends(get_async_db)
 ):
-    result = await db.execute(select(ReviewsModel))
-    return result.scalars().all()
+    result = await db.execute(select(ReviewsModel).options(selectinload(ReviewsModel.user)))
+    reviews = result.scalars().all()
+    for r in reviews:
+        r.first_name = r.user.first_name
+        r.last_name = r.user.last_name
+        r.avatar_url = r.user.avatar_url
+    return reviews
 
 @router.delete("/reviews/{review_id}")
 async def admin_delete_review(
@@ -258,13 +264,13 @@ async def get_pending_moderation(
     """Возвращает список товаров и новостей, ожидающих модерации."""
     # Получаем товары
     products_res = await db.execute(
-        select(ProductModel).where(ProductModel.moderation_status == "pending")
+        select(ProductModel).options(selectinload(ProductModel.images)).where(ProductModel.moderation_status == "pending")
     )
     products = products_res.scalars().all()
     
     # Получаем новости
     news_res = await db.execute(
-        select(NewsModel).where(NewsModel.moderation_status == "pending")
+        select(NewsModel).options(selectinload(NewsModel.images)).where(NewsModel.moderation_status == "pending")
     )
     news = news_res.scalars().all()
     
