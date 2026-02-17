@@ -29,7 +29,9 @@ async def get_all_users(
 ):
     """Возвращает всех пользователей (только для владельца)."""
     result = await db.execute(select(UserModel).options(
-        selectinload(UserModel.admin_permissions)
+        selectinload(UserModel.admin_permissions),
+        selectinload(UserModel.photos),
+        selectinload(UserModel.albums)
     ))
     return result.scalars().all()
 
@@ -115,7 +117,12 @@ async def admin_get_all_dialogs(
     # Используем подзапрос для производительности, но для SQLite/простоты можно и так:
     result = await db.execute(
         select(ChatMessageModel)
-        .options(selectinload(ChatMessageModel.sender), selectinload(ChatMessageModel.receiver))
+        .options(
+            selectinload(ChatMessageModel.sender).selectinload(UserModel.photos),
+            selectinload(ChatMessageModel.sender).selectinload(UserModel.albums),
+            selectinload(ChatMessageModel.receiver).selectinload(UserModel.photos),
+            selectinload(ChatMessageModel.receiver).selectinload(UserModel.albums)
+        )
         .order_by(ChatMessageModel.timestamp.desc())
     )
     messages = result.scalars().all()
@@ -128,8 +135,8 @@ async def admin_get_all_dialogs(
             u2 = UserSchema.model_validate(msg.receiver)
             
             dialogs[pair] = {
-                "user1": u1.model_dump(),
-                "user2": u2.model_dump(),
+                "user1": u1.model_dump(exclude={"photos", "albums", "admin_permissions"}),
+                "user2": u2.model_dump(exclude={"photos", "albums", "admin_permissions"}),
                 "last_message": msg.message or "[Файл]",
                 "last_message_time": msg.timestamp,
                 "pair": pair
@@ -214,7 +221,7 @@ async def admin_get_orders(
 ):
     result = await db.execute(
         select(OrderModel).options(
-            selectinload(OrderModel.items).selectinload(OrderItemModel.product)
+            selectinload(OrderModel.items).selectinload(OrderItemModel.product).selectinload(ProductModel.images)
         )
     )
     return result.scalars().all()
