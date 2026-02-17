@@ -206,7 +206,9 @@ export default function ChatScreen({ route, navigation }) {
         if (loaded !== undefined) setUploadingData(prev => ({ ...prev, loaded, total }));
         
         if (status === 'completed') {
-          if (autoSendOnUpload) {
+          // Для одиночных голосовых сообщений отправляем здесь
+          // Для медиа и документов теперь отправляем вручную в функциях загрузки
+          if (autoSendOnUpload && !batchMode) { 
             if (ws.current && ws.current.readyState === WebSocket.OPEN) {
               const msgData = {
                 receiver_id: userId,
@@ -215,10 +217,7 @@ export default function ChatScreen({ route, navigation }) {
               };
               ws.current.send(JSON.stringify(msgData));
             }
-          } else {
-            // Режим групповой отправки: копим вложения
-            setBatchAttachments(prev => ([...prev, { file_path: result.file_path, type: result.message_type }]));
-          }
+          } 
           setUploadingProgress(null);
           setActiveUploadId(null);
           setUploadingData({ loaded: 0, total: 0, uri: null, mimeType: null });
@@ -243,24 +242,40 @@ export default function ChatScreen({ route, navigation }) {
       const result = await DocumentPicker.getDocumentAsync({
         type: '*/*',
         copyToCacheDirectory: true,
+        multiple: true // Добавляем множественный выбор, если поддерживается
       });
 
       if (!result.canceled) {
+        setBatchMode(true); // Включаем режим батча, чтобы useEffect не мешал
         for (const asset of result.assets) {
+          const uploadId = `doc_${Date.now()}`;
           setUploadingData({ loaded: 0, total: asset.size || 0, uri: asset.uri, mimeType: asset.mimeType });
-          await uploadManager.uploadFileResumable(
+          setUploadingProgress(0);
+          const res = await uploadManager.uploadFileResumable(
             asset.uri,
             asset.name,
             asset.mimeType,
             userId,
-            (upload_id) => setActiveUploadId(upload_id)
+            (uid) => setActiveUploadId(uid)
           );
+
+          if (res && res.status === 'completed' && autoSendOnUpload) {
+             if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+                const msgData = {
+                  receiver_id: userId,
+                  file_path: res.file_path,
+                  message_type: res.message_type
+                };
+                ws.current.send(JSON.stringify(msgData));
+             }
+          }
         }
       }
     } catch (error) {
       console.error('Document picking failed', error);
       alert('Произошла ошибка при выборе или загрузке документа');
     } finally {
+      setBatchMode(false);
       setUploadingProgress(null);
     }
   };
@@ -288,17 +303,17 @@ export default function ChatScreen({ route, navigation }) {
           assets = assets.slice(0, 10);
         }
 
-        if (assets.length > 1) {
-          setBatchMode(true);
-          setAutoSendOnUpload(false);
-          setBatchAttachments([]);
-          setBatchTotal(assets.length);
-        }
-
         const attachmentsLocal = [];
+        setBatchMode(true);
+        setAutoSendOnUpload(false);
+        setBatchAttachments([]);
+        setBatchTotal(assets.length);
+
         for (const asset of assets) {
           const fileName = asset.uri.split('/').pop();
-          setUploadingData({ loaded: 0, total: asset.fileSize || 0, uri: asset.uri, mimeType: asset.mimeType });
+          setUploadingData({ loaded: 0, total: asset.fileSize || asset.size || 0, uri: asset.uri, mimeType: asset.mimeType });
+          setUploadingProgress(0); // Сбрасываем прогресс для нового файла
+          
           const res = await uploadManager.uploadFileResumable(
             asset.uri, 
             fileName, 
@@ -306,22 +321,28 @@ export default function ChatScreen({ route, navigation }) {
             userId,
             (upload_id) => setActiveUploadId(upload_id)
           );
-          // На случай если авто-сабскрипция не успела — добавим вручную
-          if (res && res.status === 'completed' && !autoSendOnUpload) {
+          
+          if (res && res.status === 'completed') {
             attachmentsLocal.push({ file_path: res.file_path, type: res.message_type });
           }
         }
 
-        if (!autoSendOnUpload) {
-          const all = [...attachmentsLocal];
-          // Объединим с тем, что накопилось через подписку
-          all.push(...batchAttachments);
-          if (ws.current && ws.current.readyState === WebSocket.OPEN && all.length > 0) {
-            ws.current.send(JSON.stringify({
-              receiver_id: userId,
-              attachments: all,
-              message_type: 'media_group'
-            }));
+        if (attachmentsLocal.length > 0) {
+          if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+            if (attachmentsLocal.length === 1) {
+                const msgData = {
+                  receiver_id: userId,
+                  file_path: attachmentsLocal[0].file_path,
+                  message_type: attachmentsLocal[0].type
+                };
+                ws.current.send(JSON.stringify(msgData));
+            } else {
+                ws.current.send(JSON.stringify({
+                  receiver_id: userId,
+                  attachments: attachmentsLocal,
+                  message_type: 'media_group'
+                }));
+            }
           }
           // Сброс режимов
           setBatchMode(false);

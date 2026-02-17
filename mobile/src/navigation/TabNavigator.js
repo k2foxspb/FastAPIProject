@@ -38,6 +38,7 @@ import { useTheme } from '../context/ThemeContext.js';
 import { theme as themeConstants } from '../constants/theme';
 
 import { getFocusedRouteNameFromRoute } from '@react-navigation/native';
+import EditNewsScreen from "../screens/EditNewsScreen";
 
 function ChatStack() {
   const { theme } = useTheme();
