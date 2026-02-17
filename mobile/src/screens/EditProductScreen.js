@@ -423,6 +423,12 @@ const styles = StyleSheet.create({
   imageContainer: { alignItems: 'center', marginBottom: 20 },
   image: { width: 200, height: 200, borderRadius: 10 },
   imagePlaceholder: { width: 200, height: 200, borderRadius: 10, borderWidth: 1, borderStyle: 'dashed', justifyContent: 'center', alignItems: 'center' },
+  imageThumb: { width: 100, height: 100, borderRadius: 8 },
+  imagesScroll: { marginBottom: 20 },
+  imageWrapper: { marginRight: 10, position: 'relative' },
+  removeImageBtn: { position: 'absolute', top: -10, right: -10, backgroundColor: '#fff', borderRadius: 12 },
+  addImageBtn: { width: 100, height: 100, borderRadius: 8, borderWidth: 1, borderStyle: 'dashed', justifyContent: 'center', alignItems: 'center' },
+  oldImageLabel: { fontSize: 10, textAlign: 'center', marginTop: 2 },
   label: { fontSize: 16, fontWeight: 'bold', marginBottom: 5 },
   input: { borderWidth: 1, borderRadius: 8, padding: 12, marginBottom: 15, fontSize: 16 },
   pickerButton: { 
