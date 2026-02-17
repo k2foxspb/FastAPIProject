@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
 from sqlalchemy.orm import selectinload
 
-from app.models.users import User as UserModel, AdminPermission as AdminPermissionModel
+from app.models.users import User as UserModel, AdminPermission as AdminPermissionModel, PhotoAlbum as PhotoAlbumModel
 from app.models.categories import Category as CategoryModel
 from app.models.products import Product as ProductModel
 from app.models.news import News as NewsModel
@@ -31,7 +31,7 @@ async def get_all_users(
     result = await db.execute(select(UserModel).options(
         selectinload(UserModel.admin_permissions),
         selectinload(UserModel.photos),
-        selectinload(UserModel.albums)
+        selectinload(UserModel.albums).selectinload(PhotoAlbumModel.photos)
     ))
     users = result.scalars().all()
     # Explicitly validate to catch errors early and ensure relationships are handled
@@ -121,9 +121,9 @@ async def admin_get_all_dialogs(
         select(ChatMessageModel)
         .options(
             selectinload(ChatMessageModel.sender).selectinload(UserModel.photos),
-            selectinload(ChatMessageModel.sender).selectinload(UserModel.albums),
+            selectinload(ChatMessageModel.sender).selectinload(UserModel.albums).selectinload(PhotoAlbumModel.photos),
             selectinload(ChatMessageModel.receiver).selectinload(UserModel.photos),
-            selectinload(ChatMessageModel.receiver).selectinload(UserModel.albums)
+            selectinload(ChatMessageModel.receiver).selectinload(UserModel.albums).selectinload(PhotoAlbumModel.photos)
         )
         .order_by(ChatMessageModel.timestamp.desc())
     )

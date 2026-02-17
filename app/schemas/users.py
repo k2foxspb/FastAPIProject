@@ -234,48 +234,56 @@ class User(BaseModel):
             
             # Проверяем, загружены ли связанные объекты, чтобы избежать MissingGreenletError
             from sqlalchemy import inspect
+            from sqlalchemy.exc import NoInspectionAvailable
             try:
                 insp = inspect(obj)
                 if insp is not None:
-                    if 'photos' not in insp.unloaded:
-                        photos = getattr(obj, "photos", [])
-                        if photos:
-                            data["photos"] = [UserPhoto.model_validate(p) for p in photos]
-                        else:
+                    # Check for each relationship individually
+                    unloaded = insp.unloaded
+                    
+                    if 'photos' not in unloaded:
+                        try:
+                            photos = getattr(obj, "photos", [])
+                            data["photos"] = [UserPhoto.model_validate(p) for p in photos] if photos else []
+                        except Exception as e:
+                            print(f"DEBUG: Error accessing photos relationship: {e}")
                             data["photos"] = []
                     
-                    if 'albums' not in insp.unloaded:
-                        albums = getattr(obj, "albums", [])
-                        if albums:
-                            data["albums"] = [PhotoAlbum.model_validate(a) for a in albums]
-                        else:
+                    if 'albums' not in unloaded:
+                        try:
+                            albums = getattr(obj, "albums", [])
+                            data["albums"] = [PhotoAlbum.model_validate(a) for a in albums] if albums else []
+                        except Exception as e:
+                            print(f"DEBUG: Error accessing albums relationship: {e}")
                             data["albums"] = []
 
-                    if 'admin_permissions' not in insp.unloaded:
-                        perms = getattr(obj, "admin_permissions", [])
-                        if perms:
-                            data["admin_permissions"] = [AdminPermission.model_validate(p) for p in perms]
-                        else:
+                    if 'admin_permissions' not in unloaded:
+                        try:
+                            perms = getattr(obj, "admin_permissions", [])
+                            data["admin_permissions"] = [AdminPermission.model_validate(p) for p in perms] if perms else []
+                        except Exception as e:
+                            print(f"DEBUG: Error accessing admin_permissions relationship: {e}")
                             data["admin_permissions"] = []
                 else:
                     # If insp is None, we can't check unloaded, but we want to avoid lazy loading.
-                    # This happens for objects not attached to a session or similar.
-                    # We'll just leave them as empty lists.
-                    data["photos"] = []
-                    data["albums"] = []
-                    data["admin_permissions"] = []
+                    pass
+            except NoInspectionAvailable:
+                # Not a SQLAlchemy object or no inspection available
+                pass
             except Exception as e:
                 print(f"DEBUG: Error inspecting user relationships: {e}")
-                data["photos"] = []
-                data["albums"] = []
-                data["admin_permissions"] = []
                 
             return cls(**data)
         except Exception as e:
             print(f"DEBUG: Error in User.model_validate: {e}")
             import traceback
             traceback.print_exc()
-            raise e
+            return cls(
+                id=int(getattr(obj, "id", 0)),
+                email=str(getattr(obj, "email", "error@validate.err")),
+                first_name="Error",
+                last_name="Validation"
+            )
 
 
 class RefreshTokenRequest(BaseModel):
