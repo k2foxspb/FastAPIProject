@@ -88,7 +88,9 @@ function ProfileStack() {
       <Stack.Screen name="AdminNews" component={AdminNewsScreen} options={{ title: 'Новости' }} />
       <Stack.Screen name="AdminChats" component={AdminChatsScreen} options={{ title: 'Чаты пользователей' }} />
       <Stack.Screen name="AdminChatDetail" component={AdminChatDetailScreen} options={{ title: 'Чат' }} />
-      <Stack.Screen name="EditNews" component={EditNewsScreen} options={{ title: 'Редактировать новость' }} />
+      <Stack.Screen name="EditNews" compone
+
+                    EditNewsScreen} options={{ title: 'Редактировать новость' }} />
       <Stack.Screen 
         name="Login" 
         component={LoginScreen} 
