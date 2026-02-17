@@ -156,6 +156,17 @@ export default function ProfileScreen({ navigation }) {
 
                 <TouchableOpacity 
                   style={[styles.menuItem, { borderBottomWidth: 1, borderBottomColor: colors.border }]} 
+                  onPress={() => {
+                    setSettingsVisible(false);
+                    navigation.navigate('Orders');
+                  }}
+                >
+                  <Icon name="receipt-outline" size={22} color={colors.primary} />
+                  <Text style={[styles.menuItemText, { color: colors.text }]}>Мои заказы</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity 
+                  style={[styles.menuItem, { borderBottomWidth: 1, borderBottomColor: colors.border }]} 
                   onPress={handleEditProfile}
                 >
                   <Icon name="create-outline" size={22} color={colors.primary} />

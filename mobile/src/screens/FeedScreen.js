@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, FlatList, Image, StyleSheet, TouchableOpacity, RefreshControl, ActivityIndicator, Alert } from 'react-native';
-import { productsApi, newsApi, usersApi } from '../api';
+import { productsApi, newsApi, usersApi, cartApi } from '../api';
 import { getFullUrl } from '../utils/urlHelper';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
@@ -16,15 +16,40 @@ export default function FeedScreen({ navigation }) {
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState(null);
+  const [cartItems, setCartItems] = useState([]);
+  const [updatingProductId, setUpdatingProductId] = useState(null);
 
   const loadData = useCallback(async () => {
     try {
-      const [productsRes, newsRes, userRes] = await Promise.all([
+      const [productsRes, newsRes, userRes, cartRes] = await Promise.all([
         productsApi.getProducts().catch(() => ({ data: { items: [] } })),
         newsApi.getNews().catch(() => ({ data: [] })),
-        usersApi.getMe().catch(() => ({ data: null }))
+        usersApi.getMe().catch(() => ({ data: null })),
+        cartApi.getCart().catch(() => ({ data: { items: [] } }))
       ]);
       
+      const cartItemsData = cartRes?.data?.items || [];
+      setCartItems(cartItemsData);
+      const cartCount = cartItemsData.reduce((acc, item) => acc + item.quantity, 0);
+
+      navigation.setOptions({
+        headerRight: () => (
+          <TouchableOpacity 
+            style={{ marginRight: 15 }} 
+            onPress={() => navigation.navigate('Cart')}
+          >
+            <View>
+              <Icon name="cart-outline" size={24} color={colors.text} />
+              {cartCount > 0 && (
+                <View style={[styles.cartBadge, { backgroundColor: colors.primary }]}>
+                  <Text style={styles.cartBadgeText}>{cartCount}</Text>
+                </View>
+              )}
+            </View>
+          </TouchableOpacity>
+        ),
+      });
+
       let productsData = productsRes.data.items || productsRes.data;
       if (userRes?.data) {
         setUser(userRes.data);
@@ -86,9 +111,41 @@ export default function FeedScreen({ navigation }) {
     </TouchableOpacity>
   );
 
+  const handleAddToCart = async (product) => {
+    try {
+      setUpdatingProductId(product.id);
+      await cartApi.addItem(product.id, 1);
+      await loadData(); // Обновляем данные и счетчик
+    } catch (err) {
+      Alert.alert('Ошибка', 'Не удалось добавить товар в корзину');
+    } finally {
+      setUpdatingProductId(null);
+    }
+  };
+
+  const handleUpdateQuantity = async (productId, currentQuantity, delta) => {
+    const newQuantity = currentQuantity + delta;
+    try {
+      setUpdatingProductId(productId);
+      if (newQuantity <= 0) {
+        await cartApi.removeItem(productId);
+      } else {
+        await cartApi.updateItem(productId, newQuantity);
+      }
+      await loadData();
+    } catch (err) {
+      Alert.alert('Ошибка', 'Не удалось обновить количество');
+    } finally {
+      setUpdatingProductId(null);
+    }
+  };
+
   const renderProductItem = ({ item }) => {
     const isOwnerOrAdmin = user && (user.id === item.seller_id || user.role === 'admin' || user.role === 'owner');
     const isPending = item.moderation_status === 'pending';
+    const cartItem = cartItems.find(ci => ci.product_id === item.id);
+    const quantityInCart = cartItem ? cartItem.quantity : 0;
+    const isUpdating = updatingProductId === item.id;
     
     return (
       <TouchableOpacity 
@@ -96,10 +153,7 @@ export default function FeedScreen({ navigation }) {
           styles.productGridCard, 
           { backgroundColor: colors.card, borderColor: isPending ? colors.warning || '#ffcc00' : colors.border, borderWidth: (theme === 'dark' || isPending) ? 1 : 0 }
         ]}
-        onPress={() => canManageProducts && isOwnerOrAdmin 
-          ? navigation.navigate('EditProduct', { product: item }) 
-          : null
-        }
+        onPress={() => navigation.navigate('ProductDetail', { productId: item.id })}
       >
         <Image source={{ uri: getFullUrl(item.thumbnail_url) || 'https://via.placeholder.com/150' }} style={styles.productGridImage} />
         {isPending && (
@@ -111,6 +165,41 @@ export default function FeedScreen({ navigation }) {
           <Text style={[styles.productName, { color: colors.text }]} numberOfLines={2}>{item.name}</Text>
           <View style={styles.productFooter}>
             <Text style={[styles.productPrice, { color: colors.primary }]}>{item.price} руб.</Text>
+            
+            {user?.role === 'buyer' && (
+              <View style={styles.cartActions}>
+                {quantityInCart > 0 ? (
+                  <View style={styles.quantityControls}>
+                    <TouchableOpacity 
+                      onPress={() => handleUpdateQuantity(item.id, quantityInCart, -1)}
+                      disabled={isUpdating}
+                    >
+                      <Icon name="remove-circle-outline" size={24} color={colors.primary} />
+                    </TouchableOpacity>
+                    <Text style={[styles.quantityText, { color: colors.text }]}>{quantityInCart}</Text>
+                    <TouchableOpacity 
+                      onPress={() => handleUpdateQuantity(item.id, quantityInCart, 1)}
+                      disabled={isUpdating}
+                    >
+                      <Icon name="add-circle-outline" size={24} color={colors.primary} />
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <TouchableOpacity 
+                    style={[styles.miniEditButton, { backgroundColor: colors.primary }]}
+                    onPress={() => handleAddToCart(item)}
+                    disabled={isUpdating}
+                  >
+                    {isUpdating ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <Icon name="cart-outline" size={16} color="#fff" />
+                    )}
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
+
             {(canManageProducts && isOwnerOrAdmin) && (
               <View style={[styles.miniEditButton, { backgroundColor: colors.primary }]}>
                 <Icon name="create-outline" size={16} color="#fff" />
@@ -188,8 +277,28 @@ const styles = StyleSheet.create({
   productInfo: { padding: 10 },
   productName: { fontSize: 14, fontWeight: '500', marginBottom: 5, height: 40 },
   productFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  productPrice: { fontSize: 16, fontWeight: 'bold' },
-  miniEditButton: { padding: 5, borderRadius: 15, elevation: 2 },
+  productPrice: { fontSize: 16, fontWeight: 'bold', flex: 1 },
+  miniEditButton: { padding: 5, borderRadius: 15, elevation: 2, marginLeft: 5, minWidth: 30, alignItems: 'center' },
+  cartActions: { flexDirection: 'row', alignItems: 'center' },
+  quantityControls: { flexDirection: 'row', alignItems: 'center' },
+  quantityText: { marginHorizontal: 8, fontSize: 14, fontWeight: 'bold' },
+  cartBadge: {
+    position: 'absolute',
+    right: -6,
+    top: -6,
+    borderRadius: 9,
+    width: 18,
+    height: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#fff',
+  },
+  cartBadgeText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: 'bold',
+  },
   pendingBadge: {
     position: 'absolute',
     top: 5,

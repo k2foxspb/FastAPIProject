@@ -20,7 +20,7 @@ export default function EditProductScreen({ route, navigation }) {
   const [stock, setStock] = useState(product?.stock?.toString() || '');
   const [categoryId, setCategoryId] = useState(product?.category_id || '');
   const [categories, setCategories] = useState([]);
-  const [image, setImage] = useState(null);
+  const [images, setImages] = useState([]); // Изменено на список
   const [loading, setLoading] = useState(false);
   const [pickerVisible, setPickerVisible] = useState(false);
   const [user, setUser] = useState(null);
@@ -96,17 +96,22 @@ export default function EditProductScreen({ route, navigation }) {
     }
   };
 
-  const pickImage = async () => {
+  const pickImages = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [1, 1],
+      allowsMultipleSelection: true,
       quality: 0.8,
     });
 
     if (!result.canceled) {
-      setImage(result.assets[0]);
+      setImages([...images, ...result.assets]);
     }
+  };
+
+  const removeImage = (index) => {
+    const newImages = [...images];
+    newImages.splice(index, 1);
+    setImages(newImages);
   };
 
   const handleSave = async () => {
@@ -139,15 +144,17 @@ export default function EditProductScreen({ route, navigation }) {
     formData.append('stock', stock);
     formData.append('category_id', categoryId);
 
-    if (image) {
-      const uri = image.uri;
-      const uriParts = uri.split('.');
-      const fileType = uriParts[uriParts.length - 1];
-      const fileName = uri.split('/').pop();
-      formData.append('image', {
-        uri: uri,
-        name: fileName || `photo.${fileType}`,
-        type: `image/${fileType}`,
+    if (images.length > 0) {
+      images.forEach((img, index) => {
+        const uri = img.uri;
+        const uriParts = uri.split('.');
+        const fileType = uriParts[uriParts.length - 1];
+        const fileName = uri.split('/').pop();
+        formData.append('images', {
+          uri: uri,
+          name: fileName || `photo_${index}.${fileType}`,
+          type: `image/${fileType}`,
+        });
       });
     }
 
@@ -209,17 +216,27 @@ export default function EditProductScreen({ route, navigation }) {
   return (
     <ScrollView style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={styles.form}>
-        <TouchableOpacity style={styles.imageContainer} onPress={pickImage}>
-          {image ? (
-            <Image source={{ uri: image.uri }} style={styles.image} />
-          ) : product?.image_url ? (
-            <Image source={{ uri: getFullUrl(product.image_url) }} style={styles.image} />
-          ) : (
-            <View style={[styles.imagePlaceholder, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <Text style={{ color: colors.textSecondary }}>Выбрать фото</Text>
+        <Text style={[styles.label, { color: colors.text }]}>Фотографии товара</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.imagesScroll}>
+          {images.map((img, index) => (
+            <View key={index} style={styles.imageWrapper}>
+              <Image source={{ uri: img.uri }} style={styles.imageThumb} />
+              <TouchableOpacity style={styles.removeImageBtn} onPress={() => removeImage(index)}>
+                <Icon name="close-circle" size={24} color={colors.error} />
+              </TouchableOpacity>
             </View>
-          )}
-        </TouchableOpacity>
+          ))}
+          {isEditing && product?.images?.map((img, index) => (
+            <View key={`old-${index}`} style={styles.imageWrapper}>
+              <Image source={{ uri: getFullUrl(img.thumbnail_url) }} style={styles.imageThumb} />
+              <Text style={styles.oldImageLabel}>Уже загружено</Text>
+            </View>
+          ))}
+          <TouchableOpacity style={[styles.addImageBtn, { borderColor: colors.border }]} onPress={pickImages}>
+            <Icon name="add" size={40} color={colors.textSecondary} />
+            <Text style={{ color: colors.textSecondary, fontSize: 12 }}>Добавить</Text>
+          </TouchableOpacity>
+        </ScrollView>
 
         <Text style={[styles.label, { color: colors.text }]}>Название *</Text>
         <TextInput

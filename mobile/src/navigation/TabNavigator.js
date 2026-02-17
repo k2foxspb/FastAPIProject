@@ -15,8 +15,11 @@ import UserProfileScreen from '../screens/UserProfileScreen';
 import ChatListScreen from '../screens/ChatListScreen';
 import ChatScreen from '../screens/ChatScreen';
 import FeedScreen from '../screens/FeedScreen';
+import CartScreen from '../screens/CartScreen';
+import OrdersScreen from '../screens/OrdersScreen';
 import EditNewsScreen from '../screens/EditNewsScreen';
 import EditProductScreen from '../screens/EditProductScreen';
+import ProductDetailScreen from '../screens/ProductDetailScreen';
 import LoginScreen from '../screens/LoginScreen';
 import RegisterScreen from '../screens/RegisterScreen';
 import AdminScreen from '../screens/AdminScreen';
@@ -72,6 +75,7 @@ function ProfileStack() {
       }}
     >
       <Stack.Screen name="ProfileMain" component={ProfileScreen} options={{ title: 'Профиль' }} />
+      <Stack.Screen name="Orders" component={OrdersScreen} options={{ title: 'Мои заказы' }} />
       <Stack.Screen name="CreateAlbum" component={CreateAlbumScreen} options={{ title: 'Новый альбом' }} />
       <Stack.Screen name="AlbumDetail" component={AlbumDetailScreen} options={{ title: 'Альбом' }} />
       <Stack.Screen name="PhotoDetail" component={PhotoDetailScreen} options={{ title: 'Фотография' }} />
@@ -134,8 +138,10 @@ function FeedStack() {
       }}
     >
       <Stack.Screen name="FeedMain" component={FeedScreen} options={{ title: 'Новости и Товары' }} />
+      <Stack.Screen name="Cart" component={CartScreen} options={{ title: 'Корзина' }} />
       <Stack.Screen name="EditNews" component={EditNewsScreen} options={{ title: 'Новость' }} />
       <Stack.Screen name="EditProduct" component={EditProductScreen} options={{ title: 'Товар' }} />
+      <Stack.Screen name="ProductDetail" component={ProductDetailScreen} options={{ title: 'О товаре' }} />
     </Stack.Navigator>
   );
 }

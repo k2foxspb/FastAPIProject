@@ -55,3 +55,15 @@ class Product(Base):
     seller: Mapped["User"] = relationship("User", back_populates="products")
     review: Mapped[list["Reviews"]] = relationship("Reviews", back_populates="product")
     order_items: Mapped[list["OrderItem"]] = relationship("OrderItem", back_populates="product")
+    images: Mapped[list["ProductImage"]] = relationship("ProductImage", back_populates="product", cascade="all, delete-orphan")
+
+class ProductImage(Base):
+    __tablename__ = "product_images"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    product_id: Mapped[int] = mapped_column(ForeignKey("products.id", ondelete="CASCADE"), nullable=False)
+    image_url: Mapped[str] = mapped_column(String(200), nullable=False)
+    thumbnail_url: Mapped[str] = mapped_column(String(200), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    product: Mapped["Product"] = relationship("Product", back_populates="images")

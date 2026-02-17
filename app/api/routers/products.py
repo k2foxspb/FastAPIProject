@@ -5,12 +5,13 @@ from PIL import Image
 
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from sqlalchemy import select, update, and_, func, desc
+from sqlalchemy.orm import selectinload
 from starlette.status import HTTP_201_CREATED, HTTP_404_NOT_FOUND, HTTP_200_OK, HTTP_400_BAD_REQUEST, HTTP_403_FORBIDDEN
 
 from app.core.auth import get_current_seller
 from app.api.dependencies import get_async_db
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.models.products import Product as ProductModel
+from app.models.products import Product as ProductModel, ProductImage as ProductImageModel
 from app.models.categories import Category as CategoryModel
 from app.models.users import User as UserModel
 from app.schemas.products import Product as ProductShema, ProductCreate, ProductList
@@ -133,6 +134,7 @@ async def get_all_products(
     if rank_col is not None:
         products_stmt = (
             select(ProductModel, rank_col)
+            .options(selectinload(ProductModel.images))
             .where(*filters)
             .order_by(desc(rank_col), ProductModel.id)
             .offset((page - 1) * page_size)
@@ -141,11 +143,10 @@ async def get_all_products(
         result = await db.execute(products_stmt)
         rows = result.all()
         items = [row[0] for row in rows]  # сами объекты
-        # при желании можно вернуть ранг в ответе
-        # ranks = [row.rank for row in rows]
     else:
         products_stmt = (
             select(ProductModel)
+            .options(selectinload(ProductModel.images))
             .where(*filters)
             .order_by(desc(ProductModel.id))
             .offset((page - 1) * page_size)
@@ -164,12 +165,13 @@ async def get_all_products(
 @router.post("/", response_model=ProductShema, status_code=HTTP_201_CREATED)
 async def create_product(
         product: ProductCreate = Depends(ProductCreate.as_form),
-        image: UploadFile | None = File(None),
+        images: list[UploadFile] = File(None),
         db: AsyncSession = Depends(get_async_db),
         current_user: UserModel = Depends(get_current_seller)
 ):
     """
     Создаёт новый товар, привязанный к текущему продавцу (только для 'seller').
+    Поддерживает загрузку нескольких фотографий.
     """
 
     category_result = await db.scalars(
@@ -179,22 +181,36 @@ async def create_product(
         raise HTTPException(status_code=HTTP_400_BAD_REQUEST,
                             detail="Category not found or inactive")
 
-    # Сохранение изображения (если есть)
-    image_url, thumbnail_url = await save_product_image(image) if image else (None, None)
-
+    # Сохранение первого изображения как основного (thumbnail) для совместимости
+    main_image_url, main_thumbnail_url = (None, None)
+    
     # Создание товара
     db_product = ProductModel(
         **product.model_dump(),
         seller_id=current_user.id,
-        image_url=image_url,
-        thumbnail_url=thumbnail_url,
         moderation_status="approved" if current_user.role in ["admin", "owner"] else "pending"
     )
 
+    if images:
+        for idx, img in enumerate(images):
+            image_url, thumbnail_url = await save_product_image(img)
+            if idx == 0:
+                main_image_url, main_thumbnail_url = image_url, thumbnail_url
+            
+            db_product.images.append(ProductImageModel(
+                image_url=image_url,
+                thumbnail_url=thumbnail_url
+            ))
+
+    db_product.image_url = main_image_url
+    db_product.thumbnail_url = main_thumbnail_url
+
     db.add(db_product)
     await db.commit()
-    await db.refresh(db_product)  # Для получения id и is_active из базы
-    return db_product
+    await db.refresh(db_product)
+    # Перезагружаем со связями
+    stmt = select(ProductModel).options(selectinload(ProductModel.images)).where(ProductModel.id == db_product.id)
+    return await db.scalar(stmt)
 
 
 @router.get("/category/{category_id}", response_model=list[ProductShema])
@@ -211,38 +227,35 @@ async def get_product(product_id: int, db: AsyncSession = Depends(get_async_db))
     """
     Возвращает детальную информацию о товаре по его ID.
     """
-    stmt = select(ProductModel).where(and_(ProductModel.is_active == True,
-                                           ProductModel.id == product_id))
-    product = await db.scalars(stmt)
-    result = product.first()
-    if result is None:
+    stmt = (
+        select(ProductModel)
+        .options(selectinload(ProductModel.images))
+        .where(and_(ProductModel.is_active == True, ProductModel.id == product_id))
+    )
+    product = await db.scalar(stmt)
+    if product is None:
         raise HTTPException(status_code=404, detail="Product not found")
-    stmt = select(CategoryModel).where(CategoryModel.id == result.category_id)
-
-    category = await db.scalars(stmt)
-    result = category.first()
-    if result is None:
-        raise HTTPException(status_code=404, detail="Category not found")
-
-    stmt = select(ProductModel).where(ProductModel.id == product_id)
-    result = await db.scalars(stmt)
-
-    return result.first()
+    
+    return product
 
 
 @router.put("/{product_id}", response_model=ProductShema)
 async def update_product(
         product_id: int,
         product: ProductCreate = Depends(ProductCreate.as_form),
-        image: UploadFile | None = File(None),
+        images: list[UploadFile] = File(None),
         db: AsyncSession = Depends(get_async_db),
         current_user: UserModel = Depends(get_current_seller)
 ):
     """
     Обновляет товар, если он принадлежит текущему продавцу (только для 'seller').
     """
-    result = await db.scalars(select(ProductModel).where(ProductModel.id == product_id))
-    db_product = result.first()
+    result = await db.execute(
+        select(ProductModel)
+        .options(selectinload(ProductModel.images))
+        .where(ProductModel.id == product_id)
+    )
+    db_product = result.scalar_one_or_none()
     if not db_product:
         raise HTTPException(status_code=HTTP_404_NOT_FOUND, detail="Product not found")
     if db_product.seller_id != current_user.id:
@@ -252,15 +265,25 @@ async def update_product(
     )
     if not category_result.first():
         raise HTTPException(status_code=HTTP_400_BAD_REQUEST, detail="Category not found or inactive")
-    await db.execute(
-        update(ProductModel).where(ProductModel.id == product_id).values(**product.model_dump())
-    )
+    
+    # Обновляем основные поля
+    for key, value in product.model_dump().items():
+        setattr(db_product, key, value)
 
-    if image:
-        remove_product_image(db_product.image_url, db_product.thumbnail_url)
-        image_url, thumbnail_url = await save_product_image(image)
-        db_product.image_url = image_url
-        db_product.thumbnail_url = thumbnail_url
+    if images:
+        # При загрузке новых фото в этом упрощенном варианте мы добавляем их к существующим
+        # Или можно было бы очищать старые. Давайте добавлять.
+        for img in images:
+            image_url, thumbnail_url = await save_product_image(img)
+            db_product.images.append(ProductImageModel(
+                image_url=image_url,
+                thumbnail_url=thumbnail_url
+            ))
+        
+        # Обновляем основное фото, если его не было
+        if not db_product.image_url and db_product.images:
+            db_product.image_url = db_product.images[0].image_url
+            db_product.thumbnail_url = db_product.images[0].thumbnail_url
 
     if current_user.role not in ["admin", "owner"]:
         db_product.moderation_status = "pending"
@@ -268,8 +291,48 @@ async def update_product(
         db_product.moderation_status = "approved"
 
     await db.commit()
-    await db.refresh(db_product)  # Для консистентности данных
-    return db_product
+    await db.refresh(db_product)
+    
+    # Перезагружаем со связями
+    stmt = select(ProductModel).options(selectinload(ProductModel.images)).where(ProductModel.id == db_product.id)
+    return await db.scalar(stmt)
+
+@router.delete("/{product_id}/images/{image_id}")
+async def delete_product_image(
+    product_id: int,
+    image_id: int,
+    db: AsyncSession = Depends(get_async_db),
+    current_user: UserModel = Depends(get_current_seller)
+):
+    """Удаляет конкретное изображение товара."""
+    res = await db.execute(select(ProductImageModel).where(ProductImageModel.id == image_id, ProductImageModel.product_id == product_id))
+    img = res.scalar_one_or_none()
+    if not img:
+        raise HTTPException(404, "Image not found")
+    
+    # Проверка прав (только владелец товара или админ)
+    res_prod = await db.execute(select(ProductModel).where(ProductModel.id == product_id))
+    product = res_prod.scalar_one_or_none()
+    if not product or (product.seller_id != current_user.id and current_user.role not in ['admin', 'owner']):
+        raise HTTPException(403, "Not allowed")
+
+    remove_product_image(img.image_url, img.thumbnail_url)
+    await db.delete(img)
+    
+    # Если это было основное фото, обновляем его у товара
+    if product.image_url == img.image_url:
+        # Берем следующее доступное фото
+        res_next = await db.execute(select(ProductImageModel).where(ProductImageModel.product_id == product_id, ProductImageModel.id != image_id))
+        next_img = res_next.scalar_one_or_none()
+        if next_img:
+            product.image_url = next_img.image_url
+            product.thumbnail_url = next_img.thumbnail_url
+        else:
+            product.image_url = None
+            product.thumbnail_url = None
+
+    await db.commit()
+    return {"message": "Image deleted"}
 
 
 @router.delete("/{product_id}", response_model=ProductShema)

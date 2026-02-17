@@ -90,6 +90,9 @@ export const productsApi = {
   deleteProduct: (id) => api.delete(`/products/${id}`),
   getCategories: () => api.get('/categories'),
   createCategory: (data) => api.post('/categories', data),
+  getReviews: (productId) => api.get(`/products/${productId}/review`),
+  createReview: (data) => api.post('/reviews', data),
+  deleteReview: (id) => api.delete(`/reviews/reviews/${id}`),
 };
 
 export const newsApi = {
@@ -118,6 +121,20 @@ export const chatApi = {
   initUpload: (data, token) => api.post('/chat/upload/init', data, { params: { token } }),
   getUploadStatus: (uploadId, token) => api.get(`/chat/upload/status/${uploadId}`, { params: { token } }),
   getActiveUploads: (token) => api.get('/chat/upload/active', { params: { token } }),
+};
+
+export const cartApi = {
+  getCart: () => api.get('/cart/'),
+  addItem: (productId, quantity = 1) => api.post('/cart/items', { product_id: productId, quantity }),
+  updateItem: (productId, quantity) => api.put(`/cart/items/${productId}`, { quantity }),
+  removeItem: (productId) => api.delete(`/cart/items/${productId}`),
+};
+
+export const ordersApi = {
+  checkout: () => api.post('/orders/checkout'),
+  getOrders: (page = 1, pageSize = 10) => api.get('/orders/', { params: { page, page_size: pageSize } }),
+  getOrder: (id) => api.get(`/orders/${id}`),
+  getOrderStatus: (id) => api.get(`/orders/${id}/status`),
 };
 
 api.interceptors.request.use(

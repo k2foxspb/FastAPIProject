@@ -36,6 +36,12 @@ class ProductCreate(BaseModel):
         )
 
 
+class ProductImage(BaseModel):
+    id: int
+    image_url: str
+    thumbnail_url: str
+    model_config = ConfigDict(from_attributes=True)
+
 class Product(BaseModel):
     """
     Модель для ответа с данными товара.
@@ -52,6 +58,7 @@ class Product(BaseModel):
     moderation_status: str = Field(description="Статус модерации: pending, approved, rejected")
     is_active: bool = Field(description="Активность товара")
     rating: float | None = Field(None, description="Рейтинг товара (от 0 до 5)")
+    images: list[ProductImage] = Field(default=[], description="Список изображений товара")
 
     model_config = ConfigDict(from_attributes=True)
 
