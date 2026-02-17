@@ -398,8 +398,8 @@ async def delete_message(
     if is_sender and file_path:
         try:
             # Превращаем относительный путь в абсолютный
-            app_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-            abs_path = os.path.join(app_dir, "app", file_path.lstrip("/"))
+            root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            abs_path = os.path.join(root_dir, file_path.lstrip("/"))
             if os.path.exists(abs_path):
                 os.remove(abs_path)
         except Exception as e:
@@ -451,7 +451,7 @@ async def bulk_delete_messages(
     if not messages:
         return {"status": "ok", "deleted_count": 0}
 
-    app_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     
     deleted_ids = []
     for msg in messages:
@@ -467,7 +467,7 @@ async def bulk_delete_messages(
             # Удаляем файлы
             if file_path:
                 try:
-                    abs_path = os.path.join(app_dir, "app", file_path.lstrip("/"))
+                    abs_path = os.path.join(root_dir, file_path.lstrip("/"))
                     if os.path.exists(abs_path):
                         os.remove(abs_path)
                 except Exception as e:
@@ -507,9 +507,9 @@ async def upload_chat_file(
     file_extension = os.path.splitext(file.filename)[1]
     unique_filename = f"{uuid.uuid4()}{file_extension}"
     
-    # Используем абсолютный путь к папке media внутри app
-    app_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    chat_media_dir = os.path.join(app_dir, "app", "media", "chat")
+    # Используем абсолютный путь относительно корня приложения
+    root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    chat_media_dir = os.path.join(root_dir, "media", "chat")
     os.makedirs(chat_media_dir, exist_ok=True)
     file_path = os.path.join(chat_media_dir, unique_filename)
     
@@ -672,9 +672,9 @@ async def upload_chunk(
         return {"status": "error", "message": "Offset mismatch", "current_offset": session.offset}
 
     # Путь к временному файлу
-    # Используем абсолютный путь к папке media внутри app
-    app_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    temp_dir = os.path.join(app_dir, "app", "media", "temp")
+    # Используем абсолютный путь относительно корня приложения
+    root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    temp_dir = os.path.join(root_dir, "media", "temp")
     os.makedirs(temp_dir, exist_ok=True)
     file_path = os.path.join(temp_dir, f"{upload_id}_{session.filename}")
     
@@ -689,7 +689,7 @@ async def upload_chunk(
         session.is_completed = True
         session.offset = session.file_size
         # Перемещаем в постоянное хранилище
-        final_dir = os.path.join(app_dir, "app", "media", "chat")
+        final_dir = os.path.join(root_dir, "media", "chat")
         os.makedirs(final_dir, exist_ok=True)
         
         file_extension = os.path.splitext(session.filename)[1]
