@@ -28,6 +28,10 @@ import AdminModerationScreen from '../screens/AdminModerationScreen';
 import AdminNewsScreen from '../screens/AdminNewsScreen';
 import AdminChatsScreen from '../screens/AdminChatsScreen';
 import AdminChatDetailScreen from '../screens/AdminChatDetailScreen';
+import AdminCategoriesScreen from '../screens/AdminCategoriesScreen';
+import AdminProductsScreen from '../screens/AdminProductsScreen';
+import AdminOrdersScreen from '../screens/AdminOrdersScreen';
+import AdminReviewsScreen from '../screens/AdminReviewsScreen';
 
 
 const Tab = createBottomTabNavigator();
@@ -86,6 +90,10 @@ function ProfileStack() {
       <Stack.Screen name="AdminUsers" component={AdminUsersScreen} options={{ title: 'Пользователи' }} />
       <Stack.Screen name="AdminModeration" component={AdminModerationScreen} options={{ title: 'Модерация' }} />
       <Stack.Screen name="AdminNews" component={AdminNewsScreen} options={{ title: 'Новости' }} />
+      <Stack.Screen name="AdminCategories" component={AdminCategoriesScreen} options={{ title: 'Категории' }} />
+      <Stack.Screen name="AdminProducts" component={AdminProductsScreen} options={{ title: 'Товары' }} />
+      <Stack.Screen name="AdminOrders" component={AdminOrdersScreen} options={{ title: 'Заказы' }} />
+      <Stack.Screen name="AdminReviews" component={AdminReviewsScreen} options={{ title: 'Отзывы' }} />
       <Stack.Screen name="AdminChats" component={AdminChatsScreen} options={{ title: 'Чаты пользователей' }} />
       <Stack.Screen name="AdminChatDetail" component={AdminChatDetailScreen} options={{ title: 'Чат' }} />
       <Stack.Screen name="EditNews" component={EditNewsScreen} options={{ title: 'Редактировать новость' }} />
