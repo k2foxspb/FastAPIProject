@@ -1,36 +1,58 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>FastAPI + WebSocket Chat</title>
+    <meta charset="utf-8" />
+    <title>FastAPI — Главная</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; background: #f7f7f8; }
+        .hero { background: linear-gradient(135deg,#0ea5e9,#2563eb); color: #fff; padding: 40px 20px; text-align:center; }
+        .hero h1 { margin: 0 0 10px; font-size: 28px; }
+        .hero p { margin: 0 0 20px; opacity: 0.95; }
+        .cta-btn { background: #fff; color:#2563eb; padding:12px 20px; border-radius:8px; text-decoration:none; font-weight:600; display:inline-block; }
+        .container { max-width: 900px; margin: 20px auto; padding: 0 16px; }
+        .promo { background:#fff; border-radius:12px; padding:20px; box-shadow:0 6px 20px rgba(0,0,0,0.06); }
+        .promo h2 { margin-top:0; }
+        .app-banner { display:flex; align-items:center; gap:16px; background:#f0f9ff; border:1px dashed #93c5fd; padding:14px; border-radius:10px; margin-top:12px; }
+        .app-banner strong { color:#0ea5e9; }
+        .hidden { display:none; }
+    </style>
 </head>
 <body>
-<h1>FastAPI + WebSocket Chat</h1>
-<form action="" onsubmit="sendMessage(event)" id="form">
-    <input type="text" id="messageText" autocomplete="off" placeholder="Text...">
-    <button>Submit</button>
-</form>
-<ul id='messages'>
-</ul>
-<script>
-    var clientID = Date.now();
-    var ws = new WebSocket(`ws://127.0.0.1:8000/ws/${clientID}`);
+    <div class="hero">
+        <h1>Добро пожаловать в API интернет‑магазина</h1>
+        <p>Свежее предложение и актуальная версия мобильного приложения — всегда здесь.</p>
+        <a id="downloadTop" class="cta-btn hidden" href="#" download>Скачать приложение</a>
+    </div>
 
-    function processMessage(event) {
-        var messages = document.getElementById('messages')
-        var message = document.createElement('li')
-        var content = document.createTextNode(event.data)
-        message.appendChild(content);
-        messages.appendChild(message);
-    }
+    <div class="container">
+        <div class="promo">
+            <h2>Рекламный блок</h2>
+            <p>Скачайте наше мобильное приложение, чтобы получать персональные предложения, пуш‑уведомления и быстрый доступ к заказам.</p>
+            <div id="appBanner" class="app-banner hidden">
+                <span>Доступна новая версия: <strong id="latestVer">—</strong></span>
+                <a id="downloadBtn" class="cta-btn" href="#" download>Скачать APK</a>
+            </div>
+        </div>
+    </div>
 
-    ws.onmessage = processMessage;
-
-    function sendMessage(event) {
-        var input = document.getElementById("messageText")
-        ws.send(input.value);
-        input.value = ''
-        event.preventDefault()
-    }
-</script>
+    <script>
+        async function loadLatest() {
+            try {
+                const res = await fetch('/news/app-version/latest');
+                if (!res.ok) return;
+                const data = await res.json();
+                const a1 = document.getElementById('downloadBtn');
+                const a2 = document.getElementById('downloadTop');
+                const ver = document.getElementById('latestVer');
+                if (data && data.file_path) {
+                    a1.href = data.file_path; a1.classList.remove('hidden');
+                    a2.href = data.file_path; a2.classList.remove('hidden');
+                    ver.textContent = data.version || '—';
+                    document.getElementById('appBanner').classList.remove('hidden');
+                }
+            } catch(e) { /* no-op */ }
+        }
+        loadLatest();
+    </script>
 </body>
 </html>

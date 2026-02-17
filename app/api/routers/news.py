@@ -11,10 +11,21 @@ from PIL import Image
 from app.api.dependencies import get_async_db
 from app.core.auth import get_current_user, get_current_admin
 from app.models.news import News as NewsModel, NewsImage as NewsImageModel
-from app.models.users import User as UserModel
+from app.models.users import User as UserModel, AppVersion as AppVersionModel
 from app.schemas.news import News as NewsSchema, NewsCreate, NewsUpdate
+from app.schemas.users import AppVersionResponse
 
 router = APIRouter(prefix="/news", tags=["news"])
+
+@router.get("/app-version/latest", response_model=AppVersionResponse)
+async def get_latest_app_version(db: AsyncSession = Depends(get_async_db)):
+    """Возвращает последнюю версию приложения."""
+    from sqlalchemy import desc
+    result = await db.execute(select(AppVersionModel).order_by(desc(AppVersionModel.created_at)).limit(1))
+    version = result.scalar_one_or_none()
+    if not version:
+        raise HTTPException(status_code=404, detail="No app versions found")
+    return version
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 MEDIA_ROOT = BASE_DIR / "app" / "media" / "news"

@@ -1,16 +1,18 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, File, UploadFile, Form
+import os
+import shutil
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, delete
+from sqlalchemy import select, delete, desc
 from sqlalchemy.orm import selectinload
 
-from app.models.users import User as UserModel, AdminPermission as AdminPermissionModel, PhotoAlbum as PhotoAlbumModel
+from app.models.users import User as UserModel, AdminPermission as AdminPermissionModel, PhotoAlbum as PhotoAlbumModel, AppVersion as AppVersionModel
 from app.models.categories import Category as CategoryModel
 from app.models.products import Product as ProductModel
 from app.models.news import News as NewsModel
 from app.models.orders import Order as OrderModel, OrderItem as OrderItemModel
 from app.models.reviews import Reviews as ReviewsModel
 from app.models.chat import ChatMessage as ChatMessageModel
-from app.schemas.users import User as UserSchema, AdminPermissionCreate, AdminPermission as AdminPermissionSchema
+from app.schemas.users import User as UserSchema, AdminPermissionCreate, AdminPermission as AdminPermissionSchema, AppVersionResponse
 from app.schemas.products import Product as ProductSchema
 from app.schemas.news import News as NewsSchema
 from app.schemas.chat import ChatMessageResponse, DialogResponse
@@ -109,6 +111,53 @@ async def revoke_permission(
 async def get_manageable_models():
     """Возвращает список моделей, которыми можно управлять."""
     return ["categories", "products", "orders", "reviews", "users", "chats"]
+
+# --- Управление версиями приложения (Только для Owner) ---
+
+@router.post("/upload-app", response_model=AppVersionResponse)
+async def upload_app_version(
+    version: str = Form(...),
+    file: UploadFile = File(...),
+    owner: UserModel = Depends(get_current_owner),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """Загружает новую версию мобильного приложения (только владелец)."""
+    # Определяем путь для сохранения файла
+    project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    app_dir = os.path.join(project_root, "media", "app")
+    os.makedirs(app_dir, exist_ok=True)
+
+    file_extension = os.path.splitext(file.filename)[1]
+    # Сохраняем файл с версией в названии для уникальности
+    safe_version = version.replace(".", "_")
+    filename = f"app_v{safe_version}{file_extension}"
+    file_path = os.path.join(app_dir, filename)
+
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+
+    # Относительный путь для доступа через /media
+    relative_path = f"/media/app/{filename}"
+
+    # Создаем запись в БД
+    db_version = AppVersionModel(
+        version=version,
+        file_path=relative_path
+    )
+    db.add(db_version)
+    await db.commit()
+    await db.refresh(db_version)
+
+    return db_version
+
+@router.get("/app-versions", response_model=list[AppVersionResponse])
+async def get_app_versions(
+    owner: UserModel = Depends(get_current_owner),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """Возвращает историю версий приложения."""
+    result = await db.execute(select(AppVersionModel).order_by(desc(AppVersionModel.created_at)))
+    return result.scalars().all()
 
 # --- Чаты ---
 

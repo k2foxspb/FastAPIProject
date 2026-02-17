@@ -112,7 +112,11 @@ async def get_users(
 
 
 @router.get("/me")
-async def get_me(current_user: UserModel = Depends(get_current_user), db: AsyncSession = Depends(get_async_db)):
+async def get_me(
+    app_version: str | None = None,
+    current_user: UserModel = Depends(get_current_user), 
+    db: AsyncSession = Depends(get_async_db)
+):
     """
     Возвращает информацию о текущем пользователе, включая его альбомы и фотографии.
     """
@@ -124,6 +128,44 @@ async def get_me(current_user: UserModel = Depends(get_current_user), db: AsyncS
         )
     )
     user = result.scalar_one_or_none()
+
+    # Определяем наличие обновления приложения
+    try:
+        from sqlalchemy import desc
+        from app.models.users import AppVersion as AppVersionModel
+        latest_q = await db.execute(select(AppVersionModel).order_by(desc(AppVersionModel.created_at)).limit(1))
+        latest = latest_q.scalar_one_or_none()
+        latest_info = None
+        update_available = False
+        if latest:
+            latest_info = {
+                "id": latest.id,
+                "version": latest.version,
+                "file_path": latest.file_path,
+                "created_at": latest.created_at
+            }
+            if app_version:
+                def parse_ver(v: str) -> list[int]:
+                    parts = [p for p in v.split(".") if p.isdigit()]
+                    return [int(p) for p in parts]
+                try:
+                    cur_v = parse_ver(app_version)
+                    last_v = parse_ver(latest.version)
+                    # Сравнение версий по сегментам
+                    for a, b in zip(cur_v + [0]* (len(last_v)-len(cur_v)), last_v + [0]* (len(cur_v)-len(last_v))):
+                        if a < b:
+                            update_available = True
+                            break
+                        if a > b:
+                            break
+                except Exception:
+                    # Если версия в неверном формате, не падаем
+                    update_available = True
+        # Присваиваем временные поля для схемы
+        setattr(user, "update_available", update_available)
+        setattr(user, "latest_app_version", latest_info)
+    except Exception as _e:
+        pass
     
     try:
         # Пытаемся валидировать вручную для отладки, если возникнет ошибка

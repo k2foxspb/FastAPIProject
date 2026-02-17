@@ -165,6 +165,7 @@ class AdminPermission(BaseModel):
     model_name: str
     model_config = ConfigDict(from_attributes=True)
 
+
 class User(BaseModel):
     id: int
     email: str # Changed from EmailStr to str for flexibility
@@ -181,6 +182,8 @@ class User(BaseModel):
     photos: list[UserPhoto] = []
     albums: list[PhotoAlbum] = []
     admin_permissions: list[AdminPermission] = []
+    update_available: bool = False
+    latest_app_version: 'AppVersionResponse | None' = None
     
     model_config = ConfigDict(from_attributes=True)
 
@@ -204,7 +207,9 @@ class User(BaseModel):
                     "friendship_status": obj.get("friendship_status"),
                     "photos": obj.get("photos", []),
                     "albums": obj.get("albums", []),
-                    "admin_permissions": obj.get("admin_permissions", [])
+                    "admin_permissions": obj.get("admin_permissions", []),
+                    "update_available": obj.get("update_available", False),
+                    "latest_app_version": obj.get("latest_app_version")
                 }
                 return cls(**data)
                 
@@ -224,7 +229,9 @@ class User(BaseModel):
                 "friendship_status": getattr(obj, "friendship_status", None),
                 "photos": [],
                 "albums": [],
-                "admin_permissions": []
+                "admin_permissions": [],
+                "update_available": getattr(obj, "update_available", False),
+                "latest_app_version": getattr(obj, "latest_app_version", None)
             }
             
             # Используем __dict__ напрямую, это самый надежный способ избежать ленивой загрузки
@@ -266,6 +273,15 @@ class Friendship(BaseModel):
     user_id: int
     friend_id: int
     status: str
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class AppVersionResponse(BaseModel):
+    id: int
+    version: str
+    file_path: str
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
