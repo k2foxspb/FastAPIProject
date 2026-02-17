@@ -7,7 +7,9 @@ services:
       dockerfile: app/Dockerfile.prod.yml
     # Запускаем сервер Gunicorn
     command: gunicorn app.main:app --workers 4 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000
-#    # Открываем порт 8000 внутри и снаружи
+    volumes:
+      - media_data:/app/app/media
+    # Открываем порт 8000 внутри и снаружи
 #    ports:
 #      - '8000:8000'
     environment:
@@ -39,6 +41,8 @@ services:
       context: .
       dockerfile: app/Dockerfile.prod.yml
     command: celery -A app.core.celery_app worker --loglevel=info
+    volumes:
+      - media_data:/app/app/media
     environment:
       - REDIS_HOST=${REDIS_HOST:-redis}
       - POSTGRES_HOST=${POSTGRES_HOST:-db}
