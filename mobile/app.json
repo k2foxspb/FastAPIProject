@@ -29,7 +29,6 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.k2foxspb.fokinfun",
-      "googleServicesFile": "./GoogleService-Info.plist",
       "infoPlist": {
         "NSCameraUsageDescription": "Приложение запрашивает доступ к камере, чтобы вы могли делать снимки.",
         "NSMicrophoneUsageDescription": "Приложение запрашивает доступ к микрофону.",

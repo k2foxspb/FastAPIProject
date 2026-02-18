@@ -101,19 +101,28 @@ export default function FeedScreen({ navigation }) {
       style={[styles.newsCard, { backgroundColor: colors.card, borderColor: colors.border, borderWidth: theme === 'dark' ? 1 : 0 }]}
       onPress={() => navigation.navigate('NewsDetail', { newsId: item.id, newsItem: item })}
     >
-      <View style={styles.newsHeader}>
-        <Text style={[styles.newsTitle, { color: colors.text }]}>{item.title}</Text>
-        {canManageNews && (
-          <TouchableOpacity onPress={(e) => {
-            e.stopPropagation();
-            navigation.navigate('EditNews', { newsItem: item });
-          }}>
-            <Icon name="create-outline" size={20} color={colors.primary} />
-          </TouchableOpacity>
-        )}
+      {item.image_url && (
+        <Image 
+          source={{ uri: getFullUrl(item.image_url) }} 
+          style={styles.newsCoverImage} 
+          resizeMode="cover"
+        />
+      )}
+      <View style={styles.newsCardContent}>
+        <View style={styles.newsHeader}>
+          <Text style={[styles.newsTitle, { color: colors.text }]}>{item.title}</Text>
+          {canManageNews && (
+            <TouchableOpacity onPress={(e) => {
+              e.stopPropagation();
+              navigation.navigate('EditNews', { newsItem: item });
+            }}>
+              <Icon name="create-outline" size={20} color={colors.primary} />
+            </TouchableOpacity>
+          )}
+        </View>
+        <Text style={[styles.newsContent, { color: colors.text }]} numberOfLines={3}>{item.content}</Text>
+        <Text style={[styles.newsDate, { color: colors.textSecondary }]}>{new Date(item.created_at).toLocaleDateString()}</Text>
       </View>
-      <Text style={[styles.newsContent, { color: colors.text }]} numberOfLines={3}>{item.content}</Text>
-      <Text style={[styles.newsDate, { color: colors.textSecondary }]}>{new Date(item.created_at).toLocaleDateString()}</Text>
     </TouchableOpacity>
   );
 
@@ -273,10 +282,12 @@ const styles = StyleSheet.create({
   tab: { flex: 1, paddingVertical: 15, alignItems: 'center' },
   tabText: { fontSize: 16, fontWeight: 'bold' },
   listContent: { padding: 10 },
-  newsCard: { padding: 15, borderRadius: 10, marginBottom: 10, elevation: 2 },
-  newsHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 },
-  newsTitle: { fontSize: 18, fontWeight: 'bold' },
-  newsContent: { fontSize: 14, marginBottom: 10 },
+  newsCard: { borderRadius: 10, marginBottom: 15, elevation: 3, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, overflow: 'hidden' },
+  newsCoverImage: { width: '100%', height: 200 },
+  newsCardContent: { padding: 15 },
+  newsHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 },
+  newsTitle: { fontSize: 18, fontWeight: 'bold', flex: 1, marginRight: 10 },
+  newsContent: { fontSize: 14, marginBottom: 10, lineHeight: 20 },
   newsDate: { fontSize: 12, color: 'gray' },
   productGridCard: { flex: 0.5, margin: 5, borderRadius: 10, elevation: 2, overflow: 'hidden' },
   productGridImage: { width: '100%', height: 150 },

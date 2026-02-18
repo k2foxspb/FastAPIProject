@@ -1,39 +1,76 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, Image, ScrollView, Dimensions, ActivityIndicator, Alert, FlatList } from 'react-native';
+import { View, Text, StyleSheet, Image, ScrollView, Dimensions, ActivityIndicator, Alert, FlatList, TouchableOpacity } from 'react-native';
 import { newsApi } from '../api';
 import { getFullUrl } from '../utils/urlHelper';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
+import { Ionicons as Icon } from '@expo/vector-icons';
 
 const { width } = Dimensions.get('window');
 
 // Простая функция для рендеринга "отформатированного" текста
-// Поддерживает **жирный** и *курсив*
+// Поддерживает **жирный**, *курсив* и [image:URL] или [video:URL]
 const FormattedText = ({ text, style, colors }) => {
   if (!text) return null;
 
-  const parts = text.split(/(\*\*.*?\*\*|\*.*?\*)/g);
+  // Сначала разбиваем по медиа-тегам, чтобы они были отдельными блоками
+  const blocks = text.split(/(\[image:.*?\]|\[video:.*?\])/g);
   
   return (
-    <Text style={style}>
-      {parts.map((part, index) => {
-        if (part.startsWith('**') && part.endsWith('**')) {
+    <View>
+      {blocks.map((block, bIdx) => {
+        if (!block) return null;
+
+        if (block.startsWith('[image:') && block.endsWith(']')) {
+          const imageUrl = block.slice(7, -1);
           return (
-            <Text key={index} style={{ fontWeight: 'bold' }}>
-              {part.slice(2, -2)}
-            </Text>
+            <View key={`img-${bIdx}`} style={styles.inlineImageContainer}>
+              <Image 
+                source={{ uri: getFullUrl(imageUrl) }} 
+                style={styles.inlineImage} 
+                resizeMode="contain"
+              />
+            </View>
           );
         }
-        if (part.startsWith('*') && part.endsWith('*')) {
+        if (block.startsWith('[video:') && block.endsWith(']')) {
+          const videoUrl = block.slice(7, -1);
           return (
-            <Text key={index} style={{ fontStyle: 'italic' }}>
-              {part.slice(1, -1)}
-            </Text>
+            <View key={`vid-${bIdx}`} style={styles.inlineVideoContainer}>
+              <Icon name="play-circle-outline" size={50} color={colors.primary} />
+              <Text style={{ color: colors.textSecondary, marginTop: 10 }}>Видео: {videoUrl}</Text>
+              <Text style={{ color: colors.textSecondary, fontSize: 12 }}>(Плеер будет доступен в следующем обновлении)</Text>
+            </View>
           );
         }
-        return part;
+        
+        // Для обычного текста обрабатываем жирный и курсив внутри одного Text компонента,
+        // чтобы текст шел сплошным потоком
+        const textParts = block.split(/(\*\*.*?\*\*|\*.*?\*)/g);
+        return (
+          <Text key={`txt-${bIdx}`} style={style}>
+            {textParts.map((part, pIdx) => {
+              if (!part) return null;
+              if (part.startsWith('**') && part.endsWith('**')) {
+                return (
+                  <Text key={pIdx} style={{ fontWeight: 'bold' }}>
+                    {part.slice(2, -2)}
+                  </Text>
+                );
+              }
+              if (part.startsWith('*') && part.endsWith('*')) {
+                return (
+                  <Text key={pIdx} style={{ fontStyle: 'italic' }}>
+                    {part.slice(1, -1)}
+                  </Text>
+                );
+              }
+              return part;
+            })}
+          </Text>
+        );
       })}
-    </Text>
+    </View>
   );
 };
 
@@ -150,4 +187,7 @@ const styles = StyleSheet.create({
   date: { fontSize: 14, marginBottom: 15 },
   divider: { height: 1, width: '100%', marginBottom: 20 },
   content: { fontSize: 16, lineHeight: 26 },
+  inlineImageContainer: { marginVertical: 15, alignItems: 'center' },
+  inlineImage: { width: width - 40, height: 250, borderRadius: 10 },
+  inlineVideoContainer: { marginVertical: 15, padding: 20, alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.05)', borderRadius: 10, borderWidth: 1, borderColor: 'rgba(0,0,0,0.1)' },
 });

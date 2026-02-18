@@ -579,12 +579,37 @@ export default function ChatScreen({ route, navigation }) {
     }
   };
 
+  const renderUploadPlaceholder = () => {
+    if (uploadingProgress === null || !uploadingData.uri) return null;
+
+    return (
+      <View style={[
+        styles.messageWrapper, 
+        styles.sentWrapper,
+        { opacity: 0.7, marginBottom: 10 }
+      ]}>
+        <View style={[styles.messageBubble, styles.sent, { backgroundColor: colors.primary }]}>
+          {uploadingData.mimeType?.startsWith('image/') ? (
+            <Image 
+              source={{ uri: uploadingData.uri }} 
+              style={{ width: 200, height: 150, borderRadius: 10 }} 
+              resizeMode="cover" 
+            />
+          ) : (
+            <View style={{ flexDirection: 'row', alignItems: 'center', padding: 10 }}>
+              <MaterialIcons name="insert-drive-file" size={24} color="#fff" />
+              <Text style={{ color: '#fff', marginLeft: 10 }}>Загрузка файла...</Text>
+            </View>
+          )}
+          <View style={styles.messageFooter}>
+            <Text style={[styles.messageTime, { color: 'rgba(255,255,255,0.7)' }]}>Отправка...</Text>
+          </View>
+        </View>
+      </View>
+    );
+  };
+
   const renderMessageItem = ({ item, index }) => {
-    // Если это первый элемент в FlatList (index === 0) и у нас есть активная загрузка,
-    // можем отрисовать "заглушку" сообщения.
-    // Но лучше просто добавить ее в начало списка сообщений виртуально.
-    // Однако, FlatList inverted, так что index 0 - это последнее сообщение.
-    
     const isImage = item.message_type === 'image';
     const isVideo = item.message_type === 'video';
     const isVoice = item.message_type === 'voice';
@@ -626,38 +651,16 @@ export default function ChatScreen({ route, navigation }) {
     };
 
     return (
-      <View>
-        {uploadingProgress !== null && uploadingData.uri && index === 0 && (
-          <View style={[
-            styles.messageWrapper, 
-            styles.sentWrapper,
-            { opacity: 0.7 }
-          ]}>
-            <View style={[styles.messageBubble, styles.sent, { backgroundColor: colors.primary }]}>
-              {uploadingData.mimeType?.startsWith('image/') ? (
-                <Image source={{ uri: uploadingData.uri }} style={{ width: 200, height: 150, borderRadius: 10 }} resizeMode="cover" />
-              ) : (
-                <View style={{ flexDirection: 'row', alignItems: 'center', padding: 10 }}>
-                  <MaterialIcons name="insert-drive-file" size={24} color="#fff" />
-                  <Text style={{ color: '#fff', marginLeft: 10 }}>Загрузка файла...</Text>
-                </View>
-              )}
-              <View style={styles.messageFooter}>
-                <Text style={[styles.messageTime, { color: 'rgba(255,255,255,0.7)' }]}>Отправка...</Text>
-              </View>
-            </View>
-          </View>
-        )}
-        <Pressable 
-          onPress={handlePress}
-          onLongPress={handleLongPress}
-          style={[
-            styles.messageWrapper,
-            isReceived ? styles.receivedWrapper : styles.sentWrapper,
-            isSelected && { backgroundColor: colors.primary + '20' },
-            isGrouped && { marginTop: -2 }
-          ]}
-        >
+      <Pressable 
+        onPress={handlePress}
+        onLongPress={handleLongPress}
+        style={[
+          styles.messageWrapper,
+          isReceived ? styles.receivedWrapper : styles.sentWrapper,
+          isSelected && { backgroundColor: colors.primary + '20' },
+          isGrouped && { marginTop: -2 }
+        ]}
+      >
         {isReceived && (
           <View style={styles.avatarContainer}>
             {!isGrouped ? (
@@ -784,7 +787,6 @@ export default function ChatScreen({ route, navigation }) {
           </View>
         </View>
       </Pressable>
-      </View>
     );
   };
 
@@ -900,6 +902,7 @@ export default function ChatScreen({ route, navigation }) {
         onEndReached={loadMoreMessages}
         onEndReachedThreshold={0.1}
         inverted={true}
+        ListHeaderComponent={renderUploadPlaceholder}
       />
 
       <Modal

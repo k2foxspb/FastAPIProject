@@ -62,11 +62,7 @@ export default function EditNewsScreen({ route, navigation }) {
       }
 
       if (isEditing) {
-        // NewsUpdate в схеме ожидает JSON, а мы шлем FormData. 
-        // Если бэкенд update_news не переделан под FormData, это может не сработать.
-        // Но обычно PUT/PATCH с файлами это сложно. Пока оставим как есть или переделаем только создание.
-        // В текущем бэкенде update_news принимает NewsUpdate (BaseModel).
-        await newsApi.updateNews(newsItem.id, { title, content });
+        await newsApi.updateNews(newsItem.id, formData);
         Alert.alert('Успех', 'Новость обновлена');
       } else {
         await newsApi.createNews(formData);
@@ -135,12 +131,59 @@ export default function EditNewsScreen({ route, navigation }) {
     const { start, end } = selection;
     const selectedText = content.substring(start, end);
     let newText;
+    let newCursorPos;
+
     if (tag === 'bold') {
       newText = content.substring(0, start) + `**${selectedText}**` + content.substring(end);
+      newCursorPos = end + 2;
     } else if (tag === 'italic') {
       newText = content.substring(0, start) + `*${selectedText}*` + content.substring(end);
+      newCursorPos = end + 1;
+    } else if (tag === 'image') {
+      Alert.prompt(
+        'Вставить изображение',
+        'Введите прямую ссылку на изображение',
+        [
+          { text: 'Отмена', style: 'cancel' },
+          { 
+            text: 'OK', 
+            onPress: (url) => {
+              const tagText = `[image:${url || 'URL'}]`;
+              const finalContent = content.substring(0, start) + tagText + content.substring(end);
+              setContent(finalContent);
+            }
+          }
+        ],
+        'plain-text'
+      );
+      return;
+    } else if (tag === 'video') {
+      Alert.prompt(
+        'Вставить видео',
+        'Введите ссылку на видео (YouTube и др.)',
+        [
+          { text: 'Отмена', style: 'cancel' },
+          { 
+            text: 'OK', 
+            onPress: (url) => {
+              const tagText = `[video:${url || 'URL'}]`;
+              const finalContent = content.substring(0, start) + tagText + content.substring(end);
+              setContent(finalContent);
+            }
+          }
+        ],
+        'plain-text'
+      );
+      return;
     }
-    setContent(newText);
+    
+    if (newText) {
+      setContent(newText);
+      // Возвращаем фокус и устанавливаем курсор
+      if (inputRef.current) {
+        inputRef.current.focus();
+      }
+    }
   };
 
   return (
@@ -174,13 +217,17 @@ export default function EditNewsScreen({ route, navigation }) {
         <View style={styles.labelRow}>
           <Text style={[styles.label, { color: colors.text }]}>Текст новости</Text>
           <View style={styles.formattingButtons}>
-            <TouchableOpacity onPress={() => applyFormatting('bold')} style={styles.formatBtn}>
-              <Icon name="text" size={20} color={colors.primary} />
+            <TouchableOpacity onPress={() => applyFormatting('bold')} style={styles.formatBtn} title="Жирный">
               <Text style={{ fontWeight: 'bold', color: colors.primary }}> B </Text>
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => applyFormatting('italic')} style={styles.formatBtn}>
-              <Icon name="text" size={20} color={colors.primary} />
+            <TouchableOpacity onPress={() => applyFormatting('italic')} style={styles.formatBtn} title="Курсив">
               <Text style={{ fontStyle: 'italic', color: colors.primary }}> I </Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => applyFormatting('image')} style={styles.formatBtn} title="Изображение">
+              <Icon name="image-outline" size={18} color={colors.primary} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => applyFormatting('video')} style={styles.formatBtn} title="Видео">
+              <Icon name="play-circle-outline" size={18} color={colors.primary} />
             </TouchableOpacity>
           </View>
         </View>
@@ -232,7 +279,7 @@ const styles = StyleSheet.create({
   addImageBtn: { width: 80, height: 80, borderRadius: 8, borderWidth: 1, borderStyle: 'dashed', justifyContent: 'center', alignItems: 'center' },
   labelRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 },
   formattingButtons: { flexDirection: 'row' },
-  formatBtn: { flexDirection: 'row', alignItems: 'center', marginLeft: 15, padding: 5, borderWidth: 1, borderRadius: 4, borderColor: '#eee' },
+  formatBtn: { flexDirection: 'row', alignItems: 'center', marginLeft: 10, paddingVertical: 5, paddingHorizontal: 10, borderWidth: 1, borderRadius: 4, borderColor: '#eee' },
   saveButton: { padding: 15, borderRadius: 8, alignItems: 'center', marginTop: 10 },
   saveButtonText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
   deleteButton: { padding: 15, borderRadius: 8, alignItems: 'center', marginTop: 10, borderWidth: 1 },
