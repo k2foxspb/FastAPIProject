@@ -116,6 +116,15 @@ async def create_news(
     result = await db.execute(select(NewsModel).options(selectinload(NewsModel.images)).where(NewsModel.id == db_news.id))
     return result.scalar_one()
 
+@router.post("/upload-media", response_model=dict)
+async def upload_news_media(
+    file: UploadFile = File(...),
+    current_user: UserModel = Depends(get_current_user),
+):
+    """Загружает одиночный медиафайл и возвращает его URL для вставки в текст."""
+    image_url, _ = await save_news_image(file)
+    return {"location": image_url, "url": image_url}
+
 @router.get("/{news_id}", response_model=NewsSchema)
 async def get_news_detail(news_id: int, db: AsyncSession = Depends(get_async_db)):
     result = await db.execute(select(NewsModel).options(selectinload(NewsModel.images)).where(NewsModel.id == news_id))
@@ -127,10 +136,7 @@ async def get_news_detail(news_id: int, db: AsyncSession = Depends(get_async_db)
 @router.patch("/{news_id}", response_model=NewsSchema)
 async def update_news(
     news_id: int,
-    title: Optional[str] = Form(None),
-    content: Optional[str] = Form(None),
-    is_active: Optional[bool] = Form(None),
-    images: list[UploadFile] = File(None),
+    news_in: NewsUpdate,
     current_user: UserModel = Depends(get_current_user),
     db: AsyncSession = Depends(get_async_db)
 ):
@@ -145,23 +151,9 @@ async def update_news(
     if db_news.author_id != current_user.id and current_user.role not in ["admin", "owner"]:
         raise HTTPException(status_code=403, detail="Not enough permissions")
 
-    if title is not None:
-        db_news.title = title
-    if content is not None:
-        db_news.content = content
-    if is_active is not None:
-        db_news.is_active = is_active
-    
-    if images:
-        for img in images:
-            image_url, thumbnail_url = await save_news_image(img)
-            # Если у новости еще нет обложки, ставим первую загруженную
-            if not db_news.image_url:
-                db_news.image_url = image_url
-            db_news.images.append(NewsImageModel(
-                image_url=image_url,
-                thumbnail_url=thumbnail_url
-            ))
+    update_data = news_in.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(db_news, field, value)
     
     # Если редактирует автор (не админ), сбрасываем модерацию
     if current_user.role not in ["admin", "owner"]:

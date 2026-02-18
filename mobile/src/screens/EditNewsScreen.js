@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Alert, ActivityIndicator, Image } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Alert, ActivityIndicator, Image, KeyboardAvoidingView, Platform } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import { RichEditor, RichToolbar, actions } from 'react-native-pell-rich-editor';
 import { newsApi } from '../api';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
@@ -16,8 +17,7 @@ export default function EditNewsScreen({ route, navigation }) {
   const [content, setContent] = useState(newsItem?.content || '');
   const [images, setImages] = useState([]);
   const [loading, setLoading] = useState(false);
-  const inputRef = useRef(null);
-  const [selection, setSelection] = useState({ start: 0, end: 0 });
+  const richText = useRef(null);
 
   useEffect(() => {
     navigation.setOptions({
@@ -62,7 +62,11 @@ export default function EditNewsScreen({ route, navigation }) {
       }
 
       if (isEditing) {
-        await newsApi.updateNews(newsItem.id, formData);
+        // NewsUpdate в схеме ожидает JSON, а мы шлем FormData. 
+        // Если бэкенд update_news не переделан под FormData, это может не сработать.
+        // Но обычно PUT/PATCH с файлами это сложно. Пока оставим как есть или переделаем только создание.
+        // В текущем бэкенде update_news принимает NewsUpdate (BaseModel).
+        await newsApi.updateNews(newsItem.id, { title, content });
         Alert.alert('Успех', 'Новость обновлена');
       } else {
         await newsApi.createNews(formData);
@@ -127,69 +131,49 @@ export default function EditNewsScreen({ route, navigation }) {
     setImages(newImages);
   };
 
-  const applyFormatting = (tag) => {
-    const { start, end } = selection;
-    const selectedText = content.substring(start, end);
-    let newText;
-    let newCursorPos;
+  const handleInsertImage = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      quality: 0.8,
+    });
 
-    if (tag === 'bold') {
-      newText = content.substring(0, start) + `**${selectedText}**` + content.substring(end);
-      newCursorPos = end + 2;
-    } else if (tag === 'italic') {
-      newText = content.substring(0, start) + `*${selectedText}*` + content.substring(end);
-      newCursorPos = end + 1;
-    } else if (tag === 'image') {
-      Alert.prompt(
-        'Вставить изображение',
-        'Введите прямую ссылку на изображение',
-        [
-          { text: 'Отмена', style: 'cancel' },
-          { 
-            text: 'OK', 
-            onPress: (url) => {
-              const tagText = `[image:${url || 'URL'}]`;
-              const finalContent = content.substring(0, start) + tagText + content.substring(end);
-              setContent(finalContent);
-            }
-          }
-        ],
-        'plain-text'
-      );
-      return;
-    } else if (tag === 'video') {
-      Alert.prompt(
-        'Вставить видео',
-        'Введите ссылку на видео (YouTube и др.)',
-        [
-          { text: 'Отмена', style: 'cancel' },
-          { 
-            text: 'OK', 
-            onPress: (url) => {
-              const tagText = `[video:${url || 'URL'}]`;
-              const finalContent = content.substring(0, start) + tagText + content.substring(end);
-              setContent(finalContent);
-            }
-          }
-        ],
-        'plain-text'
-      );
-      return;
-    }
-    
-    if (newText) {
-      setContent(newText);
-      // Возвращаем фокус и устанавливаем курсор
-      if (inputRef.current) {
-        inputRef.current.focus();
+    if (!result.canceled && result.assets && result.assets.length > 0) {
+      setLoading(true);
+      try {
+        const img = result.assets[0];
+        const formData = new FormData();
+        const uri = img.uri;
+        const uriParts = uri.split('.');
+        const fileType = uriParts[uriParts.length - 1];
+        const fileName = uri.split('/').pop();
+        
+        formData.append('file', {
+          uri: uri,
+          name: fileName || `news_media_${Date.now()}.${fileType}`,
+          type: `image/${fileType}`,
+        });
+
+        const response = await newsApi.uploadMedia(formData);
+        const imageUrl = response.data.url;
+        richText.current?.insertImage(imageUrl);
+      } catch (err) {
+        console.error(err);
+        Alert.alert('Ошибка', 'Не удалось загрузить изображение');
+      } finally {
+        setLoading(false);
       }
     }
   };
 
   return (
+    <KeyboardAvoidingView 
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'} 
+      style={{ flex: 1 }}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+    >
     <ScrollView style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={styles.form}>
-        <Text style={[styles.label, { color: colors.text }]}>Фотографии</Text>
+        <Text style={[styles.label, { color: colors.text }]}>Обложка новости (миниатюры)</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.imagesScroll}>
           {images.map((img, index) => (
             <View key={index} style={styles.imageWrapper}>
@@ -214,35 +198,39 @@ export default function EditNewsScreen({ route, navigation }) {
           placeholderTextColor={colors.textSecondary}
         />
 
-        <View style={styles.labelRow}>
-          <Text style={[styles.label, { color: colors.text }]}>Текст новости</Text>
-          <View style={styles.formattingButtons}>
-            <TouchableOpacity onPress={() => applyFormatting('bold')} style={styles.formatBtn} title="Жирный">
-              <Text style={{ fontWeight: 'bold', color: colors.primary }}> B </Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => applyFormatting('italic')} style={styles.formatBtn} title="Курсив">
-              <Text style={{ fontStyle: 'italic', color: colors.primary }}> I </Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => applyFormatting('image')} style={styles.formatBtn} title="Изображение">
-              <Icon name="image-outline" size={18} color={colors.primary} />
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => applyFormatting('video')} style={styles.formatBtn} title="Видео">
-              <Icon name="play-circle-outline" size={18} color={colors.primary} />
-            </TouchableOpacity>
-          </View>
+        <Text style={[styles.label, { color: colors.text }]}>Текст новости</Text>
+        <View style={[styles.editorContainer, { borderColor: colors.border, backgroundColor: colors.card }]}>
+          <RichToolbar
+            editor={richText}
+            actions={[
+              actions.setBold,
+              actions.setItalic,
+              actions.insertBulletsList,
+              actions.insertOrderedList,
+              actions.insertLink,
+              actions.insertImage,
+              actions.undo,
+              actions.redo,
+            ]}
+            onPressAddImage={handleInsertImage}
+            iconTint={colors.text}
+            selectedIconTint={colors.primary}
+            style={{ backgroundColor: colors.background, borderBottomWidth: 1, borderBottomColor: colors.border }}
+          />
+          <RichEditor
+            ref={richText}
+            initialContentHTML={content}
+            onChange={setContent}
+            placeholder="Введите текст новости..."
+            editorStyle={{
+              backgroundColor: colors.card,
+              color: colors.text,
+              placeholderColor: colors.textSecondary,
+              contentCSSText: 'font-size: 16px;',
+            }}
+            style={styles.richEditor}
+          />
         </View>
-        <TextInput
-          ref={inputRef}
-          style={[styles.input, styles.textArea, { backgroundColor: colors.card, color: colors.text, borderColor: colors.border }]}
-          value={content}
-          onChangeText={setContent}
-          onSelectionChange={(e) => setSelection(e.nativeEvent.selection)}
-          placeholder="Введите текст новости"
-          placeholderTextColor={colors.textSecondary}
-          multiline
-          numberOfLines={10}
-          textAlignVertical="top"
-        />
 
         <TouchableOpacity 
           style={[styles.saveButton, { backgroundColor: colors.primary }]} 
@@ -263,6 +251,7 @@ export default function EditNewsScreen({ route, navigation }) {
         )}
       </View>
     </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -271,15 +260,13 @@ const styles = StyleSheet.create({
   form: { padding: 20 },
   label: { fontSize: 16, fontWeight: 'bold', marginBottom: 5 },
   input: { borderWidth: 1, borderRadius: 8, padding: 12, marginBottom: 20, fontSize: 16 },
-  textArea: { height: 250 },
   imagesScroll: { marginBottom: 20 },
   imageWrapper: { marginRight: 15, position: 'relative' },
   imageThumb: { width: 80, height: 80, borderRadius: 8 },
   removeImageBtn: { position: 'absolute', top: -10, right: -10, backgroundColor: '#fff', borderRadius: 12 },
   addImageBtn: { width: 80, height: 80, borderRadius: 8, borderWidth: 1, borderStyle: 'dashed', justifyContent: 'center', alignItems: 'center' },
-  labelRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 },
-  formattingButtons: { flexDirection: 'row' },
-  formatBtn: { flexDirection: 'row', alignItems: 'center', marginLeft: 10, paddingVertical: 5, paddingHorizontal: 10, borderWidth: 1, borderRadius: 4, borderColor: '#eee' },
+  editorContainer: { borderWidth: 1, borderRadius: 8, marginBottom: 20, overflow: 'hidden', minHeight: 300 },
+  richEditor: { flex: 1, minHeight: 250 },
   saveButton: { padding: 15, borderRadius: 8, alignItems: 'center', marginTop: 10 },
   saveButtonText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
   deleteButton: { padding: 15, borderRadius: 8, alignItems: 'center', marginTop: 10, borderWidth: 1 },

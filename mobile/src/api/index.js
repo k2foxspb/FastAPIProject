@@ -111,6 +111,9 @@ export const newsApi = {
   createNews: (data) => api.post('/news', data),
   updateNews: (id, data) => api.patch(`/news/${id}`, data),
   deleteNews: (id) => api.delete(`/news/${id}`),
+  uploadMedia: (formData) => api.post('/news/upload-media', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  }),
 };
 
 export const adminApi = {

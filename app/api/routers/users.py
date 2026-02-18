@@ -1160,7 +1160,8 @@ async def delete_friend(
     db: AsyncSession = Depends(get_async_db)
 ):
     """
-    Удаляет пользователя из друзей.
+    Удаляет пользователя из друзей. 
+    При этом у второго пользователя остается заявка в друзья (статус pending).
     """
     res = await db.execute(
         select(FriendshipModel).where(
@@ -1173,7 +1174,11 @@ async def delete_friend(
     )
     friendship = res.scalar_one_or_none()
     if friendship:
-        await db.delete(friendship)
+        # Вместо удаления меняем статус на pending и делаем отправителем того, кого удалили
+        # Таким образом, у того, кого удалили, остается заявка в друзья
+        friendship.status = "pending"
+        friendship.user_id = friend_id
+        friendship.friend_id = current_user.id
         await db.commit()
     return None
 
