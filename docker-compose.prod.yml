@@ -7,6 +7,7 @@ services:
       context: .
       dockerfile: app/Dockerfile.prod.yml
     # Запускаем сервер Gunicorn
+    user: "0:0"
     command: gunicorn app.main:app --workers 4 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000
     volumes:
       - media_data:/home/fast/app/media
@@ -43,6 +44,7 @@ services:
 
   redis:
     image: redis:7-alpine
+    user: "0:0"
     expose:
       - "6379"
     volumes:
@@ -52,6 +54,7 @@ services:
     build:
       context: .
       dockerfile: app/Dockerfile.prod.yml
+    user: "0:0"
     command: celery -A app.core.celery_app worker --loglevel=info
     volumes:
       - media_data:/home/fast/app/media
@@ -84,6 +87,7 @@ services:
 
   db:
     image: postgres:15
+    user: "0:0"
     volumes:
       - postgres_data:/var/lib/postgresql/data/
     environment:
@@ -93,6 +97,7 @@ services:
 
   nginx:
     build: nginx
+    user: "0:0"
     ports:
       - '80:80'
       - '443:443'
@@ -105,6 +110,7 @@ services:
 
   certbot:
     image: certbot/certbot
+    user: "0:0"
     volumes:
       - /etc/letsencrypt:/etc/letsencrypt
       - /var/www/certbot:/var/www/certbot

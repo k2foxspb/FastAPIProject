@@ -7,15 +7,11 @@ ENV HOME=/home/fast \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
-# создаем домашнюю директорию для пользователя(/home/fast) и директорию для проекта(/home/fast/app)
-# создаем группу fast
-# создаем отдельного пользователя fast
-RUN mkdir -p $APP_HOME \
- && groupadd -r fast\
- && useradd -r -g fast fast
+# создаем рабочую директорию
+RUN mkdir -p $APP_HOME
 
 # устанавливаем рабочую директорию
-WORKDIR $HOME
+WORKDIR $APP_HOME
 
 # копирование проекта FastAPI в рабочую директорию
 COPY app app
@@ -23,11 +19,6 @@ COPY requirements.txt alembic.ini .env fix_media_links.py .
 
 # обновление pip
 # установка зависимостей из списка requirements.txt
-# изменение владельца, для всех директорий и файлов проекта, на пользователя fast
 RUN pip install --upgrade pip \
- && pip install -r requirements.txt \
- && chown -R fast:fast .
-
-# изменение рабочего пользователя на fast
-USER fast
+ && pip install -r requirements.txt
 
