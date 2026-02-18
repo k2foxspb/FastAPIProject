@@ -106,6 +106,7 @@ async def create_news(
     db: AsyncSession = Depends(get_async_db)
 ):
     """Создает новость. По умолчанию статус 'pending'."""
+    print(f"DEBUG: create_news started - title: {title}, images count: {len(images) if images else 0}")
     db_news = NewsModel(
         title=title,
         content=content,
@@ -136,6 +137,7 @@ async def upload_news_media(
     current_user: UserModel = Depends(get_current_user),
 ):
     """Загружает одиночный медиафайл и возвращает его URL для вставки в текст."""
+    print(f"DEBUG: upload_news_media started - filename: {file.filename}, type: {file.content_type}")
     image_url, _ = await save_news_image(file)
     return {"location": image_url, "url": image_url}
 
