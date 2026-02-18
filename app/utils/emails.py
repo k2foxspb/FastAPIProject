@@ -4,13 +4,20 @@ from email.mime.multipart import MIMEMultipart
 from email.utils import make_msgid, formatdate
 from app.core.config import (
     MAIL_USERNAME, MAIL_PASSWORD, MAIL_FROM, 
-    MAIL_PORT, MAIL_SERVER, MAIL_FROM_NAME, DOMAIN
+    MAIL_PORT, MAIL_SERVER, MAIL_FROM_NAME, DOMAIN, MOBILE_DEEPLINK
 )
 from loguru import logger
+from urllib.parse import quote
 
 async def send_verification_email(email: str, token: str):
     logger.info(f"Sending verification email to {email}")
     verification_url = f"{DOMAIN}/users/verify-email?token={token}"
+
+    # Если указан базовый deeplink приложения — добавим его как redirect-параметр
+    if MOBILE_DEEPLINK:
+        encoded_redirect = quote(MOBILE_DEEPLINK, safe=":/?&=#")
+        verification_url += f"&redirect={encoded_redirect}"
+
     subject = "Код подтверждения"
     
     text = f"""Здравствуйте!

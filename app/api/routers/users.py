@@ -3,8 +3,9 @@ from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete, or_, and_
 from fastapi.security import OAuth2PasswordRequestForm
+from fastapi.responses import RedirectResponse
 
-from app.core.config import SECRET_KEY, ALGORITHM
+from app.core.config import SECRET_KEY, ALGORITHM, MOBILE_DEEPLINK
 from app.models.users import (
     User as UserModel, 
     PhotoAlbum as PhotoAlbumModel, 
@@ -377,33 +378,66 @@ async def test_email_send(email: str, background_tasks: BackgroundTasks):
 
 
 @router.get("/verify-email")
-async def verify_email(token: str, db: AsyncSession = Depends(get_async_db)):
+async def verify_email(token: str, redirect: str | None = None, db: AsyncSession = Depends(get_async_db)):
     """
     Подтверждает email пользователя по токену.
+    При наличии redirect (или MOBILE_DEEPLINK в конфиге) делает 302 на deeplink:
+    - success: <deeplink>?status=success
+    - error:   <deeplink>?status=error&reason=<code>
     """
+    deeplink_target = redirect or MOBILE_DEEPLINK
+
+    def maybe_redirect(status_str: str, reason: str | None = None):
+        if not deeplink_target:
+            return None
+        url = f"{deeplink_target}?status={status_str}"
+        if reason:
+            url += f"&reason={reason}"
+        return RedirectResponse(url=url, status_code=status.HTTP_302_FOUND)
+
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         email: str = payload.get("sub")
         token_type: str = payload.get("type")
         if email is None or token_type != "verification":
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid token")
+            raise ValueError("invalid_token")
     except jwt.ExpiredSignatureError:
+        resp = maybe_redirect("error", "token_expired")
+        if resp:
+            return resp
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Token has expired")
     except jwt.PyJWTError:
+        resp = maybe_redirect("error", "invalid_token")
+        if resp:
+            return resp
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid token")
+    except ValueError:
+        resp = maybe_redirect("error", "invalid_token")
+        if resp:
+            return resp
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid token")
 
     result = await db.scalars(select(UserModel).where(UserModel.email == email))
     user = result.first()
 
     if not user:
+        resp = maybe_redirect("error", "user_not_found")
+        if resp:
+            return resp
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     
     if user.is_active:
+        resp = maybe_redirect("success")  # уже подтверждено — всё равно success
+        if resp:
+            return resp
         return {"message": "Email already verified"}
 
     user.is_active = True
     await db.commit()
 
+    resp = maybe_redirect("success")
+    if resp:
+        return resp
     return {"message": "Email successfully verified"}
 
 
