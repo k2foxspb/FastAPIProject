@@ -83,14 +83,17 @@ async def get_users(
                 res_sent = await db.execute(
                     select(FriendshipModel).where(
                         FriendshipModel.user_id == current_user.id,
-                        FriendshipModel.friend_id == user.id,
-                        or_(FriendshipModel.deleted_by_id != current_user.id, FriendshipModel.deleted_by_id == None)
+                        FriendshipModel.friend_id == user.id
                     )
                 )
                 friendship = res_sent.scalar_one_or_none()
                 if friendship:
                     if friendship.status == "accepted":
                         user.friendship_status = "accepted"
+                    elif hasattr(friendship, 'deleted_by_id') and friendship.deleted_by_id == current_user.id:
+                        # Если вдруг каким-то образом в этой записи есть deleted_by_id текущего юзера
+                        # (хотя по логике он должен быть во второй ветке)
+                        user.friendship_status = None
                     else:
                         user.friendship_status = "requested_by_me"
                 else:
@@ -105,7 +108,7 @@ async def get_users(
                     if friendship:
                         if friendship.status == "accepted":
                             user.friendship_status = "accepted"
-                        elif friendship.deleted_by_id == current_user.id:
+                        elif hasattr(friendship, 'deleted_by_id') and friendship.deleted_by_id == current_user.id:
                             # Текущий пользователь удалил этого друга, но заявка от того осталась
                             user.friendship_status = "requested_by_them"
                         else:
@@ -1012,7 +1015,7 @@ async def get_user_profile(
     if friendship:
         if friendship.status == "accepted":
             friendship_status = "accepted"
-        elif friendship.deleted_by_id == current_user.id:
+        elif hasattr(friendship, 'deleted_by_id') and friendship.deleted_by_id == current_user.id:
             # Текущий пользователь удалил этого друга, но заявка от того осталась
             friendship_status = "requested_by_them"
         elif friendship.user_id == current_user.id:
@@ -1058,18 +1061,21 @@ async def send_friend_request(
     )
     existing = res.scalar_one_or_none()
     if existing:
-        if existing.deleted_by_id:
+        if hasattr(existing, 'deleted_by_id') and existing.deleted_by_id:
             existing.deleted_by_id = None
             await db.commit()
             await db.refresh(existing)
         return FriendshipSchema.model_validate(existing)
     
-    new_friendship = FriendshipModel(
-        user_id=current_user.id,
-        friend_id=user_id,
-        status="pending",
-        deleted_by_id=None
-    )
+    new_friendship_data = {
+        "user_id": current_user.id,
+        "friend_id": user_id,
+        "status": "pending"
+    }
+    if hasattr(FriendshipModel, 'deleted_by_id'):
+        new_friendship_data["deleted_by_id"] = None
+        
+    new_friendship = FriendshipModel(**new_friendship_data)
     db.add(new_friendship)
     await db.commit()
     await db.refresh(new_friendship)
@@ -1115,7 +1121,8 @@ async def accept_friend_request(
         raise HTTPException(status_code=404, detail="Friend request not found")
     
     friendship.status = "accepted"
-    friendship.deleted_by_id = None
+    if hasattr(friendship, 'deleted_by_id'):
+        friendship.deleted_by_id = None
     await db.commit()
     await db.refresh(friendship)
 
@@ -1192,7 +1199,8 @@ async def delete_friend(
         friendship.status = "pending"
         friendship.user_id = friend_id
         friendship.friend_id = current_user.id
-        friendship.deleted_by_id = current_user.id
+        if hasattr(friendship, 'deleted_by_id'):
+            friendship.deleted_by_id = current_user.id
         await db.commit()
     return None
 
@@ -1244,11 +1252,15 @@ async def get_friend_requests(
     res = await db.execute(
         select(FriendshipModel).where(
             FriendshipModel.friend_id == current_user.id,
-            FriendshipModel.status == "pending",
-            or_(FriendshipModel.deleted_by_id != current_user.id, FriendshipModel.deleted_by_id == None)
+            FriendshipModel.status == "pending"
         )
     )
     friendships = res.scalars().all()
+    
+    # Фильтруем те, что были удалены текущим пользователем (если поле существует)
+    if friendships and hasattr(FriendshipModel, 'deleted_by_id'):
+        friendships = [f for f in friendships if f.deleted_by_id != current_user.id]
+        
     sender_ids = [f.user_id for f in friendships]
     
     if not sender_ids:

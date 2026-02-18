@@ -273,8 +273,10 @@ class Friendship(BaseModel):
     user_id: int
     friend_id: int
     status: str
-    deleted_by_id: int | None = None
     created_at: datetime
+    
+    # deleted_by_id опционален на случай если его нет в БД
+    deleted_by_id: int | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
