@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert } from 'react-native';
 import api from '../api';
+import { adminApi } from '../api';
 import { Ionicons as Icon } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
 
-export default function AdminUsersScreen() {
+export default function AdminUsersScreen({ navigation }) {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const { theme } = useTheme();
@@ -47,7 +48,10 @@ export default function AdminUsersScreen() {
   };
 
   const renderUser = ({ item }) => (
-    <View style={[styles.userCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+    <TouchableOpacity 
+      style={[styles.userCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
+      onPress={() => navigation.navigate('UserProfile', { userId: item.id, isAdminView: true })}
+    >
       <View>
         <Text style={[styles.userEmail, { color: colors.text }]}>{item.email}</Text>
         <Text style={[styles.userRole, { color: colors.primary }]}>{item.role.toUpperCase()}</Text>
@@ -58,7 +62,7 @@ export default function AdminUsersScreen() {
       >
         <Text style={styles.roleButtonText}>Роль</Text>
       </TouchableOpacity>
-    </View>
+    </TouchableOpacity>
   );
 
   return (

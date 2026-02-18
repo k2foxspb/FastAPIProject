@@ -1,7 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, Image, FlatList, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { usersApi } from '../api';
+import { usersApi, adminApi } from '../api';
 import { API_BASE_URL } from '../constants';
 import { Ionicons as Icon } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
@@ -11,7 +11,7 @@ import { formatStatus, formatName } from '../utils/formatters';
 export default function UserProfileScreen({ route, navigation }) {
   const { theme } = useTheme();
   const colors = themeConstants[theme];
-  const { userId } = route.params;
+  const { userId, isAdminView } = route.params;
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -19,7 +19,9 @@ export default function UserProfileScreen({ route, navigation }) {
   const fetchUser = useCallback(async () => {
     try {
       setLoading(true);
-      const userRes = await usersApi.getUser(userId);
+      const userRes = isAdminView 
+        ? await adminApi.getUser(userId)
+        : await usersApi.getUser(userId);
       setUser(userRes.data);
       setError(null);
     } catch (err) {
@@ -28,7 +30,7 @@ export default function UserProfileScreen({ route, navigation }) {
     } finally {
       setLoading(false);
     }
-  }, [userId]);
+  }, [userId, isAdminView]);
 
   const handleFriendAction = async () => {
     try {
@@ -166,7 +168,9 @@ export default function UserProfileScreen({ route, navigation }) {
         <Text style={[styles.sectionTitle, { color: colors.text }]}>Альбомы ({user.albums?.length || 0})</Text>
         {user.albums && user.albums.map(album => (
           <View key={album.id} style={styles.album}>
-            <Text style={[styles.albumTitle, { color: colors.text }]}>{album.title}</Text>
+            <Text style={[styles.albumTitle, { color: colors.text }]}>
+              {album.title} {album.is_private && <Icon name="lock-closed" size={14} color={colors.textSecondary} />}
+            </Text>
             <FlatList
               horizontal
               data={album.photos}
@@ -198,11 +202,17 @@ export default function UserProfileScreen({ route, navigation }) {
                 initialPhotos: user.photos,
                 isOwner: false
               })}
+              style={styles.gridPhotoContainer}
             >
               <Image 
                 source={{ uri: getFullUrl(photo.preview_url || photo.image_url) }} 
                 style={styles.gridPhoto} 
               />
+              {photo.is_private && (
+                <View style={styles.privateBadge}>
+                  <Icon name="lock-closed" size={12} color="#fff" />
+                </View>
+              )}
             </TouchableOpacity>
           ))}
         </View>
@@ -255,7 +265,16 @@ const styles = StyleSheet.create({
   albumTitle: { fontSize: 16, fontWeight: '500', marginBottom: 8 },
   photo: { width: 100, height: 100, marginRight: 10, borderRadius: 5 },
   photoGrid: { flexDirection: 'row', flexWrap: 'wrap' },
+  gridPhotoContainer: { position: 'relative' },
   gridPhoto: { width: 100, height: 100, margin: 5, borderRadius: 5 },
+  privateBadge: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderRadius: 10,
+    padding: 2
+  },
   errorText: { marginBottom: 10 },
   retryBtn: { padding: 10, borderRadius: 5 },
   retryText: { color: '#fff' }

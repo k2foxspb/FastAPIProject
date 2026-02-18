@@ -118,6 +118,7 @@ export const newsApi = {
 
 export const adminApi = {
   getUsers: () => api.get('/admin/users'),
+  getUser: (id) => api.get(`/admin/users/${id}`),
   updateUserRole: (id, role) => api.patch(`/admin/users/${id}/role`, null, { params: { role } }),
   getPendingModeration: () => api.get('/admin/moderation/pending'),
   approveObject: (model, id) => api.post(`/admin/moderation/approve/${model}/${id}`),

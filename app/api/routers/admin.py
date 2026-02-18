@@ -43,6 +43,28 @@ async def get_all_users(
         for u in users
     ]
 
+@router.get("/users/{user_id}", response_model=UserSchema)
+async def get_user_profile_admin(
+    user_id: int,
+    db: AsyncSession = Depends(get_async_db),
+    admin: UserModel = Depends(get_current_admin)
+):
+    """
+    Возвращает полный профиль пользователя по его ID (для администраторов).
+    Включает все фотографии и альбомы, даже приватные.
+    """
+    result = await db.execute(
+        select(UserModel).where(UserModel.id == user_id).options(
+            selectinload(UserModel.photos),
+            selectinload(UserModel.albums).selectinload(PhotoAlbumModel.photos)
+        )
+    )
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    
+    return user
+
 @router.patch("/users/{user_id}/role")
 async def update_user_role(
     user_id: int,
