@@ -16,9 +16,9 @@ from app.models.users import User as UserModel, AppVersion as AppVersionModel
 from app.schemas.news import News as NewsSchema, NewsCreate, NewsUpdate
 from app.schemas.users import AppVersionResponse
 
-router = APIRouter(prefix="/news", tags=["news"])
+router = APIRouter(prefix="/news", tags=["news"], redirect_slashes=False)
 
-@router.get("/app-version/latest", response_model=AppVersionResponse)
+@router.get("/app-version/latest/", response_model=AppVersionResponse)
 async def get_latest_app_version(db: AsyncSession = Depends(get_async_db)):
     """Возвращает последнюю версию приложения."""
     from sqlalchemy import desc
@@ -72,7 +72,7 @@ async def save_news_image(file: UploadFile) -> tuple[str, str]:
         thumb_url = original_url
     return original_url, thumb_url
 
-@router.get("", response_model=list[NewsSchema])
+@router.get("/", response_model=list[NewsSchema])
 async def get_news(db: AsyncSession = Depends(get_async_db)):
     """Возвращает только одобренные и активные новости."""
     result = await db.execute(
@@ -83,7 +83,7 @@ async def get_news(db: AsyncSession = Depends(get_async_db)):
     )
     return result.scalars().all()
 
-@router.post("", response_model=NewsSchema, status_code=status.HTTP_201_CREATED)
+@router.post("/", response_model=NewsSchema, status_code=status.HTTP_201_CREATED)
 async def create_news(
     title: str = Form(...),
     content: str = Form(...),
@@ -116,7 +116,7 @@ async def create_news(
     result = await db.execute(select(NewsModel).options(selectinload(NewsModel.images)).where(NewsModel.id == db_news.id))
     return result.scalar_one()
 
-@router.post("/upload-media", response_model=dict)
+@router.post("/upload-media/", response_model=dict)
 async def upload_news_media(
     file: UploadFile = File(...),
     current_user: UserModel = Depends(get_current_user),
@@ -125,7 +125,7 @@ async def upload_news_media(
     image_url, _ = await save_news_image(file)
     return {"location": image_url, "url": image_url}
 
-@router.get("/{news_id}", response_model=NewsSchema)
+@router.get("/{news_id}/", response_model=NewsSchema)
 async def get_news_detail(news_id: int, db: AsyncSession = Depends(get_async_db)):
     result = await db.execute(select(NewsModel).options(selectinload(NewsModel.images)).where(NewsModel.id == news_id))
     news = result.scalar_one_or_none()
@@ -133,7 +133,7 @@ async def get_news_detail(news_id: int, db: AsyncSession = Depends(get_async_db)
         raise HTTPException(status_code=404, detail="News not found")
     return news
 
-@router.patch("/{news_id}", response_model=NewsSchema)
+@router.patch("/{news_id}/", response_model=NewsSchema)
 async def update_news(
     news_id: int,
     news_in: NewsUpdate,
@@ -168,7 +168,7 @@ async def update_news(
     )
     return result.scalar_one()
 
-@router.delete("/{news_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{news_id}/", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_news(
     news_id: int,
     current_user: UserModel = Depends(get_current_user),
