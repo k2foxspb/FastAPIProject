@@ -16,7 +16,7 @@ from app.models.users import User as UserModel, AppVersion as AppVersionModel
 from app.schemas.news import News as NewsSchema, NewsCreate, NewsUpdate
 from app.schemas.users import AppVersionResponse
 
-router = APIRouter(prefix="/news", tags=["news"], redirect_slashes=False)
+router = APIRouter(prefix="/news", tags=["news"])
 
 @router.get("/app-version/latest/", response_model=AppVersionResponse)
 async def get_latest_app_version(db: AsyncSession = Depends(get_async_db)):
@@ -106,9 +106,8 @@ async def create_news(
     db: AsyncSession = Depends(get_async_db)
 ):
     """Создает новость. По умолчанию статус 'pending'."""
-    print(f"DEBUG: create_news started - title: {title}, images count: {len(images) if images else 0}")
-    
-    # Pre-read and validate all images before starting DB work to catch errors early
+
+    # 1. Сначала полностью вычитываем файлы из запроса
     validated_images_data: list[tuple[UploadFile, bytes]] = []
     if images:
         for img in images:
@@ -119,31 +118,45 @@ async def create_news(
                 raise HTTPException(400, f"File {img.filename} is not a valid image type")
             validated_images_data.append((img, img_content))
 
+    # 2. Создаем объект новости
     db_news = NewsModel(
         title=title,
         content=content,
         author_id=current_user.id,
         moderation_status="approved" if current_user.role in ["admin", "owner"] else "pending"
     )
-    
-    # Process images sequentially from validated memory buffers
-    for idx, (img_file, img_bytes) in enumerate(validated_images_data):
-        # Save original and thumbnail using our safe save_news_image wrapper logic
-        # But we use the already read bytes to avoid multiple reads
-        image_url, thumbnail_url = await _process_validated_image(img_file, img_bytes)
-        
-        if idx == 0:
-            db_news.image_url = image_url
-        db_news.images.append(NewsImageModel(
-            image_url=image_url,
-            thumbnail_url=thumbnail_url
-        ))
-            
     db.add(db_news)
+
+    # Нужно сделать flush, чтобы получить ID новости для связей картинок
+    await db.flush()
+
+    # 3. Обрабатываем картинки
+    for idx, (img_file, img_bytes) in enumerate(validated_images_data):
+        try:
+            image_url, thumbnail_url = await _process_validated_image(img_file, img_bytes)
+
+            if idx == 0:
+                db_news.image_url = image_url
+
+            new_img = NewsImageModel(
+                news_id=db_news.id,
+                image_url=image_url,
+                thumbnail_url=thumbnail_url
+            )
+            db.add(new_img)
+        except Exception as e:
+            print(f"DEBUG: Error processing image {idx}: {e}")
+
+    # 4. Сохраняем всё в БД
     await db.commit()
     await db.refresh(db_news)
-    # Reload with images
-    result = await db.execute(select(NewsModel).options(selectinload(NewsModel.images)).where(NewsModel.id == db_news.id))
+
+    # Загружаем со связями для ответа
+    result = await db.execute(
+        select(NewsModel)
+        .options(selectinload(NewsModel.images))
+        .where(NewsModel.id == db_news.id)
+    )
     return result.scalar_one()
 
 async def _process_validated_image(file: UploadFile, content: bytes) -> tuple[str, str]:
@@ -196,7 +209,6 @@ async def upload_news_media(
     current_user: UserModel = Depends(get_current_user),
 ):
     """Загружает одиночный медиафайл и возвращает его URL для вставки в текст."""
-    print(f"DEBUG: upload_news_media started - filename: {file.filename}, type: {file.content_type}")
     image_url, _ = await save_news_image(file)
     return {"location": image_url, "url": image_url}
 

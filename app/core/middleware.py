@@ -27,8 +27,6 @@ def setup_middleware(app: FastAPI) -> None:
     # ProxyFix for HTTPS
     @app.middleware("http")
     async def proxy_fix(request, call_next):
-        if "/news/" in str(request.url):
-            print(f"DEBUG: Middleware start - {request.method} {request.url}")
         # Handle X-Forwarded-Proto
         proto = request.headers.get("x-forwarded-proto")
         if proto:
