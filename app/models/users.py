@@ -98,10 +98,12 @@ class Friendship(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     friend_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     status: Mapped[str] = mapped_column(String, default="pending")  # "pending", "accepted"
+    deleted_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     sender: Mapped["User"] = relationship("User", foreign_keys=[user_id], back_populates="sent_friend_requests")
     receiver: Mapped["User"] = relationship("User", foreign_keys=[friend_id], back_populates="received_friend_requests")
+    deleted_by_user: Mapped["User | None"] = relationship("User", foreign_keys=[deleted_by_id])
 
 
 class AppVersion(Base):

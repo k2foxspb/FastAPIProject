@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, FlatList, Image, StyleSheet, TouchableOpacity, RefreshControl, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, FlatList, StyleSheet, TouchableOpacity, RefreshControl, ActivityIndicator, Alert } from 'react-native';
+import FadeInImage from '../components/FadeInImage';
+import FadeInView from '../components/FadeInView';
 import { productsApi, newsApi, usersApi, cartApi } from '../api';
 import { getFullUrl } from '../utils/urlHelper';
 import { useTheme } from '../context/ThemeContext';
@@ -170,7 +172,7 @@ export default function FeedScreen({ navigation }) {
         ]}
         onPress={() => navigation.navigate('ProductDetail', { productId: item.id })}
       >
-        <Image source={{ uri: getFullUrl(item.thumbnail_url) || 'https://via.placeholder.com/150' }} style={styles.productGridImage} />
+        <FadeInImage source={{ uri: getFullUrl(item.thumbnail_url) || 'https://via.placeholder.com/150' }} style={styles.productGridImage} />
         {isPending && (
           <View style={styles.pendingBadge}>
             <Text style={styles.pendingBadgeText}>Ожидает</Text>
@@ -246,7 +248,8 @@ export default function FeedScreen({ navigation }) {
       {loading && !refreshing ? (
         <ActivityIndicator style={{ marginTop: 20 }} color={colors.primary} />
       ) : (
-        <FlatList
+        <FadeInView visible={!loading} duration={250}>
+          <FlatList
           data={activeTab === 'news' ? news : products}
           keyExtractor={(item) => item.id.toString()}
           renderItem={activeTab === 'news' ? renderNewsItem : renderProductItem}
@@ -262,6 +265,7 @@ export default function FeedScreen({ navigation }) {
             </Text>
           }
         />
+        </FadeInView>
       )}
 
       {((activeTab === 'news' && canManageNews) || (activeTab === 'products' && canManageProducts)) && (

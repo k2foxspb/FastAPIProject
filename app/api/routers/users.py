@@ -83,7 +83,8 @@ async def get_users(
                 res_sent = await db.execute(
                     select(FriendshipModel).where(
                         FriendshipModel.user_id == current_user.id,
-                        FriendshipModel.friend_id == user.id
+                        FriendshipModel.friend_id == user.id,
+                        or_(FriendshipModel.deleted_by_id != current_user.id, FriendshipModel.deleted_by_id == None)
                     )
                 )
                 friendship = res_sent.scalar_one_or_none()
@@ -104,6 +105,9 @@ async def get_users(
                     if friendship:
                         if friendship.status == "accepted":
                             user.friendship_status = "accepted"
+                        elif friendship.deleted_by_id == current_user.id:
+                            # Текущий пользователь удалил этого друга, но заявка от того осталась
+                            user.friendship_status = "requested_by_them"
                         else:
                             user.friendship_status = "requested_by_them"
                     else:
@@ -1008,6 +1012,9 @@ async def get_user_profile(
     if friendship:
         if friendship.status == "accepted":
             friendship_status = "accepted"
+        elif friendship.deleted_by_id == current_user.id:
+            # Текущий пользователь удалил этого друга, но заявка от того осталась
+            friendship_status = "requested_by_them"
         elif friendship.user_id == current_user.id:
             friendship_status = "requested_by_me"
         else:
@@ -1051,12 +1058,17 @@ async def send_friend_request(
     )
     existing = res.scalar_one_or_none()
     if existing:
+        if existing.deleted_by_id:
+            existing.deleted_by_id = None
+            await db.commit()
+            await db.refresh(existing)
         return FriendshipSchema.model_validate(existing)
-
+    
     new_friendship = FriendshipModel(
         user_id=current_user.id,
         friend_id=user_id,
-        status="pending"
+        status="pending",
+        deleted_by_id=None
     )
     db.add(new_friendship)
     await db.commit()
@@ -1101,8 +1113,9 @@ async def accept_friend_request(
     friendship = res.scalar_one_or_none()
     if not friendship:
         raise HTTPException(status_code=404, detail="Friend request not found")
-
+    
     friendship.status = "accepted"
+    friendship.deleted_by_id = None
     await db.commit()
     await db.refresh(friendship)
 
@@ -1179,6 +1192,7 @@ async def delete_friend(
         friendship.status = "pending"
         friendship.user_id = friend_id
         friendship.friend_id = current_user.id
+        friendship.deleted_by_id = current_user.id
         await db.commit()
     return None
 
@@ -1230,7 +1244,8 @@ async def get_friend_requests(
     res = await db.execute(
         select(FriendshipModel).where(
             FriendshipModel.friend_id == current_user.id,
-            FriendshipModel.status == "pending"
+            FriendshipModel.status == "pending",
+            or_(FriendshipModel.deleted_by_id != current_user.id, FriendshipModel.deleted_by_id == None)
         )
     )
     friendships = res.scalars().all()

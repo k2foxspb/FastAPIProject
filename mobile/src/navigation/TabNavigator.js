@@ -1,6 +1,6 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { createStackNavigator } from '@react-navigation/stack';
+import { createStackNavigator, CardStyleInterpolators } from '@react-navigation/stack';
 import { View } from 'react-native';
 import { Ionicons as Icon } from '@expo/vector-icons';
 
@@ -53,6 +53,8 @@ function ChatStack() {
       screenOptions={{
         headerStyle: { backgroundColor: colors.background },
         headerTintColor: colors.text,
+        cardStyleInterpolator: CardStyleInterpolators.forFadeFromBottomAndroid,
+        animationEnabled: true,
       }}
     >
       <Stack.Screen name="ChatList" component= {ChatListScreen} options={{ title: 'Сообщения' }} />
@@ -78,6 +80,8 @@ function ProfileStack() {
       screenOptions={{
         headerStyle: { backgroundColor: colors.background },
         headerTintColor: colors.text,
+        cardStyleInterpolator: CardStyleInterpolators.forFadeFromBottomAndroid,
+        animationEnabled: true,
       }}
     >
       <Stack.Screen name="ProfileMain" component={ProfileScreen} options={{ title: 'Профиль' }} />
@@ -129,6 +133,8 @@ function UsersStack() {
       screenOptions={{
         headerStyle: { backgroundColor: colors.background },
         headerTintColor: colors.text,
+        cardStyleInterpolator: CardStyleInterpolators.forFadeFromBottomAndroid,
+        animationEnabled: true,
       }}
     >
       <Stack.Screen name="UsersMain" component={UsersScreen} options={{ title: 'Пользователи' }} />
@@ -146,6 +152,8 @@ function FeedStack() {
       screenOptions={{
         headerStyle: { backgroundColor: colors.background },
         headerTintColor: colors.text,
+        cardStyleInterpolator: CardStyleInterpolators.forFadeFromBottomAndroid,
+        animationEnabled: true,
       }}
     >
       <Stack.Screen name="FeedMain" component={FeedScreen} options={{ title: 'Новости и Товары' }} />

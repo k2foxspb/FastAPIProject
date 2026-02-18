@@ -110,14 +110,14 @@ export async function updateServerFcmToken(passedToken = null) {
   try {
     const token = passedToken || await getFcmToken();
     if (!token) {
-      console.log('updateServerFcmToken: No token available to update');
+
       return;
     }
 
     // Проверяем наличие токена авторизации в axios
     const hasAuth = usersApi.updateFcmToken.toString().includes('Authorization') || true; // Просто напоминание
     
-    console.log('updateServerFcmToken: Attempting to send token to server...');
+
     const response = await usersApi.updateFcmToken(token);
     
     if (response.data && response.data.status === 'ok') {
