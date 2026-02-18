@@ -106,58 +106,83 @@ async def create_news(
     db: AsyncSession = Depends(get_async_db)
 ):
     """Создает новость. По умолчанию статус 'pending'."""
+    from loguru import logger
+    logger.info(f"NEWS_CREATE_DEBUG: Starting create_news for user {current_user.email}, title={title}")
 
     # 1. Сначала полностью вычитываем файлы из запроса
     validated_images_data: list[tuple[UploadFile, bytes]] = []
     if images:
+        logger.info(f"NEWS_CREATE_DEBUG: Found images in request")
+        # Обработка случая, когда images может содержать пустой файл или быть странного типа
         for img in images:
+            if not img.filename:
+                continue
             img_content = await img.read()
+            if len(img_content) == 0:
+                continue
             if len(img_content) > MAX_IMAGE_SIZE:
+                logger.error(f"NEWS_CREATE_DEBUG: Image {img.filename} too large")
                 raise HTTPException(400, f"Image {img.filename} is too large (>10MB)")
             if img.content_type not in ALLOWED_IMAGE_TYPES:
+                logger.error(f"NEWS_CREATE_DEBUG: File {img.filename} invalid type {img.content_type}")
                 raise HTTPException(400, f"File {img.filename} is not a valid image type")
             validated_images_data.append((img, img_content))
+    
+    try:
+        # 2. Создаем объект новости
+        db_news = NewsModel(
+            title=title,
+            content=content,
+            author_id=current_user.id,
+            moderation_status="approved" if current_user.role in ["admin", "owner"] else "pending"
+        )
+        db.add(db_news)
 
-    # 2. Создаем объект новости
-    db_news = NewsModel(
-        title=title,
-        content=content,
-        author_id=current_user.id,
-        moderation_status="approved" if current_user.role in ["admin", "owner"] else "pending"
-    )
-    db.add(db_news)
+        # Нужно сделать flush, чтобы получить ID новости для связей картинок
+        logger.info("NEWS_CREATE_DEBUG: Flushing news to DB")
+        await db.flush()
+        logger.info(f"NEWS_CREATE_DEBUG: News flushed, ID={db_news.id}")
 
-    # Нужно сделать flush, чтобы получить ID новости для связей картинок
-    await db.flush()
+        # 3. Обрабатываем картинки
+        for idx, (img_file, img_bytes) in enumerate(validated_images_data):
+            try:
+                logger.info(f"NEWS_CREATE_DEBUG: Processing image {idx}")
+                image_url, thumbnail_url = await _process_validated_image(img_file, img_bytes)
 
-    # 3. Обрабатываем картинки
-    for idx, (img_file, img_bytes) in enumerate(validated_images_data):
-        try:
-            image_url, thumbnail_url = await _process_validated_image(img_file, img_bytes)
+                if idx == 0:
+                    db_news.image_url = image_url
 
-            if idx == 0:
-                db_news.image_url = image_url
+                new_img = NewsImageModel(
+                    news_id=db_news.id,
+                    image_url=image_url,
+                    thumbnail_url=thumbnail_url
+                )
+                db.add(new_img)
+            except Exception as e:
+                logger.error(f"NEWS_CREATE_DEBUG: Error processing image {idx}: {e}")
 
-            new_img = NewsImageModel(
-                news_id=db_news.id,
-                image_url=image_url,
-                thumbnail_url=thumbnail_url
-            )
-            db.add(new_img)
-        except Exception as e:
-            print(f"DEBUG: Error processing image {idx}: {e}")
+        # 4. Сохраняем всё в БД
+        logger.info("NEWS_CREATE_DEBUG: Committing transaction")
+        await db.commit()
+        logger.info("NEWS_CREATE_DEBUG: Transaction committed, refreshing object")
+        await db.refresh(db_news)
 
-    # 4. Сохраняем всё в БД
-    await db.commit()
-    await db.refresh(db_news)
-
-    # Загружаем со связями для ответа
-    result = await db.execute(
-        select(NewsModel)
-        .options(selectinload(NewsModel.images))
-        .where(NewsModel.id == db_news.id)
-    )
-    return result.scalar_one()
+        # Загружаем со связями для ответа
+        logger.info("NEWS_CREATE_DEBUG: Selecting final object with images")
+        result = await db.execute(
+            select(NewsModel)
+            .options(selectinload(NewsModel.images))
+            .where(NewsModel.id == db_news.id)
+        )
+        news_obj = result.scalar_one()
+        logger.info(f"NEWS_CREATE_DEBUG: Returning created news ID={news_obj.id}")
+        return news_obj
+    except Exception as e:
+        logger.exception(f"NEWS_CREATE_DEBUG: UNHANDLED ERROR in create_news: {e}")
+        await db.rollback()
+        if isinstance(e, HTTPException):
+            raise e
+        raise HTTPException(status_code=500, detail=str(e))
 
 async def _process_validated_image(file: UploadFile, content: bytes) -> tuple[str, str]:
     """Helper for create_news to save already-read image data safely."""
