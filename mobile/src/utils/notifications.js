@@ -11,15 +11,15 @@ const getMessaging = () => {
   try {
     // Check if we have any initialized apps
     if (firebase.apps.length === 0) {
-      console.log('getMessaging: No apps found, trying to initialize via firebaseInit...');
+
       if (!firebaseApp) {
-        console.error('getMessaging: firebaseApp is null, messaging not available');
+
         return null;
       }
     }
     return messaging();
   } catch (e) {
-    console.error('getMessaging: Failed to get messaging instance:', e.message);
+
     return null;
   }
 };

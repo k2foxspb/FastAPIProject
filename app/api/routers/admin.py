@@ -63,7 +63,7 @@ async def get_user_profile_admin(
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     
-    return user
+    return UserSchema.model_validate(user)
 
 @router.patch("/users/{user_id}/role")
 async def update_user_role(
