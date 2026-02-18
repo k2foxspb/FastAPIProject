@@ -134,6 +134,8 @@ export const adminApi = {
     maxContentLength: Infinity,
     maxBodyLength: Infinity,
   }),
+  initUpload: (data, token) => api.post('/admin/upload-app/init', data, { params: { token } }),
+  getUploadStatus: (uploadId, token) => api.get(`/admin/upload-app/status/${uploadId}`, { params: { token } }),
 };
 
 export const chatApi = {

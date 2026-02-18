@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Alert, Platform } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import * as IntentLauncher from 'expo-intent-launcher';
 import { useTheme } from '../context/ThemeContext';
@@ -31,12 +31,20 @@ const getMimeType = (fileName) => {
   return mimeTypes[extension] || '*/*';
 };
 
+const resolveRemoteUri = (path) => {
+  if (!path) return '';
+  if (path.startsWith('http://') || path.startsWith('https://')) return path;
+  const base = API_BASE_URL.replace(/\/+$/, '');
+  const rel = path.startsWith('/') ? path : `/${path}`;
+  return `${base}${rel}`;
+};
+
 export default function FileMessage({ item, currentUserId }) {
   const { theme } = useTheme();
   const colors = themeConstants[theme];
   const [loading, setLoading] = useState(false);
 
-  const remoteUri = `${API_BASE_URL}${item.file_path}`;
+  const remoteUri = resolveRemoteUri(item.file_path);
   const fileName = item.file_path.split('/').pop();
   const localFileUri = `${FileSystem.documentDirectory}${fileName}`;
 

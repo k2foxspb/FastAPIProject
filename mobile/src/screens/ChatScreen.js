@@ -817,6 +817,12 @@ export default function ChatScreen({ route, navigation }) {
             try {
               const accessToken = await storage.getAccessToken();
               await chatApi.bulkDeleteMessages(selectedIds, accessToken);
+
+              // Локально обновляем список сообщений, чтобы чат сразу отразил удаление
+              const removedCount = selectedIds.length;
+              setMessages(prev => prev.filter(m => !selectedIds.includes(m.id)));
+              setSkip(prev => Math.max(0, prev - removedCount));
+
               setSelectionMode(false);
               setSelectedIds([]);
             } catch (error) {

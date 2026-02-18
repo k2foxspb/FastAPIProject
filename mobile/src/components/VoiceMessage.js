@@ -7,6 +7,14 @@ import { theme as themeConstants } from '../constants/theme';
 import * as FileSystem from 'expo-file-system/legacy';
 import { API_BASE_URL } from '../constants';
 
+const resolveRemoteUri = (path) => {
+  if (!path) return '';
+  if (path.startsWith('http://') || path.startsWith('https://')) return path;
+  const base = API_BASE_URL.replace(/\/+$/, '');
+  const rel = path.startsWith('/') ? path : `/${path}`;
+  return `${base}${rel}`;
+};
+
 export default function VoiceMessage({ item, currentUserId }) {
   const { theme } = useTheme();
   const colors = themeConstants[theme];
@@ -17,7 +25,7 @@ export default function VoiceMessage({ item, currentUserId }) {
   const [loading, setLoading] = useState(false);
   const [localUri, setLocalUri] = useState(null);
 
-  const remoteUri = `${API_BASE_URL}${item.file_path}`;
+  const remoteUri = resolveRemoteUri(item.file_path);
   const fileName = item.file_path.split('/').pop();
   const localFileUri = `${FileSystem.cacheDirectory}${fileName}`;
 

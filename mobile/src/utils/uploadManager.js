@@ -1,5 +1,5 @@
 import * as FileSystem from 'expo-file-system/legacy';
-import { chatApi } from '../api';
+import { chatApi, adminApi } from '../api';
 import { storage } from './storage';
 import { API_BASE_URL } from '../constants';
 
@@ -62,13 +62,18 @@ export const uploadManager = {
   /**
    * Загружает файл по частям с возможностью возобновления
    */
-  async uploadFileResumable(fileUri, fileName, mimeType, receiverId, onInit) {
+  async uploadFileResumable(fileUri, fileName, mimeType, receiverId, onInit, apiOptions = {}) {
+    const { 
+      api = chatApi, 
+      chunkPath = '/chat/upload/chunk/'
+    } = apiOptions;
+
     const token = await storage.getAccessToken();
     const fileInfo = await FileSystem.getInfoAsync(fileUri);
     const fileSize = fileInfo.size;
 
     // 1. Инициализация загрузки
-    const initRes = await chatApi.initUpload({
+    const initRes = await api.initUpload({
       filename: fileName,
       file_size: fileSize,
       mime_type: mimeType
@@ -87,15 +92,16 @@ export const uploadManager = {
       mimeType,
       fileSize,
       receiverId,
+      apiOptions, // Сохраняем настройки API для возобновления
       startTime: Date.now()
     };
     await storage.saveItem(`upload_info_${upload_id}`, JSON.stringify(uploadInfo));
     
-    const result = await this.runUploadLoop(upload_id, fileUri, 0, fileSize, token);
+    const result = await this.runUploadLoop(upload_id, fileUri, 0, fileSize, token, chunkPath);
     return { ...result, upload_id };
   },
 
-  async runUploadLoop(uploadId, fileUri, startOffset, fileSize, token) {
+  async runUploadLoop(uploadId, fileUri, startOffset, fileSize, token, chunkPath = '/chat/upload/chunk/') {
     if (activeUploads.get(uploadId)) {
       console.log(`[UploadManager] Upload ${uploadId} is already running`);
       return;
@@ -117,8 +123,8 @@ export const uploadManager = {
         }
 
         const length = Math.min(CHUNK_SIZE, totalSize - currentOffset);
-        const chunkResult = await this.uploadChunk(uploadId, fileUri, currentOffset, length, token, controller.signal);
-        
+        const chunkResult = await this.uploadChunk(uploadId, fileUri, currentOffset, length, token, controller.signal, chunkPath);
+      
         if (chunkResult.status === 'completed') {
           activeUploads.delete(uploadId);
           abortControllers.delete(uploadId);
@@ -156,9 +162,9 @@ export const uploadManager = {
     }
   },
 
-  async uploadChunk(uploadId, fileUri, offset, length, token, signal) {
+  async uploadChunk(uploadId, fileUri, offset, length, token, signal, chunkPath = '/chat/upload/chunk/') {
     // Pass token and offset as query params for better reliability
-    const uploadUrl = `${API_BASE_URL}/chat/upload/chunk/${uploadId}?q_token=${encodeURIComponent(token)}&q_offset=${offset}`;
+    const uploadUrl = `${API_BASE_URL}${chunkPath}${uploadId}?q_token=${encodeURIComponent(token)}&q_offset=${offset}`;
     
     try {
       const fileData = await FileSystem.readAsStringAsync(fileUri, {
@@ -202,9 +208,14 @@ export const uploadManager = {
   /**
    * Проверяет статус существующей загрузки и продолжает её
    */
-  async resumeUpload(uploadId, fileUri, fileName, receiverId) {
+  async resumeUpload(uploadId, fileUri, fileName, receiverId, apiOptions = {}) {
+    const { 
+      api = chatApi, 
+      chunkPath = '/chat/upload/chunk/'
+    } = apiOptions;
+
     const token = await storage.getAccessToken();
-    const statusRes = await chatApi.getUploadStatus(uploadId, token);
+    const statusRes = await api.getUploadStatus(uploadId, token);
     const { offset, is_completed } = statusRes.data;
 
     if (is_completed) {
@@ -215,7 +226,7 @@ export const uploadManager = {
     const fileInfo = await FileSystem.getInfoAsync(fileUri);
     const fileSize = fileInfo.size;
     
-    return this.runUploadLoop(uploadId, fileUri, offset, fileSize, token);
+    return this.runUploadLoop(uploadId, fileUri, offset, fileSize, token, chunkPath);
   },
 
   /**
@@ -245,7 +256,8 @@ export const uploadManager = {
                 serverUpload.upload_id, 
                 localInfo.fileUri, 
                 localInfo.fileName, 
-                localInfo.receiverId
+                localInfo.receiverId,
+                localInfo.apiOptions || {}
               ).catch(err => console.error(`Failed to resume upload ${serverUpload.upload_id}:`, err));
             }
           }

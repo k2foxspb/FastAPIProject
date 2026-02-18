@@ -1,6 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException, status, File, UploadFile, Form
+from fastapi import APIRouter, Depends, HTTPException, status, File, UploadFile, Form, Query
+from typing import List, Optional
 import os
 import shutil
+import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete, desc
 from sqlalchemy.orm import selectinload
@@ -12,11 +14,11 @@ from app.models.products import Product as ProductModel
 from app.models.news import News as NewsModel
 from app.models.orders import Order as OrderModel, OrderItem as OrderItemModel
 from app.models.reviews import Reviews as ReviewsModel
-from app.models.chat import ChatMessage as ChatMessageModel
+from app.models.chat import ChatMessage as ChatMessageModel, FileUploadSession
 from app.schemas.users import User as UserSchema, AdminPermissionCreate, AdminPermission as AdminPermissionSchema, AppVersionResponse
 from app.schemas.products import Product as ProductSchema
 from app.schemas.news import News as NewsSchema
-from app.schemas.chat import ChatMessageResponse, DialogResponse
+from app.schemas.chat import ChatMessageResponse, DialogResponse, UploadInitRequest, UploadSessionResponse, UploadStatusResponse
 from app.schemas.orders import Order as OrderSchema
 from app.api.dependencies import get_async_db
 from app.core.auth import get_current_owner, get_current_admin, check_admin_permission
@@ -140,26 +142,33 @@ async def get_manageable_models():
 @router.post("/upload-app", response_model=AppVersionResponse)
 async def upload_app_version(
     version: str = Form(...),
-    file: UploadFile = File(...),
+    file: Optional[UploadFile] = File(None),
+    file_path: Optional[str] = Form(None),
     owner: UserModel = Depends(get_current_owner),
     db: AsyncSession = Depends(get_async_db)
 ):
     """Загружает новую версию мобильного приложения (только владелец)."""
-    # Имя файла по версии
-    file_extension = os.path.splitext(file.filename or "")[1] or ".apk"
-    safe_version = version.replace(".", "_")
-    filename = f"app_v{safe_version}{file_extension}"
+    url = file_path
+    
+    if file:
+        # Имя файла по версии
+        file_extension = os.path.splitext(file.filename or "")[1] or ".apk"
+        safe_version = version.replace(".", "_")
+        filename = f"app_v{safe_version}{file_extension}"
 
-    # Сохраняем через абстракцию хранилища (S3 или локально)
-    url, _ = storage.save_file(
-        category="app",
-        filename_hint=filename,
-        fileobj=file.file,  # UploadFile.file — уже файловый объект
-        content_type=file.content_type or "application/octet-stream",
-        private=False,
-    )
+        # Сохраняем через абстракцию хранилища (S3 или локально)
+        url, _ = storage.save_file(
+            category="app",
+            filename_hint=filename,
+            fileobj=file.file,  # UploadFile.file — уже файловый объект
+            content_type=file.content_type or "application/octet-stream",
+            private=False,
+        )
 
-    # Создаем запись в БД, в file_path теперь кладем абсолютный URL для S3 или относительный /media для локального
+    if not url:
+        raise HTTPException(status_code=400, detail="File or file_path is required")
+
+    # Создаем запись в БД
     db_version = AppVersionModel(
         version=version,
         file_path=url
@@ -169,6 +178,135 @@ async def upload_app_version(
     await db.refresh(db_version)
 
     return db_version
+
+@router.post("/upload-app/init", response_model=UploadSessionResponse)
+async def init_app_upload(
+    req: UploadInitRequest,
+    owner: UserModel = Depends(get_current_owner),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """Инициализирует сессию загрузки новой версии приложения (только владелец)."""
+    upload_id = str(uuid.uuid4())
+    session = FileUploadSession(
+        id=upload_id,
+        user_id=owner.id,
+        filename=req.filename,
+        file_size=req.file_size,
+        mime_type=req.mime_type,
+    )
+    db.add(session)
+    await db.commit()
+    # Возвращаем 1МБ как чанк сайз по умолчанию, как в чате
+    return {"upload_id": upload_id, "offset": 0, "chunk_size": 1024 * 1024}
+
+@router.post("/upload-app/chunk/{upload_id}")
+async def upload_app_chunk(
+    upload_id: str,
+    token: Optional[str] = Form(None),
+    offset: Optional[int] = Form(None),
+    q_offset: Optional[int] = Query(None),
+    q_token: Optional[str] = Query(None),
+    chunk: Optional[UploadFile] = File(None),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """Загружает чанк файла приложения (только владелец)."""
+    # Поддержка токена и смещения из разных источников для надежности
+    actual_token = token or q_token
+    actual_offset = offset if offset is not None else q_offset
+    
+    if actual_token is None:
+        raise HTTPException(status_code=401, detail="Missing token")
+    
+    # Очистка токена
+    actual_token = actual_token.strip().strip('"').strip("'")
+
+    if actual_offset is None:
+        raise HTTPException(status_code=422, detail="Missing offset")
+        
+    if chunk is None:
+        return {"status": "error", "message": "Missing chunk"}
+
+    # Проверка пользователя по токену
+    from app.api.routers.chat import get_user_from_token
+    user_id = await get_user_from_token(actual_token, db)
+    if user_id is None:
+        raise HTTPException(status_code=401, detail="Invalid token")
+        
+    # Проверка, что это владелец
+    user_res = await db.execute(select(UserModel).where(UserModel.id == user_id))
+    user = user_res.scalar_one_or_none()
+    if not user or user.role != "owner":
+        raise HTTPException(status_code=403, detail="Only owner can upload app versions")
+
+    res = await db.execute(select(FileUploadSession).where(FileUploadSession.id == upload_id))
+    session = res.scalar_one_or_none()
+    
+    if not session or session.user_id != user_id:
+        raise HTTPException(status_code=404, detail="Upload session not found")
+    
+    if session.is_completed:
+        raise HTTPException(status_code=400, detail="Upload already completed")
+        
+    if actual_offset != session.offset:
+        return {"status": "error", "message": "Offset mismatch", "current_offset": session.offset}
+
+    # Путь к временному файлу
+    root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    temp_dir = os.path.join(root_dir, "media", "temp")
+    os.makedirs(temp_dir, exist_ok=True)
+    file_path = os.path.join(temp_dir, f"{upload_id}_{session.filename}")
+    
+    # Записываем чанк
+    mode = "ab" if actual_offset > 0 else "wb"
+    with open(file_path, mode) as f:
+        content = await chunk.read()
+        f.write(content)
+        session.offset += len(content)
+    
+    if session.offset >= session.file_size:
+        session.is_completed = True
+        session.offset = session.file_size
+        # Загружаем собранный файл в постоянное хранилище
+        with open(file_path, "rb") as f_in:
+            url, _ = storage.save_file(
+                category="app",
+                filename_hint=session.filename,
+                fileobj=f_in,
+                content_type=session.mime_type or "application/octet-stream",
+                private=False,
+            )
+        try:
+            os.remove(file_path)
+        except Exception:
+            pass
+            
+        await db.commit()
+        return {
+            "status": "completed",
+            "file_path": url
+        }
+    
+    await db.commit()
+    return {"status": "ok", "offset": session.offset}
+
+@router.get("/upload-app/status/{upload_id}", response_model=UploadStatusResponse)
+async def get_app_upload_status(
+    upload_id: str,
+    owner: UserModel = Depends(get_current_owner),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """Возвращает статус загрузки файла приложения."""
+    res = await db.execute(select(FileUploadSession).where(FileUploadSession.id == upload_id))
+    session = res.scalar_one_or_none()
+    
+    if not session or session.user_id != owner.id:
+        raise HTTPException(status_code=404, detail="Upload session not found")
+        
+    return {
+        "upload_id": session.id,
+        "offset": session.offset,
+        "is_completed": bool(session.is_completed)
+    }
 
 @router.get("/app-versions", response_model=list[AppVersionResponse])
 async def get_app_versions(

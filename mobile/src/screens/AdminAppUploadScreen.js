@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, TextInput, Alert, ActivityIndicator } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import { Ionicons as Icon } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
 import { adminApi } from '../api';
+import { uploadManager } from '../utils/uploadManager';
 
 export default function AdminAppUploadScreen({ navigation }) {
   const { theme } = useTheme();
@@ -13,6 +14,16 @@ export default function AdminAppUploadScreen({ navigation }) {
   const [file, setFile] = useState(null);
   const [version, setVersion] = useState('');
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [currentUploadId, setCurrentUploadId] = useState(null);
+
+  useEffect(() => {
+    return () => {
+      if (currentUploadId) {
+        uploadManager.unsubscribe(currentUploadId);
+      }
+    };
+  }, [currentUploadId]);
 
   const pickFile = async () => {
     try {
@@ -44,7 +55,8 @@ export default function AdminAppUploadScreen({ navigation }) {
 
     try {
       setUploading(true);
-      const formData = new FormData();
+      setUploadProgress(0);
+
       // expo-document-picker возвращает uri и name
       const name = file.name || 'app_build';
       // Попытаемся угадать mime по расширению
@@ -53,16 +65,38 @@ export default function AdminAppUploadScreen({ navigation }) {
       else if (name.endsWith('.aab')) type = 'application/octet-stream';
       else if (name.endsWith('.zip')) type = 'application/zip';
 
-      formData.append('file', {
-        uri: file.uri,
+      // Используем чанковую загрузку через uploadManager
+      const result = await uploadManager.uploadFileResumable(
+        file.uri,
         name,
         type,
-      });
-      formData.append('version', version.trim());
+        'admin_upload', // Контекст загрузки
+        (id) => {
+          setCurrentUploadId(id);
+          uploadManager.subscribe(id, ({ progress, status }) => {
+            setUploadProgress(progress);
+            if (status === 'error') {
+              console.log(`[AdminUpload] Error in upload ${id}`);
+            }
+          });
+        },
+        {
+          api: adminApi,
+          chunkPath: '/admin/upload-app/chunk/'
+        }
+      );
 
-      await adminApi.uploadApp(formData);
-      Alert.alert('Успех', 'Новая версия загружена');
-      navigation.goBack();
+      if (result && result.status === 'completed') {
+        const formData = new FormData();
+        formData.append('version', version.trim());
+        formData.append('file_path', result.file_path);
+
+        await adminApi.uploadApp(formData);
+        Alert.alert('Успех', 'Новая версия загружена');
+        navigation.goBack();
+      } else {
+        throw new Error('Загрузка не была завершена корректно');
+      }
     } catch (err) {
       console.log(err);
       const msg = err?.response?.data?.detail || err.message || 'Не удалось загрузить файл';
@@ -104,14 +138,27 @@ export default function AdminAppUploadScreen({ navigation }) {
       <TouchableOpacity
         disabled={uploading}
         onPress={handleUpload}
-        style={[styles.uploadButton, { backgroundColor: uploading ? colors.border : colors.primary }]}
+        style={[styles.uploadButton, { backgroundColor: uploading ? colors.border : colors.primary, marginTop: 10 }]}
       >
         {uploading ? (
-          <ActivityIndicator color="#fff" />
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <ActivityIndicator color="#fff" style={{ marginRight: 10 }} />
+            <Text style={styles.uploadButtonText}>
+              {Math.round(uploadProgress * 100)}%
+            </Text>
+          </View>
         ) : (
           <Text style={styles.uploadButtonText}>Загрузить</Text>
         )}
       </TouchableOpacity>
+
+      {uploading && (
+        <View style={styles.progressContainer}>
+          <View style={[styles.progressBar, { backgroundColor: colors.border }]}>
+            <View style={[styles.progressFill, { width: `${uploadProgress * 100}%`, backgroundColor: colors.primary }]} />
+          </View>
+        </View>
+      )}
     </View>
   );
 }
@@ -143,4 +190,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   uploadButtonText: { color: '#fff', fontWeight: '700' },
+  progressContainer: { marginTop: 16 },
+  progressBar: {
+    height: 8,
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+  },
 });
