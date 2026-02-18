@@ -107,6 +107,18 @@ async def create_news(
 ):
     """Создает новость. По умолчанию статус 'pending'."""
     print(f"DEBUG: create_news started - title: {title}, images count: {len(images) if images else 0}")
+    
+    # Pre-read and validate all images before starting DB work to catch errors early
+    validated_images_data: list[tuple[UploadFile, bytes]] = []
+    if images:
+        for img in images:
+            img_content = await img.read()
+            if len(img_content) > MAX_IMAGE_SIZE:
+                raise HTTPException(400, f"Image {img.filename} is too large (>10MB)")
+            if img.content_type not in ALLOWED_IMAGE_TYPES:
+                raise HTTPException(400, f"File {img.filename} is not a valid image type")
+            validated_images_data.append((img, img_content))
+
     db_news = NewsModel(
         title=title,
         content=content,
@@ -114,15 +126,18 @@ async def create_news(
         moderation_status="approved" if current_user.role in ["admin", "owner"] else "pending"
     )
     
-    if images:
-        for idx, img in enumerate(images):
-            image_url, thumbnail_url = await save_news_image(img)
-            if idx == 0:
-                db_news.image_url = image_url
-            db_news.images.append(NewsImageModel(
-                image_url=image_url,
-                thumbnail_url=thumbnail_url
-            ))
+    # Process images sequentially from validated memory buffers
+    for idx, (img_file, img_bytes) in enumerate(validated_images_data):
+        # Save original and thumbnail using our safe save_news_image wrapper logic
+        # But we use the already read bytes to avoid multiple reads
+        image_url, thumbnail_url = await _process_validated_image(img_file, img_bytes)
+        
+        if idx == 0:
+            db_news.image_url = image_url
+        db_news.images.append(NewsImageModel(
+            image_url=image_url,
+            thumbnail_url=thumbnail_url
+        ))
             
     db.add(db_news)
     await db.commit()
@@ -130,6 +145,50 @@ async def create_news(
     # Reload with images
     result = await db.execute(select(NewsModel).options(selectinload(NewsModel.images)).where(NewsModel.id == db_news.id))
     return result.scalar_one()
+
+async def _process_validated_image(file: UploadFile, content: bytes) -> tuple[str, str]:
+    """Helper for create_news to save already-read image data safely."""
+    extension = Path(file.filename or "").suffix.lower() or ".jpg"
+    base_name = str(uuid.uuid4())
+
+    # Save original
+    original_url, _ = storage.save_file(
+        category="news",
+        filename_hint=f"{base_name}{extension}",
+        fileobj=io.BytesIO(content),
+        content_type=file.content_type or "image/jpeg",
+        private=False,
+    )
+
+    # Save thumbnail
+    thumb_url = original_url
+    try:
+        with Image.open(io.BytesIO(content)) as img:
+            img.thumbnail((400, 400))
+            thumb_buffer = io.BytesIO()
+            if extension in [".jpg", ".jpeg"]:
+                fmt = "JPEG"
+            elif extension == ".png":
+                fmt = "PNG"
+            elif extension == ".webp":
+                fmt = "WEBP"
+            else:
+                fmt = img.format or "PNG"
+            try:
+                img.save(thumb_buffer, format=fmt)
+                thumb_buffer.seek(0)
+                thumb_url, _ = storage.save_file(
+                    category="news",
+                    filename_hint=f"{base_name}_thumb{extension}",
+                    fileobj=thumb_buffer,
+                    content_type=file.content_type or "image/jpeg",
+                    private=False,
+                )
+            except Exception:
+                thumb_url = original_url
+    except Exception:
+        thumb_url = original_url
+    return original_url, thumb_url
 
 @router.post("/upload-media/", response_model=dict)
 async def upload_news_media(
