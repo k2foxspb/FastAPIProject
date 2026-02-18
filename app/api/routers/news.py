@@ -32,7 +32,8 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 MEDIA_ROOT = BASE_DIR / "app" / "media" / "news"
 MEDIA_ROOT.mkdir(parents=True, exist_ok=True)
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp"}
-MAX_IMAGE_SIZE = 2 * 1024 * 1024
+# Allow up to 10 MB to avoid crashes/timeouts on common mobile photos; reject bigger early
+MAX_IMAGE_SIZE = 10 * 1024 * 1024
 
 async def save_news_image(file: UploadFile) -> tuple[str, str]:
     if file.content_type not in ALLOWED_IMAGE_TYPES:
@@ -52,22 +53,35 @@ async def save_news_image(file: UploadFile) -> tuple[str, str]:
         private=False,
     )
 
-    # Try to produce thumbnail
+    # Try to produce thumbnail safely: pick format compatible with the extension
     thumb_url = original_url
     try:
         with Image.open(io.BytesIO(content)) as img:
             img.thumbnail((400, 400))
             thumb_buffer = io.BytesIO()
-            fmt = "JPEG" if extension in [".jpg", ".jpeg"] else None
-            img.save(thumb_buffer, format=fmt)
-            thumb_buffer.seek(0)
-            thumb_url, _ = storage.save_file(
-                category="news",
-                filename_hint=f"{base_name}_thumb{extension}",
-                fileobj=thumb_buffer,
-                content_type=file.content_type or "image/jpeg",
-                private=False,
-            )
+            # Choose an explicit format for BytesIO save to avoid relying on PIL inference
+            if extension in [".jpg", ".jpeg"]:
+                fmt = "JPEG"
+            elif extension == ".png":
+                fmt = "PNG"
+            elif extension == ".webp":
+                fmt = "WEBP"
+            else:
+                fmt = img.format or "PNG"
+            try:
+                img.save(thumb_buffer, format=fmt)
+                thumb_buffer.seek(0)
+                thumb_url, _ = storage.save_file(
+                    category="news",
+                    filename_hint=f"{base_name}_thumb{extension}",
+                    fileobj=thumb_buffer,
+                    content_type=file.content_type or "image/jpeg",
+                    private=False,
+                )
+            except Exception:
+                # If saving thumbnail fails for any reason (unsupported codec, etc.),
+                # fall back to original without breaking the request
+                thumb_url = original_url
     except Exception:
         thumb_url = original_url
     return original_url, thumb_url
