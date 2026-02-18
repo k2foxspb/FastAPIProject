@@ -4,8 +4,8 @@ services:
     build:
       context: .
       dockerfile: ./app/Dockerfile
-    # Запускаем тестовый сервер
-    command: uvicorn app.main:app --host 0.0.0.0
+    # Запускаем миграции, инициализацию БД и сервер
+    command: sh -c "alembic upgrade head && python -m app.init_db && uvicorn app.main:app --host 0.0.0.0"
     # Открываем порт 8000 внутри и снаружи
     ports:
       - "8000:8000"
