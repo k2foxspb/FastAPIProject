@@ -1,11 +1,35 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Alert, Platform } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import * as FileSystem from 'expo-file-system/legacy';
+import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
+import * as IntentLauncher from 'expo-intent-launcher';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
 import { API_BASE_URL } from '../constants';
+
+const getMimeType = (fileName) => {
+  const extension = fileName.split('.').pop().toLowerCase();
+  const mimeTypes = {
+    'pdf': 'application/pdf',
+    'doc': 'application/msword',
+    'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'xls': 'application/vnd.ms-excel',
+    'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'ppt': 'application/vnd.ms-powerpoint',
+    'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    'txt': 'text/plain',
+    'jpg': 'image/jpeg',
+    'jpeg': 'image/jpeg',
+    'png': 'image/png',
+    'gif': 'image/gif',
+    'zip': 'application/zip',
+    'rar': 'application/x-rar-compressed',
+    'mp3': 'audio/mpeg',
+    'mp4': 'video/mp4',
+  };
+  return mimeTypes[extension] || '*/*';
+};
 
 export default function FileMessage({ item, currentUserId }) {
   const { theme } = useTheme();
@@ -23,15 +47,29 @@ export default function FileMessage({ item, currentUserId }) {
       let uri = localFileUri;
 
       if (!fileInfo.exists) {
+        console.log(`Downloading ${remoteUri} to ${localFileUri}`);
         const downloadRes = await FileSystem.downloadAsync(remoteUri, localFileUri);
         uri = downloadRes.uri;
       }
 
-      const canShare = await Sharing.isAvailableAsync();
-      if (canShare) {
-        await Sharing.shareAsync(uri);
+      console.log(`Opening file: ${uri}`);
+      
+      const mimeType = getMimeType(fileName);
+
+      if (Platform.OS === 'android') {
+        try {
+          const contentUri = await FileSystem.getContentUriAsync(uri);
+          await IntentLauncher.startActivityAsync('android.intent.action.VIEW', {
+            data: contentUri,
+            flags: 1,
+            type: mimeType,
+          });
+        } catch (e) {
+          console.log('IntentLauncher failed, falling back to Sharing', e);
+          await Sharing.shareAsync(uri, { mimeType });
+        }
       } else {
-        Alert.alert('Ошибка', 'Открытие файлов не поддерживается на этом устройстве');
+        await Sharing.shareAsync(uri, { mimeType });
       }
     } catch (error) {
       console.error('Error opening file:', error);

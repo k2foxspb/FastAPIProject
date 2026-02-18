@@ -108,7 +108,12 @@ export const productsApi = {
 export const newsApi = {
   getNews: () => api.get('/news/'),
   getNewsDetail: (id) => api.get(`/news/${id}/`),
-  createNews: (data) => api.post('/news/', data),
+  createNews: (formData) => api.post('/news/', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 120000,
+    maxContentLength: Infinity,
+    maxBodyLength: Infinity,
+  }),
   updateNews: (id, data) => api.patch(`/news/${id}/`, data),
   deleteNews: (id) => api.delete(`/news/${id}/`),
   uploadMedia: (formData) => api.post('/news/upload-media/', formData, {

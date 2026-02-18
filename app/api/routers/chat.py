@@ -514,6 +514,12 @@ async def upload_chat_file(
     # Определяем тип сообщения на основе расширения
     message_type = "file"
     file_extension_lower = file_extension.lower()
+    content_type = file.content_type or "application/octet-stream"
+    
+    # Если это PDF, принудительно ставим правильный mime-type, если он не пришел
+    if file_extension_lower == ".pdf":
+        content_type = "application/pdf"
+
     if file_extension_lower in [".jpg", ".jpeg", ".png", ".gif", ".webp"]:
         message_type = "image"
     elif file_extension_lower in [".mp4", ".webm", ".ogg"]:
@@ -527,7 +533,7 @@ async def upload_chat_file(
         category="chat",
         filename_hint=f"{base_name}{file_extension or ''}",
         fileobj=io.BytesIO(content),
-        content_type=file.content_type or "application/octet-stream",
+        content_type=content_type,
         private=False,
     )
 
@@ -701,28 +707,34 @@ async def upload_chunk(
         session.offset = session.file_size
         # Загружаем собранный файл в постоянное хранилище (S3/локально)
         file_extension = os.path.splitext(session.filename)[1]
-        unique_name = f"{uuid.uuid4()}{file_extension}"
-        with open(file_path, "rb") as f_in:
-            url, _ = storage.save_file(
-                category="chat",
-                filename_hint=unique_name,
-                fileobj=f_in,
-                content_type=session.mime_type or "application/octet-stream",
-                private=False,
-            )
-        try:
-            os.remove(file_path)
-        except Exception:
-            pass
-
+        
         # Определяем тип (по аналогии с обычным upload)
         message_type = "file"
+        final_content_type = session.mime_type or "application/octet-stream"
+        
+        if file_extension.lower() == ".pdf":
+            final_content_type = "application/pdf"
+
         if file_extension.lower() in [".jpg", ".jpeg", ".png", ".gif", ".webp"]:
             message_type = "image"
         elif file_extension.lower() in [".mp4", ".webm", ".ogg"]:
             message_type = "video"
         elif file_extension.lower() in [".m4a", ".mp3", ".wav", ".aac", ".amr", ".3gp"]:
             message_type = "voice"
+            
+        unique_name = f"{uuid.uuid4()}{file_extension}"
+        with open(file_path, "rb") as f_in:
+            url, _ = storage.save_file(
+                category="chat",
+                filename_hint=unique_name,
+                fileobj=f_in,
+                content_type=final_content_type,
+                private=False,
+            )
+        try:
+            os.remove(file_path)
+        except Exception:
+            pass
             
         await db.commit()
         return {

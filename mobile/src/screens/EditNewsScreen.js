@@ -52,11 +52,17 @@ export default function EditNewsScreen({ route, navigation }) {
           const uri = img.uri;
           const uriParts = uri.split('.');
           const fileType = uriParts[uriParts.length - 1];
+          const ext = (fileType || '').toLowerCase();
           const fileName = uri.split('/').pop();
+          const mime = ext === 'jpg' ? 'image/jpeg'
+            : ext === 'jpeg' ? 'image/jpeg'
+            : ext === 'png' ? 'image/png'
+            : ext === 'webp' ? 'image/webp'
+            : 'image/jpeg';
           formData.append('images', {
-            uri: uri,
-            name: fileName || `news_${index}.${fileType}`,
-            type: `image/${fileType}`,
+            uri,
+            name: fileName || `news_${index}.${ext || 'jpg'}`,
+            type: mime,
           });
         });
       }
