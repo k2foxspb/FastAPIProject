@@ -1,4 +1,4 @@
-import * as FileSystem from 'expo-file-system/legacy';
+import * as FileSystem from 'expo-file-system';
 import { chatApi, adminApi } from '../api';
 import { storage } from './storage';
 import { API_BASE_URL } from '../constants';

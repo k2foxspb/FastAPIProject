@@ -4,7 +4,7 @@ import { Audio } from 'expo-av';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
-import * as FileSystem from 'expo-file-system/legacy';
+import * as FileSystem from 'expo-file-system';
 import { API_BASE_URL } from '../constants';
 
 const resolveRemoteUri = (path) => {
