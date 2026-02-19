@@ -108,38 +108,7 @@ services:
       - POSTGRES_DB=${POSTGRES_DB:-ecommerce_db}
 
   # -------------------------------------------------
-  # 1️⃣ certbot_init – однократное получение сертификата
-  # -------------------------------------------------
-  certbot_init:
-    image: certbot/certbot
-    container_name: certbot_init
-    restart: "no"
-    entrypoint: ["sh", "-c"]
-    command: >
-      sh -c "if [ -d /etc/letsencrypt/live/${DOMAIN} ] && [ -f /etc/letsencrypt/live/${DOMAIN}/fullchain.pem ]; then
-        echo '✅ Certificate already exists – skipping creation';
-      else
-        echo '⌛ Waiting for nginx to be ready for challenge...';
-        sleep 10;
-        certbot certonly --webroot -w /var/www/certbot \
-          --email ${EMAIL:-admin@${DOMAIN}} \
-          --agree-tos \
-          --no-eff-email \
-          --manual-public-ip-logging-ok \
-          -d ${DOMAIN} ${STAGING};
-      fi"
-    environment:
-      - DOMAIN=${DOMAIN}
-      - EMAIL=${CERTBOT_EMAIL:-${EMAIL}}
-      - STAGING=${STAGING:-}
-    volumes:
-      - letsencrypt:/etc/letsencrypt
-      - certbot_www:/var/www/certbot
-    depends_on:
-      - nginx
-
-  # -------------------------------------------------
-  # 2️⃣ nginx – фронт‑энд
+  # nginx – фронт‑энд
   # -------------------------------------------------
   nginx:
     build: nginx
@@ -152,68 +121,12 @@ services:
     environment:
       - DOMAIN=${DOMAIN}
     volumes:
-      - letsencrypt:/etc/letsencrypt
-      - certbot_www:/var/www/certbot:ro
+      - letsencrypt:/etc/letsencrypt:ro
       - media_data:/home/fast/app/media:ro
-    # Ожидание сертификата (если он ещё создаётся)
-    command: |
-      sh -c '
-        set -e
-        # Создаем самоподписанный сертификат, если его нет, чтобы Nginx не упал при старте
-        if [ ! -f /etc/letsencrypt/live/${DOMAIN}/fullchain.pem ]; then
-          echo "⚠️ No certificate found for ${DOMAIN} – creating dummy certificate for start";
-          mkdir -p /etc/letsencrypt/live/${DOMAIN};
-          openssl req -x509 -nodes -newkey rsa:2048 -days 1 \
-            -keyout /etc/letsencrypt/live/${DOMAIN}/privkey.pem \
-            -out /etc/letsencrypt/live/${DOMAIN}/fullchain.pem \
-            -subj "/CN=localhost";
-        fi;
-
-        nginx -g "daemon off;" &
-        NGINX_PID=$$!;
-
-        # Фоновый процесс для мониторинга появления настоящего сертификата
-        (
-          for i in $(seq 1 30); do
-            sleep 10;
-            if [ -f /etc/letsencrypt/live/${DOMAIN}/fullchain.pem ] && \
-               ! grep -q "localhost" /etc/letsencrypt/live/${DOMAIN}/fullchain.pem; then
-              echo "✅ Real certificate ready – reloading nginx";
-              nginx -s reload;
-              break;
-            fi;
-            echo "⏳ Waiting for real certificate (${DOMAIN}) – attempt $$i/30";
-          done
-        ) &
-
-        wait $$NGINX_PID;
-      '
-
-  # -------------------------------------------------
-  # 3️⃣ certbot – процесс продления сертификата
-  # -------------------------------------------------
-  certbot:
-    image: certbot/certbot
-    container_name: certbot_renew
     restart: unless-stopped
-    entrypoint: ["sh", "-c"]
-    command: >
-      sh -c "trap 'exit 0' TERM;
-      while true; do
-        echo '🔁 Running certbot renew …';
-        certbot renew --webroot -w /var/www/certbot --quiet;
-        sleep 12h & wait $$!;
-      done"
-    environment:
-      - DOMAIN=${DOMAIN}
-      - EMAIL=${CERTBOT_EMAIL:-${EMAIL}}
-    volumes:
-      - letsencrypt:/etc/letsencrypt
-      - certbot_www:/var/www/certbot
 
 volumes:
   postgres_data:
   redis_data:
   media_data:
   letsencrypt:          # сертификаты Let’s Encrypt
-  certbot_www:          # web‑root для HTTP‑01 челленджей
