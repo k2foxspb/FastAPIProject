@@ -1,8 +1,6 @@
 # -------------------------------------------------------
 #  docker-compose.prod.yml
 # -------------------------------------------------------
-version: "3.9"
-
 services:
   # -------------------------------------------------
   # FastAPI‑приложение
@@ -118,16 +116,16 @@ services:
     restart: "no"
     entrypoint: ["sh", "-c"]
     command: >
-      set -e;
-      if [ -d "/etc/letsencrypt/live/${DOMAIN}" ]; then
-        echo "✅ Certificate already exists – skipping creation";
+      sh -c "set -e;
+      if [ -d /etc/letsencrypt/live/${DOMAIN} ]; then
+        echo '✅ Certificate already exists – skipping creation';
         exit 0;
       fi;
       certbot certonly --standalone ${STAGING}
-        --email "${EMAIL}"
+        --email ${CERTBOT_EMAIL:-admin@${DOMAIN}}
         --agree-tos
         --no-eff-email
-        -d "${DOMAIN}" -d "www.${DOMAIN}"
+        -d ${DOMAIN} -d www.${DOMAIN}"
     environment:
       - DOMAIN=${DOMAIN}
       - EMAIL=${CERTBOT_EMAIL:-admin@${DOMAIN}}
@@ -181,11 +179,11 @@ services:
     entrypoint: ["sh", "-c"]
     # Однострочная команда – гарантирует, что `while … done` полностью передан в sh
     command: >
-      while true; do
-        echo "🔁 Running certbot renew …";
-        certbot renew --quiet --deploy-hook "nginx -s reload";
+      sh -c "while true; do
+        echo '🔁 Running certbot renew …';
+        certbot renew --quiet;
         sleep 12h;
-      done
+      done"
     environment:
       - DOMAIN=${DOMAIN}
       - EMAIL=${CERTBOT_EMAIL:-admin@${DOMAIN}}
