@@ -152,7 +152,7 @@ services:
     environment:
       - DOMAIN=${DOMAIN}
     volumes:
-      - letsencrypt:/etc/letsencrypt:ro
+      - letsencrypt:/etc/letsencrypt
       - certbot_www:/var/www/certbot:ro
       - media_data:/home/fast/app/media:ro
     # Ожидание сертификата (если он ещё создаётся)
