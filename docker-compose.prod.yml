@@ -116,16 +116,16 @@ services:
     restart: "no"
     entrypoint: ["sh", "-c"]
     command: >
-      "if [ -d /etc/letsencrypt/live/${DOMAIN} ] && [ -f /etc/letsencrypt/live/${DOMAIN}/fullchain.pem ]; then
+      sh -c "if [ -d /etc/letsencrypt/live/${DOMAIN} ] && [ -f /etc/letsencrypt/live/${DOMAIN}/fullchain.pem ]; then
         echo '✅ Certificate already exists – skipping creation';
       else
         echo '⌛ Waiting for nginx to be ready for challenge...';
         sleep 10;
-        certbot certonly --webroot -w /var/www/certbot
-          --email ${EMAIL:-admin@${DOMAIN}}
-          --agree-tos
-          --no-eff-email
-          --manual-public-ip-logging-ok
+        certbot certonly --webroot -w /var/www/certbot \
+          --email ${EMAIL:-admin@${DOMAIN}} \
+          --agree-tos \
+          --no-eff-email \
+          --manual-public-ip-logging-ok \
           -d ${DOMAIN} ${STAGING};
       fi"
     environment:
@@ -198,11 +198,11 @@ services:
     restart: unless-stopped
     entrypoint: ["sh", "-c"]
     command: >
-      "trap exit TERM;
+      sh -c "trap 'exit 0' TERM;
       while true; do
         echo '🔁 Running certbot renew …';
         certbot renew --webroot -w /var/www/certbot --quiet;
-        sleep 12h & wait $!;
+        sleep 12h & wait $$!;
       done"
     environment:
       - DOMAIN=${DOMAIN}
