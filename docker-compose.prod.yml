@@ -116,22 +116,21 @@ services:
     restart: "no"
     entrypoint: ["sh", "-c"]
     command: >
-      sh -c "set -e;
-      if [ -d /etc/letsencrypt/live/${DOMAIN} ]; then
+      "if [ -d /etc/letsencrypt/live/${DOMAIN} ] && [ -f /etc/letsencrypt/live/${DOMAIN}/fullchain.pem ]; then
         echo '✅ Certificate already exists – skipping creation';
-        exit 0;
-      fi;
-      echo '⌛ Waiting for nginx to be ready for challenge...';
-      sleep 10;
-      certbot certonly --webroot -w /var/www/certbot
-        --email ${CERTBOT_EMAIL:-admin@${DOMAIN}}
-        --agree-tos
-        --no-eff-email
-        --manual-public-ip-logging-ok
-        -d ${DOMAIN} ${STAGING}"
+      else
+        echo '⌛ Waiting for nginx to be ready for challenge...';
+        sleep 10;
+        certbot certonly --webroot -w /var/www/certbot
+          --email ${EMAIL:-admin@${DOMAIN}}
+          --agree-tos
+          --no-eff-email
+          --manual-public-ip-logging-ok
+          -d ${DOMAIN} ${STAGING};
+      fi"
     environment:
       - DOMAIN=${DOMAIN}
-      - EMAIL=${CERTBOT_EMAIL:-admin@${DOMAIN}}
+      - EMAIL=${CERTBOT_EMAIL:-${EMAIL}}
       - STAGING=${STAGING:-}
     volumes:
       - letsencrypt:/etc/letsencrypt
@@ -198,16 +197,16 @@ services:
     container_name: certbot_renew
     restart: unless-stopped
     entrypoint: ["sh", "-c"]
-    # Однострочная команда – гарантирует, что `while … done` полностью передан в sh
     command: >
-      sh -c "while true; do
+      "trap exit TERM;
+      while true; do
         echo '🔁 Running certbot renew …';
         certbot renew --webroot -w /var/www/certbot --quiet;
-        sleep 12h;
+        sleep 12h & wait $!;
       done"
     environment:
       - DOMAIN=${DOMAIN}
-      - EMAIL=${CERTBOT_EMAIL:-admin@${DOMAIN}}
+      - EMAIL=${CERTBOT_EMAIL:-${EMAIL}}
     volumes:
       - letsencrypt:/etc/letsencrypt
       - certbot_www:/var/www/certbot
