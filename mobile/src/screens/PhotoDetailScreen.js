@@ -201,6 +201,8 @@ export default function PhotoDetailScreen({ route, navigation }) {
         }}
         removeClippedSubviews={true}
         scrollEventThrottle={16}
+        windowSize={5}
+        maxToRenderPerBatch={3}
       />
 
       {/* Верхняя панель управления */}
@@ -252,16 +254,16 @@ export default function PhotoDetailScreen({ route, navigation }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000' },
   center: { justifyContent: 'center', alignItems: 'center' },
-  slide: { width: width, height: height },
-  scrollContent: { flexGrow: 1, justifyContent: 'center' },
-  imageWrapper: { width: width, height: height, justifyContent: 'center' },
+  slide: { width: width, height: height, backgroundColor: '#000' },
+  scrollContent: { flexGrow: 1, justifyContent: 'center', alignItems: 'center' },
+  imageWrapper: { width: width, height: height, justifyContent: 'center', alignItems: 'center' },
   selectionOverlay: {
     position: 'absolute',
     top: 120,
     right: 20,
     zIndex: 20
   },
-  fullPhoto: { width: '100%', height: '100%' },
+  fullPhoto: { width: width, height: height },
   header: { 
     position: 'absolute', 
     top: 0, 
