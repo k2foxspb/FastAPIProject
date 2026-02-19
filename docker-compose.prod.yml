@@ -1,18 +1,24 @@
-name: fastapi-ecommerce-prod
-services:
+# docker-compose.prod.yml
+version: "3.9"
 
+services:
+  # -------------------------------------------------
+  # FastAPI‑приложение
+  # -------------------------------------------------
   web:
-    # Берем Dockerfile из каталога app
     build:
       context: .
       dockerfile: app/Dockerfile.prod.yml
-    # Запускаем миграции, инициализацию БД и сервер Gunicorn
-    command: sh -c "alembic upgrade head && python -m app.init_db && gunicorn app.main:app --workers 4 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000 --timeout 120"
+    command: >
+      sh -c "alembic upgrade head &&
+             python -m app.init_db &&
+             gunicorn app.main:app
+               --workers 4
+               --worker-class uvicorn.workers.UvicornWorker
+               --bind 0.0.0.0:8000
+               --timeout 120"
     volumes:
       - media_data:/home/fast/app/media
-    # Открываем порт 8000 внутри и снаружи
-#    ports:
-#      - '8000:8000'
     environment:
       - REDIS_HOST=${REDIS_HOST:-redis}
       - POSTGRES_HOST=${POSTGRES_HOST:-db}
@@ -27,7 +33,7 @@ services:
       - MAIL_FROM_NAME=${MAIL_FROM_NAME}
       - DOMAIN=${DOMAIN}
       - MEDIA_ROOT=/home/fast/app/media
-      # S3 media storage
+      # S3‑storage
       - MEDIA_STORAGE=${MEDIA_STORAGE:-s3}
       - YC_S3_ENDPOINT=${YC_S3_ENDPOINT}
       - YC_S3_REGION=${YC_S3_REGION}
@@ -37,10 +43,12 @@ services:
       - YC_S3_DEFAULT_ACL=${YC_S3_DEFAULT_ACL:-public-read}
       - YC_S3_PUBLIC_BASE_URL=${YC_S3_PUBLIC_BASE_URL}
     depends_on:
-
       - db
       - redis
 
+  # -------------------------------------------------
+  # Redis
+  # -------------------------------------------------
   redis:
     image: redis:7-alpine
     user: "0:0"
@@ -49,6 +57,9 @@ services:
     volumes:
       - redis_data:/data
 
+  # -------------------------------------------------
+  # Celery‑worker
+  # -------------------------------------------------
   celery_worker:
     build:
       context: .
@@ -71,7 +82,7 @@ services:
       - MAIL_FROM_NAME=${MAIL_FROM_NAME}
       - DOMAIN=${DOMAIN}
       - MEDIA_ROOT=/home/fast/app/media
-      # S3 media storage
+      # S3‑storage
       - MEDIA_STORAGE=${MEDIA_STORAGE:-s3}
       - YC_S3_ENDPOINT=${YC_S3_ENDPOINT}
       - YC_S3_REGION=${YC_S3_REGION}
@@ -84,6 +95,9 @@ services:
       - db
       - redis
 
+  # -------------------------------------------------
+  # PostgreSQL
+  # -------------------------------------------------
   db:
     image: postgres:15
     user: "0:0"
@@ -94,29 +108,96 @@ services:
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-xxxxxxxx}
       - POSTGRES_DB=${POSTGRES_DB:-ecommerce_db}
 
+  # -------------------------------------------------
+  # 1️⃣ Одноразовый контейнер – получаем сертификат
+  # -------------------------------------------------
+  certbot_init:
+    image: certbot/certbot
+    container_name: certbot_init
+    restart: "no"
+    environment:
+      - DOMAIN=${DOMAIN}
+      - EMAIL=${CERTBOT_EMAIL:-admin@${DOMAIN}}
+      - STAGING=${STAGING:-}          # пусто – production, "--staging" – тестовый режим
+    volumes:
+      - letsencrypt:/etc/letsencrypt
+      - certbot_www:/var/www/certbot
+    ports:
+      - "80:80"
+      - "443:443"
+    command: >
+      bash -c '
+        set -e
+        # Если сертификат уже есть – просто выходим
+        if [ -d "/etc/letsencrypt/live/${DOMAIN}" ]; then
+          echo "✅ Certificate already exists – skipping creation";
+          exit 0;
+        fi;
+        # Получаем сертификат в режиме standalone (порт 80/443 будет у этого контейнера)
+        certbot certonly --standalone ${STAGING}
+          --email "${EMAIL}"
+          --agree-tos
+          --no-eff-email
+          -d "${DOMAIN}"
+          -d "www.${DOMAIN}"
+      '
+
+  # -------------------------------------------------
+  # 2️⃣ Nginx – публичный фронт‑энд
+  # -------------------------------------------------
   nginx:
     build: nginx
     user: "0:0"
     ports:
-      - '80:80'
-      - '443:443'
-    volumes:
-      - /etc/letsencrypt:/etc/letsencrypt:ro
-      - /var/www/certbot:/var/www/certbot:ro
-      - media_data:/home/fast/app/media:ro
+      - "80:80"
+      - "443:443"
     depends_on:
       - web
+      - certbot_init                # гарантируем, что certbot_init запустится раньше
+    volumes:
+      - letsencrypt:/etc/letsencrypt:ro
+      - certbot_www:/var/www/certbot:ro
+      - media_data:/home/fast/app/media:ro
+    # Ждём появления сертификата (на случай, если certbot_init ещё не успел закончить)
+    command: >
+      sh -c '
+        for i in $(seq 1 30); do
+          if [ -f /etc/letsencrypt/live/${DOMAIN}/fullchain.pem ]; then
+            echo "✅ Certificate ready – launching nginx";
+            exec nginx -g "daemon off;";
+          fi;
+          echo "⏳ Waiting for certificate (${DOMAIN}) – attempt $i/30";
+          sleep 2;
+        done;
+        echo "❌ Certificate not found after 60 s – exiting";
+        exit 1
+      '
 
+  # -------------------------------------------------
+  # 3️⃣ Периодический контейнер – продление сертификата
+  # -------------------------------------------------
   certbot:
     image: certbot/certbot
-    user: "0:0"
+    container_name: certbot_renew
+    restart: unless-stopped
+    environment:
+      - DOMAIN=${DOMAIN}
+      - EMAIL=${CERTBOT_EMAIL:-admin@${DOMAIN}}
     volumes:
-      - /etc/letsencrypt:/etc/letsencrypt
-      - /var/www/certbot:/var/www/certbot
-    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
+      - letsencrypt:/etc/letsencrypt
+      - certbot_www:/var/www/certbot
+    command: >
+      sh -c '
+        while :; do
+          echo "🔁 Running certbot renew …";
+          certbot renew --quiet --deploy‑hook "nginx -s reload";
+          sleep 12h;
+        done
+      '
 
 volumes:
   postgres_data:
   redis_data:
   media_data:
-
+  letsencrypt:          # хранит /etc/letsencrypt/live, /archive, /renewal
+  certbot_www:         # веб‑root для HTTP‑01‑челленджей

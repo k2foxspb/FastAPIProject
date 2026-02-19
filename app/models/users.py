@@ -68,7 +68,7 @@ class PhotoAlbum(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     title: Mapped[str] = mapped_column(String, nullable=False)
     description: Mapped[str | None] = mapped_column(String, nullable=True)
-    is_private: Mapped[bool] = mapped_column(Boolean, default=False)
+    privacy: Mapped[str] = mapped_column(String, default="public")  # "public", "friends", "private"
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     user: Mapped["User"] = relationship("User", back_populates="albums")
@@ -84,7 +84,7 @@ class UserPhoto(Base):
     image_url: Mapped[str] = mapped_column(String, nullable=False)
     preview_url: Mapped[str] = mapped_column(String, nullable=False)
     description: Mapped[str | None] = mapped_column(String, nullable=True)
-    is_private: Mapped[bool] = mapped_column(Boolean, default=False)
+    privacy: Mapped[str] = mapped_column(String, default="public")  # "public", "friends", "private"
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     user: Mapped["User"] = relationship("User", back_populates="photos")

@@ -25,7 +25,7 @@ class UserPhotoBase(BaseModel):
     preview_url: str
     description: str | None = None
     album_id: int | None = None
-    is_private: bool = False
+    privacy: str = "public"
 
 class UserPhotoCreate(UserPhotoBase):
     pass
@@ -33,7 +33,7 @@ class UserPhotoCreate(UserPhotoBase):
 class UserPhotoUpdate(BaseModel):
     description: str | None = None
     album_id: int | None = None
-    is_private: bool | None = None
+    privacy: str | None = None
 
 class BulkDeletePhotosRequest(BaseModel):
     photo_ids: list[int]
@@ -53,7 +53,7 @@ class UserPhoto(UserPhotoBase):
                     "preview_url": obj.get("preview_url", ""),
                     "description": obj.get("description"),
                     "album_id": obj.get("album_id"),
-                    "is_private": obj.get("is_private", False),
+                    "privacy": obj.get("privacy", "public"),
                     "id": obj.get("id", 0),
                     "created_at": obj.get("created_at"),
                 }
@@ -65,7 +65,7 @@ class UserPhoto(UserPhotoBase):
                 "preview_url": str(getattr(obj, "preview_url", "")),
                 "description": getattr(obj, "description", None),
                 "album_id": getattr(obj, "album_id", None),
-                "is_private": bool(getattr(obj, "is_private", False)),
+                "privacy": str(getattr(obj, "privacy", "public")),
                 "id": int(getattr(obj, "id", 0)),
                 "created_at": getattr(obj, "created_at", None),
             }
@@ -77,7 +77,7 @@ class UserPhoto(UserPhotoBase):
 class PhotoAlbumBase(BaseModel):
     title: str
     description: str | None = None
-    is_private: bool = False
+    privacy: str = "public"
 
 class PhotoAlbumCreate(PhotoAlbumBase):
     pass
@@ -85,7 +85,7 @@ class PhotoAlbumCreate(PhotoAlbumBase):
 class PhotoAlbumUpdate(BaseModel):
     title: str | None = None
     description: str | None = None
-    is_private: bool | None = None
+    privacy: str | None = None
 
 class PhotoAlbum(PhotoAlbumBase):
     id: int
@@ -107,7 +107,7 @@ class PhotoAlbum(PhotoAlbumBase):
                     "user_id": obj.get("user_id", 0),
                     "title": obj.get("title", ""),
                     "description": obj.get("description"),
-                    "is_private": obj.get("is_private", False),
+                    "privacy": obj.get("privacy", "public"),
                     "created_at": obj.get("created_at"),
                     "photos": obj.get("photos", []),
                     "album_preview_url": obj.get("album_preview_url")
@@ -123,7 +123,7 @@ class PhotoAlbum(PhotoAlbumBase):
                 "user_id": int(getattr(obj, "user_id", 0)),
                 "title": str(getattr(obj, "title", "")),
                 "description": getattr(obj, "description", None),
-                "is_private": bool(getattr(obj, "is_private", False)),
+                "privacy": str(getattr(obj, "privacy", "public")),
                 "created_at": getattr(obj, "created_at", None),
                 "photos": [],
                 "album_preview_url": None

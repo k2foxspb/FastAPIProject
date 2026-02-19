@@ -18,7 +18,7 @@ from app.schemas.users import (
     UserPhotoCreate, UserPhotoUpdate, UserPhoto as UserPhotoSchema,
     FCMTokenUpdate, BulkDeletePhotosRequest, Friendship as FriendshipSchema
 )
-from app.api.dependencies import get_async_db
+from app.api.dependencies import get_async_db, get_friendship_status, can_view_content
 from app.core.auth import (
     hash_password,
     verify_password,
@@ -70,10 +70,14 @@ async def get_users(
 
     # Скрываем приватный контент для общего списка
     for user in users:
-        user.photos = [p for p in user.photos if not p.is_private]
-        user.albums = [a for a in user.albums if not a.is_private]
+        friendship_status = user.friendship_status
+        user_id = current_user.id if current_user else None
+        
+        user.albums = [a for a in user.albums if can_view_content(user.id, user_id, a.privacy, friendship_status)]
         for album in user.albums:
-            album.photos = [p for p in album.photos if not p.is_private]
+            album.photos = [p for p in album.photos if can_view_content(user.id, user_id, p.privacy, friendship_status)]
+        
+        user.photos = [p for p in user.photos if can_view_content(user.id, user_id, p.privacy, friendship_status)]
         
         # Определяем статус дружбы
         if current_user:
@@ -250,7 +254,7 @@ async def update_me(
                 user_id=current_user.id,
                 title="Аватарки",
                 description="История моих аватарок",
-                is_private=False
+                privacy="public"
             )
             db.add(avatar_album)
             await db.flush() # Получаем ID альбома
@@ -262,7 +266,7 @@ async def update_me(
             image_url=image_url,
             preview_url=preview_url,
             description=f"Аватарка от {datetime.now().strftime('%d.%m.%Y %H:%M')}",
-            is_private=False
+            privacy="public"
         )
         db.add(new_avatar_photo)
     
@@ -524,7 +528,7 @@ async def create_album(
         user_id=current_user.id,
         title=album.title,
         description=album.description,
-        is_private=album.is_private
+        privacy=album.privacy
     )
     db.add(db_album)
     await db.commit()
@@ -563,7 +567,7 @@ async def add_photo(
         image_url=photo.image_url,
         preview_url=photo.preview_url,
         description=photo.description,
-        is_private=photo.is_private
+        privacy=photo.privacy
     )
     db.add(db_photo)
     await db.commit()
@@ -601,22 +605,24 @@ async def get_album(
 ):
     """
     Возвращает информацию о конкретном альбоме.
-    Если альбом приватный, доступ разрешен только владельцу.
     """
-    from sqlalchemy import or_
     result = await db.execute(
-        select(PhotoAlbumModel).where(
-            PhotoAlbumModel.id == album_id,
-            or_(
-                PhotoAlbumModel.user_id == current_user.id,
-                PhotoAlbumModel.is_private == False
-            )
-        ).options(selectinload(PhotoAlbumModel.photos))
+        select(PhotoAlbumModel).where(PhotoAlbumModel.id == album_id).options(
+            selectinload(PhotoAlbumModel.photos)
+        )
     )
     album = result.scalar_one_or_none()
     if not album:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Album not found or access denied")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Album not found")
     
+    if album.user_id != current_user.id:
+        friendship_status = await get_friendship_status(current_user.id, album.user_id, db)
+        if not can_view_content(album.user_id, current_user.id, album.privacy, friendship_status):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+        
+        # Filter photos inside album
+        album.photos = [p for p in album.photos if can_view_content(album.user_id, current_user.id, p.privacy, friendship_status)]
+
     return album
 
 
@@ -743,7 +749,7 @@ async def upload_photo(
     file: UploadFile = File(...),
     description: str | None = Form(None),
     album_id: int | None = Form(None),
-    is_private: bool = Form(False),
+    privacy: str = Form("public"),
     current_user: UserModel = Depends(get_current_user),
     db: AsyncSession = Depends(get_async_db)
 ):
@@ -779,7 +785,7 @@ async def upload_photo(
         image_url=image_url,
         preview_url=preview_url,
         description=description,
-        is_private=is_private
+        privacy=privacy
     )
     db.add(db_photo)
     await db.commit()
@@ -793,7 +799,7 @@ async def bulk_upload_photos(
     files: list[UploadFile] = File(...),
     description: str | None = Form(None),
     album_id: int | None = Form(None),
-    is_private: bool = Form(False),
+    privacy: str = Form("public"),
     current_user: UserModel = Depends(get_current_user),
     db: AsyncSession = Depends(get_async_db)
 ):
@@ -822,7 +828,7 @@ async def bulk_upload_photos(
                 image_url=image_url,
                 preview_url=preview_url,
                 description=description,
-                is_private=is_private
+                privacy=privacy
             )
             db.add(db_photo)
             db_photos.append(db_photo)
@@ -848,21 +854,18 @@ async def get_photo(
 ):
     """
     Возвращает информацию о фотографии.
-    Если фото приватное, доступ разрешен только владельцу.
     """
-    from sqlalchemy import or_
     result = await db.execute(
-        select(UserPhotoModel).where(
-            UserPhotoModel.id == photo_id,
-            or_(
-                UserPhotoModel.user_id == current_user.id,
-                UserPhotoModel.is_private == False
-            )
-        )
+        select(UserPhotoModel).where(UserPhotoModel.id == photo_id)
     )
     photo = result.scalar_one_or_none()
     if not photo:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Photo not found or access denied")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Photo not found")
+    
+    if photo.user_id != current_user.id:
+        friendship_status = await get_friendship_status(current_user.id, photo.user_id, db)
+        if not can_view_content(photo.user_id, current_user.id, photo.privacy, friendship_status):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
     
     return photo
 
@@ -1029,10 +1032,13 @@ async def get_user_profile(
     
     # Если это не профиль текущего пользователя, фильтруем приватный контент
     if user.id != current_user.id:
-        user.photos = [p for p in user.photos if not p.is_private]
-        user.albums = [a for a in user.albums if not a.is_private]
+        friendship_status = await get_friendship_status(current_user.id, user.id, db)
+        
+        user.albums = [a for a in user.albums if can_view_content(user.id, current_user.id, a.privacy, friendship_status)]
         for album in user.albums:
-            album.photos = [p for p in album.photos if not p.is_private]
+            album.photos = [p for p in album.photos if can_view_content(user.id, current_user.id, p.privacy, friendship_status)]
+            
+        user.photos = [p for p in user.photos if can_view_content(user.id, current_user.id, p.privacy, friendship_status)]
             
     # Определяем статус дружбы
     res_friend = await db.execute(

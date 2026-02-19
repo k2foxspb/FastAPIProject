@@ -97,7 +97,7 @@ def upgrade() -> None:
     sa.Column('user_id', sa.Integer(), nullable=False),
     sa.Column('title', sa.String(), nullable=False),
     sa.Column('description', sa.String(), nullable=True),
-    sa.Column('is_private', sa.Boolean(), nullable=False),
+    sa.Column('privacy', sa.String(), nullable=False, server_default='public'),
     sa.Column('created_at', sa.DateTime(), nullable=False),
     sa.ForeignKeyConstraint(['user_id'], ['users.id'], ),
     sa.PrimaryKeyConstraint('id')
@@ -174,7 +174,7 @@ def upgrade() -> None:
     sa.Column('image_url', sa.String(), nullable=False),
     sa.Column('preview_url', sa.String(), nullable=False),
     sa.Column('description', sa.String(), nullable=True),
-    sa.Column('is_private', sa.Boolean(), nullable=False),
+    sa.Column('privacy', sa.String(), nullable=False, server_default='public'),
     sa.Column('created_at', sa.DateTime(), nullable=False),
     sa.ForeignKeyConstraint(['album_id'], ['photo_albums.id'], ),
     sa.ForeignKeyConstraint(['user_id'], ['users.id'], ),
