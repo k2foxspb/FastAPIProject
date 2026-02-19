@@ -121,22 +121,23 @@ services:
         echo '✅ Certificate already exists – skipping creation';
         exit 0;
       fi;
-      certbot certonly --standalone ${STAGING}
+      echo '⌛ Waiting for nginx to be ready for challenge...';
+      sleep 10;
+      certbot certonly --webroot -w /var/www/certbot
         --email ${CERTBOT_EMAIL:-admin@${DOMAIN}}
         --agree-tos
         --no-eff-email
-        -d ${DOMAIN} -d www.${DOMAIN}"
+        --manual-public-ip-logging-ok
+        -d ${DOMAIN} ${STAGING}"
     environment:
       - DOMAIN=${DOMAIN}
       - EMAIL=${CERTBOT_EMAIL:-admin@${DOMAIN}}
-      # Оставьте пустым для продакшн, либо задайте "--staging" для теста
       - STAGING=${STAGING:-}
     volumes:
       - letsencrypt:/etc/letsencrypt
       - certbot_www:/var/www/certbot
-    ports:
-      - "80:80"
-      - "443:443"
+    depends_on:
+      - nginx
 
   # -------------------------------------------------
   # 2️⃣ nginx – фронт‑энд
@@ -149,7 +150,8 @@ services:
       - "443:443"
     depends_on:
       - web
-      - certbot_init        # гарантируем, что сертификат уже есть
+    environment:
+      - DOMAIN=${DOMAIN}
     volumes:
       - letsencrypt:/etc/letsencrypt:ro
       - certbot_www:/var/www/certbot:ro
@@ -157,16 +159,35 @@ services:
     # Ожидание сертификата (если он ещё создаётся)
     command: |
       sh -c '
-        for i in $(seq 1 30); do
-          if [ -f /etc/letsencrypt/live/${DOMAIN}/fullchain.pem ]; then
-            echo "✅ Certificate ready – launching nginx";
-            exec nginx -g "daemon off;";
-          fi;
-          echo "⏳ Waiting for certificate (${DOMAIN}) – attempt $$i/30";
-          sleep 2;
-        done;
-        echo "❌ Certificate not found after 60 s – exiting";
-        exit 1
+        set -e
+        # Создаем самоподписанный сертификат, если его нет, чтобы Nginx не упал при старте
+        if [ ! -f /etc/letsencrypt/live/${DOMAIN}/fullchain.pem ]; then
+          echo "⚠️ No certificate found for ${DOMAIN} – creating dummy certificate for start";
+          mkdir -p /etc/letsencrypt/live/${DOMAIN};
+          openssl req -x509 -nodes -newkey rsa:2048 -days 1 \
+            -keyout /etc/letsencrypt/live/${DOMAIN}/privkey.pem \
+            -out /etc/letsencrypt/live/${DOMAIN}/fullchain.pem \
+            -subj "/CN=localhost";
+        fi;
+
+        nginx -g "daemon off;" &
+        NGINX_PID=$$!;
+
+        # Фоновый процесс для мониторинга появления настоящего сертификата
+        (
+          for i in $(seq 1 30); do
+            sleep 10;
+            if [ -f /etc/letsencrypt/live/${DOMAIN}/fullchain.pem ] && \
+               ! grep -q "localhost" /etc/letsencrypt/live/${DOMAIN}/fullchain.pem; then
+              echo "✅ Real certificate ready – reloading nginx";
+              nginx -s reload;
+              break;
+            fi;
+            echo "⏳ Waiting for real certificate (${DOMAIN}) – attempt $$i/30";
+          done
+        ) &
+
+        wait $$NGINX_PID;
       '
 
   # -------------------------------------------------
@@ -181,7 +202,7 @@ services:
     command: >
       sh -c "while true; do
         echo '🔁 Running certbot renew …';
-        certbot renew --quiet;
+        certbot renew --webroot -w /var/www/certbot --quiet;
         sleep 12h;
       done"
     environment:
