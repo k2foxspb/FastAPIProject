@@ -1,0 +1,5 @@
+{
+  "devDependencies": {
+    "expo-intent-launcher": "^13.0.8"
+  }
+}
