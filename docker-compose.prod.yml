@@ -1,22 +1,61 @@
-# -------------------------------------------------------
-#  docker-compose.prod.yml
-# -------------------------------------------------------
+name: fastapi-ecommerce-prod
 services:
-  # -------------------------------------------------
-  # FastAPI‑приложение
-  # -------------------------------------------------
+
   web:
+    # Берем Dockerfile из каталога app
     build:
       context: .
       dockerfile: app/Dockerfile.prod.yml
-    command: >
-      sh -c "alembic upgrade head &&
-             python -m app.init_db &&
-             gunicorn app.main:app
-               --workers 4
-               --worker-class uvicorn.workers.UvicornWorker
-               --bind 0.0.0.0:8000
-               --timeout 120"
+    # Запускаем миграции, инициализацию БД и сервер Gunicorn
+    command: sh -c "alembic upgrade head && python -m app.init_db && gunicorn app.main:app --workers 4 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000"
+    command: sh -c "alembic upgrade head && python -m app.init_db && gunicorn app.main:app --workers 4 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000 --timeout 120"
+    volumes:
+      - media_data:/home/fast/app/media
+    # Открываем порт 8000 внутри и снаружи
+#    ports:
+#      - '8000:8000'
+    environment:
+      - REDIS_HOST=${REDIS_HOST:-redis}
+      - POSTGRES_HOST=${POSTGRES_HOST:-db}
+      - POSTGRES_USER=${POSTGRES_USER:-ecommerce_user}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-xxxxxxxx}
+      - POSTGRES_DB=${POSTGRES_DB:-ecommerce_db}
+      - MAIL_USERNAME=${MAIL_USERNAME}
+      - MAIL_PASSWORD=${MAIL_PASSWORD}
+      - MAIL_FROM=${MAIL_FROM}
+      - MAIL_PORT=${MAIL_PORT}
+      - MAIL_SERVER=${MAIL_SERVER}
+      - MAIL_FROM_NAME=${MAIL_FROM_NAME}
+      - DOMAIN=${DOMAIN}
+      - MEDIA_ROOT=/home/fast/app/media
+      # S3 media storage
+      - MEDIA_STORAGE=${MEDIA_STORAGE:-s3}
+      - YC_S3_ENDPOINT=${YC_S3_ENDPOINT}
+      - YC_S3_REGION=${YC_S3_REGION}
+      - YC_S3_BUCKET=${YC_S3_BUCKET}
+      - YC_S3_ACCESS_KEY_ID=${YC_S3_ACCESS_KEY_ID}
+      - YC_S3_SECRET_ACCESS_KEY=${YC_S3_SECRET_ACCESS_KEY}
+      - YC_S3_DEFAULT_ACL=${YC_S3_DEFAULT_ACL:-public-read}
+      - YC_S3_PUBLIC_BASE_URL=${YC_S3_PUBLIC_BASE_URL}
+    depends_on:
+
+      - db
+      - redis
+
+  redis:
+    image: redis:7-alpine
+    user: "0:0"
+    expose:
+      - "6379"
+    volumes:
+      - redis_data:/data
+
+  celery_worker:
+    build:
+      context: .
+      dockerfile: app/Dockerfile.prod.yml
+    user: "0:0"
+    command: celery -A app.core.celery_app worker --loglevel=info
     volumes:
       - media_data:/home/fast/app/media
     environment:
@@ -33,7 +72,7 @@ services:
       - MAIL_FROM_NAME=${MAIL_FROM_NAME}
       - DOMAIN=${DOMAIN}
       - MEDIA_ROOT=/home/fast/app/media
-      # S3‑storage
+      # S3 media storage
       - MEDIA_STORAGE=${MEDIA_STORAGE:-s3}
       - YC_S3_ENDPOINT=${YC_S3_ENDPOINT}
       - YC_S3_REGION=${YC_S3_REGION}
@@ -46,57 +85,6 @@ services:
       - db
       - redis
 
-  # -------------------------------------------------
-  # Redis
-  # -------------------------------------------------
-  redis:
-    image: redis:7-alpine
-    user: "0:0"
-    expose:
-      - "6379"
-    volumes:
-      - redis_data:/data
-
-  # -------------------------------------------------
-  # Celery‑worker
-  # -------------------------------------------------
-  celery_worker:
-    build:
-      context: .
-      dockerfile: app/Dockerfile.prod.yml
-    user: "0:0"
-    command: celery -A app.core.celery_app worker --loglevel=info
-    volumes:
-      - media_data:/home/fast/app/media
-    environment:   # те же переменные, что и в `web`
-      - REDIS_HOST=${REDIS_HOST:-redis}
-      - POSTGRES_HOST=${POSTGRES_HOST:-db}
-      - POSTGRES_USER=${POSTGRES_USER:-ecommerce_user}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-xxxxxxxx}
-      - POSTGRES_DB=${POSTGRES_DB:-ecommerce_db}
-      - MAIL_USERNAME=${MAIL_USERNAME}
-      - MAIL_PASSWORD=${MAIL_PASSWORD}
-      - MAIL_FROM=${MAIL_FROM}
-      - MAIL_PORT=${MAIL_PORT}
-      - MAIL_SERVER=${MAIL_SERVER}
-      - MAIL_FROM_NAME=${MAIL_FROM_NAME}
-      - DOMAIN=${DOMAIN}
-      - MEDIA_ROOT=/home/fast/app/media
-      - MEDIA_STORAGE=${MEDIA_STORAGE:-s3}
-      - YC_S3_ENDPOINT=${YC_S3_ENDPOINT}
-      - YC_S3_REGION=${YC_S3_REGION}
-      - YC_S3_BUCKET=${YC_S3_BUCKET}
-      - YC_S3_ACCESS_KEY_ID=${YC_S3_ACCESS_KEY_ID}
-      - YC_S3_SECRET_ACCESS_KEY=${YC_S3_SECRET_ACCESS_KEY}
-      - YC_S3_DEFAULT_ACL=${YC_S3_DEFAULT_ACL:-public-read}
-      - YC_S3_PUBLIC_BASE_URL=${YC_S3_PUBLIC_BASE_URL}
-    depends_on:
-      - db
-      - redis
-
-  # -------------------------------------------------
-  # PostgreSQL
-  # -------------------------------------------------
   db:
     image: postgres:15
     user: "0:0"
@@ -107,26 +95,30 @@ services:
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-xxxxxxxx}
       - POSTGRES_DB=${POSTGRES_DB:-ecommerce_db}
 
-  # -------------------------------------------------
-  # nginx – фронт‑энд
-  # -------------------------------------------------
   nginx:
     build: nginx
     user: "0:0"
     ports:
-      - "80:80"
-      - "443:443"
+      - '80:80'
+      - '443:443'
+    volumes:
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - /var/www/certbot:/var/www/certbot:ro
+      - media_data:/home/fast/app/media:ro
     depends_on:
       - web
-    environment:
-      - DOMAIN=${DOMAIN}
+
+  certbot:
+    image: certbot/certbot
+    user: "0:0"
     volumes:
-      - letsencrypt:/etc/letsencrypt:ro
-      - media_data:/home/fast/app/media:ro
-    restart: unless-stopped
+      - /etc/letsencrypt:/etc/letsencrypt
+      - /var/www/certbot:/var/www/certbot
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
 
 volumes:
   postgres_data:
   redis_data:
   media_data:
-  letsencrypt:          # сертификаты Let’s Encrypt
+
+
