@@ -1,5 +1,6 @@
 {
   "expo": {
+    "sdkVersion": "54.0.0",
     "plugins": [
       "@react-native-firebase/app",
       "@react-native-firebase/messaging",
@@ -10,7 +11,8 @@
           "cameraPermission": "Приложение запрашивает доступ к камере, чтобы вы могли делать снимки.",
           "microphonePermission": "Приложение запрашивает доступ к микрофону."
         }
-      ]
+      ],
+      "expo-asset"
     ],
     "name": "FastAPI Expo",
     "slug": "fastapi-expo-app",
@@ -49,7 +51,6 @@
         "WRITE_EXTERNAL_STORAGE"
       ]
     },
-
     "extra": {
       "apiUrl": "https://fokin.fun",
       "eas": {
