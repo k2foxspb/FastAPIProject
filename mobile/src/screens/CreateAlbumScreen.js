@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, StyleSheet, TouchableOpacity, Alert, Switch } from 'react-native';
+import { View, Text, TextInput, StyleSheet, TouchableOpacity, Alert } from 'react-native';
 import { usersApi } from '../api';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
@@ -9,7 +9,7 @@ export default function CreateAlbumScreen({ navigation }) {
   const colors = themeConstants[theme];
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [isPrivate, setIsPrivate] = useState(false);
+  const [privacy, setPrivacy] = useState('public');
   const [loading, setLoading] = useState(false);
 
   const handleCreate = async () => {
@@ -20,7 +20,7 @@ export default function CreateAlbumScreen({ navigation }) {
 
     setLoading(true);
     try {
-      await usersApi.createAlbum({ title, description, is_private: isPrivate });
+      await usersApi.createAlbum({ title, description, privacy });
       navigation.goBack();
     } catch (err) {
       Alert.alert('Ошибка', 'Не удалось создать альбом');
@@ -52,14 +52,31 @@ export default function CreateAlbumScreen({ navigation }) {
         numberOfLines={4}
       />
 
-      <View style={[styles.switchContainer, { borderBottomColor: colors.border }]}>
-        <Text style={[styles.label, { color: colors.text, marginBottom: 0 }]}>Приватный альбом</Text>
-        <Switch
-          value={isPrivate}
-          onValueChange={setIsPrivate}
-          trackColor={{ false: colors.border, true: colors.primary + '80' }}
-          thumbColor={isPrivate ? colors.primary : '#f4f3f4'}
-        />
+      <Text style={[styles.label, { color: colors.text }]}>Кто может видеть альбом?</Text>
+      <View style={styles.privacyContainer}>
+        {[
+          { label: 'Всем', value: 'public' },
+          { label: 'Друзьям', value: 'friends' },
+          { label: 'Только мне', value: 'private' },
+        ].map((item) => (
+          <TouchableOpacity
+            key={item.value}
+            style={[
+              styles.privacyOption,
+              { borderColor: colors.border },
+              privacy === item.value && { backgroundColor: colors.primary, borderColor: colors.primary }
+            ]}
+            onPress={() => setPrivacy(item.value)}
+          >
+            <Text style={[
+              styles.privacyText,
+              { color: colors.text },
+              privacy === item.value && { color: '#fff' }
+            ]}>
+              {item.label}
+            </Text>
+          </TouchableOpacity>
+        ))}
       </View>
 
       <TouchableOpacity 
@@ -84,13 +101,22 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   textArea: { height: 100, textAlignVertical: 'top' },
-  switchContainer: {
+  privacyContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
     marginBottom: 30,
+  },
+  privacyOption: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 8,
     paddingVertical: 10,
-    borderBottomWidth: 1,
+    alignItems: 'center',
+    marginHorizontal: 4,
+  },
+  privacyText: {
+    fontSize: 14,
+    fontWeight: '500',
   },
   button: {
     padding: 15,

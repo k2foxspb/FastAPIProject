@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, FlatList, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, Image, Modal, Pressable, Alert, StatusBar, Dimensions } from 'react-native';
+import { View, Text, FlatList, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, Image, Modal, Pressable, Alert, StatusBar, Dimensions, Share } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
 import { chatApi, usersApi } from '../api';
 import { API_BASE_URL } from '../constants';
 import { storage } from '../utils/storage';
@@ -45,6 +47,9 @@ export default function ChatScreen({ route, navigation }) {
   const [selectedIds, setSelectedIds] = useState([]);
   const [isRecording, setIsRecording] = useState(false);
   const [recording, setRecording] = useState(null);
+  const [recordedUri, setRecordedUri] = useState(null);
+  const [recordingDuration, setRecordingDuration] = useState(0);
+  const recordingInterval = useRef(null);
   const recordingRef = useRef(null);
   const isStartingRecording = useRef(false);
   const LIMIT = 15;
@@ -257,6 +262,35 @@ export default function ChatScreen({ route, navigation }) {
       // Fallback если вдруг не нашли в общем списке
       setCurrentMediaIndex(0);
       setFullScreenMedia({ index: 0, list: [{ uri, type: 'image' }] });
+    }
+  };
+
+  const handleDownloadMedia = async () => {
+    const currentMedia = fullScreenMedia?.list[currentMediaIndex];
+    if (!currentMedia) return;
+
+    try {
+      const uri = currentMedia.uri;
+      const fileName = uri.split('/').pop();
+      const localFileUri = `${FileSystem.documentDirectory}${fileName}`;
+
+      const fileInfo = await FileSystem.getInfoAsync(localFileUri);
+      let finalUri = localFileUri;
+
+      if (!fileInfo.exists) {
+        Alert.alert('Загрузка', 'Файл скачивается...');
+        const downloadRes = await FileSystem.downloadAsync(uri, localFileUri);
+        finalUri = downloadRes.uri;
+      }
+
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(finalUri);
+      } else {
+        Alert.alert('Ошибка', 'Функция "Поделиться" недоступна на этом устройстве');
+      }
+    } catch (error) {
+      console.error('Error downloading media:', error);
+      Alert.alert('Ошибка', 'Не удалось скачать файл');
     }
   };
 
@@ -507,6 +541,10 @@ export default function ChatScreen({ route, navigation }) {
         recordingRef.current = newRecording;
         setRecording(newRecording);
         setIsRecording(true);
+        setRecordingDuration(0);
+        recordingInterval.current = setInterval(() => {
+          setRecordingDuration(prev => prev + 100);
+        }, 100);
       } else {
         Alert.alert('Доступ запрещен', 'Нам нужно разрешение на микрофон для записи голосовых сообщений');
       }
@@ -539,13 +577,17 @@ export default function ChatScreen({ route, navigation }) {
     }
     
     setIsRecording(false);
+    if (recordingInterval.current) {
+      clearInterval(recordingInterval.current);
+      recordingInterval.current = null;
+    }
     try {
       const status = await currentRecording.getStatusAsync();
       if (status.canRecord) {
         await currentRecording.stopAndUnloadAsync();
         const uri = currentRecording.getURI();
         if (uri) {
-          uploadVoiceMessage(uri);
+          setRecordedUri(uri);
         }
       }
     } catch (err) {
@@ -556,7 +598,27 @@ export default function ChatScreen({ route, navigation }) {
     }
   };
 
+  const deleteRecording = async () => {
+    if (recordedUri) {
+      try {
+        await FileSystem.deleteAsync(recordedUri, { idempotent: true });
+      } catch (e) {
+        console.error('Failed to delete recording file', e);
+      }
+    }
+    setRecordedUri(null);
+    setRecordingDuration(0);
+  };
+
+  const formatRecordingTime = (millis) => {
+    const totalSeconds = Math.floor(millis / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
+  };
+
   const uploadVoiceMessage = async (uri) => {
+    if (!uri) return;
     try {
       const fileName = `voice_${Date.now()}.m4a`;
       const mimeType = 'audio/m4a';
@@ -569,6 +631,8 @@ export default function ChatScreen({ route, navigation }) {
         userId,
         (upload_id) => setActiveUploadId(upload_id)
       );
+      setRecordedUri(null);
+      setRecordingDuration(0);
     } catch (error) {
       console.error('Voice upload failed', error);
       Alert.alert('Ошибка', 'Не удалось загрузить голосовое сообщение');
@@ -922,6 +986,13 @@ export default function ChatScreen({ route, navigation }) {
           >
             <MaterialIcons name="close" size={30} color="white" />
           </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={styles.downloadButton} 
+            onPress={handleDownloadMedia}
+          >
+            <MaterialIcons name="file-download" size={30} color="white" />
+          </TouchableOpacity>
           
           <FlatList
             data={fullScreenMedia?.list || []}
@@ -956,40 +1027,65 @@ export default function ChatScreen({ route, navigation }) {
       </Modal>
 
       <View style={[styles.inputContainer, { backgroundColor: colors.background, borderTopColor: colors.border, borderTopWidth: 1 }]}>
-        <TouchableOpacity 
-          onPress={pickAndUploadDocument} 
-          style={styles.attachButton}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-        >
-          <MaterialIcons name="insert-drive-file" size={24} color={colors.primary} />
-        </TouchableOpacity>
-        <TouchableOpacity 
-          onPress={pickAndUploadFile} 
-          style={styles.attachButton}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-        >
-          <MaterialIcons name="image" size={24} color={colors.primary} />
-        </TouchableOpacity>
-        <TextInput
-          style={[styles.input, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]}
-          value={inputText}
-          onChangeText={setInputText}
-          placeholder="Сообщение..."
-          placeholderTextColor={colors.textSecondary}
-          multiline
-        />
-        {inputText.trim() ? (
-          <TouchableOpacity onPress={sendMessage} style={styles.sendButton}>
-            <MaterialIcons name="send" size={24} color={colors.primary} />
-          </TouchableOpacity>
+        {recordedUri ? (
+          <View style={styles.recordedContainer}>
+            <TouchableOpacity onPress={deleteRecording} style={styles.deleteRecordingButton}>
+              <MaterialIcons name="delete" size={24} color={colors.error} />
+            </TouchableOpacity>
+            <View style={styles.recordingWaveformPlaceholder}>
+              <MaterialIcons name="mic" size={20} color={colors.primary} />
+              <Text style={[styles.recordingTimeText, { color: colors.text }]}>Голосовое сообщение ({formatRecordingTime(recordingDuration)})</Text>
+            </View>
+            <TouchableOpacity onPress={() => uploadVoiceMessage(recordedUri)} style={styles.sendButton}>
+              <MaterialIcons name="send" size={24} color={colors.primary} />
+            </TouchableOpacity>
+          </View>
+        ) : isRecording ? (
+          <View style={styles.recordingContainer}>
+            <View style={styles.recordingIndicator}>
+              <View style={styles.recordingDot} />
+              <Text style={[styles.recordingTimeText, { color: colors.error }]}>{formatRecordingTime(recordingDuration)}</Text>
+            </View>
+            <Text style={[styles.recordingHint, { color: colors.textSecondary }]}>Отпустите для завершения</Text>
+          </View>
         ) : (
-          <TouchableOpacity 
-            onPressIn={startRecording} 
-            onPressOut={stopRecording} 
-            style={[styles.sendButton, isRecording && { backgroundColor: colors.primary + '20', borderRadius: 20 }]}
-          >
-            <MaterialIcons name={isRecording ? "mic" : "mic-none"} size={24} color={isRecording ? colors.error : colors.primary} />
-          </TouchableOpacity>
+          <>
+            <TouchableOpacity 
+              onPress={pickAndUploadDocument} 
+              style={styles.attachButton}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <MaterialIcons name="insert-drive-file" size={24} color={colors.primary} />
+            </TouchableOpacity>
+            <TouchableOpacity 
+              onPress={pickAndUploadFile} 
+              style={styles.attachButton}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <MaterialIcons name="image" size={24} color={colors.primary} />
+            </TouchableOpacity>
+            <TextInput
+              style={[styles.input, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]}
+              value={inputText}
+              onChangeText={setInputText}
+              placeholder="Сообщение..."
+              placeholderTextColor={colors.textSecondary}
+              multiline
+            />
+            {inputText.trim() ? (
+              <TouchableOpacity onPress={sendMessage} style={styles.sendButton}>
+                <MaterialIcons name="send" size={24} color={colors.primary} />
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity 
+                onPressIn={startRecording} 
+                onPressOut={stopRecording} 
+                style={[styles.sendButton, isRecording && { backgroundColor: colors.primary + '20', borderRadius: 20 }]}
+              >
+                <MaterialIcons name={isRecording ? "mic" : "mic-none"} size={24} color={isRecording ? colors.error : colors.primary} />
+              </TouchableOpacity>
+            )}
+          </>
         )}
       </View>
     </KeyboardAvoidingView>
@@ -1128,6 +1224,53 @@ const styles = StyleSheet.create({
   sendButtonText: { color: '#007AFF', fontWeight: 'bold' },
   attachButton: { justifyContent: 'center', marginRight: 10, paddingHorizontal: 10 },
   attachButtonText: { fontSize: 24, color: '#007AFF' },
+  recordingContainer: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 10,
+    height: 40,
+  },
+  recordingIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  recordingDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#ff3b30',
+    marginRight: 8,
+  },
+  recordingTimeText: {
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  recordingHint: {
+    fontSize: 14,
+    fontStyle: 'italic',
+  },
+  recordedContainer: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 5,
+    height: 40,
+  },
+  deleteRecordingButton: {
+    padding: 5,
+  },
+  recordingWaveformPlaceholder: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.05)',
+    borderRadius: 20,
+    paddingHorizontal: 15,
+    height: 36,
+    marginHorizontal: 10,
+  },
   uploadProgressContainer: { 
     padding: 10, 
     backgroundColor: '#fff', 
@@ -1154,4 +1297,5 @@ const styles = StyleSheet.create({
   fullScreenImage: { width: '100%', height: '100%' },
   fullScreenVideo: { width: '100%', height: '100%' },
   closeButton: { position: 'absolute', top: 40, right: 20, zIndex: 10 },
+  downloadButton: { position: 'absolute', top: 40, left: 20, zIndex: 10 },
 });

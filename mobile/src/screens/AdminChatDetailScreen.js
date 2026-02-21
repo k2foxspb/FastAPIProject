@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, FlatList, Image, ActivityIndicator, TouchableOpacity, Alert, Modal, Pressable, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, FlatList, Image, ActivityIndicator, TouchableOpacity, Alert, Modal, Pressable, Dimensions, Share } from 'react-native';
 import { Ionicons as Icon } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
@@ -10,6 +10,8 @@ import CachedMedia from '../components/CachedMedia';
 import VoiceMessage from '../components/VoiceMessage';
 import FileMessage from '../components/FileMessage';
 import { Video, ResizeMode } from 'expo-av';
+import * as FileSystem from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
 
 export default function AdminChatDetailScreen({ route, navigation }) {
   const { u1, u2 } = route.params;
@@ -60,6 +62,34 @@ export default function AdminChatDetailScreen({ route, navigation }) {
         }
       ]
     );
+  };
+
+  const handleDownloadMedia = async () => {
+    if (!fullScreenMedia) return;
+
+    try {
+      const uri = fullScreenMedia.uri;
+      const fileName = uri.split('/').pop() || 'file';
+      const localFileUri = `${FileSystem.documentDirectory}${fileName}`;
+
+      const fileInfo = await FileSystem.getInfoAsync(localFileUri);
+      let finalUri = localFileUri;
+
+      if (!fileInfo.exists) {
+        Alert.alert('Загрузка', 'Файл скачивается...');
+        const downloadRes = await FileSystem.downloadAsync(uri, localFileUri);
+        finalUri = downloadRes.uri;
+      }
+
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(finalUri);
+      } else {
+        Alert.alert('Ошибка', 'Функция "Поделиться" недоступна на этом устройстве');
+      }
+    } catch (error) {
+      console.error('Error downloading media:', error);
+      Alert.alert('Ошибка', 'Не удалось скачать файл');
+    }
   };
 
   const renderItem = ({ item }) => {
@@ -177,6 +207,9 @@ export default function AdminChatDetailScreen({ route, navigation }) {
               <TouchableOpacity style={styles.fullScreenClose} onPress={() => setFullScreenMedia(null)}>
                 <Icon name="close" size={28} color="#fff" />
               </TouchableOpacity>
+              <TouchableOpacity style={styles.fullScreenDownload} onPress={handleDownloadMedia}>
+                <Icon name="download" size={28} color="#fff" />
+              </TouchableOpacity>
             </View>
           )}
         </View>
@@ -260,6 +293,12 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 40,
     right: 20,
+    padding: 8
+  },
+  fullScreenDownload: {
+    position: 'absolute',
+    top: 40,
+    left: 20,
     padding: 8
   }
 });

@@ -21,7 +21,7 @@ DOMAIN = os.getenv("DOMAIN", "http://79.133.183.129")
 
 # Базовый deeplink мобильного приложения, например: "myapp://verify-email"
 # Если не задан, бэкенд не будет выполнять редирект по умолчанию.
-MOBILE_DEEPLINK = os.getenv("MOBILE_DEEPLINK")
+MOBILE_DEEPLINK = os.getenv("MOBILE_DEEPLINK", "fokinfun://verify-email")
 
 CORS_ORIGINS = [
     "http://79.133.183.129",

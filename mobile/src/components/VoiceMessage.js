@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Alert } from 'react-native';
 import { Audio } from 'expo-av';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
 import * as FileSystem from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
 import { API_BASE_URL } from '../constants';
 
 const resolveRemoteUri = (path) => {
@@ -70,6 +71,34 @@ export default function VoiceMessage({ item, currentUserId }) {
     }
   };
 
+  const handleShare = async () => {
+    setLoading(true);
+    try {
+      let uri = localUri;
+      if (!uri) {
+        const fileInfo = await FileSystem.getInfoAsync(localFileUri);
+        if (fileInfo.exists) {
+          uri = fileInfo.uri;
+        } else {
+          const downloadRes = await FileSystem.downloadAsync(remoteUri, localFileUri);
+          uri = downloadRes.uri;
+        }
+        setLocalUri(uri);
+      }
+
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(uri);
+      } else {
+        Alert.alert('Ошибка', 'Функция "Поделиться" недоступна');
+      }
+    } catch (error) {
+      console.error('Error sharing voice message:', error);
+      Alert.alert('Ошибка', 'Не удалось скачать файл');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const onPlaybackStatusUpdate = (status) => {
     if (status.isLoaded) {
       setPosition(status.positionMillis);
@@ -115,6 +144,13 @@ export default function VoiceMessage({ item, currentUserId }) {
           </Text>
         </View>
       </View>
+      <TouchableOpacity onPress={handleShare} disabled={loading} style={styles.downloadButton}>
+        <MaterialIcons 
+          name="file-download" 
+          size={20} 
+          color={isReceived ? colors.textSecondary : 'rgba(255,255,255,0.7)'} 
+        />
+      </TouchableOpacity>
     </View>
   );
 }
@@ -124,7 +160,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     padding: 10,
-    minWidth: 200,
+    minWidth: 220,
   },
   playButton: {
     marginRight: 10,
@@ -146,5 +182,9 @@ const styles = StyleSheet.create({
   },
   timeText: {
     fontSize: 10,
+  },
+  downloadButton: {
+    marginLeft: 10,
+    padding: 5,
   },
 });

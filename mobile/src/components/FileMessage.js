@@ -87,41 +87,79 @@ export default function FileMessage({ item, currentUserId }) {
     }
   };
 
+  const handleShare = async () => {
+    setLoading(true);
+    try {
+      const fileInfo = await FileSystem.getInfoAsync(localFileUri);
+      let uri = localFileUri;
+
+      if (!fileInfo.exists) {
+        const downloadRes = await FileSystem.downloadAsync(remoteUri, localFileUri);
+        uri = downloadRes.uri;
+      }
+
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(uri);
+      } else {
+        Alert.alert('Ошибка', 'Функция "Поделиться" недоступна');
+      }
+    } catch (error) {
+      console.error('Error sharing file:', error);
+      Alert.alert('Ошибка', 'Не удалось скачать файл для отправки');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const isReceived = item.sender_id !== currentUserId;
 
   return (
-    <TouchableOpacity 
-      onPress={handleDownloadAndOpen} 
-      disabled={loading} 
-      style={[
-        styles.container, 
-        { backgroundColor: isReceived ? colors.border + '40' : 'rgba(255,255,255,0.2)' }
-      ]}
-    >
-      <View style={styles.iconContainer}>
-        {loading ? (
-          <ActivityIndicator size="small" color={isReceived ? colors.primary : "#fff"} />
-        ) : (
-          <MaterialIcons 
-            name="insert-drive-file" 
-            size={28} 
-            color={isReceived ? colors.primary : "#fff"} 
-          />
-        )}
-      </View>
-      <View style={styles.textContainer}>
-        <Text 
-          style={[styles.fileName, { color: isReceived ? colors.text : "#fff" }]} 
-          numberOfLines={1}
-          ellipsizeMode="middle"
-        >
-          {fileName}
-        </Text>
-        <Text style={[styles.fileAction, { color: isReceived ? colors.textSecondary : 'rgba(255,255,255,0.7)' }]}>
-          Нажмите, чтобы открыть
-        </Text>
-      </View>
-    </TouchableOpacity>
+    <View style={[
+      styles.container, 
+      { backgroundColor: isReceived ? colors.border + '40' : 'rgba(255,255,255,0.2)' }
+    ]}>
+      <TouchableOpacity 
+        onPress={handleDownloadAndOpen} 
+        disabled={loading} 
+        style={styles.contentContainer}
+      >
+        <View style={styles.iconContainer}>
+          {loading ? (
+            <ActivityIndicator size="small" color={isReceived ? colors.primary : "#fff"} />
+          ) : (
+            <MaterialIcons 
+              name="insert-drive-file" 
+              size={28} 
+              color={isReceived ? colors.primary : "#fff"} 
+            />
+          )}
+        </View>
+        <View style={styles.textContainer}>
+          <Text 
+            style={[styles.fileName, { color: isReceived ? colors.text : "#fff" }]} 
+            numberOfLines={1}
+            ellipsizeMode="middle"
+          >
+            {fileName}
+          </Text>
+          <Text style={[styles.fileAction, { color: isReceived ? colors.textSecondary : 'rgba(255,255,255,0.7)' }]}>
+            Открыть
+          </Text>
+        </View>
+      </TouchableOpacity>
+      
+      <TouchableOpacity 
+        onPress={handleShare}
+        disabled={loading}
+        style={styles.downloadButton}
+      >
+        <MaterialIcons 
+          name="file-download" 
+          size={24} 
+          color={isReceived ? colors.primary : "#fff"} 
+        />
+      </TouchableOpacity>
+    </View>
   );
 }
 
@@ -132,8 +170,19 @@ const styles = StyleSheet.create({
     padding: 10,
     borderRadius: 12,
     marginVertical: 4,
-    minWidth: 180,
-    maxWidth: 250,
+    minWidth: 200,
+    maxWidth: 280,
+  },
+  contentContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  downloadButton: {
+    padding: 5,
+    marginLeft: 10,
+    borderLeftWidth: 1,
+    borderLeftColor: 'rgba(255,255,255,0.2)',
   },
   iconContainer: {
     marginRight: 10,
