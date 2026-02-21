@@ -237,8 +237,11 @@ export default function PhotoDetailScreen({ route, navigation }) {
               <Text style={styles.descriptionText}>
                 {photos[currentIndex].description || 'Нет описания'}
               </Text>
-              {photos[currentIndex].is_private && (
+              {photos[currentIndex].privacy === 'private' && (
                 <Icon name="lock-closed" size={16} color="#fff" style={{ marginLeft: 8 }} />
+              )}
+              {photos[currentIndex].privacy === 'friends' && (
+                <Icon name="people" size={16} color="#fff" style={{ marginLeft: 8 }} />
               )}
             </View>
             <Text style={styles.dateText}>
@@ -263,7 +266,7 @@ const styles = StyleSheet.create({
     right: 20,
     zIndex: 20
   },
-  fullPhoto: { width: width, height: height },
+  fullPhoto: { width: '100%', height: '100%' },
   header: { 
     position: 'absolute', 
     top: 0, 

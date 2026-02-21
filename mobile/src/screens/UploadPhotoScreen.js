@@ -12,7 +12,7 @@ export default function UploadPhotoScreen({ route, navigation }) {
   const { albumId } = route.params || {};
   const [images, setImages] = useState([]); // Изменено: теперь массив
   const [description, setDescription] = useState('');
-  const [isPrivate, setIsPrivate] = useState(false);
+  const [privacy, setPrivacy] = useState('public');
   const [uploading, setUploading] = useState(false);
 
   const pickImage = async () => {
@@ -66,7 +66,7 @@ export default function UploadPhotoScreen({ route, navigation }) {
     if (albumId) {
       formData.append('album_id', albumId.toString());
     }
-    formData.append('is_private', isPrivate.toString());
+    formData.append('privacy', privacy);
 
     try {
       if (images.length === 1) {
@@ -143,14 +143,31 @@ export default function UploadPhotoScreen({ route, navigation }) {
           multiline
         />
 
-        <View style={[styles.switchContainer, { borderBottomColor: colors.border }]}>
-          <Text style={[styles.label, { color: colors.text, marginBottom: 0 }]}>Приватные фотографии</Text>
-          <Switch
-            value={isPrivate}
-            onValueChange={setIsPrivate}
-            trackColor={{ false: colors.border, true: colors.primary + '80' }}
-            thumbColor={isPrivate ? colors.primary : '#f4f3f4'}
-          />
+        <Text style={[styles.label, { color: colors.text }]}>Кто может видеть фото?</Text>
+        <View style={styles.privacyContainer}>
+          {[
+            { label: 'Всем', value: 'public' },
+            { label: 'Друзьям', value: 'friends' },
+            { label: 'Только мне', value: 'private' },
+          ].map((item) => (
+            <TouchableOpacity
+              key={item.value}
+              style={[
+                styles.privacyOption,
+                { borderColor: colors.border },
+                privacy === item.value && { backgroundColor: colors.primary, borderColor: colors.primary }
+              ]}
+              onPress={() => setPrivacy(item.value)}
+            >
+              <Text style={[
+                styles.privacyText,
+                { color: colors.text },
+                privacy === item.value && { color: '#fff' }
+              ]}>
+                {item.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
         </View>
 
         <TouchableOpacity 
@@ -257,5 +274,22 @@ const styles = StyleSheet.create({
     alignItems: 'center'
   },
   disabledBtn: { opacity: 0.5 },
-  uploadBtnText: { color: '#fff', fontSize: 18, fontWeight: 'bold' }
+  uploadBtnText: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
+  privacyContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 20,
+  },
+  privacyOption: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingVertical: 10,
+    alignItems: 'center',
+    marginHorizontal: 4,
+  },
+  privacyText: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
 });

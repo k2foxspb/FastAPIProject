@@ -169,7 +169,9 @@ export default function UserProfileScreen({ route, navigation }) {
         {user.albums && user.albums.map(album => (
           <View key={album.id} style={styles.album}>
             <Text style={[styles.albumTitle, { color: colors.text }]}>
-              {album.title} {album.is_private && <Icon name="lock-closed" size={14} color={colors.textSecondary} />}
+              {album.title} 
+              {album.privacy === 'private' && <Icon name="lock-closed" size={14} color={colors.textSecondary} style={{ marginLeft: 5 }} />}
+              {album.privacy === 'friends' && <Icon name="people" size={14} color={colors.textSecondary} style={{ marginLeft: 5 }} />}
             </Text>
             <FlatList
               horizontal
@@ -208,9 +210,14 @@ export default function UserProfileScreen({ route, navigation }) {
                 source={{ uri: getFullUrl(photo.preview_url || photo.image_url) }} 
                 style={styles.gridPhoto} 
               />
-              {photo.is_private && (
+              {photo.privacy === 'private' && (
                 <View style={styles.privateBadge}>
                   <Icon name="lock-closed" size={12} color="#fff" />
+                </View>
+              )}
+              {photo.privacy === 'friends' && (
+                <View style={styles.privateBadge}>
+                  <Icon name="people" size={12} color="#fff" />
                 </View>
               )}
             </TouchableOpacity>

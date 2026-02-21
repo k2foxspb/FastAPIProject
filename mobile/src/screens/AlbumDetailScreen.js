@@ -16,7 +16,7 @@ export default function AlbumDetailScreen({ route, navigation }) {
   const [isEditing, setIsEditing] = useState(false);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [isPrivate, setIsPrivate] = useState(false);
+  const [privacy, setPrivacy] = useState('public');
   const [loading, setLoading] = useState(true);
 
   const fetchAlbum = useCallback(async () => {
@@ -25,7 +25,7 @@ export default function AlbumDetailScreen({ route, navigation }) {
       setAlbum(res.data);
       setTitle(res.data.title);
       setDescription(res.data.description || '');
-      setIsPrivate(res.data.is_private || false);
+      setPrivacy(res.data.privacy || 'public');
     } catch (err) {
       Alert.alert('Ошибка', 'Не удалось загрузить данные альбома');
       navigation.goBack();
@@ -42,7 +42,7 @@ export default function AlbumDetailScreen({ route, navigation }) {
 
   const handleUpdate = async () => {
     try {
-      await usersApi.updateAlbum(albumId, { title, description, is_private: isPrivate });
+      await usersApi.updateAlbum(albumId, { title, description, privacy });
       setIsEditing(false);
       fetchAlbum();
       Alert.alert('Успех', 'Альбом обновлен');
@@ -101,14 +101,31 @@ export default function AlbumDetailScreen({ route, navigation }) {
               placeholderTextColor={colors.textSecondary}
               multiline
             />
-            <View style={styles.switchContainer}>
-              <Text style={[styles.labelSmall, { color: colors.text }]}>Приватный альбом</Text>
-              <Switch
-                value={isPrivate}
-                onValueChange={setIsPrivate}
-                trackColor={{ false: colors.border, true: colors.primary + '80' }}
-                thumbColor={isPrivate ? colors.primary : '#f4f3f4'}
-              />
+            <Text style={[styles.labelSmall, { color: colors.text, marginBottom: 10, fontWeight: 'bold' }]}>Кто может видеть альбом?</Text>
+            <View style={styles.privacyContainer}>
+              {[
+                { label: 'Всем', value: 'public' },
+                { label: 'Друзьям', value: 'friends' },
+                { label: 'Только мне', value: 'private' },
+              ].map((item) => (
+                <TouchableOpacity
+                  key={item.value}
+                  style={[
+                    styles.privacyOption,
+                    { borderColor: colors.border },
+                    privacy === item.value && { backgroundColor: colors.primary, borderColor: colors.primary }
+                  ]}
+                  onPress={() => setPrivacy(item.value)}
+                >
+                  <Text style={[
+                    styles.privacyText,
+                    { color: colors.text, fontSize: 12 },
+                    privacy === item.value && { color: '#fff' }
+                  ]}>
+                    {item.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
             </View>
             <View style={styles.buttonRow}>
               <TouchableOpacity style={[styles.btn, { backgroundColor: colors.primary }]} onPress={handleUpdate}>
@@ -133,12 +150,16 @@ export default function AlbumDetailScreen({ route, navigation }) {
               </View>
             </View>
             {album.description ? <Text style={[styles.description, { color: colors.textSecondary }]}>{album.description}</Text> : null}
-            {album.is_private ? (
-              <View style={styles.privateBadge}>
-                <Icon name="lock-closed" size={14} color={colors.textSecondary} />
-                <Text style={[styles.privateText, { color: colors.textSecondary }]}>Приватный</Text>
-              </View>
-            ) : null}
+            <View style={styles.privateBadge}>
+              <Icon 
+                name={album.privacy === 'private' ? "lock-closed" : (album.privacy === 'friends' ? "people" : "globe-outline")} 
+                size={14} 
+                color={colors.textSecondary} 
+              />
+              <Text style={[styles.privateText, { color: colors.textSecondary }]}>
+                {album.privacy === 'private' ? 'Только мне' : (album.privacy === 'friends' ? 'Друзьям' : 'Всем')}
+              </Text>
+            </View>
           </View>
         )}
       </View>
@@ -191,7 +212,7 @@ export default function AlbumDetailScreen({ route, navigation }) {
                     });
                   });
                   formData.append('album_id', albumId.toString());
-                  formData.append('is_private', isPrivate.toString());
+                  formData.append('privacy', privacy);
                   
                   await usersApi.bulkUploadPhotos(formData);
                   fetchAlbum();
@@ -226,16 +247,26 @@ const styles = StyleSheet.create({
   editForm: { width: '100%' },
   input: { borderWidth: 1, borderRadius: 8, padding: 10, marginBottom: 10, fontSize: 16 },
   textArea: { height: 80, textAlignVertical: 'top' },
-  switchContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 15,
-  },
-  labelSmall: { fontSize: 16 },
   buttonRow: { flexDirection: 'row', justifyContent: 'flex-end' },
   btn: { padding: 10, borderRadius: 8, marginLeft: 10, minWidth: 80, alignItems: 'center' },
   btnText: { color: '#fff', fontWeight: 'bold' },
+  privacyContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 20,
+  },
+  privacyOption: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingVertical: 8,
+    alignItems: 'center',
+    marginHorizontal: 4,
+  },
+  privacyText: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
   photoGrid: { paddingBottom: 20 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 15 },
   photo: { width: 110, height: 110, margin: 5, borderRadius: 8 },

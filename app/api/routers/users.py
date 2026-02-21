@@ -63,63 +63,68 @@ async def get_users(
         selectinload(UserModel.received_friend_requests)
     )
     if search:
-        query = query.where(UserModel.email.ilike(f"%{search}%"))
+        query = query.where(or_(
+            UserModel.email.ilike(f"%{search}%"),
+            UserModel.first_name.ilike(f"%{search}%"),
+            UserModel.last_name.ilike(f"%{search}%")
+        ))
     
     result = await db.execute(query)
     users = result.scalars().all()
 
+    # Предварительно загружаем все статусы дружбы для текущего пользователя (оптимизация N+1)
+    friendships_map = {}
+    if current_user:
+        res_f = await db.execute(
+            select(FriendshipModel).where(
+                or_(
+                    FriendshipModel.user_id == current_user.id,
+                    FriendshipModel.friend_id == current_user.id
+                )
+            )
+        )
+        friendships = res_f.scalars().all()
+        for f in friendships:
+            other_id = f.friend_id if f.user_id == current_user.id else f.user_id
+            friendships_map[other_id] = f
+
     # Скрываем приватный контент для общего списка
     for user in users:
-        friendship_status = user.friendship_status
+        # Определяем статус дружбы
+        friendship_status = None
         user_id = current_user.id if current_user else None
+
+        if current_user:
+            if user.id == current_user.id:
+                friendship_status = "self"
+            else:
+                friendship = friendships_map.get(user.id)
+                if friendship:
+                    if friendship.status == "accepted":
+                        friendship_status = "accepted"
+                    elif hasattr(friendship, 'deleted_by_id') and friendship.deleted_by_id == current_user.id:
+                        # Если текущий пользователь удалил этого друга, 
+                        # то для него это либо requested_by_them (если тот все еще считает другом),
+                        # либо просто None. Но в текущей схеме deleted_by_id означает "удален из друзей мной".
+                        if friendship.user_id == user.id: # Тот был отправителем
+                            friendship_status = "requested_by_them"
+                        else:
+                            friendship_status = None
+                    elif friendship.user_id == current_user.id:
+                        friendship_status = "requested_by_me"
+                    else:
+                        friendship_status = "requested_by_them"
+                else:
+                    friendship_status = None
+        
+        # Присваиваем для схемы
+        user.friendship_status = friendship_status
         
         user.albums = [a for a in user.albums if can_view_content(user.id, user_id, a.privacy, friendship_status)]
         for album in user.albums:
             album.photos = [p for p in album.photos if can_view_content(user.id, user_id, p.privacy, friendship_status)]
         
         user.photos = [p for p in user.photos if can_view_content(user.id, user_id, p.privacy, friendship_status)]
-        
-        # Определяем статус дружбы
-        if current_user:
-            if user.id == current_user.id:
-                user.friendship_status = "self"
-            else:
-                # Ищем среди отправленных текущим пользователем
-                res_sent = await db.execute(
-                    select(FriendshipModel).where(
-                        FriendshipModel.user_id == current_user.id,
-                        FriendshipModel.friend_id == user.id
-                    )
-                )
-                friendship = res_sent.scalar_one_or_none()
-                if friendship:
-                    if friendship.status == "accepted":
-                        user.friendship_status = "accepted"
-                    elif hasattr(friendship, 'deleted_by_id') and friendship.deleted_by_id == current_user.id:
-                        # Если вдруг каким-то образом в этой записи есть deleted_by_id текущего юзера
-                        # (хотя по логике он должен быть во второй ветке)
-                        user.friendship_status = None
-                    else:
-                        user.friendship_status = "requested_by_me"
-                else:
-                    # Ищем среди полученных текущим пользователем
-                    res_received = await db.execute(
-                        select(FriendshipModel).where(
-                            FriendshipModel.user_id == user.id,
-                            FriendshipModel.friend_id == current_user.id
-                        )
-                    )
-                    friendship = res_received.scalar_one_or_none()
-                    if friendship:
-                        if friendship.status == "accepted":
-                            user.friendship_status = "accepted"
-                        elif hasattr(friendship, 'deleted_by_id') and friendship.deleted_by_id == current_user.id:
-                            # Текущий пользователь удалил этого друга, но заявка от того осталась
-                            user.friendship_status = "requested_by_them"
-                        else:
-                            user.friendship_status = "requested_by_them"
-                    else:
-                        user.friendship_status = None
 
     return [UserSchema.model_validate(u) for u in users]
 
