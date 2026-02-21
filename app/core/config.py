@@ -53,7 +53,11 @@ POSTGRES_DB = os.getenv("POSTGRES_DB", "ecommerce_db")
 POSTGRES_HOST = os.getenv("POSTGRES_HOST", "db")
 POSTGRES_PORT = os.getenv("POSTGRES_PORT", "5432")
 
-DATABASE_URL = f"postgresql+asyncpg://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
+# Формируем DATABASE_URL по умолчанию (Postgres)
+DEFAULT_DB_URL = f"postgresql+asyncpg://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
+
+# Позволяем переопределить через DATABASE_URL (например, для SQLite)
+DATABASE_URL = os.getenv("DATABASE_URL", DEFAULT_DB_URL)
 
 CELERY_BROKER_URL = f"redis://{REDIS_HOST}:{REDIS_PORT}/0"
 CELERY_RESULT_BACKEND = f"redis://{REDIS_HOST}:{REDIS_PORT}/0"
