@@ -29,5 +29,8 @@ class News(BaseModel):
     created_at: datetime
     updated_at: datetime
     images: list[NewsImage] = Field(default=[])
+    likes_count: int = 0
+    dislikes_count: int = 0
+    my_reaction: int | None = None # 1, -1 or None
 
     model_config = ConfigDict(from_attributes=True)

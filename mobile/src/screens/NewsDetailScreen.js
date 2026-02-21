@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, Image, ScrollView, Dimensions, ActivityIndicator, Alert, FlatList } from 'react-native';
+import { View, Text, StyleSheet, Image, ScrollView, Dimensions, ActivityIndicator, Alert, FlatList, TouchableOpacity } from 'react-native';
 import RenderHTML from 'react-native-render-html';
 import { newsApi } from '../api';
 import { getFullUrl } from '../utils/urlHelper';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
+import { Ionicons as Icon } from '@expo/vector-icons';
 
 const { width } = Dimensions.get('window');
 
@@ -43,6 +44,42 @@ export default function NewsDetailScreen({ route, navigation }) {
       </View>
     );
   }
+
+  const handleReaction = async (type) => {
+    try {
+      const newReaction = news.my_reaction === type ? 0 : type;
+      await newsApi.reactToNews(newsId, newReaction);
+      
+      // Обновляем локальное состояние
+      setNews(prev => {
+        let likes = prev.likes_count || 0;
+        let dislikes = prev.dislikes_count || 0;
+        
+        // Убираем старую реакцию
+        if (prev.my_reaction === 1) likes--;
+        if (prev.my_reaction === -1) dislikes--;
+        
+        // Добавляем новую
+        if (newReaction === 1) likes++;
+        if (newReaction === -1) dislikes++;
+        
+        return {
+          ...prev,
+          my_reaction: newReaction,
+          likes_count: likes,
+          dislikes_count: dislikes
+        };
+      });
+    } catch (err) {
+      console.error(err);
+      // Если 401, то просто не авторизован
+      if (err.response?.status === 401) {
+        Alert.alert('Авторизация', 'Войдите в аккаунт, чтобы ставить реакции');
+      } else {
+        Alert.alert('Ошибка', 'Не удалось отправить реакцию');
+      }
+    }
+  };
 
   const allImages = news.images && news.images.length > 0 
     ? news.images 
@@ -87,10 +124,30 @@ export default function NewsDetailScreen({ route, navigation }) {
       )}
 
       <View style={styles.contentContainer}>
-        <Text style={[styles.title, { color: colors.text }]}>{news.title}</Text>
-        <Text style={[styles.date, { color: colors.textSecondary }]}>
-          {new Date(news.created_at).toLocaleDateString()} {new Date(news.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-        </Text>
+        <View style={styles.headerRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.title, { color: colors.text }]}>{news.title}</Text>
+            <Text style={[styles.date, { color: colors.textSecondary }]}>
+              {new Date(news.created_at).toLocaleDateString()} {new Date(news.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            </Text>
+          </View>
+          <View style={styles.reactionsContainer}>
+            <TouchableOpacity 
+              style={[styles.reactionButton, { backgroundColor: news.my_reaction === 1 ? colors.error + '20' : colors.surface }]} 
+              onPress={() => handleReaction(1)}
+            >
+              <Icon name={news.my_reaction === 1 ? "heart" : "heart-outline"} size={24} color={news.my_reaction === 1 ? colors.error : colors.textSecondary} />
+              <Text style={[styles.reactionText, { color: news.my_reaction === 1 ? colors.error : colors.textSecondary }]}>{news.likes_count || 0}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={[styles.reactionButton, { marginLeft: 10, backgroundColor: news.my_reaction === -1 ? colors.primary + '20' : colors.surface }]} 
+              onPress={() => handleReaction(-1)}
+            >
+              <Icon name={news.my_reaction === -1 ? "thumbs-down" : "thumbs-down-outline"} size={24} color={news.my_reaction === -1 ? colors.primary : colors.textSecondary} />
+              <Text style={[styles.reactionText, { color: news.my_reaction === -1 ? colors.primary : colors.textSecondary }]}>{news.dislikes_count || 0}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
         <View style={[styles.divider, { backgroundColor: colors.border }]} />
         <RenderHTML
           contentWidth={width - 40}
@@ -124,5 +181,9 @@ const styles = StyleSheet.create({
   title: { fontSize: 24, fontWeight: 'bold', marginBottom: 10 },
   date: { fontSize: 14, marginBottom: 15 },
   divider: { height: 1, width: '100%', marginBottom: 20 },
+  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 },
+  reactionsContainer: { flexDirection: 'row', alignItems: 'center' },
+  reactionButton: { flexDirection: 'row', alignItems: 'center', padding: 8, borderRadius: 12, borderWidth: 1, borderColor: 'transparent' },
+  reactionText: { marginLeft: 6, fontWeight: 'bold', fontSize: 16 },
   content: { fontSize: 16, lineHeight: 26 },
 });

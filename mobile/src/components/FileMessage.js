@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Alert, Platform } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import * as FileSystem from 'expo-file-system';
-import { getInfoAsync } from 'expo-file-system/legacy';
+import { documentDirectory, getInfoAsync, downloadAsync, getContentUriAsync, readAsStringAsync, writeAsStringAsync, EncodingType, StorageAccessFramework } from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import * as IntentLauncher from 'expo-intent-launcher';
 import { useTheme } from '../context/ThemeContext';
@@ -47,7 +46,7 @@ export default function FileMessage({ item, currentUserId }) {
 
   const remoteUri = resolveRemoteUri(item.file_path);
   const fileName = item.file_path.split('/').pop();
-  const localFileUri = `${FileSystem.documentDirectory}${fileName}`;
+  const localFileUri = `${documentDirectory}${fileName}`;
 
   const handleDownloadAndOpen = async () => {
     setLoading(true);
@@ -57,7 +56,7 @@ export default function FileMessage({ item, currentUserId }) {
 
       if (!fileInfo.exists) {
         console.log(`Downloading ${remoteUri} to ${localFileUri}`);
-        const downloadRes = await FileSystem.downloadAsync(remoteUri, localFileUri);
+        const downloadRes = await downloadAsync(remoteUri, localFileUri);
         uri = downloadRes.uri;
       }
 
@@ -67,7 +66,7 @@ export default function FileMessage({ item, currentUserId }) {
 
       if (Platform.OS === 'android') {
         try {
-          const contentUri = await FileSystem.getContentUriAsync(uri);
+          const contentUri = await getContentUriAsync(uri);
           await IntentLauncher.startActivityAsync('android.intent.action.VIEW', {
             data: contentUri,
             flags: 1,
@@ -88,6 +87,46 @@ export default function FileMessage({ item, currentUserId }) {
     }
   };
 
+  const handleDownload = async () => {
+    setLoading(true);
+    try {
+      const fileInfo = await getInfoAsync(localFileUri);
+      let uri = localFileUri;
+
+      if (!fileInfo.exists) {
+        console.log(`Downloading ${remoteUri} to ${localFileUri}`);
+        const downloadRes = await downloadAsync(remoteUri, localFileUri);
+        uri = downloadRes.uri;
+      }
+
+      if (Platform.OS === 'android') {
+        const permissions = await StorageAccessFramework.requestDirectoryPermissionsAsync();
+        if (permissions.granted) {
+          const base64 = await readAsStringAsync(uri, { encoding: EncodingType.Base64 });
+          const mimeType = getMimeType(fileName);
+          const newFileUri = await StorageAccessFramework.createFileAsync(
+            permissions.directoryUri,
+            fileName,
+            mimeType
+          );
+          await writeAsStringAsync(newFileUri, base64, { encoding: EncodingType.Base64 });
+          Alert.alert('Успех', 'Файл успешно сохранен');
+        }
+      } else {
+        if (await Sharing.isAvailableAsync()) {
+          await Sharing.shareAsync(uri);
+        } else {
+          Alert.alert('Ошибка', 'Функция "Поделиться" недоступна');
+        }
+      }
+    } catch (error) {
+      console.error('Error downloading file:', error);
+      Alert.alert('Ошибка', 'Не удалось скачать файл');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleShare = async () => {
     setLoading(true);
     try {
@@ -95,7 +134,7 @@ export default function FileMessage({ item, currentUserId }) {
       let uri = localFileUri;
 
       if (!fileInfo.exists) {
-        const downloadRes = await FileSystem.downloadAsync(remoteUri, localFileUri);
+        const downloadRes = await downloadAsync(remoteUri, localFileUri);
         uri = downloadRes.uri;
       }
 
@@ -117,20 +156,27 @@ export default function FileMessage({ item, currentUserId }) {
   return (
     <View style={[
       styles.container, 
-      { backgroundColor: isReceived ? colors.border + '40' : 'rgba(255,255,255,0.2)' }
+      { 
+        backgroundColor: isReceived ? colors.surface : colors.primary,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.1,
+        shadowRadius: 2,
+        elevation: 1,
+      }
     ]}>
       <TouchableOpacity 
         onPress={handleDownloadAndOpen} 
         disabled={loading} 
         style={styles.contentContainer}
       >
-        <View style={styles.iconContainer}>
+        <View style={[styles.iconContainer, { backgroundColor: isReceived ? colors.primary + '15' : 'rgba(255,255,255,0.2)' }]}>
           {loading ? (
             <ActivityIndicator size="small" color={isReceived ? colors.primary : "#fff"} />
           ) : (
             <MaterialIcons 
               name="insert-drive-file" 
-              size={28} 
+              size={24} 
               color={isReceived ? colors.primary : "#fff"} 
             />
           )}
@@ -144,20 +190,20 @@ export default function FileMessage({ item, currentUserId }) {
             {fileName}
           </Text>
           <Text style={[styles.fileAction, { color: isReceived ? colors.textSecondary : 'rgba(255,255,255,0.7)' }]}>
-            Открыть
+            Нажмите, чтобы открыть
           </Text>
         </View>
       </TouchableOpacity>
       
       <TouchableOpacity 
-        onPress={handleShare}
+        onPress={handleDownload}
         disabled={loading}
-        style={styles.downloadButton}
+        style={[styles.downloadButton, { borderLeftColor: isReceived ? colors.border : 'rgba(255,255,255,0.3)' }]}
       >
         <MaterialIcons 
           name="file-download" 
-          size={24} 
-          color={isReceived ? colors.primary : "#fff"} 
+          size={22} 
+          color={isReceived ? colors.textSecondary : "#fff"} 
         />
       </TouchableOpacity>
     </View>
@@ -168,10 +214,10 @@ const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 10,
-    borderRadius: 12,
-    marginVertical: 4,
-    minWidth: 200,
+    padding: 8,
+    borderRadius: 16,
+    marginVertical: 2,
+    minWidth: 220,
     maxWidth: 280,
   },
   contentContainer: {
@@ -180,12 +226,16 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   downloadButton: {
-    padding: 5,
-    marginLeft: 10,
+    padding: 8,
+    marginLeft: 8,
     borderLeftWidth: 1,
-    borderLeftColor: 'rgba(255,255,255,0.2)',
   },
   iconContainer: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
     marginRight: 10,
   },
   textContainer: {

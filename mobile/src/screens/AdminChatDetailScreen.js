@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, FlatList, Image, ActivityIndicator, TouchableOpacity, Alert, Modal, Pressable, Dimensions, Share } from 'react-native';
+import { View, Text, StyleSheet, FlatList, Image, ActivityIndicator, TouchableOpacity, Alert, Modal, Pressable, Dimensions, Share, Platform } from 'react-native';
 import { Ionicons as Icon } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
@@ -10,8 +10,7 @@ import CachedMedia from '../components/CachedMedia';
 import VoiceMessage from '../components/VoiceMessage';
 import FileMessage from '../components/FileMessage';
 import { Video, ResizeMode } from 'expo-av';
-import * as FileSystem from 'expo-file-system';
-import { getInfoAsync } from 'expo-file-system/legacy';
+import { documentDirectory, getInfoAsync, downloadAsync, readAsStringAsync, writeAsStringAsync, EncodingType, StorageAccessFramework } from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 
 export default function AdminChatDetailScreen({ route, navigation }) {
@@ -71,21 +70,36 @@ export default function AdminChatDetailScreen({ route, navigation }) {
     try {
       const uri = fullScreenMedia.uri;
       const fileName = uri.split('/').pop() || 'file';
-      const localFileUri = `${FileSystem.documentDirectory}${fileName}`;
+      const localFileUri = `${documentDirectory}${fileName}`;
 
       const fileInfo = await getInfoAsync(localFileUri);
       let finalUri = localFileUri;
 
       if (!fileInfo.exists) {
         Alert.alert('Загрузка', 'Файл скачивается...');
-        const downloadRes = await FileSystem.downloadAsync(uri, localFileUri);
+        const downloadRes = await downloadAsync(uri, localFileUri);
         finalUri = downloadRes.uri;
       }
 
-      if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(finalUri);
+      if (Platform.OS === 'android') {
+        const permissions = await StorageAccessFramework.requestDirectoryPermissionsAsync();
+        if (permissions.granted) {
+          const base64 = await readAsStringAsync(finalUri, { encoding: EncodingType.Base64 });
+          const mimeType = fullScreenMedia.type === 'video' ? 'video/mp4' : 'image/jpeg';
+          const newFileUri = await StorageAccessFramework.createFileAsync(
+            permissions.directoryUri,
+            fileName,
+            mimeType
+          );
+          await writeAsStringAsync(newFileUri, base64, { encoding: EncodingType.Base64 });
+          Alert.alert('Успех', 'Медиа-файл сохранен');
+        }
       } else {
-        Alert.alert('Ошибка', 'Функция "Поделиться" недоступна на этом устройстве');
+        if (await Sharing.isAvailableAsync()) {
+          await Sharing.shareAsync(finalUri);
+        } else {
+          Alert.alert('Ошибка', 'Функция "Поделиться" недоступна на этом устройстве');
+        }
       }
     } catch (error) {
       console.error('Error downloading media:', error);
@@ -245,9 +259,14 @@ const styles = StyleSheet.create({
   },
   messageBubble: {
     padding: 10,
-    borderRadius: 15,
+    borderRadius: 18,
     borderWidth: 1,
-    minWidth: 60
+    minWidth: 60,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 1,
   },
   u2Bubble: {
     borderBottomLeftRadius: 2

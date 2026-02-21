@@ -73,6 +73,10 @@ export const usersApi = {
   updatePhoto: (id, data) => api.patch(`/users/photos/${id}`, data),
   deletePhoto: (id) => api.delete(`/users/photos/${id}`),
   bulkDeletePhotos: (photoIds) => api.post('/users/photos/bulk-delete', { photo_ids: photoIds }),
+  reactToPhoto: (photoId, reactionType) => api.post(`/users/photos/${photoId}/react`, null, { params: { reaction_type: reactionType } }),
+  getPhotoComments: (photoId) => api.get(`/users/photos/${photoId}/comments`),
+  addPhotoComment: (photoId, comment) => api.post(`/users/photos/${photoId}/comments`, { comment }),
+  deletePhotoComment: (commentId) => api.delete(`/users/photos/comments/${commentId}`),
   updateFcmToken: (token) => api.post('/users/fcm-token', { fcm_token: token }),
   updateMe: (formData) => api.patch('/users/me', formData, {
     headers: {
@@ -86,6 +90,8 @@ export const usersApi = {
   deleteFriend: (userId) => api.delete(`/users/friends/${userId}`),
   getFriendsList: () => api.get('/users/friends/list'),
   getFriendRequests: () => api.get('/users/friends/requests'),
+  getLikedNews: () => api.get('/users/me/likes'),
+  getMyReviews: () => api.get('/users/me/reviews'),
 };
 
 export const productsApi = {
@@ -119,6 +125,7 @@ export const newsApi = {
   uploadMedia: (formData) => api.post('/news/upload-media/', formData, {
     headers: { 'Content-Type': 'multipart/form-data' }
   }),
+  reactToNews: (newsId, reactionType) => api.post(`/news/${newsId}/react`, null, { params: { reaction_type: reactionType } }),
 };
 
 export const adminApi = {

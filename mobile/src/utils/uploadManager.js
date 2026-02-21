@@ -1,5 +1,4 @@
-import * as FileSystem from 'expo-file-system';
-import { getInfoAsync } from 'expo-file-system/legacy';
+import { getInfoAsync, readAsStringAsync, EncodingType } from 'expo-file-system/legacy';
 import { chatApi, adminApi } from '../api';
 import { storage } from './storage';
 import { API_BASE_URL } from '../constants';
@@ -168,8 +167,8 @@ export const uploadManager = {
     const uploadUrl = `${API_BASE_URL}${chunkPath}${uploadId}?q_token=${encodeURIComponent(token)}&q_offset=${offset}`;
     
     try {
-      const fileData = await FileSystem.readAsStringAsync(fileUri, {
-        encoding: FileSystem.EncodingType.Base64,
+      const fileData = await readAsStringAsync(fileUri, {
+        encoding: EncodingType.Base64,
         position: offset,
         length: length,
       });

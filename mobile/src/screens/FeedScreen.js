@@ -104,26 +104,52 @@ export default function FeedScreen({ navigation }) {
       return html.replace(/<[^>]*>?/gm, '');
     };
     
+    const newsThumbnail = item.images && item.images.length > 0 
+      ? item.images[0].thumbnail_url 
+      : item.image_url;
+
     return (
       <TouchableOpacity 
         style={[styles.newsCard, { backgroundColor: colors.card, borderColor: colors.border, borderWidth: theme === 'dark' ? 1 : 0 }]}
         onPress={() => navigation.navigate('NewsDetail', { newsId: item.id, newsItem: item })}
       >
-        <View style={styles.newsHeader}>
-          <Text style={[styles.newsTitle, { color: colors.text }]}>{item.title}</Text>
-          {canManageNews && (
-            <TouchableOpacity onPress={(e) => {
-              e.stopPropagation();
-              navigation.navigate('EditNews', { newsItem: item });
-            }}>
-              <Icon name="create-outline" size={20} color={colors.primary} />
-            </TouchableOpacity>
+        <View style={styles.newsRow}>
+          {newsThumbnail && (
+            <FadeInImage 
+              source={{ uri: getFullUrl(newsThumbnail) }} 
+              style={styles.newsThumbnail} 
+            />
           )}
+          <View style={styles.newsTextContainer}>
+            <View style={styles.newsHeader}>
+              <Text style={[styles.newsTitle, { color: colors.text }]} numberOfLines={2}>{item.title}</Text>
+              {canManageNews && (
+                <TouchableOpacity onPress={(e) => {
+                  e.stopPropagation();
+                  navigation.navigate('EditNews', { newsItem: item });
+                }}>
+                  <Icon name="create-outline" size={20} color={colors.primary} />
+                </TouchableOpacity>
+              )}
+            </View>
+            <Text style={[styles.newsContent, { color: colors.textSecondary }]} numberOfLines={2}>
+              {stripHtml(item.content)}
+            </Text>
+            <View style={styles.newsFooter}>
+              <Text style={[styles.newsDate, { color: colors.textSecondary }]}>{new Date(item.created_at).toLocaleDateString()}</Text>
+              <View style={styles.reactionsRow}>
+                <View style={styles.reactionItem}>
+                  <Icon name={item.my_reaction === 1 ? "heart" : "heart-outline"} size={14} color={item.my_reaction === 1 ? colors.error : colors.textSecondary} />
+                  <Text style={[styles.reactionCount, { color: colors.textSecondary }]}>{item.likes_count || 0}</Text>
+                </View>
+                <View style={[styles.reactionItem, { marginLeft: 10 }]}>
+                  <Icon name={item.my_reaction === -1 ? "thumbs-down" : "thumbs-down-outline"} size={14} color={item.my_reaction === -1 ? colors.primary : colors.textSecondary} />
+                  <Text style={[styles.reactionCount, { color: colors.textSecondary }]}>{item.dislikes_count || 0}</Text>
+                </View>
+              </View>
+            </View>
+          </View>
         </View>
-        <Text style={[styles.newsContent, { color: colors.text }]} numberOfLines={3}>
-          {stripHtml(item.content)}
-        </Text>
-        <Text style={[styles.newsDate, { color: colors.textSecondary }]}>{new Date(item.created_at).toLocaleDateString()}</Text>
       </TouchableOpacity>
     );
   };
@@ -286,11 +312,18 @@ const styles = StyleSheet.create({
   tab: { flex: 1, paddingVertical: 15, alignItems: 'center' },
   tabText: { fontSize: 16, fontWeight: 'bold' },
   listContent: { padding: 10 },
-  newsCard: { padding: 15, borderRadius: 10, marginBottom: 10, elevation: 2 },
-  newsHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 },
-  newsTitle: { fontSize: 18, fontWeight: 'bold' },
-  newsContent: { fontSize: 14, marginBottom: 10 },
-  newsDate: { fontSize: 12, color: 'gray' },
+  newsCard: { borderRadius: 12, marginBottom: 12, elevation: 3, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, overflow: 'hidden' },
+  newsRow: { flexDirection: 'row' },
+  newsThumbnail: { width: 100, height: 100, borderRadius: 0 },
+  newsTextContainer: { flex: 1, padding: 12, justifyContent: 'space-between' },
+  newsHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 },
+  newsTitle: { fontSize: 16, fontWeight: 'bold', flex: 1, marginRight: 8 },
+  newsContent: { fontSize: 13, marginBottom: 8, lineHeight: 18 },
+  newsFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  newsDate: { fontSize: 11, color: 'gray' },
+  reactionsRow: { flexDirection: 'row', alignItems: 'center' },
+  reactionItem: { flexDirection: 'row', alignItems: 'center' },
+  reactionCount: { fontSize: 12, marginLeft: 4 },
   productGridCard: { flex: 0.5, margin: 5, borderRadius: 10, elevation: 2, overflow: 'hidden' },
   productGridImage: { width: '100%', height: 150 },
   productInfo: { padding: 10 },

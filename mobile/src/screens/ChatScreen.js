@@ -2,8 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, FlatList, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, Image, Modal, Pressable, Alert, StatusBar, Dimensions, Share } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
-import * as FileSystem from 'expo-file-system';
-import { getInfoAsync } from 'expo-file-system/legacy';
+import { documentDirectory, getInfoAsync, downloadAsync, deleteAsync, readAsStringAsync, writeAsStringAsync, EncodingType, StorageAccessFramework } from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { chatApi, usersApi } from '../api';
 import { API_BASE_URL } from '../constants';
@@ -53,9 +52,11 @@ export default function ChatScreen({ route, navigation }) {
   const recordingInterval = useRef(null);
   const recordingRef = useRef(null);
   const isStartingRecording = useRef(false);
+  const stopRequested = useRef(false);
   const LIMIT = 15;
   const ws = useRef(null);
   const videoPlayerRef = useRef(null);
+  const chatFlatListRef = useRef(null);
   const { fetchDialogs, currentUserId, setActiveChatId } = useNotifications();
   const screenWidth = Dimensions.get('window').width;
   const [currentMediaIndex, setCurrentMediaIndex] = useState(0);
@@ -80,7 +81,17 @@ export default function ChatScreen({ route, navigation }) {
 
   useEffect(() => {
     setActiveChatId(userId);
-    return () => setActiveChatId(null);
+    return () => {
+      setActiveChatId(null);
+      if (recordingRef.current) {
+        recordingRef.current.stopAndUnloadAsync().catch(() => {});
+        recordingRef.current = null;
+      }
+      if (recordingInterval.current) {
+        clearInterval(recordingInterval.current);
+        recordingInterval.current = null;
+      }
+    };
   }, [userId]);
 
   useEffect(() => {
@@ -215,13 +226,14 @@ export default function ChatScreen({ route, navigation }) {
   useEffect(() => {
     // Собираем все медиафайлы из сообщений для полноэкранного просмотра
     const media = [];
-    // messages отсортированы от новых к старым (inverted).
-    // Пользователь хочет: свайп влево (следующий индекс) -> более ранние (старые).
-    // Это значит, что старые сообщения должны быть ДАЛЬШЕ в массиве media (индекс выше).
-    // А новые - в НАЧАЛЕ массива (индекс 0).
-    // Так как messages уже от новых к старым, просто идем по ним.
+    // Сообщения в messages идут от новых к старым (inverted FlatList).
+    // Пользователь хочет, чтобы скролл вправо (увеличение индекса в allMedia)
+    // вел к БОЛЕЕ ПОЗДНИМ (новым) видео.
+    // Значит allMedia должен быть от СТАРЫХ к НОВЫМ.
+    // Для этого итерируем messages с конца.
     
-    messages.forEach(msg => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const msg = messages[i];
       if (msg.message_type === 'media_group' && msg.attachments) {
         msg.attachments.forEach(att => {
           if (att.file_path) {
@@ -241,7 +253,7 @@ export default function ChatScreen({ route, navigation }) {
           messageId: msg.id
         });
       }
-    });
+    }
     setAllMedia(media);
   }, [messages]);
 
@@ -259,6 +271,17 @@ export default function ChatScreen({ route, navigation }) {
     if (index !== -1) {
       setCurrentMediaIndex(index);
       setFullScreenMedia({ index, list: allMedia });
+      
+      // Синхронизируем чат при открытии
+      const mediaItem = allMedia[index];
+      if (mediaItem && mediaItem.messageId) {
+        const msgIndex = messages.findIndex(m => m.id === mediaItem.messageId);
+        if (msgIndex !== -1) {
+          setTimeout(() => {
+            chatFlatListRef.current?.scrollToIndex({ index: msgIndex, animated: true, viewPosition: 0.5 });
+          }, 100);
+        }
+      }
     } else {
       // Fallback если вдруг не нашли в общем списке
       setCurrentMediaIndex(0);
@@ -273,21 +296,36 @@ export default function ChatScreen({ route, navigation }) {
     try {
       const uri = currentMedia.uri;
       const fileName = uri.split('/').pop();
-      const localFileUri = `${FileSystem.documentDirectory}${fileName}`;
+      const localFileUri = `${documentDirectory}${fileName}`;
 
       const fileInfo = await getInfoAsync(localFileUri);
       let finalUri = localFileUri;
 
       if (!fileInfo.exists) {
         Alert.alert('Загрузка', 'Файл скачивается...');
-        const downloadRes = await FileSystem.downloadAsync(uri, localFileUri);
+        const downloadRes = await downloadAsync(uri, localFileUri);
         finalUri = downloadRes.uri;
       }
 
-      if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(finalUri);
+      if (Platform.OS === 'android') {
+        const permissions = await StorageAccessFramework.requestDirectoryPermissionsAsync();
+        if (permissions.granted) {
+          const base64 = await readAsStringAsync(finalUri, { encoding: EncodingType.Base64 });
+          const mimeType = currentMedia.type === 'video' ? 'video/mp4' : 'image/jpeg';
+          const newFileUri = await StorageAccessFramework.createFileAsync(
+            permissions.directoryUri,
+            fileName,
+            mimeType
+          );
+          await writeAsStringAsync(newFileUri, base64, { encoding: EncodingType.Base64 });
+          Alert.alert('Успех', 'Медиа-файл сохранен');
+        }
       } else {
-        Alert.alert('Ошибка', 'Функция "Поделиться" недоступна на этом устройстве');
+        if (await Sharing.isAvailableAsync()) {
+          await Sharing.shareAsync(finalUri);
+        } else {
+          Alert.alert('Ошибка', 'Функция "Поделиться" недоступна на этом устройстве');
+        }
       }
     } catch (error) {
       console.error('Error downloading media:', error);
@@ -521,32 +559,54 @@ export default function ChatScreen({ route, navigation }) {
     
     try {
       isStartingRecording.current = true;
-      // Clean up any existing recording first
-      if (recording) {
+      stopRequested.current = false;
+      
+      // ГАРАНТИРОВАННО выгружаем ВСЁ старое перед началом новой записи
+      if (recordingRef.current) {
         try {
-          await recording.stopAndUnloadAsync();
+          await recordingRef.current.stopAndUnloadAsync();
         } catch (e) {}
-        setRecording(null);
         recordingRef.current = null;
       }
+      
+      // Визуально меняем состояние сразу, чтобы кнопка реагировала мгновенно
+      setIsRecording(true);
+      setRecordingDuration(0);
 
       const permission = await Audio.requestPermissionsAsync();
       if (permission.status === "granted") {
+        // Проверяем, не отпустил ли пользователь кнопку пока мы ждали пермишенов
+        if (stopRequested.current) {
+          setIsRecording(false);
+          isStartingRecording.current = false;
+          return;
+        }
+
         await Audio.setAudioModeAsync({
           allowsRecordingIOS: true,
           playsInSilentModeIOS: true,
         });
+
         const { recording: newRecording } = await Audio.Recording.createAsync(
           Audio.RecordingOptionsPresets.HIGH_QUALITY
         );
+        
+        // Снова проверяем, не отпустил ли пользователь кнопку пока создавался объект
+        if (stopRequested.current) {
+          await newRecording.stopAndUnloadAsync().catch(() => {});
+          setIsRecording(false);
+          isStartingRecording.current = false;
+          return;
+        }
+
         recordingRef.current = newRecording;
         setRecording(newRecording);
-        setIsRecording(true);
-        setRecordingDuration(0);
+        
         recordingInterval.current = setInterval(() => {
           setRecordingDuration(prev => prev + 100);
         }, 100);
       } else {
+        setIsRecording(false);
         Alert.alert('Доступ запрещен', 'Нам нужно разрешение на микрофон для записи голосовых сообщений');
       }
     } catch (err) {
@@ -560,28 +620,30 @@ export default function ChatScreen({ route, navigation }) {
   };
 
   const stopRecording = async () => {
-    // If we are still starting, we should wait or handle it
+    // Помечаем, что запись должна быть остановлена
+    stopRequested.current = true;
+    
+    // Сразу сбрасываем визуальное состояние, чтобы кнопка «отжалась»
+    setIsRecording(false);
+
+    if (recordingInterval.current) {
+      clearInterval(recordingInterval.current);
+      recordingInterval.current = null;
+    }
+
+    // Если мы всё еще в процессе запуска (Audio.Recording.createAsync еще не вернул результат)
+    // то startRecording сам увидит stopRequested.current и остановит запись.
     if (isStartingRecording.current) {
-      // Small delay to allow start to finish, or just check recordingRef
-      let attempts = 0;
-      while (isStartingRecording.current && attempts < 10) {
-        await new Promise(resolve => setTimeout(resolve, 100));
-        attempts++;
-      }
+      console.log('[ChatScreen] stopRecording called while still starting');
+      return;
     }
 
     const currentRecording = recordingRef.current || recording;
 
     if (!currentRecording) {
-      setIsRecording(false);
       return;
     }
     
-    setIsRecording(false);
-    if (recordingInterval.current) {
-      clearInterval(recordingInterval.current);
-      recordingInterval.current = null;
-    }
     try {
       const status = await currentRecording.getStatusAsync();
       if (status.canRecord) {
@@ -602,7 +664,7 @@ export default function ChatScreen({ route, navigation }) {
   const deleteRecording = async () => {
     if (recordedUri) {
       try {
-        await FileSystem.deleteAsync(recordedUri, { idempotent: true });
+        await deleteAsync(recordedUri, { idempotent: true });
       } catch (e) {
         console.error('Failed to delete recording file', e);
       }
@@ -965,6 +1027,7 @@ export default function ChatScreen({ route, navigation }) {
         </View>
       )}
       <FlatList
+        ref={chatFlatListRef}
         data={messages}
         keyExtractor={(item) => (item.id || Math.random()).toString()}
         renderItem={renderMessageItem}
@@ -972,6 +1035,12 @@ export default function ChatScreen({ route, navigation }) {
         onEndReachedThreshold={0.1}
         inverted={true}
         ListHeaderComponent={renderUploadPlaceholder}
+        onScrollToIndexFailed={(info) => {
+          chatFlatListRef.current?.scrollToOffset({ 
+            offset: info.averageItemLength * info.index, 
+            animated: true 
+          });
+        }}
       />
 
       <Modal
@@ -1008,6 +1077,19 @@ export default function ChatScreen({ route, navigation }) {
             onMomentumScrollEnd={(e) => {
               const index = Math.round(e.nativeEvent.contentOffset.x / screenWidth);
               setCurrentMediaIndex(index);
+              
+              // Синхронизация чата: прокручиваем к сообщению, из которого это медиа
+              const mediaItem = fullScreenMedia?.list[index];
+              if (mediaItem && mediaItem.messageId) {
+                const msgIndex = messages.findIndex(m => m.id === mediaItem.messageId);
+                if (msgIndex !== -1) {
+                  chatFlatListRef.current?.scrollToIndex({ 
+                    index: msgIndex, 
+                    animated: true, 
+                    viewPosition: 0.5 
+                  });
+                }
+              }
             }}
             keyExtractor={(_, i) => `fs_media_${i}`}
             showsHorizontalScrollIndicator={false}
@@ -1027,7 +1109,15 @@ export default function ChatScreen({ route, navigation }) {
         </View>
       </Modal>
 
-      <View style={[styles.inputContainer, { backgroundColor: colors.background, borderTopColor: colors.border, borderTopWidth: 1 }]}>
+      <View style={[
+        styles.inputContainer, 
+        { 
+          backgroundColor: colors.background, 
+          borderTopColor: colors.border, 
+          borderTopWidth: 1,
+          paddingBottom: Math.max(insets.bottom, 12) + 5 // Поднимаем чуть выше и учитываем безопасную зону
+        }
+      ]}>
         {recordedUri ? (
           <View style={styles.recordedContainer}>
             <TouchableOpacity onPress={deleteRecording} style={styles.deleteRecordingButton}>
@@ -1037,51 +1127,63 @@ export default function ChatScreen({ route, navigation }) {
               <MaterialIcons name="mic" size={20} color={colors.primary} />
               <Text style={[styles.recordingTimeText, { color: colors.text }]}>Голосовое сообщение ({formatRecordingTime(recordingDuration)})</Text>
             </View>
-            <TouchableOpacity onPress={() => uploadVoiceMessage(recordedUri)} style={styles.sendButton}>
+            <TouchableOpacity onPress={() => uploadVoiceMessage(recordedUri)} style={[styles.sendButton, { marginRight: 10 }]}>
               <MaterialIcons name="send" size={24} color={colors.primary} />
             </TouchableOpacity>
           </View>
-        ) : isRecording ? (
-          <View style={styles.recordingContainer}>
-            <View style={styles.recordingIndicator}>
-              <View style={styles.recordingDot} />
-              <Text style={[styles.recordingTimeText, { color: colors.error }]}>{formatRecordingTime(recordingDuration)}</Text>
-            </View>
-            <Text style={[styles.recordingHint, { color: colors.textSecondary }]}>Отпустите для завершения</Text>
-          </View>
         ) : (
           <>
-            <TouchableOpacity 
-              onPress={pickAndUploadDocument} 
-              style={styles.attachButton}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            >
-              <MaterialIcons name="insert-drive-file" size={24} color={colors.primary} />
-            </TouchableOpacity>
-            <TouchableOpacity 
-              onPress={pickAndUploadFile} 
-              style={styles.attachButton}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            >
-              <MaterialIcons name="image" size={24} color={colors.primary} />
-            </TouchableOpacity>
-            <TextInput
-              style={[styles.input, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]}
-              value={inputText}
-              onChangeText={setInputText}
-              placeholder="Сообщение..."
-              placeholderTextColor={colors.textSecondary}
-              multiline
-            />
-            {inputText.trim() ? (
-              <TouchableOpacity onPress={sendMessage} style={styles.sendButton}>
+            {!isRecording && (
+              <View style={{ flexDirection: 'row' }}>
+                <TouchableOpacity 
+                  onPress={pickAndUploadDocument} 
+                  style={styles.attachButton}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                >
+                  <MaterialIcons name="insert-drive-file" size={24} color={colors.primary} />
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  onPress={pickAndUploadFile} 
+                  style={styles.attachButton}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                >
+                  <MaterialIcons name="image" size={24} color={colors.primary} />
+                </TouchableOpacity>
+              </View>
+            )}
+            
+            {isRecording ? (
+              <View style={styles.recordingContainer}>
+                <View style={styles.recordingIndicator}>
+                  <View style={styles.recordingDot} />
+                  <Text style={[styles.recordingTimeText, { color: colors.error }]}>{formatRecordingTime(recordingDuration)}</Text>
+                </View>
+                <Text style={[styles.recordingHint, { color: colors.textSecondary }]}>Отпустите для завершения</Text>
+              </View>
+            ) : (
+              <TextInput
+                style={[styles.input, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]}
+                value={inputText}
+                onChangeText={setInputText}
+                placeholder="Сообщение..."
+                placeholderTextColor={colors.textSecondary}
+                multiline
+              />
+            )}
+
+            {(inputText.trim() && !isRecording) ? (
+              <TouchableOpacity onPress={sendMessage} style={[styles.sendButton, { marginRight: 10 }]}>
                 <MaterialIcons name="send" size={24} color={colors.primary} />
               </TouchableOpacity>
             ) : (
               <TouchableOpacity 
                 onPressIn={startRecording} 
                 onPressOut={stopRecording} 
-                style={[styles.sendButton, isRecording && { backgroundColor: colors.primary + '20', borderRadius: 20 }]}
+                style={[
+                  styles.sendButton, 
+                  { marginRight: 10 },
+                  isRecording && { backgroundColor: colors.primary + '20', borderRadius: 20 }
+                ]}
               >
                 <MaterialIcons name={isRecording ? "mic" : "mic-none"} size={24} color={isRecording ? colors.error : colors.primary} />
               </TouchableOpacity>
@@ -1182,7 +1284,16 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     justifyContent: 'space-between',
   },
-  messageBubble: { padding: 12, borderRadius: 18, maxWidth: '80%' },
+  messageBubble: { 
+    padding: 12, 
+    borderRadius: 20, 
+    maxWidth: '85%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 1,
+  },
   sent: { alignSelf: 'flex-end', borderBottomRightRadius: 4 },
   received: { alignSelf: 'flex-start', borderBottomLeftRadius: 4 },
   messageText: { fontSize: 16, lineHeight: 22 },
@@ -1220,7 +1331,17 @@ const styles = StyleSheet.create({
     right: 5,
     zIndex: 1,
   },
-  input: { flex: 1, borderWidth: 1, borderRadius: 20, paddingHorizontal: 15, height: 40, fontSize: 16 },
+  input: { 
+    flex: 1, 
+    borderWidth: 1, 
+    borderRadius: 24, 
+    paddingHorizontal: 16, 
+    paddingTop: 8,
+    paddingBottom: 8,
+    minHeight: 40,
+    maxHeight: 120,
+    fontSize: 16 
+  },
   sendButton: { justifyContent: 'center', marginLeft: 10 },
   sendButtonText: { color: '#007AFF', fontWeight: 'bold' },
   attachButton: { justifyContent: 'center', marginRight: 10, paddingHorizontal: 10 },

@@ -220,6 +220,26 @@ export default function ProfileScreen({ navigation }) {
       </Modal>
 
       <View style={styles.section}>
+        <Text style={[styles.sectionTitle, { color: colors.text, marginBottom: 15 }]}>Моя активность</Text>
+        <View style={styles.activityRow}>
+          <TouchableOpacity 
+            style={[styles.activityButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
+            onPress={() => navigation.navigate('MyLikes')}
+          >
+            <Icon name="heart" size={24} color={colors.error} />
+            <Text style={[styles.activityButtonText, { color: colors.text }]}>Понравилось</Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={[styles.activityButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
+            onPress={() => navigation.navigate('MyReviews')}
+          >
+            <Icon name="star" size={24} color="#FFD700" />
+            <Text style={[styles.activityButtonText, { color: colors.text }]}>Мои отзывы</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      <View style={styles.section}>
         <View style={styles.sectionHeader}>
           <Text style={[styles.sectionTitle, { color: colors.text }]}>Альбомы</Text>
           <View style={{ flexDirection: 'row' }}>
@@ -365,4 +385,7 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: '#8E8E93',
   },
+  activityRow: { flexDirection: 'row', justifyContent: 'space-between' },
+  activityButton: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 15, borderRadius: 12, borderWidth: 1, marginHorizontal: 5, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2 },
+  activityButtonText: { marginLeft: 10, fontWeight: 'bold', fontSize: 14 },
 });

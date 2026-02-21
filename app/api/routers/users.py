@@ -10,14 +10,19 @@ from app.models.users import (
     User as UserModel, 
     PhotoAlbum as PhotoAlbumModel, 
     UserPhoto as UserPhotoModel,
-    Friendship as FriendshipModel
+    Friendship as FriendshipModel,
+    UserPhotoComment as UserPhotoCommentModel,
+    UserPhotoReaction as UserPhotoReactionModel
 )
 from app.schemas.users import (
     UserCreate, UserUpdate, User as UserSchema, RefreshTokenRequest, 
     PhotoAlbumCreate, PhotoAlbumUpdate, PhotoAlbum as PhotoAlbumSchema, 
     UserPhotoCreate, UserPhotoUpdate, UserPhoto as UserPhotoSchema,
-    FCMTokenUpdate, BulkDeletePhotosRequest, Friendship as FriendshipSchema
+    FCMTokenUpdate, BulkDeletePhotosRequest, Friendship as FriendshipSchema,
+    UserPhotoComment as UserPhotoCommentSchema, UserPhotoCommentCreate
 )
+from app.schemas.news import News as NewsSchema
+from app.schemas.reviews import Review as ReviewSchema
 from app.api.dependencies import get_async_db, get_friendship_status, can_view_content
 from app.core.auth import (
     hash_password,
@@ -858,11 +863,28 @@ async def get_photo(
     db: AsyncSession = Depends(get_async_db)
 ):
     """
-    Возвращает информацию о фотографии.
+    Возвращает информацию о конкретной фотографии с лайками и комментариями.
     """
-    result = await db.execute(
-        select(UserPhotoModel).where(UserPhotoModel.id == photo_id)
-    )
+    from sqlalchemy import func
+    
+    # Подзапросы для лайков и дизлайков
+    likes_sub = select(
+        func.count(UserPhotoReactionModel.id)
+    ).where(UserPhotoReactionModel.photo_id == photo_id, UserPhotoReactionModel.reaction_type == 1).scalar_subquery()
+
+    dislikes_sub = select(
+        func.count(UserPhotoReactionModel.id)
+    ).where(UserPhotoReactionModel.photo_id == photo_id, UserPhotoReactionModel.reaction_type == -1).scalar_subquery()
+
+    my_reaction_sub = select(
+        UserPhotoReactionModel.reaction_type
+    ).where(UserPhotoReactionModel.photo_id == photo_id, UserPhotoReactionModel.user_id == current_user.id).scalar_subquery()
+
+    comments_count_sub = select(
+        func.count(UserPhotoCommentModel.id)
+    ).where(UserPhotoCommentModel.photo_id == photo_id).scalar_subquery()
+
+    result = await db.execute(select(UserPhotoModel).where(UserPhotoModel.id == photo_id))
     photo = result.scalar_one_or_none()
     if not photo:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Photo not found")
@@ -871,8 +893,152 @@ async def get_photo(
         friendship_status = await get_friendship_status(current_user.id, photo.user_id, db)
         if not can_view_content(photo.user_id, current_user.id, photo.privacy, friendship_status):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
-    
+
+    # Присваиваем дополнительные поля
+    photo.likes_count = await db.scalar(likes_sub)
+    photo.dislikes_count = await db.scalar(dislikes_sub)
+    photo.my_reaction = await db.scalar(my_reaction_sub)
+    photo.comments_count = await db.scalar(comments_count_sub)
+
     return photo
+
+
+@router.post("/photos/{photo_id}/react")
+async def react_to_photo(
+    photo_id: int,
+    reaction_type: int, # 1 for like, -1 for dislike, 0 to remove
+    current_user: UserModel = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """Поставить лайк или дизлайк фотографии."""
+    if reaction_type not in [1, -1, 0]:
+        raise HTTPException(status_code=400, detail="Invalid reaction type")
+
+    # Проверяем существование фото
+    photo_res = await db.execute(select(UserPhotoModel.id).where(UserPhotoModel.id == photo_id))
+    if not photo_res.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Photo not found")
+
+    # Ищем существующую реакцию
+    res = await db.execute(
+        select(UserPhotoReactionModel).where(
+            UserPhotoReactionModel.photo_id == photo_id,
+            UserPhotoReactionModel.user_id == current_user.id
+        )
+    )
+    existing_reaction = res.scalar_one_or_none()
+
+    if reaction_type == 0:
+        if existing_reaction:
+            await db.delete(existing_reaction)
+    else:
+        if existing_reaction:
+            existing_reaction.reaction_type = reaction_type
+        else:
+            new_reaction = UserPhotoReactionModel(
+                photo_id=photo_id,
+                user_id=current_user.id,
+                reaction_type=reaction_type
+            )
+            db.add(new_reaction)
+    
+    await db.commit()
+    return {"status": "ok"}
+
+
+@router.get("/photos/{photo_id}/comments", response_model=list[UserPhotoCommentSchema])
+async def get_photo_comments(
+    photo_id: int,
+    db: AsyncSession = Depends(get_async_db),
+    current_user: UserModel = Depends(get_current_user)
+):
+    """Получить список комментариев к фотографии."""
+    # Проверяем доступ к фото
+    photo_res = await db.execute(select(UserPhotoModel).where(UserPhotoModel.id == photo_id))
+    photo = photo_res.scalar_one_or_none()
+    if not photo:
+        raise HTTPException(status_code=404, detail="Photo not found")
+    
+    if photo.user_id != current_user.id:
+        friendship_status = await get_friendship_status(current_user.id, photo.user_id, db)
+        if not can_view_content(photo.user_id, current_user.id, photo.privacy, friendship_status):
+            raise HTTPException(status_code=403, detail="Access denied")
+
+    query = select(UserPhotoCommentModel).where(UserPhotoCommentModel.photo_id == photo_id).options(
+        selectinload(UserPhotoCommentModel.user)
+    ).order_by(UserPhotoCommentModel.created_at.asc())
+    
+    result = await db.execute(query)
+    comments = result.scalars().all()
+    
+    response = []
+    for c in comments:
+        comment_dict = UserPhotoCommentSchema.model_validate(c).model_dump()
+        comment_dict["first_name"] = c.user.first_name
+        comment_dict["last_name"] = c.user.last_name
+        comment_dict["avatar_url"] = c.user.avatar_url
+        response.append(comment_dict)
+        
+    return response
+
+
+@router.post("/photos/{photo_id}/comments", response_model=UserPhotoCommentSchema)
+async def add_photo_comment(
+    photo_id: int,
+    comment_data: UserPhotoCommentCreate,
+    current_user: UserModel = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """Добавить комментарий к фотографии."""
+    photo_res = await db.execute(select(UserPhotoModel).where(UserPhotoModel.id == photo_id))
+    photo = photo_res.scalar_one_or_none()
+    if not photo:
+        raise HTTPException(status_code=404, detail="Photo not found")
+    
+    # Проверка доступа к фото
+    if photo.user_id != current_user.id:
+        friendship_status = await get_friendship_status(current_user.id, photo.user_id, db)
+        if not can_view_content(photo.user_id, current_user.id, photo.privacy, friendship_status):
+            raise HTTPException(status_code=403, detail="Access denied")
+
+    new_comment = UserPhotoCommentModel(
+        photo_id=photo_id,
+        user_id=current_user.id,
+        comment=comment_data.comment
+    )
+    db.add(new_comment)
+    await db.commit()
+    await db.refresh(new_comment)
+    
+    res = UserPhotoCommentSchema.model_validate(new_comment).model_dump()
+    res["first_name"] = current_user.first_name
+    res["last_name"] = current_user.last_name
+    res["avatar_url"] = current_user.avatar_url
+    return res
+
+
+@router.delete("/photos/comments/{comment_id}", status_code=204)
+async def delete_photo_comment(
+    comment_id: int,
+    current_user: UserModel = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """Удалить свой комментарий или комментарий под своим фото."""
+    result = await db.execute(
+        select(UserPhotoCommentModel).where(UserPhotoCommentModel.id == comment_id).options(
+            selectinload(UserPhotoCommentModel.photo)
+        )
+    )
+    comment = result.scalar_one_or_none()
+    if not comment:
+        raise HTTPException(status_code=404, detail="Comment not found")
+    
+    if comment.user_id != current_user.id and comment.photo.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not allowed")
+    
+    await db.delete(comment)
+    await db.commit()
+    return None
 
 
 @router.patch("/photos/{photo_id}", response_model=UserPhotoSchema)
@@ -1319,5 +1485,71 @@ async def get_friend_requests(
     )
     senders = res.scalars().all()
     return [UserSchema.model_validate(s) for s in senders]
+
+@router.get("/me/likes", response_model=list[NewsSchema])
+@router.get("/me/likes/", response_model=list[NewsSchema], include_in_schema=False)
+async def get_my_liked_news(
+    current_user: UserModel = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """Возвращает новости, которые лайкнул текущий пользователь."""
+    from app.models.news import News as NewsModel, NewsReaction as NewsReactionModel
+    from sqlalchemy import func
+    
+    likes_sub = select(
+        NewsReactionModel.news_id,
+        func.count(NewsReactionModel.id).label("count")
+    ).where(NewsReactionModel.reaction_type == 1).group_by(NewsReactionModel.news_id).subquery()
+
+    dislikes_sub = select(
+        NewsReactionModel.news_id,
+        func.count(NewsReactionModel.id).label("count")
+    ).where(NewsReactionModel.reaction_type == -1).group_by(NewsReactionModel.news_id).subquery()
+
+    query = select(
+        NewsModel,
+        func.coalesce(likes_sub.c.count, 0).label("likes_count"),
+        func.coalesce(dislikes_sub.c.count, 0).label("dislikes_count"),
+        func.literal(1).label("my_reaction")
+    ).join(NewsReactionModel, NewsModel.id == NewsReactionModel.news_id)\
+     .outerjoin(likes_sub, NewsModel.id == likes_sub.c.news_id)\
+     .outerjoin(dislikes_sub, NewsModel.id == dislikes_sub.c.news_id)\
+     .where(
+         NewsReactionModel.user_id == current_user.id,
+         NewsReactionModel.reaction_type == 1,
+         NewsModel.moderation_status == "approved",
+         NewsModel.is_active == True
+     ).options(selectinload(NewsModel.images)).order_by(NewsModel.created_at.desc())
+
+    result = await db.execute(query)
+    news_list = []
+    for row in result.all():
+        news_obj = row[0]
+        news_obj.likes_count = row[1]
+        news_obj.dislikes_count = row[2]
+        news_obj.my_reaction = row[3]
+        news_list.append(news_obj)
+    return news_list
+
+@router.get("/me/reviews", response_model=list[ReviewSchema])
+@router.get("/me/reviews/", response_model=list[ReviewSchema], include_in_schema=False)
+async def get_my_reviews(
+    current_user: UserModel = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """Возвращает отзывы текущего пользователя."""
+    from app.models.reviews import Reviews as ReviewsModel
+    
+    result = await db.execute(
+        select(ReviewsModel).where(ReviewsModel.user_id == current_user.id).order_by(ReviewsModel.comment_date.desc())
+    )
+    reviews = result.scalars().all()
+    
+    for r in reviews:
+        r.first_name = current_user.first_name
+        r.last_name = current_user.last_name
+        r.avatar_url = current_user.avatar_url
+        
+    return reviews
 
 

@@ -10,7 +10,10 @@ import {
   Dimensions, 
   FlatList,
   ActivityIndicator,
-  StatusBar
+  StatusBar,
+  TextInput,
+  KeyboardAvoidingView,
+  Platform
 } from 'react-native';
 import { usersApi } from '../api';
 import { Ionicons as Icon } from '@expo/vector-icons';
@@ -30,30 +33,45 @@ export default function PhotoDetailScreen({ route, navigation }) {
   const [loading, setLoading] = useState(!initialPhotos);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState([]);
+  const [comments, setComments] = useState([]);
+  const [newComment, setNewComment] = useState('');
+  const [isSubmittingComment, setIsSubmittingComment] = useState(false);
+  const [showComments, setShowComments] = useState(false);
   const flatListRef = useRef(null);
 
   const fetchAlbumPhotos = useCallback(async () => {
-    if (initialPhotos) {
-      const idx = initialPhotos.findIndex(p => p.id === photoId);
-      if (idx !== -1) setCurrentIndex(idx);
-      return;
-    }
-
     try {
       setLoading(true);
-      const photoRes = await usersApi.getPhoto(photoId);
-      const targetAlbumId = photoRes.data.album_id;
       
-      if (targetAlbumId) {
-        const albumRes = await usersApi.getAlbum(targetAlbumId);
-        const albumPhotos = albumRes.data.photos || [];
-        setPhotos(albumPhotos);
-        const idx = albumPhotos.findIndex(p => p.id === photoId);
-        if (idx !== -1) setCurrentIndex(idx);
+      let photoData = [];
+      if (initialPhotos) {
+        photoData = [...initialPhotos];
       } else {
-        setPhotos([photoRes.data]);
-        setCurrentIndex(0);
+        const photoRes = await usersApi.getPhoto(photoId);
+        const targetAlbumId = photoRes.data.album_id;
+        
+        if (targetAlbumId) {
+          const albumRes = await usersApi.getAlbum(targetAlbumId);
+          photoData = albumRes.data.photos || [];
+        } else {
+          photoData = [photoRes.data];
+        }
       }
+
+      // Fetch full details for the current photo (with reactions and counts)
+      const currentPhotoId = initialPhotos ? photoId : (photoData[0]?.id || photoId);
+      const detailedPhotoRes = await usersApi.getPhoto(currentPhotoId);
+      
+      const updatedPhotos = photoData.map(p => 
+        p.id === currentPhotoId ? detailedPhotoRes.data : p
+      );
+      
+      setPhotos(updatedPhotos);
+      const idx = updatedPhotos.findIndex(p => p.id === currentPhotoId);
+      if (idx !== -1) setCurrentIndex(idx);
+      
+      // Initial load of comments
+      loadComments(currentPhotoId);
     } catch (err) {
       console.error('Error fetching photos:', err);
       Alert.alert('Ошибка', 'Не удалось загрузить фотографии');
@@ -62,6 +80,92 @@ export default function PhotoDetailScreen({ route, navigation }) {
       setLoading(false);
     }
   }, [photoId, initialPhotos, navigation]);
+
+  const loadComments = async (id) => {
+    try {
+      const res = await usersApi.getPhotoComments(id);
+      setComments(res.data);
+    } catch (err) {
+      console.error('Error loading comments:', err);
+    }
+  };
+
+  const handleReaction = async (type) => {
+    const currentPhoto = photos[currentIndex];
+    if (!currentPhoto) return;
+
+    try {
+      const newReaction = currentPhoto.my_reaction === type ? 0 : type;
+      await usersApi.reactToPhoto(currentPhoto.id, newReaction);
+      
+      // Update local state
+      const updatedPhotos = [...photos];
+      const p = { ...updatedPhotos[currentIndex] };
+      
+      let likes = p.likes_count || 0;
+      let dislikes = p.dislikes_count || 0;
+      
+      if (p.my_reaction === 1) likes--;
+      if (p.my_reaction === -1) dislikes--;
+      
+      if (newReaction === 1) likes++;
+      if (newReaction === -1) dislikes++;
+      
+      p.my_reaction = newReaction;
+      p.likes_count = likes;
+      p.dislikes_count = dislikes;
+      
+      updatedPhotos[currentIndex] = p;
+      setPhotos(updatedPhotos);
+    } catch (err) {
+      console.error(err);
+      Alert.alert('Ошибка', 'Не удалось отправить реакцию');
+    }
+  };
+
+  const submitComment = async () => {
+    if (!newComment.trim() || isSubmittingComment) return;
+    
+    const currentPhoto = photos[currentIndex];
+    try {
+      setIsSubmittingComment(true);
+      const res = await usersApi.addPhotoComment(currentPhoto.id, newComment.trim());
+      setComments(prev => [...prev, res.data]);
+      setNewComment('');
+      
+      // Update comments count
+      const updatedPhotos = [...photos];
+      updatedPhotos[currentIndex].comments_count = (updatedPhotos[currentIndex].comments_count || 0) + 1;
+      setPhotos(updatedPhotos);
+    } catch (err) {
+      console.error(err);
+      Alert.alert('Ошибка', 'Не удалось добавить комментарий');
+    } finally {
+      setIsSubmittingComment(false);
+    }
+  };
+
+  const deleteComment = (commentId) => {
+    Alert.alert('Удаление', 'Вы уверены, что хотите удалить комментарий?', [
+      { text: 'Отмена', style: 'cancel' },
+      { 
+        text: 'Удалить', 
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await usersApi.deletePhotoComment(commentId);
+            setComments(comments.filter(c => c.id !== commentId));
+            
+            const updatedPhotos = [...photos];
+            updatedPhotos[currentIndex].comments_count = Math.max(0, (updatedPhotos[currentIndex].comments_count || 0) - 1);
+            setPhotos(updatedPhotos);
+          } catch (err) {
+            Alert.alert('Ошибка', 'Не удалось удалить комментарий');
+          }
+        }
+      }
+    ]);
+  };
 
   useEffect(() => {
     fetchAlbumPhotos();
@@ -197,7 +301,19 @@ export default function PhotoDetailScreen({ route, navigation }) {
         })}
         onMomentumScrollEnd={(e) => {
           const newIndex = Math.round(e.nativeEvent.contentOffset.x / width);
-          setCurrentIndex(newIndex);
+          if (newIndex !== currentIndex) {
+            setCurrentIndex(newIndex);
+            // Fetch detailed info for the new photo and load its comments
+            const photo = photos[newIndex];
+            if (photo) {
+              usersApi.getPhoto(photo.id).then(res => {
+                const updatedPhotos = [...photos];
+                updatedPhotos[newIndex] = res.data;
+                setPhotos(updatedPhotos);
+              });
+              loadComments(photo.id);
+            }
+          }
         }}
         removeClippedSubviews={true}
         scrollEventThrottle={16}
@@ -229,26 +345,114 @@ export default function PhotoDetailScreen({ route, navigation }) {
         </View>
       )}
 
-      {/* Описание (показывается по тапу) */}
+      {/* Описание и реакции (показываются по тапу) */}
       {showDescription && photos[currentIndex] && (
-        <View style={[styles.descriptionContainer, { backgroundColor: 'rgba(0,0,0,0.6)' }]}>
-          <ScrollView style={styles.descriptionContent}>
-            <View style={styles.descriptionHeader}>
-              <Text style={styles.descriptionText}>
-                {photos[currentIndex].description || 'Нет описания'}
+        <KeyboardAvoidingView 
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={[styles.descriptionContainer, { backgroundColor: 'rgba(0,0,0,0.8)' }]}
+        >
+          <View style={styles.descriptionHeaderRow}>
+            <View style={{ flex: 1 }}>
+              <View style={styles.descriptionHeader}>
+                <Text style={styles.descriptionText}>
+                  {photos[currentIndex].description || 'Нет описания'}
+                </Text>
+                {photos[currentIndex].privacy === 'private' && (
+                  <Icon name="lock-closed" size={16} color="#fff" style={{ marginLeft: 8 }} />
+                )}
+                {photos[currentIndex].privacy === 'friends' && (
+                  <Icon name="people" size={16} color="#fff" style={{ marginLeft: 8 }} />
+                )}
+              </View>
+              <Text style={styles.dateText}>
+                {new Date(photos[currentIndex].created_at).toLocaleDateString()}
               </Text>
-              {photos[currentIndex].privacy === 'private' && (
-                <Icon name="lock-closed" size={16} color="#fff" style={{ marginLeft: 8 }} />
-              )}
-              {photos[currentIndex].privacy === 'friends' && (
-                <Icon name="people" size={16} color="#fff" style={{ marginLeft: 8 }} />
-              )}
             </View>
-            <Text style={styles.dateText}>
-              {new Date(photos[currentIndex].created_at).toLocaleDateString()}
+            
+            <View style={styles.reactionsContainer}>
+              <TouchableOpacity 
+                style={[styles.reactionButton, photos[currentIndex].my_reaction === 1 && styles.activeLike]} 
+                onPress={() => handleReaction(1)}
+              >
+                <Icon name={photos[currentIndex].my_reaction === 1 ? "heart" : "heart-outline"} size={24} color={photos[currentIndex].my_reaction === 1 ? colors.error : "#fff"} />
+                <Text style={styles.reactionText}>{photos[currentIndex].likes_count || 0}</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={[styles.reactionButton, { marginLeft: 10 }, photos[currentIndex].my_reaction === -1 && styles.activeDislike]} 
+                onPress={() => handleReaction(-1)}
+              >
+                <Icon name={photos[currentIndex].my_reaction === -1 ? "thumbs-down" : "thumbs-down-outline"} size={24} color={photos[currentIndex].my_reaction === -1 ? colors.primary : "#fff"} />
+                <Text style={styles.reactionText}>{photos[currentIndex].dislikes_count || 0}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          <TouchableOpacity 
+            style={styles.commentsToggle} 
+            onPress={() => setShowComments(!showComments)}
+          >
+            <Icon name="chatbubble-outline" size={20} color="#fff" />
+            <Text style={styles.commentsToggleText}>
+              Комментарии ({photos[currentIndex].comments_count || 0})
             </Text>
-          </ScrollView>
-        </View>
+            <Icon name={showComments ? "chevron-down" : "chevron-up"} size={20} color="#fff" />
+          </TouchableOpacity>
+
+          {showComments && (
+            <View style={styles.commentsSection}>
+              <FlatList
+                data={comments}
+                keyExtractor={(item) => item.id.toString()}
+                renderItem={({ item }) => (
+                  <View style={styles.commentItem}>
+                    <Image 
+                      source={{ uri: getFullUrl(item.avatar_url) || 'https://via.placeholder.com/30' }} 
+                      style={styles.commentAvatar} 
+                    />
+                    <View style={styles.commentContent}>
+                      <View style={styles.commentHeader}>
+                        <Text style={styles.commentUser}>
+                          {item.first_name ? `${item.first_name} ${item.last_name || ''}` : `Пользователь #${item.user_id}`}
+                        </Text>
+                        {(isOwner || item.user_id === photos[currentIndex].user_id) && (
+                          <TouchableOpacity onPress={() => deleteComment(item.id)}>
+                            <Icon name="trash-outline" size={14} color="#ff4444" />
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                      <Text style={styles.commentText}>{item.comment}</Text>
+                    </View>
+                  </View>
+                )}
+                style={{ maxHeight: 200 }}
+                ListEmptyComponent={<Text style={styles.emptyComments}>Нет комментариев</Text>}
+              />
+              
+              <View style={styles.commentInputContainer}>
+                <TextInput
+                  style={styles.commentInput}
+                  placeholder="Ваш комментарий..."
+                  placeholderTextColor="#999"
+                  value={newComment}
+                  onChangeText={setNewComment}
+                  multiline
+                />
+                <TouchableOpacity 
+                  onPress={submitComment} 
+                  disabled={!newComment.trim() || isSubmittingComment}
+                  style={styles.sendButton}
+                >
+                  {isSubmittingComment ? (
+                    <ActivityIndicator size="small" color={colors.primary} />
+                  ) : (
+                    <Icon name="send" size={24} color={newComment.trim() ? colors.primary : "#666"} />
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+        </KeyboardAvoidingView>
       )}
     </View>
   );
@@ -290,13 +494,49 @@ const styles = StyleSheet.create({
     bottom: 0, 
     left: 0, 
     right: 0, 
-    maxHeight: '30%',
     padding: 20,
     borderTopLeftRadius: 15,
     borderTopRightRadius: 15
   },
+  descriptionHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 15
+  },
   descriptionContent: { width: '100%' },
   descriptionHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 5 },
-  descriptionText: { color: '#fff', fontSize: 16, lineHeight: 22 },
-  dateText: { color: '#ccc', fontSize: 12, marginTop: 10 },
+  descriptionText: { color: '#fff', fontSize: 16, lineHeight: 22, flex: 1 },
+  dateText: { color: '#ccc', fontSize: 12, marginTop: 5 },
+  reactionsContainer: { flexDirection: 'row', alignItems: 'center' },
+  reactionButton: { flexDirection: 'row', alignItems: 'center', padding: 8, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.1)' },
+  reactionText: { color: '#fff', marginLeft: 6, fontWeight: 'bold' },
+  activeLike: { backgroundColor: 'rgba(239, 68, 68, 0.2)' },
+  activeDislike: { backgroundColor: 'rgba(99, 102, 241, 0.2)' },
+  commentsToggle: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    paddingVertical: 10, 
+    borderTopWidth: 1, 
+    borderTopColor: 'rgba(255,255,255,0.1)' 
+  },
+  commentsToggleText: { color: '#fff', flex: 1, marginLeft: 10, fontSize: 14 },
+  commentsSection: { marginTop: 10 },
+  commentItem: { flexDirection: 'row', marginBottom: 12 },
+  commentAvatar: { width: 30, height: 30, borderRadius: 15, marginRight: 10 },
+  commentContent: { flex: 1 },
+  commentHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 },
+  commentUser: { color: '#fff', fontSize: 13, fontWeight: 'bold' },
+  commentText: { color: '#ddd', fontSize: 14 },
+  emptyComments: { color: '#999', textAlign: 'center', marginVertical: 10 },
+  commentInputContainer: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    marginTop: 10,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 20,
+    paddingHorizontal: 15
+  },
+  commentInput: { flex: 1, color: '#fff', paddingVertical: 8, maxHeight: 80 },
+  sendButton: { padding: 5, marginLeft: 5 },
 });

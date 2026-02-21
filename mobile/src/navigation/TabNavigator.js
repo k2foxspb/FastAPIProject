@@ -18,6 +18,8 @@ import FeedScreen from '../screens/FeedScreen';
 import CartScreen from '../screens/CartScreen';
 import OrdersScreen from '../screens/OrdersScreen';
 import NewsDetailScreen from '../screens/NewsDetailScreen';
+import MyLikesScreen from '../screens/MyLikesScreen';
+import MyReviewsScreen from '../screens/MyReviewsScreen';
 import EditProductScreen from '../screens/EditProductScreen';
 import ProductDetailScreen from '../screens/ProductDetailScreen';
 import LoginScreen from '../screens/LoginScreen';
@@ -103,6 +105,8 @@ function ProfileStack() {
       <Stack.Screen name="AdminChatDetail" component={AdminChatDetailScreen} options={{ title: 'Чат' }} />
       <Stack.Screen name="EditNews" component={EditNewsScreen} options={{ title: 'Редактировать новость' }} />
       <Stack.Screen name="AdminAppUpload" component={AdminAppUploadScreen} options={{ title: 'Загрузить приложение' }} />
+      <Stack.Screen name="MyLikes" component={MyLikesScreen} options={{ title: 'Понравилось' }} />
+      <Stack.Screen name="MyReviews" component={MyReviewsScreen} options={{ title: 'Мои отзывы' }} />
       <Stack.Screen name="UserProfile" component={UserProfileScreen} options={{ title: 'Профиль пользователя' }} />
       <Stack.Screen 
         name="Login" 

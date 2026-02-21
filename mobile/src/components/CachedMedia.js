@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Image, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
-import * as FileSystem from 'expo-file-system';
-import { getInfoAsync } from 'expo-file-system/legacy';
+import { cacheDirectory, getInfoAsync, downloadAsync } from 'expo-file-system/legacy';
 import { API_BASE_URL } from '../constants';
 import VideoPlayer from './VideoPlayer';
 import { useTheme } from '../context/ThemeContext';
@@ -15,7 +14,7 @@ const CachedMedia = ({ item, onFullScreen, style, resizeMode = "cover", useNativ
 
   const remoteUri = (item.file_path && (item.file_path.startsWith('http') || item.file_path.startsWith('file://') || item.file_path.startsWith('content://'))) ? item.file_path : (item.file_path ? `${API_BASE_URL}${item.file_path}` : '');
   const fileName = item.file_path ? item.file_path.split('/').pop() : 'unknown';
-  const localFileUri = `${FileSystem.cacheDirectory}${fileName}`;
+  const localFileUri = `${cacheDirectory}${fileName}`;
 
   useEffect(() => {
     if (!item.file_path) {
@@ -36,7 +35,7 @@ const CachedMedia = ({ item, onFullScreen, style, resizeMode = "cover", useNativ
           setLoading(false);
         } else {
           // Download and cache
-          const downloadRes = await FileSystem.downloadAsync(remoteUri, localFileUri);
+          const downloadRes = await downloadAsync(remoteUri, localFileUri);
           setLocalUri(downloadRes.uri);
           setLoading(false);
         }
