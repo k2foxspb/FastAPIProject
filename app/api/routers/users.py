@@ -1,7 +1,7 @@
 import jwt
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, delete, or_, and_
+from sqlalchemy import select, delete, or_, and_, literal
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.responses import RedirectResponse
 
@@ -1485,7 +1485,7 @@ async def get_my_liked_news(
         NewsModel,
         func.coalesce(likes_sub.c.count, 0).label("likes_count"),
         func.coalesce(dislikes_sub.c.count, 0).label("dislikes_count"),
-        func.literal(1).label("my_reaction")
+        literal(1).label("my_reaction")
     ).join(NewsReactionModel, NewsModel.id == NewsReactionModel.news_id)\
      .outerjoin(likes_sub, NewsModel.id == likes_sub.c.news_id)\
      .outerjoin(dislikes_sub, NewsModel.id == dislikes_sub.c.news_id)\
@@ -1535,7 +1535,7 @@ async def get_my_liked_photos(
         func.coalesce(likes_sub.c.count, 0).label("likes_count"),
         func.coalesce(dislikes_sub.c.count, 0).label("dislikes_count"),
         func.coalesce(comments_count_sub.c.count, 0).label("comments_count"),
-        func.literal(1).label("my_reaction")
+        literal(1).label("my_reaction")
     ).join(UserPhotoReactionModel, UserPhotoModel.id == UserPhotoReactionModel.photo_id)\
      .outerjoin(likes_sub, UserPhotoModel.id == likes_sub.c.photo_id)\
      .outerjoin(dislikes_sub, UserPhotoModel.id == dislikes_sub.c.photo_id)\
