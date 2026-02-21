@@ -1,8 +1,15 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Video, ResizeMode } from 'expo-av';
+import { setPlaybackAudioMode } from '../utils/audioSettings';
 
 const VideoPlayer = ({ uri, isMuted = false, isLooping = false, shouldPlay = false, style, useNativeControls = false, resizeMode = ResizeMode.COVER }) => {
+  useEffect(() => {
+    if (shouldPlay && !isMuted) {
+      setPlaybackAudioMode();
+    }
+  }, [shouldPlay, isMuted]);
+
   return (
     <View style={[styles.container, style]}>
       <Video

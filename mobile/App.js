@@ -10,6 +10,7 @@ import { NotificationProvider, useNotifications } from './src/context/Notificati
 import { ThemeProvider, useTheme } from './src/context/ThemeContext.js';
 import { storage } from './src/utils/storage';
 import { setAuthToken } from './src/api';
+import { setPlaybackAudioMode } from './src/utils/audioSettings';
 
 function AppContent() {
   const { connect } = useNotifications();
@@ -54,6 +55,9 @@ function AppContent() {
 */
 
   useEffect(() => {
+    // Устанавливаем режим аудио для всего приложения
+    setPlaybackAudioMode();
+    
     requestUserPermission();
     setupCloudMessaging();
 

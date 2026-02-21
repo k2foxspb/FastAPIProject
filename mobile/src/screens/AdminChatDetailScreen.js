@@ -12,6 +12,7 @@ import FileMessage from '../components/FileMessage';
 import { Video, ResizeMode } from 'expo-av';
 import { documentDirectory, getInfoAsync, downloadAsync, readAsStringAsync, writeAsStringAsync, EncodingType, StorageAccessFramework } from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
+import { setPlaybackAudioMode } from '../utils/audioSettings';
 
 export default function AdminChatDetailScreen({ route, navigation }) {
   const { u1, u2 } = route.params;
@@ -112,6 +113,9 @@ export default function AdminChatDetailScreen({ route, navigation }) {
     const sender = isU1 ? u1 : u2;
 
     const handleFullScreen = (uri, type) => {
+      if (type === 'video') {
+        setPlaybackAudioMode();
+      }
       setFullScreenMedia({ uri, type });
     };
 

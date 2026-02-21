@@ -91,6 +91,7 @@ export const usersApi = {
   getFriendsList: () => api.get('/users/friends/list'),
   getFriendRequests: () => api.get('/users/friends/requests'),
   getLikedNews: () => api.get('/users/me/likes'),
+  getLikedPhotos: () => api.get('/users/me/liked-photos'),
   getMyReviews: () => api.get('/users/me/reviews'),
 };
 

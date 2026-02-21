@@ -18,6 +18,7 @@ import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
 import { formatStatus, formatName, formatFileSize } from '../utils/formatters';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { setPlaybackAudioMode, setRecordingAudioMode, setNotificationAudioMode } from '../utils/audioSettings';
 
 export default function ChatScreen({ route, navigation }) {
   const insets = useSafeAreaInsets();
@@ -64,6 +65,7 @@ export default function ChatScreen({ route, navigation }) {
   // Звук для нового сообщения в чате
   const playMessageSound = async () => {
     try {
+      await setNotificationAudioMode();
       const { sound } = await Audio.Sound.createAsync(
         require('../../assets/sounds/message.mp3')
       );
@@ -582,10 +584,7 @@ export default function ChatScreen({ route, navigation }) {
           return;
         }
 
-        await Audio.setAudioModeAsync({
-          allowsRecordingIOS: true,
-          playsInSilentModeIOS: true,
-        });
+        await setRecordingAudioMode();
 
         const { recording: newRecording } = await Audio.Recording.createAsync(
           Audio.RecordingOptionsPresets.HIGH_QUALITY

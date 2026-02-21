@@ -7,6 +7,7 @@ import { theme as themeConstants } from '../constants/theme';
 import { cacheDirectory, getInfoAsync, downloadAsync, readAsStringAsync, writeAsStringAsync, EncodingType, StorageAccessFramework } from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { API_BASE_URL } from '../constants';
+import { setPlaybackAudioMode } from '../utils/audioSettings';
 
 const resolveRemoteUri = (path) => {
   if (!path) return '';
@@ -35,6 +36,9 @@ export default function VoiceMessage({ item, currentUserId }) {
   }, [sound]);
 
   const loadAndPlay = async () => {
+    // Устанавливаем режим аудио с прерыванием других приложений
+    await setPlaybackAudioMode();
+
     if (sound) {
       if (isPlaying) {
         await sound.pauseAsync();

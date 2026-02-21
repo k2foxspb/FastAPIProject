@@ -1531,6 +1531,56 @@ async def get_my_liked_news(
         news_list.append(news_obj)
     return news_list
 
+@router.get("/me/liked-photos", response_model=list[UserPhotoSchema])
+@router.get("/me/liked-photos/", response_model=list[UserPhotoSchema], include_in_schema=False)
+async def get_my_liked_photos(
+    current_user: UserModel = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """Возвращает фотографии, которые лайкнул текущий пользователь."""
+    from sqlalchemy import func
+    
+    likes_sub = select(
+        UserPhotoReactionModel.photo_id,
+        func.count(UserPhotoReactionModel.id).label("count")
+    ).where(UserPhotoReactionModel.reaction_type == 1).group_by(UserPhotoReactionModel.photo_id).subquery()
+
+    dislikes_sub = select(
+        UserPhotoReactionModel.photo_id,
+        func.count(UserPhotoReactionModel.id).label("count")
+    ).where(UserPhotoReactionModel.reaction_type == -1).group_by(UserPhotoReactionModel.photo_id).subquery()
+
+    comments_count_sub = select(
+        UserPhotoCommentModel.photo_id,
+        func.count(UserPhotoCommentModel.id).label("count")
+    ).group_by(UserPhotoCommentModel.photo_id).subquery()
+
+    query = select(
+        UserPhotoModel,
+        func.coalesce(likes_sub.c.count, 0).label("likes_count"),
+        func.coalesce(dislikes_sub.c.count, 0).label("dislikes_count"),
+        func.coalesce(comments_count_sub.c.count, 0).label("comments_count"),
+        func.literal(1).label("my_reaction")
+    ).join(UserPhotoReactionModel, UserPhotoModel.id == UserPhotoReactionModel.photo_id)\
+     .outerjoin(likes_sub, UserPhotoModel.id == likes_sub.c.photo_id)\
+     .outerjoin(dislikes_sub, UserPhotoModel.id == dislikes_sub.c.photo_id)\
+     .outerjoin(comments_count_sub, UserPhotoModel.id == comments_count_sub.c.photo_id)\
+     .where(
+         UserPhotoReactionModel.user_id == current_user.id,
+         UserPhotoReactionModel.reaction_type == 1
+     ).order_by(UserPhotoModel.created_at.desc())
+
+    result = await db.execute(query)
+    photos_list = []
+    for row in result.all():
+        photo_obj = row[0]
+        photo_obj.likes_count = row[1]
+        photo_obj.dislikes_count = row[2]
+        photo_obj.comments_count = row[3]
+        photo_obj.my_reaction = row[4]
+        photos_list.append(UserPhotoSchema.model_validate(photo_obj))
+    return photos_list
+
 @router.get("/me/reviews", response_model=list[ReviewSchema])
 @router.get("/me/reviews/", response_model=list[ReviewSchema], include_in_schema=False)
 async def get_my_reviews(
