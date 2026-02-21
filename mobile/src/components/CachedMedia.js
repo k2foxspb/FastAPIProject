@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Image, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import * as FileSystem from 'expo-file-system';
+import { getInfoAsync } from 'expo-file-system/legacy';
 import { API_BASE_URL } from '../constants';
 import VideoPlayer from './VideoPlayer';
 import { useTheme } from '../context/ThemeContext';
@@ -29,7 +30,7 @@ const CachedMedia = ({ item, onFullScreen, style, resizeMode = "cover", useNativ
           return;
         }
 
-        const fileInfo = await FileSystem.getInfoAsync(localFileUri);
+        const fileInfo = await getInfoAsync(localFileUri);
         if (fileInfo.exists) {
           setLocalUri(fileInfo.uri);
           setLoading(false);

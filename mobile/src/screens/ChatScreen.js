@@ -3,6 +3,7 @@ import { View, Text, FlatList, TextInput, TouchableOpacity, StyleSheet, Keyboard
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
+import { getInfoAsync } from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { chatApi, usersApi } from '../api';
 import { API_BASE_URL } from '../constants';
@@ -274,7 +275,7 @@ export default function ChatScreen({ route, navigation }) {
       const fileName = uri.split('/').pop();
       const localFileUri = `${FileSystem.documentDirectory}${fileName}`;
 
-      const fileInfo = await FileSystem.getInfoAsync(localFileUri);
+      const fileInfo = await getInfoAsync(localFileUri);
       let finalUri = localFileUri;
 
       if (!fileInfo.exists) {

@@ -11,6 +11,7 @@ import VoiceMessage from '../components/VoiceMessage';
 import FileMessage from '../components/FileMessage';
 import { Video, ResizeMode } from 'expo-av';
 import * as FileSystem from 'expo-file-system';
+import { getInfoAsync } from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 
 export default function AdminChatDetailScreen({ route, navigation }) {
@@ -72,7 +73,7 @@ export default function AdminChatDetailScreen({ route, navigation }) {
       const fileName = uri.split('/').pop() || 'file';
       const localFileUri = `${FileSystem.documentDirectory}${fileName}`;
 
-      const fileInfo = await FileSystem.getInfoAsync(localFileUri);
+      const fileInfo = await getInfoAsync(localFileUri);
       let finalUri = localFileUri;
 
       if (!fileInfo.exists) {

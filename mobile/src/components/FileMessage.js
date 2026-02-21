@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Alert, Platform } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as FileSystem from 'expo-file-system';
+import { getInfoAsync } from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import * as IntentLauncher from 'expo-intent-launcher';
 import { useTheme } from '../context/ThemeContext';
@@ -51,7 +52,7 @@ export default function FileMessage({ item, currentUserId }) {
   const handleDownloadAndOpen = async () => {
     setLoading(true);
     try {
-      const fileInfo = await FileSystem.getInfoAsync(localFileUri);
+      const fileInfo = await getInfoAsync(localFileUri);
       let uri = localFileUri;
 
       if (!fileInfo.exists) {
@@ -90,7 +91,7 @@ export default function FileMessage({ item, currentUserId }) {
   const handleShare = async () => {
     setLoading(true);
     try {
-      const fileInfo = await FileSystem.getInfoAsync(localFileUri);
+      const fileInfo = await getInfoAsync(localFileUri);
       let uri = localFileUri;
 
       if (!fileInfo.exists) {

@@ -5,6 +5,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
 import * as FileSystem from 'expo-file-system';
+import { getInfoAsync } from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { API_BASE_URL } from '../constants';
 
@@ -48,7 +49,7 @@ export default function VoiceMessage({ item, currentUserId }) {
     try {
       let uri = localUri;
       if (!uri) {
-        const fileInfo = await FileSystem.getInfoAsync(localFileUri);
+        const fileInfo = await getInfoAsync(localFileUri);
         if (fileInfo.exists) {
           uri = fileInfo.uri;
         } else {
@@ -76,7 +77,7 @@ export default function VoiceMessage({ item, currentUserId }) {
     try {
       let uri = localUri;
       if (!uri) {
-        const fileInfo = await FileSystem.getInfoAsync(localFileUri);
+        const fileInfo = await getInfoAsync(localFileUri);
         if (fileInfo.exists) {
           uri = fileInfo.uri;
         } else {
