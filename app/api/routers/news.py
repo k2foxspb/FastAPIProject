@@ -11,9 +11,9 @@ from app.utils import storage
 
 from app.api.dependencies import get_async_db
 from app.core.auth import get_current_user, get_current_admin, get_current_user_optional
-from app.models.news import News as NewsModel, NewsImage as NewsImageModel, NewsReaction as NewsReactionModel
+from app.models.news import News as NewsModel, NewsImage as NewsImageModel, NewsReaction as NewsReactionModel, NewsComment as NewsCommentModel
 from app.models.users import User as UserModel, AppVersion as AppVersionModel
-from app.schemas.news import News as NewsSchema, NewsCreate, NewsUpdate
+from app.schemas.news import News as NewsSchema, NewsCreate, NewsUpdate, NewsComment as NewsCommentSchema, NewsCommentCreate
 from app.schemas.users import AppVersionResponse
 
 router = APIRouter(prefix="/news", tags=["news"])
@@ -103,13 +103,20 @@ async def get_news(
         func.count(NewsReactionModel.id).label("count")
     ).where(NewsReactionModel.reaction_type == -1).group_by(NewsReactionModel.news_id).subquery()
 
+    comments_sub = select(
+        NewsCommentModel.news_id,
+        func.count(NewsCommentModel.id).label("count")
+    ).group_by(NewsCommentModel.news_id).subquery()
+
     # Базовый запрос
     query = select(
         NewsModel,
         func.coalesce(likes_sub.c.count, 0).label("likes_count"),
-        func.coalesce(dislikes_sub.c.count, 0).label("dislikes_count")
+        func.coalesce(dislikes_sub.c.count, 0).label("dislikes_count"),
+        func.coalesce(comments_sub.c.count, 0).label("comments_count")
     ).outerjoin(likes_sub, NewsModel.id == likes_sub.c.news_id)\
-     .outerjoin(dislikes_sub, NewsModel.id == dislikes_sub.c.news_id)
+     .outerjoin(dislikes_sub, NewsModel.id == dislikes_sub.c.news_id)\
+     .outerjoin(comments_sub, NewsModel.id == comments_sub.c.news_id)
 
     # Если пользователь авторизован, добавляем его реакцию
     if current_user:
@@ -134,7 +141,8 @@ async def get_news(
         news_obj = row[0]
         news_obj.likes_count = row[1]
         news_obj.dislikes_count = row[2]
-        news_obj.my_reaction = row[3]
+        news_obj.comments_count = row[3]
+        news_obj.my_reaction = row[4]
         news_list.append(news_obj)
     return news_list
 
@@ -293,6 +301,10 @@ async def get_news_detail(
         func.count(NewsReactionModel.id)
     ).where(NewsReactionModel.news_id == news_id, NewsReactionModel.reaction_type == -1)
 
+    comments_count_sub = select(
+        func.count(NewsCommentModel.id)
+    ).where(NewsCommentModel.news_id == news_id)
+
     my_reaction_sub = select(
         NewsReactionModel.reaction_type
     ).where(NewsReactionModel.news_id == news_id, NewsReactionModel.user_id == current_user.id) if current_user else None
@@ -305,6 +317,7 @@ async def get_news_detail(
     # Добавляем данные о реакциях
     news.likes_count = await db.scalar(likes_sub)
     news.dislikes_count = await db.scalar(dislikes_sub)
+    news.comments_count = await db.scalar(comments_count_sub)
     news.my_reaction = await db.scalar(my_reaction_sub) if my_reaction_sub is not None else None
     
     return news
@@ -353,6 +366,91 @@ async def react_to_news(
     
     await db.commit()
     return {"status": "ok", "reaction_type": reaction_type}
+
+@router.get("/{news_id}/comments", response_model=list[NewsCommentSchema])
+async def get_news_comments(
+    news_id: int,
+    db: AsyncSession = Depends(get_async_db)
+):
+    """Получить список комментариев к новости."""
+    # Проверяем существование новости
+    news_res = await db.execute(select(NewsModel.id).where(NewsModel.id == news_id))
+    if not news_res.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="News not found")
+
+    query = select(NewsCommentModel).where(NewsCommentModel.news_id == news_id).options(
+        selectinload(NewsCommentModel.user)
+    ).order_by(NewsCommentModel.created_at.asc())
+    
+    result = await db.execute(query)
+    comments = result.scalars().all()
+    
+    response = []
+    for c in comments:
+        comment_dict = NewsCommentSchema.model_validate(c).model_dump()
+        comment_dict["first_name"] = c.user.first_name
+        comment_dict["last_name"] = c.user.last_name
+        comment_dict["avatar_url"] = c.user.avatar_url
+        response.append(comment_dict)
+        
+    return response
+
+@router.post("/{news_id}/comments", response_model=NewsCommentSchema)
+async def add_news_comment(
+    news_id: int,
+    comment_data: NewsCommentCreate,
+    current_user: UserModel = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """Добавить комментарий к новости."""
+    news_res = await db.execute(select(NewsModel.id).where(NewsModel.id == news_id))
+    if not news_res.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="News not found")
+
+    new_comment = NewsCommentModel(
+        news_id=news_id,
+        user_id=current_user.id,
+        comment=comment_data.comment
+    )
+    db.add(new_comment)
+    await db.commit()
+    await db.refresh(new_comment)
+    
+    # Загружаем со связью пользователя для ответа
+    result = await db.execute(
+        select(NewsCommentModel).options(selectinload(NewsCommentModel.user)).where(NewsCommentModel.id == new_comment.id)
+    )
+    comment_obj = result.scalar_one()
+    
+    response = NewsCommentSchema.model_validate(comment_obj).model_dump()
+    response["first_name"] = comment_obj.user.first_name
+    response["last_name"] = comment_obj.user.last_name
+    response["avatar_url"] = comment_obj.user.avatar_url
+    
+    return response
+
+@router.delete("/comments/{comment_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_news_comment(
+    comment_id: int,
+    current_user: UserModel = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """Удалить свой комментарий или любой комментарий если ты админ."""
+    result = await db.execute(
+        select(NewsCommentModel).options(selectinload(NewsCommentModel.news)).where(NewsCommentModel.id == comment_id)
+    )
+    comment = result.scalar_one_or_none()
+    
+    if not comment:
+        raise HTTPException(status_code=404, detail="Comment not found")
+        
+    # Удалить может автор комментария или админ
+    if comment.user_id != current_user.id and current_user.role not in ["admin", "owner"]:
+        raise HTTPException(status_code=403, detail="Not enough permissions")
+        
+    await db.delete(comment)
+    await db.commit()
+    return None
 
 @router.patch("/{news_id}/", response_model=NewsSchema)
 async def update_news(

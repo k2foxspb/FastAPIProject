@@ -93,6 +93,8 @@ export const usersApi = {
   getLikedNews: () => api.get('/users/me/likes'),
   getLikedPhotos: () => api.get('/users/me/liked-photos'),
   getMyReviews: () => api.get('/users/me/reviews'),
+  getMyNewsComments: () => api.get('/users/me/news-comments'),
+  getMyPhotoComments: () => api.get('/users/me/photo-comments'),
 };
 
 export const productsApi = {
@@ -127,6 +129,9 @@ export const newsApi = {
     headers: { 'Content-Type': 'multipart/form-data' }
   }),
   reactToNews: (newsId, reactionType) => api.post(`/news/${newsId}/react`, null, { params: { reaction_type: reactionType } }),
+  getNewsComments: (newsId) => api.get(`/news/${newsId}/comments`),
+  addNewsComment: (newsId, comment) => api.post(`/news/${newsId}/comments`, { comment }),
+  deleteNewsComment: (commentId) => api.delete(`/news/comments/${commentId}`),
 };
 
 export const adminApi = {

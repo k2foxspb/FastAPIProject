@@ -24,6 +24,7 @@ class News(Base):
     author: Mapped["User"] = relationship("User")
     images: Mapped[list["NewsImage"]] = relationship("NewsImage", back_populates="news", cascade="all, delete-orphan")
     reactions: Mapped[list["NewsReaction"]] = relationship("NewsReaction", back_populates="news", cascade="all, delete-orphan")
+    comments: Mapped[list["NewsComment"]] = relationship("NewsComment", back_populates="news", cascade="all, delete-orphan")
 
 class NewsImage(Base):
     __tablename__ = "news_images"
@@ -45,4 +46,16 @@ class NewsReaction(Base):
     reaction_type: Mapped[int] = mapped_column(Integer, nullable=False) # 1 for like, -1 for dislike
 
     news: Mapped["News"] = relationship("News", back_populates="reactions")
+    user: Mapped["User"] = relationship("User")
+
+class NewsComment(Base):
+    __tablename__ = "news_comments"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    news_id: Mapped[int] = mapped_column(ForeignKey("news.id", ondelete="CASCADE"), nullable=False)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    comment: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    news: Mapped["News"] = relationship("News", back_populates="comments")
     user: Mapped["User"] = relationship("User")

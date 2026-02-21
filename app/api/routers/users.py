@@ -21,7 +21,7 @@ from app.schemas.users import (
     FCMTokenUpdate, BulkDeletePhotosRequest, Friendship as FriendshipSchema,
     UserPhotoComment as UserPhotoCommentSchema, UserPhotoCommentCreate
 )
-from app.schemas.news import News as NewsSchema
+from app.schemas.news import News as NewsSchema, NewsComment as NewsCommentSchema
 from app.schemas.reviews import Review as ReviewSchema
 from app.api.dependencies import get_async_db, get_friendship_status, can_view_content
 from app.core.auth import (
@@ -1576,5 +1576,43 @@ async def get_my_reviews(
         r.avatar_url = current_user.avatar_url
         
     return reviews
+
+@router.get("/me/news-comments", response_model=list[NewsCommentSchema])
+async def get_my_news_comments(
+    current_user: UserModel = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """Возвращает комментарии текущего пользователя к новостям."""
+    from app.models.news import NewsComment as NewsCommentModel
+    
+    result = await db.execute(
+        select(NewsCommentModel).where(NewsCommentModel.user_id == current_user.id).order_by(NewsCommentModel.created_at.desc())
+    )
+    comments = result.scalars().all()
+    
+    for c in comments:
+        c.first_name = current_user.first_name
+        c.last_name = current_user.last_name
+        c.avatar_url = current_user.avatar_url
+        
+    return comments
+
+@router.get("/me/photo-comments", response_model=list[UserPhotoCommentSchema])
+async def get_my_photo_comments(
+    current_user: UserModel = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """Возвращает комментарии текущего пользователя к фотографиям."""
+    result = await db.execute(
+        select(UserPhotoCommentModel).where(UserPhotoCommentModel.user_id == current_user.id).order_by(UserPhotoCommentModel.created_at.desc())
+    )
+    comments = result.scalars().all()
+    
+    for c in comments:
+        c.first_name = current_user.first_name
+        c.last_name = current_user.last_name
+        c.avatar_url = current_user.avatar_url
+        
+    return comments
 
 

@@ -18,6 +18,21 @@ class NewsImage(BaseModel):
     thumbnail_url: str
     model_config = ConfigDict(from_attributes=True)
 
+class NewsCommentCreate(BaseModel):
+    comment: str = Field(min_length=1)
+
+class NewsComment(BaseModel):
+    id: int
+    user_id: int
+    news_id: int
+    comment: str
+    created_at: datetime
+    first_name: str | None = None
+    last_name: str | None = None
+    avatar_url: str | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
 class News(BaseModel):
     id: int
     title: str
@@ -31,6 +46,7 @@ class News(BaseModel):
     images: list[NewsImage] = Field(default=[])
     likes_count: int = 0
     dislikes_count: int = 0
+    comments_count: int = 0
     my_reaction: int | None = None # 1, -1 or None
 
     model_config = ConfigDict(from_attributes=True)
