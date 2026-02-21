@@ -121,6 +121,19 @@ class UserPhotoComment(Base):
 
     user: Mapped["User"] = relationship("User", back_populates="photo_comments")
     photo: Mapped["UserPhoto"] = relationship("UserPhoto", back_populates="comments")
+    reactions: Mapped[list["UserPhotoCommentReaction"]] = relationship("UserPhotoCommentReaction", back_populates="comment", cascade="all, delete-orphan")
+
+
+class UserPhotoCommentReaction(Base):
+    __tablename__ = "user_photo_comment_reactions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    comment_id: Mapped[int] = mapped_column(ForeignKey("user_photo_comments.id"), nullable=False)
+    reaction_type: Mapped[int] = mapped_column(Integer, nullable=False)  # 1 for like, -1 for dislike
+
+    user: Mapped["User"] = relationship("User")
+    comment: Mapped["UserPhotoComment"] = relationship("UserPhotoComment", back_populates="reactions")
 
 
 class UserPhotoReaction(Base):

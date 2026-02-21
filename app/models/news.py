@@ -59,3 +59,15 @@ class NewsComment(Base):
 
     news: Mapped["News"] = relationship("News", back_populates="comments")
     user: Mapped["User"] = relationship("User")
+    reactions: Mapped[list["NewsCommentReaction"]] = relationship("NewsCommentReaction", back_populates="comment", cascade="all, delete-orphan")
+
+class NewsCommentReaction(Base):
+    __tablename__ = "news_comment_reactions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    comment_id: Mapped[int] = mapped_column(ForeignKey("news_comments.id", ondelete="CASCADE"), nullable=False)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    reaction_type: Mapped[int] = mapped_column(Integer, nullable=False) # 1 for like, -1 for dislike
+
+    comment: Mapped["NewsComment"] = relationship("NewsComment", back_populates="reactions")
+    user: Mapped["User"] = relationship("User")

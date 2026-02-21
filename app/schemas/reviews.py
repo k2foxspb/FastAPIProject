@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from typing import Optional
 
 
@@ -14,6 +14,11 @@ class Review(BaseModel):
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     avatar_url: Optional[str] = None
+    likes_count: int = 0
+    dislikes_count: int = 0
+    my_reaction: int | None = None
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class CreateReview(BaseModel):

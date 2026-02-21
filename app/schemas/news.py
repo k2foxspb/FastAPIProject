@@ -30,6 +30,9 @@ class NewsComment(BaseModel):
     first_name: str | None = None
     last_name: str | None = None
     avatar_url: str | None = None
+    likes_count: int = 0
+    dislikes_count: int = 0
+    my_reaction: int | None = None
 
     model_config = ConfigDict(from_attributes=True)
 

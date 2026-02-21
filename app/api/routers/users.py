@@ -12,7 +12,8 @@ from app.models.users import (
     UserPhoto as UserPhotoModel,
     Friendship as FriendshipModel,
     UserPhotoComment as UserPhotoCommentModel,
-    UserPhotoReaction as UserPhotoReactionModel
+    UserPhotoReaction as UserPhotoReactionModel,
+    UserPhotoCommentReaction as UserPhotoCommentReactionModel
 )
 from app.schemas.users import (
     UserCreate, UserUpdate, User as UserSchema, RefreshTokenRequest, 
@@ -927,7 +928,8 @@ async def get_photo_comments(
     db: AsyncSession = Depends(get_async_db),
     current_user: UserModel = Depends(get_current_user)
 ):
-    """Получить список комментариев к фотографии."""
+    """Получить список комментариев к фотографии с реакциями."""
+    from sqlalchemy import func
     # Проверяем доступ к фото
     photo_res = await db.execute(select(UserPhotoModel).where(UserPhotoModel.id == photo_id))
     photo = photo_res.scalar_one_or_none()
@@ -939,22 +941,94 @@ async def get_photo_comments(
         if not can_view_content(photo.user_id, current_user.id, photo.privacy, friendship_status):
             raise HTTPException(status_code=403, detail="Access denied")
 
-    query = select(UserPhotoCommentModel).where(UserPhotoCommentModel.photo_id == photo_id).options(
-        selectinload(UserPhotoCommentModel.user)
-    ).order_by(UserPhotoCommentModel.created_at.asc())
+    # Подзапросы для лайков и дизлайков комментария
+    likes_sub = select(
+        UserPhotoCommentReactionModel.comment_id,
+        func.count(UserPhotoCommentReactionModel.id).label("count")
+    ).where(UserPhotoCommentReactionModel.reaction_type == 1).group_by(UserPhotoCommentReactionModel.comment_id).subquery()
+
+    dislikes_sub = select(
+        UserPhotoCommentReactionModel.comment_id,
+        func.count(UserPhotoCommentReactionModel.id).label("count")
+    ).where(UserPhotoCommentReactionModel.reaction_type == -1).group_by(UserPhotoCommentReactionModel.comment_id).subquery()
+
+    my_reaction_sub = select(
+        UserPhotoCommentReactionModel.comment_id,
+        UserPhotoCommentReactionModel.reaction_type
+    ).where(UserPhotoCommentReactionModel.user_id == current_user.id).subquery()
+
+    query = select(
+        UserPhotoCommentModel,
+        func.coalesce(likes_sub.c.count, 0).label("likes_count"),
+        func.coalesce(dislikes_sub.c.count, 0).label("dislikes_count"),
+        func.coalesce(my_reaction_sub.c.reaction_type, None).label("my_reaction")
+    ).outerjoin(likes_sub, UserPhotoCommentModel.id == likes_sub.c.comment_id)\
+     .outerjoin(dislikes_sub, UserPhotoCommentModel.id == dislikes_sub.c.comment_id)\
+     .outerjoin(my_reaction_sub, UserPhotoCommentModel.id == my_reaction_sub.c.comment_id)\
+     .where(UserPhotoCommentModel.photo_id == photo_id)\
+     .options(selectinload(UserPhotoCommentModel.user))\
+     .order_by(UserPhotoCommentModel.created_at.asc())
     
     result = await db.execute(query)
-    comments = result.scalars().all()
     
     response = []
-    for c in comments:
+    for row in result.all():
+        c = row[0]
         comment_dict = UserPhotoCommentSchema.model_validate(c).model_dump()
         comment_dict["first_name"] = c.user.first_name
         comment_dict["last_name"] = c.user.last_name
         comment_dict["avatar_url"] = c.user.avatar_url
+        comment_dict["likes_count"] = row[1]
+        comment_dict["dislikes_count"] = row[2]
+        comment_dict["my_reaction"] = row[3]
         response.append(comment_dict)
         
     return response
+
+@router.post("/photos/comments/{comment_id}/react")
+async def react_to_photo_comment(
+    comment_id: int,
+    reaction_type: int, # 1 for like, -1 for dislike, 0 to remove
+    current_user: UserModel = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """Поставить лайк или дизлайк комментарию к фотографии."""
+    if reaction_type not in [1, -1, 0]:
+        raise HTTPException(status_code=400, detail="Invalid reaction type")
+
+    # Проверяем существование комментария
+    comment_res = await db.execute(select(UserPhotoCommentModel.id).where(UserPhotoCommentModel.id == comment_id))
+    if not comment_res.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Comment not found")
+
+    # Ищем существующую реакцию
+    reaction_res = await db.execute(
+        select(UserPhotoCommentReactionModel).where(
+            UserPhotoCommentReactionModel.comment_id == comment_id,
+            UserPhotoCommentReactionModel.user_id == current_user.id
+        )
+    )
+    db_reaction = reaction_res.scalar_one_or_none()
+
+    if reaction_type == 0:
+        if db_reaction:
+            await db.delete(db_reaction)
+            await db.commit()
+            return {"status": "removed"}
+        return {"status": "not_found"}
+    
+    if db_reaction:
+        db_reaction.reaction_type = reaction_type
+    else:
+        new_reaction = UserPhotoCommentReactionModel(
+            comment_id=comment_id,
+            user_id=current_user.id,
+            reaction_type=reaction_type
+        )
+        db.add(new_reaction)
+    
+    await db.commit()
+    return {"status": "ok", "reaction_type": reaction_type}
 
 
 @router.post("/photos/{photo_id}/comments", response_model=UserPhotoCommentSchema)

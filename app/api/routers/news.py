@@ -11,7 +11,7 @@ from app.utils import storage
 
 from app.api.dependencies import get_async_db
 from app.core.auth import get_current_user, get_current_admin, get_current_user_optional
-from app.models.news import News as NewsModel, NewsImage as NewsImageModel, NewsReaction as NewsReactionModel, NewsComment as NewsCommentModel
+from app.models.news import News as NewsModel, NewsImage as NewsImageModel, NewsReaction as NewsReactionModel, NewsComment as NewsCommentModel, NewsCommentReaction as NewsCommentReactionModel
 from app.models.users import User as UserModel, AppVersion as AppVersionModel
 from app.schemas.news import News as NewsSchema, NewsCreate, NewsUpdate, NewsComment as NewsCommentSchema, NewsCommentCreate
 from app.schemas.users import AppVersionResponse
@@ -370,30 +370,107 @@ async def react_to_news(
 @router.get("/{news_id}/comments", response_model=list[NewsCommentSchema])
 async def get_news_comments(
     news_id: int,
-    db: AsyncSession = Depends(get_async_db)
+    db: AsyncSession = Depends(get_async_db),
+    current_user: Optional[UserModel] = Depends(get_current_user_optional)
 ):
-    """Получить список комментариев к новости."""
+    """Получить список комментариев к новости с реакциями."""
     # Проверяем существование новости
     news_res = await db.execute(select(NewsModel.id).where(NewsModel.id == news_id))
     if not news_res.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="News not found")
 
-    query = select(NewsCommentModel).where(NewsCommentModel.news_id == news_id).options(
-        selectinload(NewsCommentModel.user)
-    ).order_by(NewsCommentModel.created_at.asc())
-    
+    # Подзапросы для лайков и дизлайков комментария
+    likes_sub = select(
+        NewsCommentReactionModel.comment_id,
+        func.count(NewsCommentReactionModel.id).label("count")
+    ).where(NewsCommentReactionModel.reaction_type == 1).group_by(NewsCommentReactionModel.comment_id).subquery()
+
+    dislikes_sub = select(
+        NewsCommentReactionModel.comment_id,
+        func.count(NewsCommentReactionModel.id).label("count")
+    ).where(NewsCommentReactionModel.reaction_type == -1).group_by(NewsCommentReactionModel.comment_id).subquery()
+
+    query = select(
+        NewsCommentModel,
+        func.coalesce(likes_sub.c.count, 0).label("likes_count"),
+        func.coalesce(dislikes_sub.c.count, 0).label("dislikes_count")
+    ).outerjoin(likes_sub, NewsCommentModel.id == likes_sub.c.comment_id)\
+     .outerjoin(dislikes_sub, NewsCommentModel.id == dislikes_sub.c.comment_id)\
+     .where(NewsCommentModel.news_id == news_id)\
+     .options(selectinload(NewsCommentModel.user))\
+     .order_by(NewsCommentModel.created_at.asc())
+
+    if current_user:
+        my_reaction_sub = select(
+            NewsCommentReactionModel.comment_id,
+            NewsCommentReactionModel.reaction_type
+        ).where(NewsCommentReactionModel.user_id == current_user.id).subquery()
+        query = query.add_columns(func.coalesce(my_reaction_sub.c.reaction_type, None).label("my_reaction"))\
+                     .outerjoin(my_reaction_sub, NewsCommentModel.id == my_reaction_sub.c.comment_id)
+    else:
+        from sqlalchemy import literal
+        query = query.add_columns(literal(None).label("my_reaction"))
+
     result = await db.execute(query)
-    comments = result.scalars().all()
     
     response = []
-    for c in comments:
+    for row in result.all():
+        c = row[0]
         comment_dict = NewsCommentSchema.model_validate(c).model_dump()
         comment_dict["first_name"] = c.user.first_name
         comment_dict["last_name"] = c.user.last_name
         comment_dict["avatar_url"] = c.user.avatar_url
+        comment_dict["likes_count"] = row[1]
+        comment_dict["dislikes_count"] = row[2]
+        comment_dict["my_reaction"] = row[3]
         response.append(comment_dict)
         
     return response
+
+@router.post("/comments/{comment_id}/react")
+async def react_to_news_comment(
+    comment_id: int,
+    reaction_type: int, # 1 for like, -1 for dislike, 0 to remove
+    current_user: UserModel = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """Поставить лайк или дизлайк комментарию к новости."""
+    if reaction_type not in [1, -1, 0]:
+        raise HTTPException(status_code=400, detail="Invalid reaction type")
+
+    # Проверяем существование комментария
+    comment_res = await db.execute(select(NewsCommentModel.id).where(NewsCommentModel.id == comment_id))
+    if not comment_res.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Comment not found")
+
+    # Ищем существующую реакцию
+    reaction_res = await db.execute(
+        select(NewsCommentReactionModel).where(
+            NewsCommentReactionModel.comment_id == comment_id,
+            NewsCommentReactionModel.user_id == current_user.id
+        )
+    )
+    db_reaction = reaction_res.scalar_one_or_none()
+
+    if reaction_type == 0:
+        if db_reaction:
+            await db.delete(db_reaction)
+            await db.commit()
+            return {"status": "removed"}
+        return {"status": "not_found"}
+    
+    if db_reaction:
+        db_reaction.reaction_type = reaction_type
+    else:
+        new_reaction = NewsCommentReactionModel(
+            comment_id=comment_id,
+            user_id=current_user.id,
+            reaction_type=reaction_type
+        )
+        db.add(new_reaction)
+    
+    await db.commit()
+    return {"status": "ok", "reaction_type": reaction_type}
 
 @router.post("/{news_id}/comments", response_model=NewsCommentSchema)
 async def add_news_comment(

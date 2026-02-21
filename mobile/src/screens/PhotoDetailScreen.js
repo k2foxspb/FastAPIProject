@@ -167,6 +167,39 @@ export default function PhotoDetailScreen({ route, navigation }) {
     ]);
   };
 
+  const handleCommentReaction = async (commentId, type) => {
+    try {
+      const comment = comments.find(c => c.id === commentId);
+      if (!comment) return;
+
+      const newReaction = comment.my_reaction === type ? 0 : type;
+      await usersApi.reactToPhotoComment(commentId, newReaction);
+      
+      setComments(prev => prev.map(c => {
+        if (c.id === commentId) {
+          let likes = c.likes_count || 0;
+          let dislikes = c.dislikes_count || 0;
+          
+          if (c.my_reaction === 1) likes--;
+          if (c.my_reaction === -1) dislikes--;
+          
+          if (newReaction === 1) likes++;
+          if (newReaction === -1) dislikes++;
+          
+          return {
+            ...c,
+            my_reaction: newReaction,
+            likes_count: likes,
+            dislikes_count: dislikes
+          };
+        }
+        return c;
+      }));
+    } catch (err) {
+      Alert.alert('Ошибка', 'Не удалось отправить реакцию');
+    }
+  };
+
   useEffect(() => {
     fetchAlbumPhotos();
   }, [fetchAlbumPhotos]);
@@ -422,6 +455,32 @@ export default function PhotoDetailScreen({ route, navigation }) {
                         )}
                       </View>
                       <Text style={styles.commentText}>{item.comment}</Text>
+                      
+                      <View style={styles.commentReactions}>
+                        <TouchableOpacity 
+                          onPress={() => handleCommentReaction(item.id, 1)}
+                          style={styles.commentReactionButton}
+                        >
+                          <Icon 
+                            name={item.my_reaction === 1 ? "heart" : "heart-outline"} 
+                            size={14} 
+                            color={item.my_reaction === 1 ? "#ff4444" : "#ccc"} 
+                          />
+                          <Text style={styles.commentReactionText}>{item.likes_count || 0}</Text>
+                        </TouchableOpacity>
+                        
+                        <TouchableOpacity 
+                          onPress={() => handleCommentReaction(item.id, -1)}
+                          style={[styles.commentReactionButton, { marginLeft: 15 }]}
+                        >
+                          <Icon 
+                            name={item.my_reaction === -1 ? "thumbs-down" : "thumbs-down-outline"} 
+                            size={14} 
+                            color={item.my_reaction === -1 ? colors.primary : "#ccc"} 
+                          />
+                          <Text style={styles.commentReactionText}>{item.dislikes_count || 0}</Text>
+                        </TouchableOpacity>
+                      </View>
                     </View>
                   </View>
                 )}
@@ -527,7 +586,10 @@ const styles = StyleSheet.create({
   commentContent: { flex: 1 },
   commentHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 },
   commentUser: { color: '#fff', fontSize: 13, fontWeight: 'bold' },
-  commentText: { color: '#ddd', fontSize: 14 },
+  commentText: { color: '#ddd', fontSize: 14, marginBottom: 4 },
+  commentReactions: { flexDirection: 'row', alignItems: 'center', marginTop: 4 },
+  commentReactionButton: { flexDirection: 'row', alignItems: 'center' },
+  commentReactionText: { color: '#ccc', marginLeft: 4, fontSize: 12 },
   emptyComments: { color: '#999', textAlign: 'center', marginVertical: 10 },
   commentInputContainer: { 
     flexDirection: 'row', 

@@ -77,6 +77,7 @@ export const usersApi = {
   getPhotoComments: (photoId) => api.get(`/users/photos/${photoId}/comments`),
   addPhotoComment: (photoId, comment) => api.post(`/users/photos/${photoId}/comments`, { comment }),
   deletePhotoComment: (commentId) => api.delete(`/users/photos/comments/${commentId}`),
+  reactToPhotoComment: (commentId, reactionType) => api.post(`/users/photos/comments/${commentId}/react`, null, { params: { reaction_type: reactionType } }),
   updateFcmToken: (token) => api.post('/users/fcm-token', { fcm_token: token }),
   updateMe: (formData) => api.patch('/users/me', formData, {
     headers: {
@@ -112,6 +113,7 @@ export const productsApi = {
   getReviews: (productId) => api.get(`/products/${productId}/review`),
   createReview: (data) => api.post('/reviews', data),
   deleteReview: (id) => api.delete(`/reviews/reviews/${id}`),
+  reactToReview: (reviewId, reactionType) => api.post(`/reviews/${reviewId}/react`, null, { params: { reaction_type: reactionType } }),
 };
 
 export const newsApi = {
@@ -132,6 +134,7 @@ export const newsApi = {
   getNewsComments: (newsId) => api.get(`/news/${newsId}/comments`),
   addNewsComment: (newsId, comment) => api.post(`/news/${newsId}/comments`, { comment }),
   deleteNewsComment: (commentId) => api.delete(`/news/comments/${commentId}`),
+  reactToNewsComment: (commentId, reactionType) => api.post(`/news/comments/${commentId}/react`, null, { params: { reaction_type: reactionType } }),
 };
 
 export const adminApi = {

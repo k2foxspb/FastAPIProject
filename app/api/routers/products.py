@@ -9,9 +9,10 @@ from sqlalchemy import select, update, and_, func, desc
 from sqlalchemy.orm import selectinload, joinedload
 from starlette.status import HTTP_201_CREATED, HTTP_404_NOT_FOUND, HTTP_200_OK, HTTP_400_BAD_REQUEST, HTTP_403_FORBIDDEN
 
-from app.core.auth import get_current_seller
+from app.core.auth import get_current_seller, get_current_user_optional
 from app.api.dependencies import get_async_db
 from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Optional
 from app.models.products import Product as ProductModel, ProductImage as ProductImageModel
 from app.models.categories import Category as CategoryModel
 from app.models.users import User as UserModel
@@ -384,20 +385,59 @@ async def delete_product(
 
 
 @router.get('/{product_id}/review', response_model=list[Review])
-async def get_reviews(product_id: int, db: AsyncSession = Depends(get_async_db)):
-    result = await db.execute(
-        select(ReviewsModel)
-        .options(joinedload(ReviewsModel.user))
-        .where(ReviewsModel.product_id == product_id)
-        .where(ReviewsModel.is_active == True)
-        .order_by(ReviewsModel.comment_date.desc())
-    )
-    reviews = result.scalars().all()
+async def get_reviews(
+    product_id: int, 
+    db: AsyncSession = Depends(get_async_db),
+    current_user: Optional[UserModel] = Depends(get_current_user_optional)
+):
+    """Возвращает отзывы к товару с реакциями."""
+    from app.models.reviews import ReviewReaction as ReviewReactionModel
+    from sqlalchemy import func, literal
     
-    # Заполняем поля из пользователя для схемы
-    for r in reviews:
-        r.first_name = r.user.first_name
-        r.last_name = r.user.last_name
-        r.avatar_url = r.user.avatar_url
+    # Подзапросы для лайков и дизлайков отзыва
+    likes_sub = select(
+        ReviewReactionModel.review_id,
+        func.count(ReviewReactionModel.id).label("count")
+    ).where(ReviewReactionModel.reaction_type == 1).group_by(ReviewReactionModel.review_id).subquery()
+
+    dislikes_sub = select(
+        ReviewReactionModel.review_id,
+        func.count(ReviewReactionModel.id).label("count")
+    ).where(ReviewReactionModel.reaction_type == -1).group_by(ReviewReactionModel.review_id).subquery()
+
+    query = select(
+        ReviewsModel,
+        func.coalesce(likes_sub.c.count, 0).label("likes_count"),
+        func.coalesce(dislikes_sub.c.count, 0).label("dislikes_count")
+    ).outerjoin(likes_sub, ReviewsModel.id == likes_sub.c.review_id)\
+     .outerjoin(dislikes_sub, ReviewsModel.id == dislikes_sub.c.review_id)\
+     .where(ReviewsModel.product_id == product_id)\
+     .where(ReviewsModel.is_active == True)\
+     .options(joinedload(ReviewsModel.user))\
+     .order_by(ReviewsModel.comment_date.desc())
+
+    if current_user:
+        my_reaction_sub = select(
+            ReviewReactionModel.review_id,
+            ReviewReactionModel.reaction_type
+        ).where(ReviewReactionModel.user_id == current_user.id).subquery()
+        query = query.add_columns(func.coalesce(my_reaction_sub.c.reaction_type, None).label("my_reaction"))\
+                     .outerjoin(my_reaction_sub, ReviewsModel.id == my_reaction_sub.c.review_id)
+    else:
+        query = query.add_columns(literal(None).label("my_reaction"))
+
+    result = await db.execute(query)
+    
+    response = []
+    for row in result.all():
+        r = row[0]
+        review_dict = Review.model_validate(r).model_dump()
+        review_dict["first_name"] = r.user.first_name
+        review_dict["last_name"] = r.user.last_name
+        review_dict["avatar_url"] = r.user.avatar_url
+        review_dict["likes_count"] = row[1]
+        review_dict["dislikes_count"] = row[2]
+        review_dict["my_reaction"] = row[3]
+        response.append(review_dict)
         
-    return reviews
+    return response

@@ -84,6 +84,43 @@ export default function ProductDetailScreen({ route, navigation }) {
     }
   };
 
+  const handleReviewReaction = async (reviewId, type) => {
+    try {
+      const review = reviews.find(r => r.id === reviewId);
+      if (!review) return;
+
+      const newReaction = review.my_reaction === type ? 0 : type;
+      await productsApi.reactToReview(reviewId, newReaction);
+      
+      setReviews(prev => prev.map(r => {
+        if (r.id === reviewId) {
+          let likes = r.likes_count || 0;
+          let dislikes = r.dislikes_count || 0;
+          
+          if (r.my_reaction === 1) likes--;
+          if (r.my_reaction === -1) dislikes--;
+          
+          if (newReaction === 1) likes++;
+          if (newReaction === -1) dislikes++;
+          
+          return {
+            ...r,
+            my_reaction: newReaction,
+            likes_count: likes,
+            dislikes_count: dislikes
+          };
+        }
+        return r;
+      }));
+    } catch (err) {
+      if (err.response?.status === 401) {
+        Alert.alert('Авторизация', 'Войдите в аккаунт, чтобы ставить реакции');
+      } else {
+        Alert.alert('Ошибка', 'Не удалось отправить реакцию');
+      }
+    }
+  };
+
   if (loading || !product) {
     return (
       <View style={[styles.center, { backgroundColor: colors.background }]}>
@@ -118,9 +155,40 @@ export default function ProductDetailScreen({ route, navigation }) {
         </View>
       </View>
       <Text style={[styles.reviewComment, { color: colors.text }]}>{item.comment}</Text>
-      <Text style={[styles.reviewDate, { color: colors.textSecondary }]}>
-        {new Date(item.comment_date).toLocaleDateString()}
-      </Text>
+      <View style={styles.reviewFooter}>
+        <Text style={[styles.reviewDate, { color: colors.textSecondary }]}>
+          {new Date(item.comment_date).toLocaleDateString()}
+        </Text>
+        <View style={styles.commentReactions}>
+          <TouchableOpacity 
+            onPress={() => handleReviewReaction(item.id, 1)}
+            style={styles.commentReactionButton}
+          >
+            <Icon 
+              name={item.my_reaction === 1 ? "heart" : "heart-outline"} 
+              size={16} 
+              color={item.my_reaction === 1 ? colors.error : colors.textSecondary} 
+            />
+            <Text style={[styles.commentReactionText, { color: colors.textSecondary }]}>
+              {item.likes_count || 0}
+            </Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            onPress={() => handleReviewReaction(item.id, -1)}
+            style={[styles.commentReactionButton, { marginLeft: 15 }]}
+          >
+            <Icon 
+              name={item.my_reaction === -1 ? "thumbs-down" : "thumbs-down-outline"} 
+              size={16} 
+              color={item.my_reaction === -1 ? colors.primary : colors.textSecondary} 
+            />
+            <Text style={[styles.commentReactionText, { color: colors.textSecondary }]}>
+              {item.dislikes_count || 0}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
     </View>
   );
 
@@ -275,8 +343,12 @@ const styles = StyleSheet.create({
   reviewAvatar: { width: 30, height: 30, borderRadius: 15, marginRight: 10 },
   reviewUser: { fontWeight: 'bold' },
   stars: { flexDirection: 'row' },
-  reviewComment: { fontSize: 15, marginBottom: 5 },
-  reviewDate: { fontSize: 12 },
+  reviewComment: { fontSize: 15, marginBottom: 8 },
+  reviewDate: { fontSize: 12, flex: 1 },
+  reviewFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  commentReactions: { flexDirection: 'row', alignItems: 'center' },
+  commentReactionButton: { flexDirection: 'row', alignItems: 'center' },
+  commentReactionText: { marginLeft: 4, fontSize: 12 },
   emptyText: { textAlign: 'center', marginTop: 10 },
   addReview: { margin: 20, padding: 15, borderRadius: 12, borderWidth: 1 },
   addReviewTitle: { fontSize: 16, fontWeight: 'bold', marginBottom: 10 },

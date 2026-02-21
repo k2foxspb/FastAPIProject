@@ -25,3 +25,15 @@ class Reviews(Base):
 
     user: Mapped["User"] = relationship("User", back_populates="reviews")
     product: Mapped["Product"] = relationship("Product", back_populates="review")
+    reactions: Mapped[list["ReviewReaction"]] = relationship("ReviewReaction", back_populates="review", cascade="all, delete-orphan")
+
+class ReviewReaction(Base):
+    __tablename__ = "review_reactions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    review_id: Mapped[int] = mapped_column(ForeignKey("reviews.id"), nullable=False)
+    reaction_type: Mapped[int] = mapped_column(Integer, nullable=False)  # 1 for like, -1 for dislike
+
+    user: Mapped["User"] = relationship("User")
+    review: Mapped["Reviews"] = relationship("Reviews", back_populates="reactions")

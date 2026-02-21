@@ -152,6 +152,43 @@ export default function NewsDetailScreen({ route, navigation }) {
     ]);
   };
 
+  const handleCommentReaction = async (commentId, type) => {
+    try {
+      const comment = comments.find(c => c.id === commentId);
+      if (!comment) return;
+
+      const newReaction = comment.my_reaction === type ? 0 : type;
+      await newsApi.reactToNewsComment(commentId, newReaction);
+      
+      setComments(prev => prev.map(c => {
+        if (c.id === commentId) {
+          let likes = c.likes_count || 0;
+          let dislikes = c.dislikes_count || 0;
+          
+          if (c.my_reaction === 1) likes--;
+          if (c.my_reaction === -1) dislikes--;
+          
+          if (newReaction === 1) likes++;
+          if (newReaction === -1) dislikes++;
+          
+          return {
+            ...c,
+            my_reaction: newReaction,
+            likes_count: likes,
+            dislikes_count: dislikes
+          };
+        }
+        return c;
+      }));
+    } catch (err) {
+      if (err.response?.status === 401) {
+        Alert.alert('Авторизация', 'Войдите в аккаунт, чтобы ставить реакции');
+      } else {
+        Alert.alert('Ошибка', 'Не удалось отправить реакцию');
+      }
+    }
+  };
+
   const allImages = news.images && news.images.length > 0 
     ? news.images 
     : (news.image_url ? [{ image_url: news.image_url, id: 'main' }] : []);
@@ -269,6 +306,38 @@ export default function NewsDetailScreen({ route, navigation }) {
                   )}
                 </View>
                 <Text style={[styles.commentText, { color: colors.text }]}>{item.comment}</Text>
+                
+                <View style={styles.commentFooter}>
+                  <View style={styles.commentReactions}>
+                    <TouchableOpacity 
+                      onPress={() => handleCommentReaction(item.id, 1)}
+                      style={styles.commentReactionButton}
+                    >
+                      <Icon 
+                        name={item.my_reaction === 1 ? "heart" : "heart-outline"} 
+                        size={16} 
+                        color={item.my_reaction === 1 ? colors.error : colors.textSecondary} 
+                      />
+                      <Text style={[styles.commentReactionText, { color: colors.textSecondary }]}>
+                        {item.likes_count || 0}
+                      </Text>
+                    </TouchableOpacity>
+                    
+                    <TouchableOpacity 
+                      onPress={() => handleCommentReaction(item.id, -1)}
+                      style={[styles.commentReactionButton, { marginLeft: 15 }]}
+                    >
+                      <Icon 
+                        name={item.my_reaction === -1 ? "thumbs-down" : "thumbs-down-outline"} 
+                        size={16} 
+                        color={item.my_reaction === -1 ? colors.primary : colors.textSecondary} 
+                      />
+                      <Text style={[styles.commentReactionText, { color: colors.textSecondary }]}>
+                        {item.dislikes_count || 0}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
               </View>
             );
           })}
@@ -343,7 +412,11 @@ const styles = StyleSheet.create({
   commentAvatar: { width: 36, height: 36, borderRadius: 18, marginRight: 10 },
   commentUser: { fontWeight: 'bold', fontSize: 14 },
   commentDate: { fontSize: 11 },
-  commentText: { fontSize: 15, lineHeight: 20 },
+  commentText: { fontSize: 15, lineHeight: 20, marginBottom: 8 },
+  commentFooter: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center' },
+  commentReactions: { flexDirection: 'row', alignItems: 'center' },
+  commentReactionButton: { flexDirection: 'row', alignItems: 'center' },
+  commentReactionText: { marginLeft: 4, fontSize: 12 },
   addCommentContainer: { flexDirection: 'row', alignItems: 'center', marginTop: 20, padding: 10, borderRadius: 12, borderWidth: 1 },
   commentInput: { flex: 1, minHeight: 40, maxHeight: 100, paddingHorizontal: 12, paddingVertical: 8, fontSize: 15 },
   submitButton: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center', marginLeft: 10 },
