@@ -284,18 +284,18 @@ async def get_news_detail(
     db: AsyncSession = Depends(get_async_db),
     current_user: Optional[UserModel] = Depends(get_current_user_optional)
 ):
-    # Подзапросы для лайков и дизлайков
+    # Запросы для лайков и дизлайков
     likes_sub = select(
         func.count(NewsReactionModel.id)
-    ).where(NewsReactionModel.news_id == news_id, NewsReactionModel.reaction_type == 1).scalar_subquery()
+    ).where(NewsReactionModel.news_id == news_id, NewsReactionModel.reaction_type == 1)
 
     dislikes_sub = select(
         func.count(NewsReactionModel.id)
-    ).where(NewsReactionModel.news_id == news_id, NewsReactionModel.reaction_type == -1).scalar_subquery()
+    ).where(NewsReactionModel.news_id == news_id, NewsReactionModel.reaction_type == -1)
 
     my_reaction_sub = select(
         NewsReactionModel.reaction_type
-    ).where(NewsReactionModel.news_id == news_id, NewsReactionModel.user_id == current_user.id).scalar_subquery() if current_user else None
+    ).where(NewsReactionModel.news_id == news_id, NewsReactionModel.user_id == current_user.id) if current_user else None
 
     result = await db.execute(select(NewsModel).options(selectinload(NewsModel.images)).where(NewsModel.id == news_id))
     news = result.scalar_one_or_none()

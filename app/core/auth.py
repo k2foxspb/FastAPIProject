@@ -88,7 +88,6 @@ async def get_current_user(token: str = Depends(oauth2_scheme),
     """
     Проверяет JWT и возвращает пользователя из базы.
     """
-    print(f"DEBUG: get_current_user token={token[:15]}...")
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -97,25 +96,20 @@ async def get_current_user(token: str = Depends(oauth2_scheme),
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         email: str = payload.get("sub")
-        print(f"DEBUG: get_current_user payload sub={email}")
         if email is None:
-            print("DEBUG: email is None in payload")
             raise credentials_exception
     except jwt.ExpiredSignatureError:
-        print("DEBUG: Token has expired")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token has expired",
             headers={"WWW-Authenticate": "Bearer"},
         )
     except jwt.PyJWTError as e:
-        print(f"DEBUG: jwt.PyJWTError: {e}")
         raise credentials_exception
     result = await db.scalars(
         select(UserModel).where(UserModel.email == email, UserModel.is_active == True))
     user = result.first()
     if user is None:
-        print(f"DEBUG: User not found or inactive for email {email}")
         raise credentials_exception
     return user
 

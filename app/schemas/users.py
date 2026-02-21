@@ -175,7 +175,6 @@ class PhotoAlbum(PhotoAlbumBase):
             
             return cls(**data)
         except Exception as e:
-            print(f"DEBUG: Error in PhotoAlbum.model_validate: {e}")
             return cls(
                 id=int(getattr(obj, "id", 0)),
                 user_id=int(getattr(obj, "user_id", 0)),
@@ -280,7 +279,6 @@ class User(BaseModel):
                 
             return cls(**data)
         except Exception as e:
-            print(f"DEBUG: Error in User.model_validate: {e}")
             return cls(
                 id=int(getattr(obj, "id", 0)),
                 email=str(getattr(obj, "email", "error@validate.err")),

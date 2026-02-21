@@ -190,32 +190,7 @@ async def get_me(
     except Exception as _e:
         pass
     
-    try:
-        # Пытаемся валидировать вручную для отладки, если возникнет ошибка
-        print(f"DEBUG: Manual validation for user {user.email}")
-        validated_user = UserSchema.model_validate(user)
-        print(f"DEBUG: Manual validation success for {user.email}")
-        return validated_user
-    except Exception as e:
-        print(f"Validation error in get_me for {user.email}: {e}")
-        # Если Pydantic бросает ValidationError, мы увидим детали
-        import traceback
-        traceback.print_exc()
-        # Возвращаем словарь напрямую, чтобы избежать повторной валидации response_model
-        data = {
-            "id": int(getattr(user, "id", 0)),
-            "email": str(getattr(user, "email", "")),
-            "first_name": getattr(user, "first_name", None),
-            "last_name": getattr(user, "last_name", None),
-            "is_active": bool(getattr(user, "is_active", True)),
-            "role": str(getattr(user, "role", "buyer")),
-            "status": str(getattr(user, "status", "offline")),
-            "avatar_url": getattr(user, "avatar_url", None),
-            "avatar_preview_url": getattr(user, "avatar_preview_url", None),
-            "photos": [],
-            "albums": []
-        }
-        return data
+    return user
 
 
 @router.patch("/me", response_model=UserSchema)
@@ -867,22 +842,22 @@ async def get_photo(
     """
     from sqlalchemy import func
     
-    # Подзапросы для лайков и дизлайков
+    # Запросы для лайков и дизлайков
     likes_sub = select(
         func.count(UserPhotoReactionModel.id)
-    ).where(UserPhotoReactionModel.photo_id == photo_id, UserPhotoReactionModel.reaction_type == 1).scalar_subquery()
+    ).where(UserPhotoReactionModel.photo_id == photo_id, UserPhotoReactionModel.reaction_type == 1)
 
     dislikes_sub = select(
         func.count(UserPhotoReactionModel.id)
-    ).where(UserPhotoReactionModel.photo_id == photo_id, UserPhotoReactionModel.reaction_type == -1).scalar_subquery()
+    ).where(UserPhotoReactionModel.photo_id == photo_id, UserPhotoReactionModel.reaction_type == -1)
 
     my_reaction_sub = select(
         UserPhotoReactionModel.reaction_type
-    ).where(UserPhotoReactionModel.photo_id == photo_id, UserPhotoReactionModel.user_id == current_user.id).scalar_subquery()
+    ).where(UserPhotoReactionModel.photo_id == photo_id, UserPhotoReactionModel.user_id == current_user.id)
 
     comments_count_sub = select(
         func.count(UserPhotoCommentModel.id)
-    ).where(UserPhotoCommentModel.photo_id == photo_id).scalar_subquery()
+    ).where(UserPhotoCommentModel.photo_id == photo_id)
 
     result = await db.execute(select(UserPhotoModel).where(UserPhotoModel.id == photo_id))
     photo = result.scalar_one_or_none()
