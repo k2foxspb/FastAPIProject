@@ -1,4 +1,4 @@
-FROM nginx:1.25
+FROM cr.yandex/mirror/nginx:1.25
 
 RUN apt-get update && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
 

@@ -1,4 +1,4 @@
-FROM tiangolo/uvicorn-gunicorn:python3.11-slim
+FROM cr.yandex/mirror/tiangolo/uvicorn-gunicorn:python3.11-slim
 
 # устанавливаем переменные окружения
 ENV HOME=/home/fast \
