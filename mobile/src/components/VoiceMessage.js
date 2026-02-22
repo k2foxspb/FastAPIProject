@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Alert, Platform } from 'react-native';
-import { Audio } from 'expo-av';
+import { Audio, useAudioPlayer } from 'expo-audio';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
@@ -20,10 +20,6 @@ const resolveRemoteUri = (path) => {
 export default function VoiceMessage({ item, currentUserId }) {
   const { theme } = useTheme();
   const colors = themeConstants[theme];
-  const [sound, setSound] = useState(null);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [duration, setDuration] = useState(0);
-  const [position, setPosition] = useState(0);
   const [loading, setLoading] = useState(false);
   const [localUri, setLocalUri] = useState(null);
 
@@ -31,28 +27,36 @@ export default function VoiceMessage({ item, currentUserId }) {
   const fileName = item.file_path.split('/').pop();
   const localFileUri = `${cacheDirectory}${fileName}`;
 
+  const audioSource = localUri || remoteUri;
+  const player = useAudioPlayer(audioSource);
+
   useEffect(() => {
-    return sound ? () => { sound.unloadAsync(); } : undefined;
-  }, [sound]);
+    const checkLocal = async () => {
+      try {
+        const fileInfo = await getInfoAsync(localFileUri);
+        if (fileInfo.exists) {
+          setLocalUri(fileInfo.uri);
+        }
+      } catch (e) {
+        console.log('Error checking local audio file:', e);
+      }
+    };
+    checkLocal();
+  }, []);
 
   const loadAndPlay = async () => {
-    // Устанавливаем режим аудио с прерыванием других приложений
     await setPlaybackAudioMode();
 
-    if (sound) {
-      if (isPlaying) {
-        await sound.pauseAsync();
-      } else {
-        await sound.playAsync();
-      }
+    if (player.playing) {
+      player.pause();
       return;
     }
 
-    setLoading(true);
-    try {
-      let uri = localUri;
-      if (!uri) {
+    if (!localUri) {
+      setLoading(true);
+      try {
         const fileInfo = await getInfoAsync(localFileUri);
+        let uri = null;
         if (fileInfo.exists) {
           uri = fileInfo.uri;
         } else {
@@ -60,19 +64,14 @@ export default function VoiceMessage({ item, currentUserId }) {
           uri = downloadRes.uri;
         }
         setLocalUri(uri);
+      } catch (error) {
+        console.error('Error loading voice message:', error);
+      } finally {
+        setLoading(false);
       }
-
-      const { sound: newSound } = await Audio.Sound.createAsync(
-        { uri },
-        { shouldPlay: true },
-        onPlaybackStatusUpdate
-      );
-      setSound(newSound);
-    } catch (error) {
-      console.error('Error playing voice message:', error);
-    } finally {
-      setLoading(false);
     }
+
+    player.play();
   };
 
   const handleDownload = async () => {
@@ -110,50 +109,10 @@ export default function VoiceMessage({ item, currentUserId }) {
         }
       }
     } catch (error) {
-      console.error('Error downloading voice message:', error);
-      Alert.alert('Ошибка', 'Не удалось сохранить файл');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleShare = async () => {
-    setLoading(true);
-    try {
-      let uri = localUri;
-      if (!uri) {
-        const fileInfo = await getInfoAsync(localFileUri);
-        if (fileInfo.exists) {
-          uri = fileInfo.uri;
-        } else {
-          const downloadRes = await downloadAsync(remoteUri, localFileUri);
-          uri = downloadRes.uri;
-        }
-        setLocalUri(uri);
-      }
-
-      if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(uri);
-      } else {
-        Alert.alert('Ошибка', 'Функция "Поделиться" недоступна');
-      }
-    } catch (error) {
       console.error('Error sharing voice message:', error);
       Alert.alert('Ошибка', 'Не удалось скачать файл');
     } finally {
       setLoading(false);
-    }
-  };
-
-  const onPlaybackStatusUpdate = (status) => {
-    if (status.isLoaded) {
-      setPosition(status.positionMillis);
-      setDuration(status.durationMillis);
-      setIsPlaying(status.isPlaying);
-      if (status.didJustFinish) {
-        setIsPlaying(false);
-        setPosition(0);
-      }
     }
   };
 
@@ -164,6 +123,9 @@ export default function VoiceMessage({ item, currentUserId }) {
     return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
   };
 
+  const position = player.currentTime || 0;
+  const duration = player.duration || 0;
+  const isPlaying = player.playing;
   const progress = duration > 0 ? (position / duration) * 100 : 0;
   const isReceived = item.sender_id !== currentUserId;
 

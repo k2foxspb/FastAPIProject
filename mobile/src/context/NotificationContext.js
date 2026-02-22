@@ -1,8 +1,10 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { Vibration, AppState } from 'react-native';
+import { createAudioPlayer } from 'expo-audio';
 import { API_BASE_URL } from '../constants';
 import { usersApi, chatApi } from '../api';
 import { storage } from '../utils/storage';
+import { setNotificationAudioMode } from '../utils/audioSettings';
 
 const NotificationContext = createContext();
 
@@ -65,6 +67,16 @@ export const NotificationProvider = ({ children }) => {
     }
   };
 
+  const playNotificationSound = async () => {
+    try {
+      await setNotificationAudioMode();
+      const player = createAudioPlayer(require('../../assets/sounds/message.mp3'));
+      player.play();
+    } catch (error) {
+      console.log('Error playing notification sound', error);
+    }
+  };
+
   const connect = (token) => {
     if (!token || token === 'null' || token === 'undefined') {
       console.log('Skipping WS connect: no token');
@@ -110,7 +122,7 @@ export const NotificationProvider = ({ children }) => {
           const senderId = payload.data.sender_id;
           // Если приложение открыто, но мы НЕ в чате с этим пользователем
           if (appState.current === 'active' && activeChatId !== senderId) {
-            Vibration.vibrate(500); // Вибро при открытом приложении
+            playNotificationSound();
           }
         }
 

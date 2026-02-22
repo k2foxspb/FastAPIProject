@@ -42,7 +42,6 @@ async def send_fcm_notification(
         fcm_data["sender_id"] = str(sender_id)
     
     fcm_data["type"] = "new_message"
-    fcm_data["click_action"] = "FLUTTER_NOTIFICATION_CLICK"
 
     # Создание объекта уведомления
     notification = messaging.Notification(
@@ -50,12 +49,14 @@ async def send_fcm_notification(
         body=body,
     )
 
-    # Настройки для Android (каналы, теги)
-    tag = f"user_msg_{sender_id}" if sender_id else "general_msg"
+    # Настройки для Android (каналы, группировка)
+    # Используем group вместо tag, чтобы сообщения от одного пользователя 
+    # не заменяли друг друга, а группировались (стакались) в шторке.
+    group_key = f"user_msg_{sender_id}" if sender_id else "general_msg"
     android_config = messaging.AndroidConfig(
         priority='high',
         notification=messaging.AndroidNotification(
-            tag=tag,
+            group=group_key,
             channel_id="messages",
             sound="default"
         )

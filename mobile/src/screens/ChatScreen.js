@@ -12,7 +12,7 @@ import { uploadManager } from '../utils/uploadManager';
 import CachedMedia from '../components/CachedMedia';
 import VoiceMessage from '../components/VoiceMessage';
 import FileMessage from '../components/FileMessage';
-import { Audio } from 'expo-av';
+import { Audio, useAudioRecorder, useAudioPlayer, RecordingPresets, AudioModule, requestRecordingPermissionsAsync, createAudioPlayer } from 'expo-audio';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
@@ -24,6 +24,7 @@ export default function ChatScreen({ route, navigation }) {
   const insets = useSafeAreaInsets();
   const { theme } = useTheme();
   const colors = themeConstants[theme];
+  const { setActiveChatId, fetchDialogs } = useNotifications();
   const { userId, userName } = route.params;
   const [messages, setMessages] = useState([]);
   const [inputText, setInputText] = useState('');
@@ -47,18 +48,16 @@ export default function ChatScreen({ route, navigation }) {
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState([]);
   const [isRecording, setIsRecording] = useState(false);
-  const [recording, setRecording] = useState(null);
   const [recordedUri, setRecordedUri] = useState(null);
   const [recordingDuration, setRecordingDuration] = useState(0);
   const recordingInterval = useRef(null);
-  const recordingRef = useRef(null);
   const isStartingRecording = useRef(false);
   const stopRequested = useRef(false);
   const LIMIT = 15;
   const ws = useRef(null);
   const videoPlayerRef = useRef(null);
   const chatFlatListRef = useRef(null);
-  const { fetchDialogs, currentUserId, setActiveChatId } = useNotifications();
+  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const screenWidth = Dimensions.get('window').width;
   const [currentMediaIndex, setCurrentMediaIndex] = useState(0);
 
@@ -66,16 +65,8 @@ export default function ChatScreen({ route, navigation }) {
   const playMessageSound = async () => {
     try {
       await setNotificationAudioMode();
-      const { sound } = await Audio.Sound.createAsync(
-        require('../../assets/sounds/message.mp3')
-      );
-      await sound.playAsync();
-      // Выгружаем звук из памяти после воспроизведения
-      sound.setOnPlaybackStatusUpdate((status) => {
-        if (status.didJustFinish) {
-          sound.unloadAsync();
-        }
-      });
+      const player = createAudioPlayer(require('../../assets/sounds/message.mp3'));
+      player.play();
     } catch (error) {
       console.log('Error playing message sound', error);
     }
@@ -85,16 +76,15 @@ export default function ChatScreen({ route, navigation }) {
     setActiveChatId(userId);
     return () => {
       setActiveChatId(null);
-      if (recordingRef.current) {
-        recordingRef.current.stopAndUnloadAsync().catch(() => {});
-        recordingRef.current = null;
+      if (recorder.isRecording) {
+        recorder.stop().catch(() => {});
       }
       if (recordingInterval.current) {
         clearInterval(recordingInterval.current);
         recordingInterval.current = null;
       }
     };
-  }, [userId]);
+  }, [userId, recorder]);
 
   useEffect(() => {
     const initChat = async () => {
@@ -147,24 +137,26 @@ export default function ChatScreen({ route, navigation }) {
         try {
           const message = JSON.parse(e.data);
           // Check if message is defined
-          if (!message) return;
+          if (!message || typeof message !== 'object') return;
           
           console.log('[Chat WS] Received message:', message.id, message.message_type);
           
           if (message.type === 'message_deleted') {
-            setMessages(prev => prev.filter(m => m.id !== message.message_id));
+            if (message.message_id) {
+              setMessages(prev => prev.filter(m => m.id !== message.message_id));
+            }
             return;
           }
 
           if (message.type === 'messages_read') {
             // Обновляем статус прочтения у наших сообщений
             setMessages(prev => prev.map(m => 
-              (m.sender_id === currentUserId || m.sender_id === currentUserIdLocal) ? { ...m, is_read: true } : m
+              (m.sender_id && m.sender_id === currentUserIdLocal) ? { ...m, is_read: true } : m
             ));
             return;
           }
           
-          if (message.sender_id === userId || (message.sender_id !== userId && message.receiver_id === userId)) {
+          if (message.sender_id && (message.sender_id === userId || (message.receiver_id === userId))) {
             // Если мы в этом чате, то сообщение от собеседника или наше подтверждение
             setMessages(prev => {
               if (prev.find(m => m.id === message.id)) return prev;
@@ -563,19 +555,11 @@ export default function ChatScreen({ route, navigation }) {
       isStartingRecording.current = true;
       stopRequested.current = false;
       
-      // ГАРАНТИРОВАННО выгружаем ВСЁ старое перед началом новой записи
-      if (recordingRef.current) {
-        try {
-          await recordingRef.current.stopAndUnloadAsync();
-        } catch (e) {}
-        recordingRef.current = null;
-      }
-      
       // Визуально меняем состояние сразу, чтобы кнопка реагировала мгновенно
       setIsRecording(true);
       setRecordingDuration(0);
 
-      const permission = await Audio.requestPermissionsAsync();
+      const permission = await requestRecordingPermissionsAsync();
       if (permission.status === "granted") {
         // Проверяем, не отпустил ли пользователь кнопку пока мы ждали пермишенов
         if (stopRequested.current) {
@@ -585,21 +569,16 @@ export default function ChatScreen({ route, navigation }) {
         }
 
         await setRecordingAudioMode();
-
-        const { recording: newRecording } = await Audio.Recording.createAsync(
-          Audio.RecordingOptionsPresets.HIGH_QUALITY
-        );
         
-        // Снова проверяем, не отпустил ли пользователь кнопку пока создавался объект
+        // Снова проверяем, не отпустил ли пользователь кнопку
         if (stopRequested.current) {
-          await newRecording.stopAndUnloadAsync().catch(() => {});
           setIsRecording(false);
           isStartingRecording.current = false;
           return;
         }
 
-        recordingRef.current = newRecording;
-        setRecording(newRecording);
+        await recorder.prepareToRecordAsync();
+        await recorder.record();
         
         recordingInterval.current = setInterval(() => {
           setRecordingDuration(prev => prev + 100);
@@ -611,8 +590,6 @@ export default function ChatScreen({ route, navigation }) {
     } catch (err) {
       console.error('Failed to start recording', err);
       setIsRecording(false);
-      setRecording(null);
-      recordingRef.current = null;
     } finally {
       isStartingRecording.current = false;
     }
@@ -630,33 +607,22 @@ export default function ChatScreen({ route, navigation }) {
       recordingInterval.current = null;
     }
 
-    // Если мы всё еще в процессе запуска (Audio.Recording.createAsync еще не вернул результат)
-    // то startRecording сам увидит stopRequested.current и остановит запись.
+    // Если мы всё еще в процессе запуска
     if (isStartingRecording.current) {
       console.log('[ChatScreen] stopRecording called while still starting');
       return;
     }
 
-    const currentRecording = recordingRef.current || recording;
-
-    if (!currentRecording) {
-      return;
-    }
-    
     try {
-      const status = await currentRecording.getStatusAsync();
-      if (status.canRecord) {
-        await currentRecording.stopAndUnloadAsync();
-        const uri = currentRecording.getURI();
+      if (recorder.isRecording) {
+        await recorder.stop();
+        const uri = recorder.uri;
         if (uri) {
           setRecordedUri(uri);
         }
       }
     } catch (err) {
       console.error('Failed to stop recording', err);
-    } finally {
-      setRecording(null);
-      recordingRef.current = null;
     }
   };
 
@@ -739,7 +705,7 @@ export default function ChatScreen({ route, navigation }) {
     const isVoice = item.message_type === 'voice';
     const isFile = item.message_type === 'file';
     const isReceived = item.sender_id === userId;
-    const isOwner = item.sender_id === (currentUserId || currentUserIdLocal);
+    const isOwner = item.sender_id === currentUserIdLocal;
     const isSelected = selectedIds.includes(item.id);
 
     // Группировка: если предыдущее сообщение от того же отправителя и разница во времени менее 2 минут

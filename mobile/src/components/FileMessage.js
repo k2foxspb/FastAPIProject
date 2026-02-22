@@ -9,26 +9,36 @@ import { theme as themeConstants } from '../constants/theme';
 import { API_BASE_URL } from '../constants';
 
 const getMimeType = (fileName) => {
-  const extension = fileName.split('.').pop().toLowerCase();
-  const mimeTypes = {
-    'pdf': 'application/pdf',
-    'doc': 'application/msword',
-    'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    'xls': 'application/vnd.ms-excel',
-    'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    'ppt': 'application/vnd.ms-powerpoint',
-    'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-    'txt': 'text/plain',
-    'jpg': 'image/jpeg',
-    'jpeg': 'image/jpeg',
-    'png': 'image/png',
-    'gif': 'image/gif',
-    'zip': 'application/zip',
-    'rar': 'application/x-rar-compressed',
-    'mp3': 'audio/mpeg',
-    'mp4': 'video/mp4',
-  };
-  return mimeTypes[extension] || '*/*';
+  try {
+    if (!fileName || typeof fileName !== 'string') return '*/*';
+    const parts = fileName.split('.');
+    if (parts.length < 2) return '*/*';
+    const extension = parts.pop();
+    if (!extension) return '*/*';
+    const extensionLower = extension.toLowerCase();
+    const mimeTypes = {
+      'pdf': 'application/pdf',
+      'doc': 'application/msword',
+      'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'xls': 'application/vnd.ms-excel',
+      'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'ppt': 'application/vnd.ms-powerpoint',
+      'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      'txt': 'text/plain',
+      'jpg': 'image/jpeg',
+      'jpeg': 'image/jpeg',
+      'png': 'image/png',
+      'gif': 'image/gif',
+      'zip': 'application/zip',
+      'rar': 'application/x-rar-compressed',
+      'mp3': 'audio/mpeg',
+      'mp4': 'video/mp4',
+    };
+    return mimeTypes[extensionLower] || '*/*';
+  } catch (err) {
+    console.error('[FileMessage] getMimeType error:', err);
+    return '*/*';
+  }
 };
 
 const resolveRemoteUri = (path) => {
@@ -45,10 +55,14 @@ export default function FileMessage({ item, currentUserId }) {
   const [loading, setLoading] = useState(false);
 
   const remoteUri = resolveRemoteUri(item.file_path);
-  const fileName = item.file_path.split('/').pop();
-  const localFileUri = `${documentDirectory}${fileName}`;
+  const fileName = item.file_path ? item.file_path.split('/').pop() : 'Без названия';
+  const localFileUri = item.file_path ? `${documentDirectory}${fileName}` : null;
 
   const handleDownloadAndOpen = async () => {
+    if (!item.file_path || !localFileUri) {
+      Alert.alert('Ошибка', 'Путь к файлу отсутствует');
+      return;
+    }
     setLoading(true);
     try {
       const fileInfo = await getInfoAsync(localFileUri);
@@ -88,6 +102,10 @@ export default function FileMessage({ item, currentUserId }) {
   };
 
   const handleDownload = async () => {
+    if (!item.file_path || !localFileUri) {
+      Alert.alert('Ошибка', 'Путь к файлу отсутствует');
+      return;
+    }
     setLoading(true);
     try {
       const fileInfo = await getInfoAsync(localFileUri);
@@ -128,6 +146,10 @@ export default function FileMessage({ item, currentUserId }) {
   };
 
   const handleShare = async () => {
+    if (!item.file_path || !localFileUri) {
+      Alert.alert('Ошибка', 'Путь к файлу отсутствует');
+      return;
+    }
     setLoading(true);
     try {
       const fileInfo = await getInfoAsync(localFileUri);

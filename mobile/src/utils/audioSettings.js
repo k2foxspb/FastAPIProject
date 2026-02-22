@@ -1,4 +1,4 @@
-import { Audio, InterruptionModeIOS, InterruptionModeAndroid } from 'expo-av';
+import { setAudioModeAsync } from 'expo-audio';
 
 /**
  * Устанавливает режим аудио для воспроизведения медиа.
@@ -6,14 +6,12 @@ import { Audio, InterruptionModeIOS, InterruptionModeAndroid } from 'expo-av';
  */
 export const setPlaybackAudioMode = async () => {
   try {
-    await Audio.setAudioModeAsync({
-      allowsRecordingIOS: false,
-      interruptionModeIOS: InterruptionModeIOS.DoNotMix,
-      playsInSilentModeIOS: true,
-      shouldDuckAndroid: false,
-      interruptionModeAndroid: InterruptionModeAndroid.DoNotMix,
-      playThroughEarpieceAndroid: false,
-      staysActiveInBackground: false,
+    await setAudioModeAsync({
+      allowsRecording: false,
+      playsInSilentMode: true,
+      interruptionMode: 'doNotMix',
+      shouldPlayInBackground: false,
+      shouldRouteThroughEarpiece: false,
     });
   } catch (e) {
     console.log('[AudioSettings] Error setting playback mode:', e);
@@ -25,14 +23,12 @@ export const setPlaybackAudioMode = async () => {
  */
 export const setRecordingAudioMode = async () => {
   try {
-    await Audio.setAudioModeAsync({
-      allowsRecordingIOS: true,
-      interruptionModeIOS: InterruptionModeIOS.DoNotMix,
-      playsInSilentModeIOS: true,
-      shouldDuckAndroid: false,
-      interruptionModeAndroid: InterruptionModeAndroid.DoNotMix,
-      playThroughEarpieceAndroid: false,
-      staysActiveInBackground: false,
+    await setAudioModeAsync({
+      allowsRecording: true,
+      playsInSilentMode: true,
+      interruptionMode: 'doNotMix',
+      shouldPlayInBackground: false,
+      shouldRouteThroughEarpiece: false,
     });
   } catch (e) {
     console.log('[AudioSettings] Error setting recording mode:', e);
@@ -45,14 +41,12 @@ export const setRecordingAudioMode = async () => {
  */
 export const setNotificationAudioMode = async () => {
   try {
-    await Audio.setAudioModeAsync({
-      allowsRecordingIOS: false,
-      interruptionModeIOS: InterruptionModeIOS.DuckOthers,
-      playsInSilentModeIOS: true,
-      shouldDuckAndroid: true,
-      interruptionModeAndroid: InterruptionModeAndroid.DuckOthers,
-      playThroughEarpieceAndroid: false,
-      staysActiveInBackground: false,
+    await setAudioModeAsync({
+      allowsRecording: false,
+      playsInSilentMode: true,
+      interruptionMode: 'duckOthers',
+      shouldPlayInBackground: false,
+      shouldRouteThroughEarpiece: false,
     });
   } catch (e) {
     console.log('[AudioSettings] Error setting notification mode:', e);

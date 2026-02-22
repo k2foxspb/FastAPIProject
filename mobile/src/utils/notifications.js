@@ -3,6 +3,7 @@ import messaging from '@react-native-firebase/messaging';
 import { Alert, Platform } from 'react-native';
 import { usersApi } from '../api';
 import { firebaseApp } from './firebaseInit';
+import { navigationRef } from '../navigation/NavigationService';
 
 // Ensure Firebase is initialized before accessing messaging()
 const getMessaging = () => {
@@ -56,10 +57,7 @@ export function setupCloudMessaging() {
     // Обработка уведомлений, когда приложение на переднем плане
     const unsubscribe = msg.onMessage(async remoteMessage => {
       console.log('Foreground message received:', remoteMessage);
-      Alert.alert(
-        remoteMessage.notification?.title || 'Новое уведомление',
-        remoteMessage.notification?.body || ''
-      );
+      // На переднем плане не показываем системные уведомления — UI и звук обрабатываются через WS/NotificationContext
     });
 
     // Обработка обновления токена
@@ -68,17 +66,40 @@ export function setupCloudMessaging() {
       updateServerFcmToken(token);
     });
 
+    // Унифицированная функция перехода в нужный чат по уведомлению
+    const openChatFromNotification = (remoteMessage) => {
+      try {
+        const data = remoteMessage?.data || {};
+        const senderIdRaw = data.sender_id || data.senderId || data.user_id || data.userId;
+        const senderId = senderIdRaw ? parseInt(senderIdRaw, 10) : null;
+        const senderName = data.sender_name || data.senderName || undefined;
+        if (senderId && navigationRef?.isReady?.()) {
+          navigationRef.navigate('Messages', {
+            screen: 'Chat',
+            params: { userId: senderId, userName: senderName }
+          });
+        }
+      } catch (e) {
+        console.log('openChatFromNotification error:', e);
+      }
+    };
+
     // Обработка клика по уведомлению (когда приложение было в фоне)
     msg.onNotificationOpenedApp(remoteMessage => {
-      console.log('Notification caused app to open from background state:', remoteMessage.notification);
+      console.log('Notification opened from background:', remoteMessage?.notification);
+      openChatFromNotification(remoteMessage);
     });
 
     // Обработка уведомления, которое открыло приложение из закрытого состояния
-    msg.getInitialNotification().then(remoteMessage => {
-      if (remoteMessage) {
-        console.log('Notification caused app to open from quit state:', remoteMessage.notification);
-      }
-    }).catch(err => console.error('getInitialNotification failed:', err));
+    msg.getInitialNotification()
+      .then(remoteMessage => {
+        if (remoteMessage) {
+          console.log('Notification opened app from quit state:', remoteMessage?.notification);
+          // Небольшая задержка, чтобы навигация успела инициализироваться
+          setTimeout(() => openChatFromNotification(remoteMessage), 500);
+        }
+      })
+      .catch(err => console.error('getInitialNotification failed:', err));
 
     return unsubscribe;
   } catch (error) {

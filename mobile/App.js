@@ -5,6 +5,7 @@ import * as Linking from 'expo-linking';
 import { Alert } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import TabNavigator from './src/navigation/TabNavigator';
+import { navigationRef } from './src/navigation/NavigationService';
 import { requestUserPermission, setupCloudMessaging, updateServerFcmToken } from './src/utils/notifications';
 import { NotificationProvider, useNotifications } from './src/context/NotificationContext.js';
 import { ThemeProvider, useTheme } from './src/context/ThemeContext.js';
@@ -20,18 +21,31 @@ function AppContent() {
     prefixes: [Linking.createURL('/'), 'fokinfun://'],
     config: {
       screens: {
-        Main: {
+        Feed: {
           screens: {
-            Profile: {
-              screens: {
-                Login: 'verify-email',
-              },
-            },
+            NewsDetail: 'news/:newsId',
+            ProductDetail: 'product/:productId',
+          },
+        },
+        Messages: {
+          screens: {
+            Chat: 'chat/:userId/:userName',
+          },
+        },
+        Users: {
+          screens: {
+            UserProfile: 'user/:userId',
+          },
+        },
+        Profile: {
+          screens: {
+            Login: 'login',
+            Register: 'register',
           },
         },
       },
     },
-    async subscribe(listener) {
+    subscribe(listener) {
       const onReceiveURL = ({ url }) => {
         console.log('[Linking] Received URL:', url);
         const { queryParams } = Linking.parse(url);
@@ -73,7 +87,7 @@ function AppContent() {
   }, [connect]);
 
   return (
-    <NavigationContainer linking={linking}>
+    <NavigationContainer linking={linking} ref={navigationRef}>
       <StatusBar style={theme === 'dark' ? 'light' : 'dark'} backgroundColor={theme === 'dark' ? '#000000' : '#FFFFFF'} />
       <TabNavigator />
     </NavigationContainer>
