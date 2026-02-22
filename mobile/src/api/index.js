@@ -38,7 +38,11 @@ export const usersApi = {
   // Пользователи
   getUsers: (search) => api.get('/users/', { params: { search } }),
   getUser: (id) => api.get(`/users/${id}`),
-  register: (userData) => api.post('/users/', userData),
+  register: (formData) => api.post('/users/', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  }),
 
   // Альбомы
   getAlbums: () => api.get('/users/albums'),

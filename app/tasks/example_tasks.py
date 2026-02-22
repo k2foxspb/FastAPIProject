@@ -72,3 +72,38 @@ def process_image(image_path: str):
     time.sleep(10)  # Имитация обработки
     print(f"Image processed: {image_path}")
     return {"status": "processed", "path": image_path}
+
+@celery_app.task(name="delete_inactive_user_task")
+def delete_inactive_user_task(user_id: int):
+    """Задача для удаления неактивного пользователя через 15 минут."""
+    from app.database import async_session_maker
+    from app.models.users import User as UserModel
+    from sqlalchemy import select, delete
+    import asyncio
+
+    async def _check_and_delete():
+        async with async_session_maker() as db:
+            result = await db.execute(select(UserModel).where(UserModel.id == user_id))
+            user = result.scalar_one_or_none()
+            if user:
+                if not user.is_active:
+                    logger.info(f"Deleting inactive user {user.email} (ID: {user_id}) after 15 minutes timeout")
+                    await db.execute(delete(UserModel).where(UserModel.id == user_id))
+                    await db.commit()
+                else:
+                    logger.info(f"User {user.email} (ID: {user_id}) is active, skipping deletion")
+            else:
+                logger.info(f"User ID {user_id} not found, skipping deletion")
+
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            # Это может случится если celery использует какой-то пул потоков с asyncio (редко)
+            import threading
+            t = threading.Thread(target=lambda: asyncio.run(_check_and_delete()))
+            t.start()
+            t.join()
+        else:
+            asyncio.run(_check_and_delete())
+    except RuntimeError:
+        asyncio.run(_check_and_delete())

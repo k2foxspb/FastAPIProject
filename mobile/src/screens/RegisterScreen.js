@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, StyleSheet, TouchableOpacity, Alert, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
+import { View, Text, TextInput, StyleSheet, TouchableOpacity, Alert, KeyboardAvoidingView, Platform, ScrollView, Image } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
+import { Ionicons as Icon } from '@expo/vector-icons';
 import { usersApi } from '../api';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
@@ -12,8 +14,27 @@ export default function RegisterScreen({ navigation }) {
   const [password, setPassword] = useState('');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
-  const [role, setRole] = useState('buyer'); // 'buyer' or 'seller'
+  const [avatar, setAvatar] = useState(null);
   const [loading, setLoading] = useState(false);
+
+  const pickImage = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Ошибка', 'Нужен доступ к галерее для выбора аватарки');
+      return;
+    }
+
+    let result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.7,
+    });
+
+    if (!result.canceled) {
+      setAvatar(result.assets[0]);
+    }
+  };
 
   const onRegister = async () => {
     if (!email || !password || !firstName || !lastName) {
@@ -23,13 +44,27 @@ export default function RegisterScreen({ navigation }) {
     
     try {
       setLoading(true);
-      await usersApi.register({
-        email,
-        password,
-        first_name: firstName,
-        last_name: lastName,
-        role
-      });
+      const formData = new FormData();
+      formData.append('email', email);
+      formData.append('password', password);
+      formData.append('first_name', firstName);
+      formData.append('last_name', lastName);
+      formData.append('role', 'buyer');
+
+      if (avatar) {
+        const uri = avatar.uri;
+        const filename = uri.split('/').pop() || 'avatar.jpg';
+        const match = /\.(\w+)$/.exec(filename);
+        const type = match ? `image/${match[1]}` : `image/jpeg`;
+        
+        formData.append('avatar', {
+          uri: Platform.OS === 'ios' ? uri.replace('file://', '') : uri,
+          name: filename,
+          type,
+        });
+      }
+
+      await usersApi.register(formData);
       
       Alert.alert(
         'Успех',
@@ -88,29 +123,26 @@ export default function RegisterScreen({ navigation }) {
             onChangeText={setLastName}
           />
 
-          <View style={styles.roleContainer}>
-            <Text style={[styles.label, { color: colors.text }]}>Я хочу быть:</Text>
-            <View style={styles.roleButtons}>
-              <TouchableOpacity 
-                style={[
-                  styles.roleButton, 
-                  role === 'buyer' ? { backgroundColor: colors.primary } : { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }
-                ]}
-                onPress={() => setRole('buyer')}
-              >
-                <Text style={[styles.roleButtonText, role === 'buyer' ? { color: '#fff' } : { color: colors.text }]}>Покупателем</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity 
-                style={[
-                  styles.roleButton, 
-                  role === 'seller' ? { backgroundColor: colors.primary } : { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }
-                ]}
-                onPress={() => setRole('seller')}
-              >
-                <Text style={[styles.roleButtonText, role === 'seller' ? { color: '#fff' } : { color: colors.text }]}>Продавцом</Text>
-              </TouchableOpacity>
-            </View>
+          <View style={styles.avatarContainer}>
+            <Text style={[styles.label, { color: colors.text }]}>Аватарка</Text>
+            <TouchableOpacity 
+              style={[styles.avatarPicker, { backgroundColor: colors.surface, borderColor: colors.border }]} 
+              onPress={pickImage}
+            >
+              {avatar ? (
+                <Image source={{ uri: avatar.uri }} style={styles.avatarPreview} />
+              ) : (
+                <View style={styles.avatarPlaceholder}>
+                  <Icon name="camera-outline" size={40} color={colors.textSecondary} />
+                  <Text style={{ color: colors.textSecondary, marginTop: 8 }}>Выбрать фото</Text>
+                </View>
+              )}
+              {avatar && (
+                <TouchableOpacity style={styles.removeAvatar} onPress={() => setAvatar(null)}>
+                  <Icon name="close-circle" size={24} color={colors.error} />
+                </TouchableOpacity>
+              )}
+            </TouchableOpacity>
           </View>
 
           <TouchableOpacity 
@@ -139,11 +171,12 @@ const styles = StyleSheet.create({
   inner: { flex: 1, justifyContent: 'center', padding: 24 },
   title: { fontSize: 28, fontWeight: 'bold', marginBottom: 32, textAlign: 'center' },
   input: { height: 52, borderWidth: 1, borderRadius: 12, paddingHorizontal: 16, marginBottom: 16, fontSize: 16 },
-  roleContainer: { marginBottom: 24 },
-  label: { fontSize: 16, marginBottom: 12, fontWeight: '500' },
-  roleButtons: { flexDirection: 'row', justifyContent: 'space-between' },
-  roleButton: { flex: 0.48, height: 44, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
-  roleButtonText: { fontWeight: '600' },
+  avatarContainer: { marginBottom: 24, alignItems: 'center' },
+  avatarPicker: { width: 120, height: 120, borderRadius: 60, borderWidth: 1, borderStyle: 'dashed', justifyContent: 'center', alignItems: 'center', overflow: 'hidden', position: 'relative' },
+  avatarPreview: { width: '100%', height: '100%' },
+  avatarPlaceholder: { alignItems: 'center' },
+  removeAvatar: { position: 'absolute', top: 0, right: 0, backgroundColor: '#fff', borderRadius: 12 },
+  label: { fontSize: 16, marginBottom: 12, fontWeight: '500', alignSelf: 'flex-start' },
   button: { height: 52, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginTop: 8, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4 },
   buttonDisabled: { opacity: 0.7 },
   buttonText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },

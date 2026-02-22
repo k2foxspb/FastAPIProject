@@ -37,7 +37,7 @@ from app.core.auth import (
 from app.api.routers.notifications import manager as notification_manager
 from app.core.fcm import send_fcm_notification
 from app.utils.emails import send_verification_email
-from app.tasks.example_tasks import send_verification_email_task
+from app.tasks.example_tasks import send_verification_email_task, delete_inactive_user_task
 
 import os
 import uuid
@@ -274,14 +274,24 @@ async def update_me(
 
 @router.post("/", response_model=UserSchema, status_code=status.HTTP_201_CREATED)
 @router.post("", response_model=UserSchema, status_code=status.HTTP_201_CREATED, include_in_schema=False)
-async def create_user(user: UserCreate, background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_async_db)):
+async def create_user(
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_async_db),
+    email: str = Form(...),
+    password: str = Form(...),
+    first_name: str = Form(...),
+    last_name: str = Form(...),
+    role: str = Form("buyer"),
+    avatar: UploadFile = File(None)
+):
     """
-    Регистрирует нового пользователя с ролью 'buyer' или 'seller'.
+    Регистрирует нового пользователя. 
     Если пользователь с таким email уже существует и не активен, повторно отправляет письмо для подтверждения.
+    Через 15 минут неактивный пользователь будет удален.
     """
-    print(f"DEBUG: create_user called for email: {user.email}")
+    print(f"DEBUG: create_user called for email: {email}")
     # Проверка существования пользователя
-    result = await db.execute(select(UserModel).where(UserModel.email == user.email))
+    result = await db.execute(select(UserModel).where(UserModel.email == email))
     existing_user = result.scalar_one_or_none()
 
     if existing_user:
@@ -294,13 +304,8 @@ async def create_user(user: UserCreate, background_tasks: BackgroundTasks, db: A
                 send_verification_email_task.delay(existing_user.email, verification_token)
             except Exception as e:
                 print(f"Error sending email task for existing user: {e}")
-                # Если Celery упал, отправим асинхронно через FastAPI как запасной вариант
                 background_tasks.add_task(send_verification_email, existing_user.email, verification_token)
             
-            # Возвращаем существующего пользователя с 200 OK
-            # Но так как у нас status_code=201_CREATED захардкожен в декораторе, 
-            # мы можем либо сменить декоратор, либо оставить как есть. 
-            # FastAPI позволяет вернуть Response для переопределения статуса.
             from fastapi.responses import JSONResponse
             from fastapi.encoders import jsonable_encoder
             return JSONResponse(
@@ -315,18 +320,28 @@ async def create_user(user: UserCreate, background_tasks: BackgroundTasks, db: A
                             detail="Email already registered")
 
     # Запрещаем регистрацию как owner или admin через обычный эндпоинт
-    if user.role in ["owner", "admin"]:
+    if role in ["owner", "admin"]:
          raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                             detail="Cannot register as owner or admin via this endpoint")
 
-    # Создание объекта пользователя с хешированным паролем
-    # is_active=False по умолчанию в модели
+    # Сохранение аватарки если она есть
+    avatar_url = None
+    avatar_preview_url = None
+    if avatar:
+        try:
+            avatar_url, avatar_preview_url = await save_user_photo(avatar)
+        except Exception as e:
+            print(f"Error saving registration avatar: {e}")
+
+    # Создание объекта пользователя
     db_user = UserModel(
-        email=user.email,
-        hashed_password=hash_password(user.password),
-        first_name=user.first_name,
-        last_name=user.last_name,
-        role=user.role
+        email=email,
+        hashed_password=hash_password(password),
+        first_name=first_name,
+        last_name=last_name,
+        role=role,
+        avatar_url=avatar_url,
+        avatar_preview_url=avatar_preview_url
     )
 
     # Добавление в сессию и сохранение в базе
@@ -334,20 +349,58 @@ async def create_user(user: UserCreate, background_tasks: BackgroundTasks, db: A
     await db.commit()
     await db.refresh(db_user)
 
+    # Если была загружена аватарка, создаем альбом "Аватарки" и добавляем фото туда
+    if avatar_url:
+        try:
+            # Ищем или создаем альбом "Аватарки"
+            album_stmt = select(PhotoAlbumModel).where(
+                PhotoAlbumModel.user_id == db_user.id,
+                PhotoAlbumModel.title == "Аватарки"
+            )
+            album_res = await db.execute(album_stmt)
+            avatar_album = album_res.scalar_one_or_none()
+            
+            if not avatar_album:
+                avatar_album = PhotoAlbumModel(
+                    user_id=db_user.id,
+                    title="Аватарки",
+                    description="Альбом для фотографий профиля",
+                    privacy="public"
+                )
+                db.add(avatar_album)
+                await db.flush()
+            
+            # Создаем запись UserPhoto
+            new_photo = UserPhotoModel(
+                user_id=db_user.id,
+                album_id=avatar_album.id,
+                image_url=avatar_url,
+                preview_url=avatar_preview_url or avatar_url,
+                description="Аватарка при регистрации",
+                privacy="public"
+            )
+            db.add(new_photo)
+            await db.commit()
+        except Exception as e:
+            print(f"Error creating avatar album/photo during registration: {e}")
+            await db.rollback()
+
     # Генерация токена подтверждения
     verification_token = create_access_token(data={"sub": db_user.email, "type": "verification"})
     
     # Отправка письма
-    print(f"DEBUG: Attempting to send verification email to {db_user.email} via Celery")
     try:
-        task = send_verification_email_task.delay(db_user.email, verification_token)
-        print(f"DEBUG: Celery task sent successfully. Task ID: {task.id}")
+        send_verification_email_task.delay(db_user.email, verification_token)
     except Exception as e:
         print(f"Failed to send verification email via Celery: {e}")
-        import traceback
-        traceback.print_exc()
-        # Запасной вариант - фоновая задача FastAPI
         background_tasks.add_task(send_verification_email, db_user.email, verification_token)
+
+    # Планируем удаление пользователя через 15 минут, если он не активируется
+    try:
+        delete_inactive_user_task.apply_async((db_user.id,), countdown=900)
+        print(f"DEBUG: Scheduled deletion task for user {db_user.id} in 15 minutes")
+    except Exception as e:
+        print(f"Error scheduling user deletion task: {e}")
 
     return UserSchema.model_validate(db_user)
 
