@@ -83,7 +83,27 @@ export default function ProfileScreen({ navigation }) {
         style={[styles.postCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
         onPress={() => navigation.navigate('NewsDetail', { newsId: item.id, newsItem: item })}
       >
-        <View style={styles.postRow}>
+        <View style={styles.postAuthorHeader}>
+          <View style={styles.authorInfo}>
+            <Image 
+              source={{ uri: getFullUrl(user.avatar_url) || 'https://via.placeholder.com/40' }} 
+              style={styles.authorAvatar} 
+            />
+            <View>
+              <Text style={[styles.authorName, { color: colors.text }]}>{formatName(user)}</Text>
+              <Text style={[styles.postDate, { color: colors.textSecondary }]}>
+                {new Date(item.created_at).toLocaleDateString()}
+              </Text>
+            </View>
+          </View>
+          {item.moderation_status === 'pending' && (
+            <View style={styles.pendingBadge}>
+              <Text style={styles.pendingText}>Ожидает</Text>
+            </View>
+          )}
+        </View>
+
+        <View style={styles.postContentRow}>
           {postThumbnail && (
             <Image 
               source={{ uri: getFullUrl(postThumbnail) }} 
@@ -91,31 +111,25 @@ export default function ProfileScreen({ navigation }) {
             />
           )}
           <View style={styles.postTextContainer}>
-            <View style={styles.postHeader}>
-              <Text style={[styles.postTitle, { color: colors.text }]} numberOfLines={1}>{item.title}</Text>
-              {item.moderation_status === 'pending' && (
-                <View style={styles.pendingBadge}>
-                  <Text style={styles.pendingText}>Ожидает</Text>
-                </View>
-              )}
-            </View>
+            <Text style={[styles.postTitle, { color: colors.text }]} numberOfLines={1}>{item.title}</Text>
             <Text style={[styles.postContent, { color: colors.textSecondary }]} numberOfLines={2}>
               {stripHtml(item.content)}
             </Text>
-            <View style={styles.postFooter}>
-              <Text style={[styles.postDate, { color: colors.textSecondary }]}>{new Date(item.created_at).toLocaleDateString()}</Text>
-              <View style={styles.reactionsRow}>
-                <View style={styles.reactionItem}>
-                  <Icon name={item.my_reaction === 1 ? "heart" : "heart-outline"} size={14} color={item.my_reaction === 1 ? colors.error : colors.textSecondary} />
-                  <Text style={[styles.reactionCount, { color: colors.textSecondary }]}>{item.likes_count || 0}</Text>
-                </View>
-                <View style={[styles.reactionItem, { marginLeft: 10 }]}>
-                  <Icon name="chatbubble-outline" size={14} color={colors.textSecondary} />
-                  <Text style={[styles.reactionCount, { color: colors.textSecondary }]}>{item.comments_count || 0}</Text>
-                </View>
-              </View>
+          </View>
+        </View>
+
+        <View style={styles.postFooter}>
+          <View style={styles.reactionsRow}>
+            <View style={styles.reactionItem}>
+              <Icon name={item.my_reaction === 1 ? "heart" : "heart-outline"} size={14} color={item.my_reaction === 1 ? colors.error : colors.textSecondary} />
+              <Text style={[styles.reactionCount, { color: colors.textSecondary }]}>{item.likes_count || 0}</Text>
+            </View>
+            <View style={[styles.reactionItem, { marginLeft: 15 }]}>
+              <Icon name="chatbubble-outline" size={14} color={colors.textSecondary} />
+              <Text style={[styles.reactionCount, { color: colors.textSecondary }]}>{item.comments_count || 0}</Text>
             </View>
           </View>
+          <Icon name="chevron-forward" size={14} color={colors.border} />
         </View>
       </TouchableOpacity>
     );
@@ -448,18 +462,22 @@ const styles = StyleSheet.create({
   activityRow: { flexDirection: 'row', justifyContent: 'space-between' },
   activityButton: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 15, borderRadius: 12, borderWidth: 1, marginHorizontal: 5, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2 },
   activityButtonText: { marginLeft: 10, fontWeight: 'bold', fontSize: 14 },
-  postCard: { borderRadius: 12, marginBottom: 15, padding: 12, borderWidth: 1, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2 },
-  postRow: { flexDirection: 'row' },
-  postThumbnail: { width: 80, height: 80, borderRadius: 8, marginRight: 12 },
-  postTextContainer: { flex: 1, justifyContent: 'space-between' },
+  postCard: { borderRadius: 12, marginBottom: 16, elevation: 3, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2, borderWidth: 1, overflow: 'hidden' },
+  postAuthorHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 10, borderBottomWidth: 0.5, borderBottomColor: 'rgba(0,0,0,0.05)' },
+  authorInfo: { flexDirection: 'row', alignItems: 'center' },
+  authorAvatar: { width: 32, height: 32, borderRadius: 16, marginRight: 8 },
+  authorName: { fontSize: 13, fontWeight: 'bold' },
+  postContentRow: { flexDirection: 'row', padding: 10 },
+  postThumbnail: { width: 70, height: 70, borderRadius: 8, marginRight: 12 },
+  postTextContainer: { flex: 1, justifyContent: 'center' },
   postHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
-  postTitle: { fontSize: 16, fontWeight: 'bold' },
-  postContent: { fontSize: 14, lineHeight: 18, marginBottom: 8 },
-  postFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  postDate: { fontSize: 12 },
+  postTitle: { fontSize: 15, fontWeight: 'bold', marginBottom: 2 },
+  postContent: { fontSize: 13, lineHeight: 18 },
+  postFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 10, paddingBottom: 10 },
+  postDate: { fontSize: 10 },
   reactionsRow: { flexDirection: 'row', alignItems: 'center' },
   reactionItem: { flexDirection: 'row', alignItems: 'center' },
-  reactionCount: { fontSize: 12, marginLeft: 4 },
+  reactionCount: { fontSize: 11, marginLeft: 4 },
   pendingBadge: { backgroundColor: 'rgba(255, 165, 0, 0.2)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
   pendingText: { color: '#FFA500', fontSize: 10, fontWeight: 'bold' },
   emptyText: { textAlign: 'center', marginTop: 10, fontStyle: 'italic' },

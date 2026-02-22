@@ -116,7 +116,8 @@ async def get_news(
         func.coalesce(comments_sub.c.count, 0).label("comments_count")
     ).outerjoin(likes_sub, NewsModel.id == likes_sub.c.news_id)\
      .outerjoin(dislikes_sub, NewsModel.id == dislikes_sub.c.news_id)\
-     .outerjoin(comments_sub, NewsModel.id == comments_sub.c.news_id)
+     .outerjoin(comments_sub, NewsModel.id == comments_sub.c.news_id)\
+     .options(selectinload(NewsModel.author))
 
     # Если пользователь авторизован, добавляем его реакцию
     if current_user:
@@ -143,6 +144,12 @@ async def get_news(
         news_obj.dislikes_count = row[2]
         news_obj.comments_count = row[3]
         news_obj.my_reaction = row[4]
+        
+        if news_obj.author:
+            news_obj.author_first_name = news_obj.author.first_name
+            news_obj.author_last_name = news_obj.author.last_name
+            news_obj.author_avatar_url = news_obj.author.avatar_url
+            
         news_list.append(news_obj)
     return news_list
 
@@ -178,7 +185,8 @@ async def get_user_news(
     ).outerjoin(likes_sub, NewsModel.id == likes_sub.c.news_id)\
      .outerjoin(dislikes_sub, NewsModel.id == dislikes_sub.c.news_id)\
      .outerjoin(comments_sub, NewsModel.id == comments_sub.c.news_id)\
-     .where(NewsModel.author_id == user_id)
+     .where(NewsModel.author_id == user_id)\
+     .options(selectinload(NewsModel.author))
 
     # Если пользователь авторизован, добавляем его реакцию
     if current_user:
@@ -208,6 +216,12 @@ async def get_user_news(
         news_obj.dislikes_count = row[2]
         news_obj.comments_count = row[3]
         news_obj.my_reaction = row[4]
+        
+        if news_obj.author:
+            news_obj.author_first_name = news_obj.author.first_name
+            news_obj.author_last_name = news_obj.author.last_name
+            news_obj.author_avatar_url = news_obj.author.avatar_url
+            
         news_list.append(news_obj)
     return news_list
 
@@ -374,7 +388,7 @@ async def get_news_detail(
         NewsReactionModel.reaction_type
     ).where(NewsReactionModel.news_id == news_id, NewsReactionModel.user_id == current_user.id) if current_user else None
 
-    result = await db.execute(select(NewsModel).options(selectinload(NewsModel.images)).where(NewsModel.id == news_id))
+    result = await db.execute(select(NewsModel).options(selectinload(NewsModel.images), selectinload(NewsModel.author)).where(NewsModel.id == news_id))
     news = result.scalar_one_or_none()
     if not news:
         raise HTTPException(status_code=404, detail="News not found")
@@ -384,6 +398,11 @@ async def get_news_detail(
     news.dislikes_count = await db.scalar(dislikes_sub)
     news.comments_count = await db.scalar(comments_count_sub)
     news.my_reaction = await db.scalar(my_reaction_sub) if my_reaction_sub is not None else None
+    
+    if news.author:
+        news.author_first_name = news.author.first_name
+        news.author_last_name = news.author.last_name
+        news.author_avatar_url = news.author.avatar_url
     
     return news
 

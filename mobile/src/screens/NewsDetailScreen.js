@@ -237,12 +237,27 @@ export default function NewsDetailScreen({ route, navigation }) {
         )}
 
         <View style={styles.contentContainer}>
-          <View style={styles.headerRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.title, { color: colors.text }]}>{news.title}</Text>
+          <TouchableOpacity 
+            style={styles.newsAuthorContainer}
+            onPress={() => navigation.navigate('UserProfile', { userId: news.author_id })}
+          >
+            <Image 
+              source={{ uri: getFullUrl(news.author_avatar_url) || 'https://via.placeholder.com/40' }} 
+              style={styles.newsAuthorAvatar} 
+            />
+            <View>
+              <Text style={[styles.newsAuthorName, { color: colors.text }]}>
+                {news.author_first_name ? `${news.author_first_name} ${news.author_last_name || ''}` : 'Пользователь'}
+              </Text>
               <Text style={[styles.date, { color: colors.textSecondary }]}>
                 {new Date(news.created_at).toLocaleDateString()} {new Date(news.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
               </Text>
+            </View>
+          </TouchableOpacity>
+
+          <View style={styles.headerRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.title, { color: colors.text }]}>{news.title}</Text>
             </View>
             <View style={styles.reactionsContainer}>
               <TouchableOpacity 
@@ -398,6 +413,9 @@ const styles = StyleSheet.create({
   },
   paginationDot: { width: 8, height: 8, borderRadius: 4, marginHorizontal: 4 },
   contentContainer: { padding: 20 },
+  newsAuthorContainer: { flexDirection: 'row', alignItems: 'center', marginBottom: 20 },
+  newsAuthorAvatar: { width: 44, height: 44, borderRadius: 22, marginRight: 12 },
+  newsAuthorName: { fontSize: 16, fontWeight: 'bold' },
   title: { fontSize: 24, fontWeight: 'bold', marginBottom: 10 },
   date: { fontSize: 14, marginBottom: 15 },
   divider: { height: 1, width: '100%', marginBottom: 20 },

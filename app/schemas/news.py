@@ -51,5 +51,8 @@ class News(BaseModel):
     dislikes_count: int = 0
     comments_count: int = 0
     my_reaction: int | None = None # 1, -1 or None
+    author_first_name: str | None = None
+    author_last_name: str | None = None
+    author_avatar_url: str | None = None
 
     model_config = ConfigDict(from_attributes=True)

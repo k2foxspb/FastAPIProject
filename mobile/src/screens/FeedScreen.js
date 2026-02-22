@@ -110,10 +110,38 @@ export default function FeedScreen({ navigation }) {
 
     return (
       <TouchableOpacity 
-        style={[styles.newsCard, { backgroundColor: colors.card, borderColor: colors.border, borderWidth: theme === 'dark' ? 1 : 0 }]}
+        style={[styles.newsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
         onPress={() => navigation.navigate('NewsDetail', { newsId: item.id, newsItem: item })}
       >
-        <View style={styles.newsRow}>
+        <View style={styles.newsAuthorHeader}>
+          <TouchableOpacity 
+            style={styles.authorInfo}
+            onPress={() => navigation.navigate('UserProfile', { userId: item.author_id })}
+          >
+            <Image 
+              source={{ uri: getFullUrl(item.author_avatar_url) || 'https://via.placeholder.com/40' }} 
+              style={styles.authorAvatar} 
+            />
+            <View>
+              <Text style={[styles.authorName, { color: colors.text }]}>
+                {item.author_first_name ? `${item.author_first_name} ${item.author_last_name || ''}` : 'Пользователь'}
+              </Text>
+              <Text style={[styles.newsDate, { color: colors.textSecondary }]}>
+                {new Date(item.created_at).toLocaleDateString()}
+              </Text>
+            </View>
+          </TouchableOpacity>
+          {canManageNews && (
+            <TouchableOpacity onPress={(e) => {
+              e.stopPropagation();
+              navigation.navigate('EditNews', { newsItem: item });
+            }}>
+              <Icon name="create-outline" size={20} color={colors.primary} />
+            </TouchableOpacity>
+          )}
+        </View>
+
+        <View style={styles.newsContentRow}>
           {newsThumbnail && (
             <FadeInImage 
               source={{ uri: getFullUrl(newsThumbnail) }} 
@@ -121,34 +149,25 @@ export default function FeedScreen({ navigation }) {
             />
           )}
           <View style={styles.newsTextContainer}>
-            <View style={styles.newsHeader}>
-              <Text style={[styles.newsTitle, { color: colors.text }]} numberOfLines={2}>{item.title}</Text>
-              {canManageNews && (
-                <TouchableOpacity onPress={(e) => {
-                  e.stopPropagation();
-                  navigation.navigate('EditNews', { newsItem: item });
-                }}>
-                  <Icon name="create-outline" size={20} color={colors.primary} />
-                </TouchableOpacity>
-              )}
-            </View>
-            <Text style={[styles.newsContent, { color: colors.textSecondary }]} numberOfLines={2}>
+            <Text style={[styles.newsTitle, { color: colors.text }]} numberOfLines={2}>{item.title}</Text>
+            <Text style={[styles.newsContentText, { color: colors.textSecondary }]} numberOfLines={2}>
               {stripHtml(item.content)}
             </Text>
-            <View style={styles.newsFooter}>
-              <Text style={[styles.newsDate, { color: colors.textSecondary }]}>{new Date(item.created_at).toLocaleDateString()}</Text>
-              <View style={styles.reactionsRow}>
-                <View style={styles.reactionItem}>
-                  <Icon name={item.my_reaction === 1 ? "heart" : "heart-outline"} size={14} color={item.my_reaction === 1 ? colors.error : colors.textSecondary} />
-                  <Text style={[styles.reactionCount, { color: colors.textSecondary }]}>{item.likes_count || 0}</Text>
-                </View>
-                <View style={[styles.reactionItem, { marginLeft: 10 }]}>
-                  <Icon name={item.my_reaction === -1 ? "thumbs-down" : "thumbs-down-outline"} size={14} color={item.my_reaction === -1 ? colors.primary : colors.textSecondary} />
-                  <Text style={[styles.reactionCount, { color: colors.textSecondary }]}>{item.dislikes_count || 0}</Text>
-                </View>
-              </View>
+          </View>
+        </View>
+
+        <View style={styles.newsFooter}>
+          <View style={styles.reactionsRow}>
+            <View style={styles.reactionItem}>
+              <Icon name={item.my_reaction === 1 ? "heart" : "heart-outline"} size={16} color={item.my_reaction === 1 ? colors.error : colors.textSecondary} />
+              <Text style={[styles.reactionCount, { color: colors.textSecondary }]}>{item.likes_count || 0}</Text>
+            </View>
+            <View style={[styles.reactionItem, { marginLeft: 15 }]}>
+              <Icon name="chatbubble-outline" size={16} color={colors.textSecondary} />
+              <Text style={[styles.reactionCount, { color: colors.textSecondary }]}>{item.comments_count || 0}</Text>
             </View>
           </View>
+          <Icon name="chevron-forward" size={16} color={colors.border} />
         </View>
       </TouchableOpacity>
     );
@@ -312,15 +331,18 @@ const styles = StyleSheet.create({
   tab: { flex: 1, paddingVertical: 15, alignItems: 'center' },
   tabText: { fontSize: 16, fontWeight: 'bold' },
   listContent: { padding: 10 },
-  newsCard: { borderRadius: 12, marginBottom: 12, elevation: 3, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, overflow: 'hidden' },
-  newsRow: { flexDirection: 'row' },
-  newsThumbnail: { width: 100, height: 100, borderRadius: 0 },
-  newsTextContainer: { flex: 1, padding: 12, justifyContent: 'space-between' },
-  newsHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 },
-  newsTitle: { fontSize: 16, fontWeight: 'bold', flex: 1, marginRight: 8 },
-  newsContent: { fontSize: 13, marginBottom: 8, lineHeight: 18 },
-  newsFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  newsDate: { fontSize: 11, color: 'gray' },
+  newsCard: { borderRadius: 12, marginBottom: 16, elevation: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, overflow: 'hidden', borderWidth: 1 },
+  newsAuthorHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 12, borderBottomWidth: 0.5, borderBottomColor: 'rgba(0,0,0,0.05)' },
+  authorInfo: { flexDirection: 'row', alignItems: 'center' },
+  authorAvatar: { width: 36, height: 36, borderRadius: 18, marginRight: 10 },
+  authorName: { fontSize: 14, fontWeight: 'bold' },
+  newsContentRow: { flexDirection: 'row', padding: 12 },
+  newsThumbnail: { width: 80, height: 80, borderRadius: 8 },
+  newsTextContainer: { flex: 1, paddingLeft: 12, justifyContent: 'center' },
+  newsTitle: { fontSize: 16, fontWeight: 'bold', marginBottom: 4 },
+  newsContentText: { fontSize: 13, lineHeight: 18 },
+  newsFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 12, paddingTop: 0 },
+  newsDate: { fontSize: 11 },
   reactionsRow: { flexDirection: 'row', alignItems: 'center' },
   reactionItem: { flexDirection: 'row', alignItems: 'center' },
   reactionCount: { fontSize: 12, marginLeft: 4 },
