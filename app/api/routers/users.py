@@ -1341,14 +1341,16 @@ async def get_user_profile(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     
     # Если это не профиль текущего пользователя, фильтруем приватный контент
+    user_schema = UserSchema.model_validate(user)
     if user.id != current_user.id:
         friendship_status = await get_friendship_status(current_user.id, user.id, db)
         
-        user.albums = [a for a in user.albums if can_view_content(user.id, current_user.id, a.privacy, friendship_status)]
-        for album in user.albums:
+        # Фильтруем альбомы и фотографии в схеме Pydantic, а не в модели БД
+        user_schema.albums = [a for a in user_schema.albums if can_view_content(user.id, current_user.id, a.privacy, friendship_status)]
+        for album in user_schema.albums:
             album.photos = [p for p in album.photos if can_view_content(user.id, current_user.id, p.privacy, friendship_status)]
             
-        user.photos = [p for p in user.photos if can_view_content(user.id, current_user.id, p.privacy, friendship_status)]
+        user_schema.photos = [p for p in user_schema.photos if can_view_content(user.id, current_user.id, p.privacy, friendship_status)]
             
     # Определяем статус дружбы
     res_friend = await db.execute(
@@ -1373,7 +1375,6 @@ async def get_user_profile(
         else:
             friendship_status = "requested_by_them"
             
-    user_schema = UserSchema.model_validate(user)
     user_schema.friendship_status = friendship_status
     
     return user_schema

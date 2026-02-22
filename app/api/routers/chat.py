@@ -87,10 +87,15 @@ async def websocket_chat_endpoint(
     try:
         while True:
             data = await websocket.receive_text()
-            message_data = json.loads(data)
+            try:
+                message_data = json.loads(data)
+            except json.JSONDecodeError as e:
+                print(f"DEBUG: Chat WS JSON error: {e}, data={data[:100]}")
+                continue
             
             # Обработка разных типов сообщений через WebSocket
             msg_type = message_data.get("type", "message")
+            print(f"DEBUG: Chat WS received message type '{msg_type}' from user {user_id}")
 
             if msg_type == "mark_read":
                 other_id = message_data.get("other_id")
@@ -98,7 +103,7 @@ async def websocket_chat_endpoint(
                     await db.execute(
                         update(ChatMessage)
                         .where(
-                            ChatMessage.sender_id == other_id,
+                            ChatMessage.sender_id == int(other_id),
                             ChatMessage.receiver_id == user_id,
                             ChatMessage.is_read == 0
                         )
@@ -125,15 +130,19 @@ async def websocket_chat_endpoint(
                 continue
 
             # Стандартная отправка сообщения
-            receiver_id = message_data.get("receiver_id")
+            receiver_id_raw = message_data.get("receiver_id")
             content = message_data.get("message")
             file_path = message_data.get("file_path")
             attachments = message_data.get("attachments")  # список объектов {file_path, type}
             message_type = message_data.get("message_type", "text")
             
-            if receiver_id and (content or file_path or (attachments and len(attachments) > 0)):
+            if receiver_id_raw and (content or file_path or (attachments and len(attachments) > 0)):
                 # Приводим к int для корректного поиска в менеджерах соединений
-                receiver_id = int(receiver_id)
+                try:
+                    receiver_id = int(receiver_id_raw)
+                except (ValueError, TypeError):
+                    print(f"DEBUG: Invalid receiver_id format: {receiver_id_raw}")
+                    continue
                 
                 # Если пришли вложения списком — считаем это медиа-группой и сохраняем
                 if attachments and len(attachments) > 0:
@@ -141,12 +150,11 @@ async def websocket_chat_endpoint(
                     # Сохраняем вложения как JSON-строку в file_path для совместимости БД
                     try:
                         file_path = json.dumps(attachments)
-                        print(f"DEBUG: Saved media_group with {len(attachments)} attachments to file_path")
                     except Exception as e:
                         print(f"DEBUG: Failed to serialize attachments: {e}")
                         file_path = None
                 
-                print(f"DEBUG: Saving message: type={message_type}, receiver={receiver_id}, has_content={bool(content)}, file_path={file_path[:50] if file_path else None}")
+                print(f"DEBUG: Saving message: type={message_type}, sender={user_id}, receiver={receiver_id}")
                 
                 # Сохраняем в базу
                 new_msg = ChatMessage(
@@ -217,10 +225,16 @@ async def websocket_chat_endpoint(
                             "message_id": str(new_msg.id)
                         }
                     )
+            else:
+                print(f"DEBUG: Message skipped. receiver_id={receiver_id_raw}, content={bool(content)}, file_path={bool(file_path)}")
 
     except WebSocketDisconnect:
+        print(f"DEBUG: Chat WS disconnected for user {user_id}")
         manager.disconnect(websocket, user_id)
-    except Exception:
+    except Exception as e:
+        print(f"ERROR in chat WS for user {user_id}: {e}")
+        import traceback
+        traceback.print_exc()
         manager.disconnect(websocket, user_id)
 
 @router.get("/history/{other_user_id}", response_model=List[ChatMessageResponse])

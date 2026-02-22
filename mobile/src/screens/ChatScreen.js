@@ -129,7 +129,7 @@ export default function ChatScreen({ route, navigation }) {
   }, [userId]);
 
   useEffect(() => {
-    const connectWs = (accessToken) => {
+    const connectWs = (accessToken, myId) => {
       const protocol = API_BASE_URL.startsWith('https') ? 'wss://' : 'ws://';
       const wsUrl = `${protocol}${API_BASE_URL.replace('http://', '').replace('https://', '')}/chat/ws/${accessToken}`;
       console.log('[ChatScreen] Connecting to WS:', wsUrl.split('/ws/')[0] + '/ws/***');
@@ -160,14 +160,19 @@ export default function ChatScreen({ route, navigation }) {
           if (message.type === 'messages_read' || message.type === 'your_messages_read') {
             // Обновляем статус прочтения у наших сообщений
             setMessages(prev => prev.map(m => 
-              (m.sender_id && m.sender_id === currentUserIdLocal) ? { ...m, is_read: true } : m
+              (m.sender_id && Number(m.sender_id) === Number(myId)) ? { ...m, is_read: true } : m
             ));
             return;
           }
           
           // Проверяем, относится ли сообщение к текущему чату
-          const isRelated = (message.sender_id === userId && message.receiver_id === currentUserIdLocal) || 
-                            (message.sender_id === currentUserIdLocal && message.receiver_id === userId);
+          const msgSenderId = Number(message.sender_id);
+          const msgReceiverId = Number(message.receiver_id);
+          const currentChatId = Number(userId);
+          const myIdNum = Number(myId);
+
+          const isRelated = (msgSenderId === currentChatId && msgReceiverId === myIdNum) || 
+                            (msgSenderId === myIdNum && msgReceiverId === currentChatId);
 
           if (isRelated) {
             setMessages(prev => {
@@ -177,7 +182,7 @@ export default function ChatScreen({ route, navigation }) {
             });
             setSkip(prev => prev + 1);
             
-            if (message.sender_id === userId) {
+            if (Number(message.sender_id) === Number(userId)) {
               playMessageSound();
               if (newWs.readyState === WebSocket.OPEN) {
                 newWs.send(JSON.stringify({
@@ -199,7 +204,7 @@ export default function ChatScreen({ route, navigation }) {
         if (e.code !== 1000 && isMounted.current) {
           console.log('[Chat WS] Reconnecting in 3s...');
           setTimeout(() => {
-            if (isMounted.current) connectWs(accessToken);
+            if (isMounted.current) connectWs(accessToken, myId);
           }, 3000);
         }
       };
@@ -240,8 +245,9 @@ export default function ChatScreen({ route, navigation }) {
       // Загрузка данных собеседника
       usersApi.getUser(userId).then(res => setInterlocutor(res.data)).catch(err => console.log(err));
 
+      const myId = userRes.data.id;
       // WebSocket соединение
-      connectWs(accessToken);
+      connectWs(accessToken, myId);
 
       // Проверка активных загрузок
       uploadManager.getActiveUploadsForReceiver(userId).then(activeUploads => {
@@ -408,8 +414,20 @@ export default function ChatScreen({ route, navigation }) {
         message: inputText.trim(),
         message_type: 'text'
       };
-      ws.current.send(JSON.stringify(msgData));
-      setInputText('');
+      
+      try {
+        if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+          ws.current.send(JSON.stringify(msgData));
+          console.log('[Chat WS] Message sent:', inputText.trim());
+          setInputText('');
+        } else {
+          console.warn('[Chat WS] Cannot send: WebSocket not open. State:', ws.current?.readyState);
+          Alert.alert('Ошибка', 'Соединение с сервером потеряно. Попробуйте еще раз через секунду.');
+        }
+      } catch (err) {
+        console.error('[Chat WS] Send error:', err);
+        Alert.alert('Ошибка', 'Не удалось отправить сообщение');
+      }
     }
   };
 

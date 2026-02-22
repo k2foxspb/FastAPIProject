@@ -131,7 +131,7 @@ export const NotificationProvider = ({ children }) => {
         if (payload.type === 'new_message') {
           const senderId = payload.data.sender_id;
           // Если приложение открыто, но мы НЕ в чате с этим пользователем и это не наше сообщение
-          if (appState.current === 'active' && activeChatId !== senderId && senderId !== currentUserId) {
+          if (appState.current === 'active' && Number(activeChatId) !== Number(senderId) && Number(senderId) !== Number(currentUserId)) {
             playNotificationSound();
           }
         }
