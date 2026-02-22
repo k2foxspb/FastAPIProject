@@ -11,7 +11,7 @@ import { theme as themeConstants } from '../constants/theme';
 export default function AlbumDetailScreen({ route, navigation }) {
   const { theme } = useTheme();
   const colors = themeConstants[theme];
-  const { albumId } = route.params;
+  const { albumId, isOwner } = route.params;
   const [album, setAlbum] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
   const [title, setTitle] = useState('');
@@ -140,14 +140,16 @@ export default function AlbumDetailScreen({ route, navigation }) {
           <View>
             <View style={styles.titleRow}>
               <Text style={[styles.title, { color: colors.text }]}>{album.title}</Text>
-              <View style={styles.actions}>
-                <TouchableOpacity onPress={() => setIsEditing(true)}>
-                  <Icon name="create-outline" size={24} color={colors.primary} />
-                </TouchableOpacity>
-                <TouchableOpacity onPress={handleDelete} style={{ marginLeft: 15 }}>
-                  <Icon name="trash-outline" size={24} color={colors.error} />
-                </TouchableOpacity>
-              </View>
+              {isOwner && (
+                <View style={styles.actions}>
+                  <TouchableOpacity onPress={() => setIsEditing(true)}>
+                    <Icon name="create-outline" size={24} color={colors.primary} />
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={handleDelete} style={{ marginLeft: 15 }}>
+                    <Icon name="trash-outline" size={24} color={colors.error} />
+                  </TouchableOpacity>
+                </View>
+              )}
             </View>
             {album.description ? <Text style={[styles.description, { color: colors.textSecondary }]}>{album.description}</Text> : null}
             <View style={styles.privateBadge}>
@@ -167,70 +169,81 @@ export default function AlbumDetailScreen({ route, navigation }) {
       <View style={styles.photoGrid}>
         <Text style={[styles.sectionTitle, { color: colors.text }]}>Фотографии ({album.photos?.length || 0})</Text>
         <View style={styles.grid}>
-          {album.photos?.map(photo => (
+          {album.photos?.map(photo => {
+            const isVideo = photo.image_url && ['mp4', 'm4v', 'mov', 'avi', 'mkv', 'webm'].includes(photo.image_url.split('.').pop().toLowerCase());
+            return (
+              <TouchableOpacity 
+                key={photo.id} 
+                onPress={() => {
+                  navigation.navigate('PhotoDetail', { 
+                    photoId: photo.id,
+                    initialPhotos: album.photos,
+                    albumId: album.id,
+                    isOwner: isOwner
+                  });
+                }}
+                style={{ position: 'relative' }}
+              >
+                <Image source={{ uri: getFullUrl(photo.preview_url || photo.image_url) }} style={styles.photo} />
+                {isVideo && (
+                  <View style={styles.videoBadge}>
+                    <Icon name="play" size={12} color="#fff" />
+                  </View>
+                )}
+              </TouchableOpacity>
+            );
+          })}
+          {isOwner && (
             <TouchableOpacity 
-              key={photo.id} 
-              onPress={() => {
-                navigation.navigate('PhotoDetail', { 
-                  photoId: photo.id,
-                  initialPhotos: album.photos,
-                  albumId: album.id,
-                  isOwner: true
-                });
+              style={[styles.addPhotoBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
+              onPress={() => navigation.navigate('UploadPhoto', { albumId: album.id })}
+              onLongPress={async () => {
+                // Быстрая загрузка нескольких фото при долгом нажатии
+                try {
+                  const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+                  if (status !== 'granted') return;
+                  
+                  let result = await ImagePicker.launchImageLibraryAsync({
+                    mediaTypes: ['images', 'videos'],
+                    allowsMultipleSelection: true,
+                    quality: 0.8,
+                  });
+
+                  if (!result.canceled && result.assets.length > 0) {
+                    setLoading(true);
+                    const formData = new FormData();
+                    result.assets.forEach((asset, index) => {
+                      const uri = asset.uri;
+                      const isVideo = asset.type === 'video';
+                      const defaultExt = isVideo ? 'mp4' : 'jpg';
+                      const name = uri.split('/').pop() || `media_${index}.${defaultExt}`;
+                      const match = /\.(\w+)$/.exec(name);
+                      const ext = match ? match[1] : defaultExt;
+                      const type = isVideo ? `video/${ext}` : `image/${ext}`;
+                      
+                      formData.append('files', {
+                        uri: Platform.OS === 'ios' ? uri.replace('file://', '') : uri,
+                        name,
+                        type,
+                      });
+                    });
+                    formData.append('album_id', albumId.toString());
+                    formData.append('privacy', privacy);
+                    
+                    await usersApi.bulkUploadPhotos(formData);
+                    fetchAlbum();
+                    Alert.alert('Успех', `${result.assets.length} медиа загружено`);
+                  }
+                } catch (e) {
+                  Alert.alert('Ошибка', 'Не удалось загрузить фото');
+                } finally {
+                  setLoading(false);
+                }
               }}
             >
-              <Image source={{ uri: getFullUrl(photo.preview_url) }} style={styles.photo} />
+              <Icon name="add" size={40} color={colors.textSecondary} />
             </TouchableOpacity>
-          ))}
-          <TouchableOpacity 
-            style={[styles.addPhotoBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
-            onPress={() => navigation.navigate('UploadPhoto', { albumId: album.id })}
-            onLongPress={async () => {
-              // Быстрая загрузка нескольких фото при долгом нажатии
-              try {
-                const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-                if (status !== 'granted') return;
-                
-                let result = await ImagePicker.launchImageLibraryAsync({
-                  mediaTypes: ['images', 'videos'],
-                  allowsMultipleSelection: true,
-                  quality: 0.8,
-                });
-
-                if (!result.canceled && result.assets.length > 0) {
-                  setLoading(true);
-                  const formData = new FormData();
-                  result.assets.forEach((asset, index) => {
-                    const uri = asset.uri;
-                    const isVideo = asset.type === 'video';
-                    const defaultExt = isVideo ? 'mp4' : 'jpg';
-                    const name = uri.split('/').pop() || `media_${index}.${defaultExt}`;
-                    const match = /\.(\w+)$/.exec(name);
-                    const ext = match ? match[1] : defaultExt;
-                    const type = isVideo ? `video/${ext}` : `image/${ext}`;
-                    
-                    formData.append('files', {
-                      uri: Platform.OS === 'ios' ? uri.replace('file://', '') : uri,
-                      name,
-                      type,
-                    });
-                  });
-                  formData.append('album_id', albumId.toString());
-                  formData.append('privacy', privacy);
-                  
-                  await usersApi.bulkUploadPhotos(formData);
-                  fetchAlbum();
-                  Alert.alert('Успех', `${result.assets.length} медиа загружено`);
-                }
-              } catch (e) {
-                Alert.alert('Ошибка', 'Не удалось загрузить фото');
-              } finally {
-                setLoading(false);
-              }
-            }}
-          >
-            <Icon name="add" size={40} color={colors.textSecondary} />
-          </TouchableOpacity>
+          )}
         </View>
       </View>
     </ScrollView>
@@ -283,5 +296,13 @@ const styles = StyleSheet.create({
     borderStyle: 'dashed', 
     justifyContent: 'center', 
     alignItems: 'center' 
+  },
+  videoBadge: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderRadius: 10,
+    padding: 2,
   },
 });

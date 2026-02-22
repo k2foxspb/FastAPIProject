@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update, func, case, delete
+from sqlalchemy import select, update, func, case, delete, literal
 from sqlalchemy.orm import selectinload
 from typing import Annotated, Optional
 import uuid
@@ -134,6 +134,71 @@ async def get_news(
         NewsModel.moderation_status == "approved",
         NewsModel.is_active == True
     ).order_by(NewsModel.created_at.desc())
+
+    result = await db.execute(query)
+    news_list = []
+    for row in result.all():
+        news_obj = row[0]
+        news_obj.likes_count = row[1]
+        news_obj.dislikes_count = row[2]
+        news_obj.comments_count = row[3]
+        news_obj.my_reaction = row[4]
+        news_list.append(news_obj)
+    return news_list
+
+@router.get("/user/{user_id}", response_model=list[NewsSchema])
+async def get_user_news(
+    user_id: int,
+    db: AsyncSession = Depends(get_async_db),
+    current_user: Optional[UserModel] = Depends(get_current_user_optional)
+):
+    """Возвращает новости конкретного автора."""
+    # Подзапросы для лайков и дизлайков
+    likes_sub = select(
+        NewsReactionModel.news_id,
+        func.count(NewsReactionModel.id).label("count")
+    ).where(NewsReactionModel.reaction_type == 1).group_by(NewsReactionModel.news_id).subquery()
+
+    dislikes_sub = select(
+        NewsReactionModel.news_id,
+        func.count(NewsReactionModel.id).label("count")
+    ).where(NewsReactionModel.reaction_type == -1).group_by(NewsReactionModel.news_id).subquery()
+
+    comments_sub = select(
+        NewsCommentModel.news_id,
+        func.count(NewsCommentModel.id).label("count")
+    ).group_by(NewsCommentModel.news_id).subquery()
+
+    # Базовый запрос
+    query = select(
+        NewsModel,
+        func.coalesce(likes_sub.c.count, 0).label("likes_count"),
+        func.coalesce(dislikes_sub.c.count, 0).label("dislikes_count"),
+        func.coalesce(comments_sub.c.count, 0).label("comments_count")
+    ).outerjoin(likes_sub, NewsModel.id == likes_sub.c.news_id)\
+     .outerjoin(dislikes_sub, NewsModel.id == dislikes_sub.c.news_id)\
+     .outerjoin(comments_sub, NewsModel.id == comments_sub.c.news_id)\
+     .where(NewsModel.author_id == user_id)
+
+    # Если пользователь авторизован, добавляем его реакцию
+    if current_user:
+        my_reaction_sub = select(
+            NewsReactionModel.news_id,
+            NewsReactionModel.reaction_type
+        ).where(NewsReactionModel.user_id == current_user.id).subquery()
+        query = query.add_columns(func.coalesce(my_reaction_sub.c.reaction_type, None).label("my_reaction"))\
+                     .outerjoin(my_reaction_sub, NewsModel.id == my_reaction_sub.c.news_id)
+    else:
+        query = query.add_columns(literal(None).label("my_reaction"))
+
+    # Логика видимости: 
+    # Если запрашиваем чужие новости - только approved
+    # Если свои - все (включая pending/rejected)
+    if not current_user or current_user.id != user_id:
+        if not current_user or current_user.role not in ["admin", "owner"]:
+            query = query.where(NewsModel.moderation_status == "approved")
+
+    query = query.options(selectinload(NewsModel.images)).order_by(NewsModel.created_at.desc())
 
     result = await db.execute(query)
     news_list = []

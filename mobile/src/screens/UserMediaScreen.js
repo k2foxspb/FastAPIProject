@@ -15,7 +15,7 @@ const itemSize = (width - (columnCount - 1) * gap) / columnCount;
 export default function UserMediaScreen({ route, navigation }) {
   const { theme } = useTheme();
   const colors = themeConstants[theme];
-  const { userId, initialUser } = route.params;
+  const { userId, initialUser, isOwner } = route.params;
   const [user, setUser] = useState(initialUser || null);
   const [loading, setLoading] = useState(!initialUser);
 
@@ -48,12 +48,25 @@ export default function UserMediaScreen({ route, navigation }) {
     <ScrollView style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={styles.section}>
         <Text style={[styles.sectionTitle, { color: colors.text }]}>Альбомы</Text>
+        {isOwner && (
+          <TouchableOpacity 
+            style={[styles.albumItem, { borderBottomColor: colors.border }]}
+            onPress={() => navigation.navigate('CreateAlbum')}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <View style={[styles.albumIconPlaceholder, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <Icon name="add" size={24} color={colors.primary} />
+              </View>
+              <Text style={[styles.albumTitle, { color: colors.primary, marginLeft: 15 }]}>Создать альбом</Text>
+            </View>
+          </TouchableOpacity>
+        )}
         {user.albums && user.albums.length > 0 ? (
           user.albums.map(album => (
             <TouchableOpacity 
               key={album.id} 
               style={[styles.albumItem, { borderBottomColor: colors.border }]}
-              onPress={() => navigation.navigate('AlbumDetail', { albumId: album.id })}
+              onPress={() => navigation.navigate('AlbumDetail', { albumId: album.id, isOwner })}
             >
               <View style={styles.albumInfo}>
                 <Text style={[styles.albumTitle, { color: colors.text }]}>{album.title}</Text>
@@ -72,6 +85,14 @@ export default function UserMediaScreen({ route, navigation }) {
       <View style={styles.section}>
         <Text style={[styles.sectionTitle, { color: colors.text }]}>Фотографии и видео</Text>
         <View style={styles.photoGrid}>
+          {isOwner && (
+            <TouchableOpacity 
+              onPress={() => navigation.navigate('UploadPhoto')}
+              style={[styles.gridPhoto, styles.addMediaBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
+            >
+              <Icon name="camera-outline" size={32} color={colors.primary} />
+            </TouchableOpacity>
+          )}
           {user.photos && user.photos.length > 0 ? (
             user.photos.map(photo => {
               const isVideo = photo.image_url && ['mp4', 'm4v', 'mov', 'avi', 'mkv', 'webm'].includes(photo.image_url.split('.').pop().toLowerCase());
@@ -81,7 +102,7 @@ export default function UserMediaScreen({ route, navigation }) {
                   onPress={() => navigation.navigate('PhotoDetail', { 
                     photoId: photo.id,
                     initialPhotos: user.photos,
-                    isOwner: route.params.isOwner
+                    isOwner: isOwner
                   })}
                   style={{ position: 'relative' }}
                 >
@@ -131,5 +152,21 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 4,
   },
-  emptyText: { marginHorizontal: 15, fontStyle: 'italic' }
+  emptyText: { marginHorizontal: 15, fontStyle: 'italic' },
+  addMediaBtn: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderRadius: 8,
+  },
+  albumIconPlaceholder: {
+    width: 40,
+    height: 40,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderStyle: 'dashed',
+  },
 });

@@ -1,7 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, Image, FlatList, ScrollView, TouchableOpacity, Modal, TouchableWithoutFeedback } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import api, { usersApi, setAuthToken } from '../api';
+import api, { usersApi, newsApi, setAuthToken } from '../api';
 import { Ionicons as Icon } from '@expo/vector-icons';
 import { useNotifications } from '../context/NotificationContext';
 import { useTheme } from '../context/ThemeContext';
@@ -12,6 +12,7 @@ import { formatName } from '../utils/formatters';
 
 export default function ProfileScreen({ navigation }) {
   const [user, setUser] = useState(null);
+  const [posts, setPosts] = useState([]);
   const [error, setError] = useState(null);
   const [isSettingsVisible, setSettingsVisible] = useState(false);
   const { disconnect } = useNotifications();
@@ -66,6 +67,60 @@ export default function ProfileScreen({ navigation }) {
     }
   };
 
+  const renderPostItem = (item) => {
+    const stripHtml = (html) => {
+      if (!html) return '';
+      return html.replace(/<[^>]*>?/gm, '');
+    };
+    
+    const postThumbnail = item.images && item.images.length > 0 
+      ? item.images[0].thumbnail_url 
+      : item.image_url;
+
+    return (
+      <TouchableOpacity 
+        key={item.id}
+        style={[styles.postCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
+        onPress={() => navigation.navigate('NewsDetail', { newsId: item.id, newsItem: item })}
+      >
+        <View style={styles.postRow}>
+          {postThumbnail && (
+            <Image 
+              source={{ uri: getFullUrl(postThumbnail) }} 
+              style={styles.postThumbnail} 
+            />
+          )}
+          <View style={styles.postTextContainer}>
+            <View style={styles.postHeader}>
+              <Text style={[styles.postTitle, { color: colors.text }]} numberOfLines={1}>{item.title}</Text>
+              {item.moderation_status === 'pending' && (
+                <View style={styles.pendingBadge}>
+                  <Text style={styles.pendingText}>Ожидает</Text>
+                </View>
+              )}
+            </View>
+            <Text style={[styles.postContent, { color: colors.textSecondary }]} numberOfLines={2}>
+              {stripHtml(item.content)}
+            </Text>
+            <View style={styles.postFooter}>
+              <Text style={[styles.postDate, { color: colors.textSecondary }]}>{new Date(item.created_at).toLocaleDateString()}</Text>
+              <View style={styles.reactionsRow}>
+                <View style={styles.reactionItem}>
+                  <Icon name={item.my_reaction === 1 ? "heart" : "heart-outline"} size={14} color={item.my_reaction === 1 ? colors.error : colors.textSecondary} />
+                  <Text style={[styles.reactionCount, { color: colors.textSecondary }]}>{item.likes_count || 0}</Text>
+                </View>
+                <View style={[styles.reactionItem, { marginLeft: 10 }]}>
+                  <Icon name="chatbubble-outline" size={14} color={colors.textSecondary} />
+                  <Text style={[styles.reactionCount, { color: colors.textSecondary }]}>{item.comments_count || 0}</Text>
+                </View>
+              </View>
+            </View>
+          </View>
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
   useFocusEffect(
     useCallback(() => {
       // Если токена нет в заголовках axios, сразу редиректим
@@ -88,7 +143,11 @@ export default function ProfileScreen({ navigation }) {
 
       usersApi
         .getMe()
-        .then(res => setUser(res.data))
+        .then(res => {
+          setUser(res.data);
+          return newsApi.getUserNews(res.data.id);
+        })
+        .then(res => setPosts(res.data))
         .catch(err => {
           const status = err?.response?.status;
           if (status === 401) {
@@ -247,14 +306,6 @@ export default function ProfileScreen({ navigation }) {
           <Text style={[styles.sectionTitle, { color: colors.text }]}>Фотографии и видео</Text>
           <Icon name="chevron-forward" size={20} color={colors.border} style={{ marginLeft: 5 }} />
         </TouchableOpacity>
-        <View style={{ flexDirection: 'row', position: 'absolute', right: 20, top: 20 }}>
-          <TouchableOpacity onPress={() => navigation.navigate('UploadPhoto')} style={{ marginRight: 15 }}>
-            <Icon name="camera-outline" size={28} color={colors.primary} />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => navigation.navigate('CreateAlbum')}>
-            <Icon name="add-circle-outline" size={28} color={colors.primary} />
-          </TouchableOpacity>
-        </View>
 
         <FlatList
           horizontal
@@ -282,6 +333,21 @@ export default function ProfileScreen({ navigation }) {
           showsHorizontalScrollIndicator={false}
           style={{ marginBottom: 15 }}
         />
+      </View>
+
+      <View style={styles.section}>
+        <View style={styles.sectionHeader}>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Мои записи</Text>
+          <TouchableOpacity onPress={() => navigation.navigate('EditNews')}>
+            <Icon name="add-circle-outline" size={28} color={colors.primary} />
+          </TouchableOpacity>
+        </View>
+
+        {posts.length > 0 ? (
+          posts.map((item) => renderPostItem(item))
+        ) : (
+          <Text style={[styles.emptyText, { color: colors.textSecondary }]}>У вас пока нет записей</Text>
+        )}
       </View>
     </ScrollView>
   );
@@ -382,4 +448,19 @@ const styles = StyleSheet.create({
   activityRow: { flexDirection: 'row', justifyContent: 'space-between' },
   activityButton: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 15, borderRadius: 12, borderWidth: 1, marginHorizontal: 5, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2 },
   activityButtonText: { marginLeft: 10, fontWeight: 'bold', fontSize: 14 },
+  postCard: { borderRadius: 12, marginBottom: 15, padding: 12, borderWidth: 1, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2 },
+  postRow: { flexDirection: 'row' },
+  postThumbnail: { width: 80, height: 80, borderRadius: 8, marginRight: 12 },
+  postTextContainer: { flex: 1, justifyContent: 'space-between' },
+  postHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
+  postTitle: { fontSize: 16, fontWeight: 'bold' },
+  postContent: { fontSize: 14, lineHeight: 18, marginBottom: 8 },
+  postFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  postDate: { fontSize: 12 },
+  reactionsRow: { flexDirection: 'row', alignItems: 'center' },
+  reactionItem: { flexDirection: 'row', alignItems: 'center' },
+  reactionCount: { fontSize: 12, marginLeft: 4 },
+  pendingBadge: { backgroundColor: 'rgba(255, 165, 0, 0.2)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
+  pendingText: { color: '#FFA500', fontSize: 10, fontWeight: 'bold' },
+  emptyText: { textAlign: 'center', marginTop: 10, fontStyle: 'italic' },
 });

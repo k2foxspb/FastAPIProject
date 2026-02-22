@@ -119,6 +119,7 @@ export const productsApi = {
 export const newsApi = {
   getNews: () => api.get('/news/'),
   getNewsDetail: (id) => api.get(`/news/${id}/`),
+  getUserNews: (userId) => api.get(`/news/user/${userId}`),
   createNews: (formData) => api.post('/news/', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
     timeout: 120000,
