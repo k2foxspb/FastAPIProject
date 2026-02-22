@@ -43,9 +43,16 @@ class ChatManager:
                 del self.active_connections[user_id]
 
     async def send_personal_message(self, message: dict, user_id: int):
+        print(f"DEBUG: ChatManager trying to send message to user {user_id}. Connections: {len(self.active_connections.get(user_id, []))}")
         if user_id in self.active_connections:
             for connection in self.active_connections[user_id]:
-                await connection.send_json(message)
+                try:
+                    await connection.send_json(message)
+                    print(f"DEBUG: ChatManager sent message to user {user_id}: {message.get('id')}")
+                except Exception as e:
+                    print(f"ERROR: ChatManager failed to send to user {user_id}: {e}")
+        else:
+            print(f"DEBUG: User {user_id} NOT connected to Chat WS")
 
 manager = ChatManager()
 

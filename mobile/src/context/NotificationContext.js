@@ -17,8 +17,18 @@ export const NotificationProvider = ({ children }) => {
   const [isConnected, setIsConnected] = useState(false);
   const [currentUserId, setCurrentUserId] = useState(null);
   const [activeChatId, setActiveChatId] = useState(null);
+  const activeChatIdRef = useRef(null);
+  const currentUserIdRef = useRef(null);
   const appState = useRef(AppState.currentState);
   const ws = useRef(null);
+
+  useEffect(() => {
+    activeChatIdRef.current = activeChatId;
+  }, [activeChatId]);
+
+  useEffect(() => {
+    currentUserIdRef.current = currentUserId;
+  }, [currentUserId]);
   const notificationPlayer = useAudioPlayer(require('../../assets/sounds/message.mp3'));
 
   useEffect(() => {
@@ -42,7 +52,7 @@ export const NotificationProvider = ({ children }) => {
     loadUser();
   }, []);
 
-  const fetchDialogs = async () => {
+  const fetchDialogs = React.useCallback(async () => {
     try {
       const token = await storage.getAccessToken();
       if (!token) return;
@@ -53,9 +63,9 @@ export const NotificationProvider = ({ children }) => {
     } catch (err) {
       console.error('Failed to fetch dialogs:', err);
     }
-  };
+  }, []);
 
-  const fetchFriendRequestsCount = async () => {
+  const fetchFriendRequestsCount = React.useCallback(async () => {
     try {
       const token = await storage.getAccessToken();
       if (!token) return;
@@ -67,9 +77,9 @@ export const NotificationProvider = ({ children }) => {
     } catch (err) {
       console.error('Failed to fetch friend requests count:', err);
     }
-  };
+  }, []);
 
-  const playNotificationSound = async () => {
+  const playNotificationSound = React.useCallback(async () => {
     try {
       if (await isWithinQuietHours()) {
         console.log('[NotificationContext] Quiet hours active, skipping sound');
@@ -80,16 +90,16 @@ export const NotificationProvider = ({ children }) => {
     } catch (error) {
       console.log('Error playing notification sound', error);
     }
-  };
+  }, [notificationPlayer]);
 
-  const connect = (token) => {
+  const connect = React.useCallback((token) => {
     if (!token || token === 'null' || token === 'undefined') {
       console.log('Skipping WS connect: no token');
       return;
     }
 
-    if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-      console.log('Notifications WS already connected');
+    if (ws.current && (ws.current.readyState === WebSocket.OPEN || ws.current.readyState === WebSocket.CONNECTING)) {
+      console.log('Notifications WS already connected or connecting');
       return;
     }
 
@@ -111,9 +121,10 @@ export const NotificationProvider = ({ children }) => {
     ws.current.onmessage = (e) => {
       try {
         const payload = JSON.parse(e.data);
-        console.log('Notification received:', payload);
+        console.log('[NotificationContext] Notification received:', payload.type, payload.data?.id || '');
         
         if (payload.type === 'new_message' || payload.type === 'messages_read' || payload.type === 'your_messages_read' || payload.type === 'message_deleted') {
+          console.log('[NotificationContext] Triggering fetchDialogs due to:', payload.type);
           // Обновляем список диалогов при получении нового сообщения, пометке о прочтении или удалении
           fetchDialogs();
         }
@@ -131,8 +142,13 @@ export const NotificationProvider = ({ children }) => {
         if (payload.type === 'new_message') {
           const senderId = payload.data.sender_id;
           // Если приложение открыто, но мы НЕ в чате с этим пользователем и это не наше сообщение
-          if (appState.current === 'active' && Number(activeChatId) !== Number(senderId) && Number(senderId) !== Number(currentUserId)) {
+          const isActiveChat = Number(activeChatIdRef.current) === Number(senderId);
+          const isMe = Number(senderId) === Number(currentUserIdRef.current);
+          
+          if (appState.current === 'active' && !isActiveChat && !isMe) {
+            console.log('[NotificationContext] Playing sound for new message from:', senderId);
             playNotificationSound();
+            Vibration.vibrate([0, 200, 100, 200]);
           }
         }
 
@@ -161,14 +177,14 @@ export const NotificationProvider = ({ children }) => {
     ws.current.onerror = (e) => {
       console.error('Notifications WS error:', e.message);
     };
-  };
+  }, [fetchDialogs, fetchFriendRequestsCount, playNotificationSound]);
 
-  const disconnect = () => {
+  const disconnect = React.useCallback(() => {
     if (ws.current) {
       ws.current.close();
       ws.current = null;
     }
-  };
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -178,10 +194,11 @@ export const NotificationProvider = ({ children }) => {
 
   useEffect(() => {
     if (isConnected) {
+      console.log('[NotificationContext] WS connected, fetching initial state...');
       fetchDialogs();
       fetchFriendRequestsCount();
     }
-  }, [isConnected]);
+  }, [isConnected, fetchDialogs, fetchFriendRequestsCount]);
 
   return (
     <NotificationContext.Provider value={{ 

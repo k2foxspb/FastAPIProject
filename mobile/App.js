@@ -76,6 +76,7 @@ function AppContent() {
     // Проверка сохраненной сессии
     const checkSession = async () => {
       const token = await storage.getAccessToken();
+      console.log('[App] Checking session, token exists:', !!token);
       if (token) {
         setAuthToken(token);
         connect(token);

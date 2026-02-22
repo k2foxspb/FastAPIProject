@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { View, Text, FlatList, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, Image, Modal, Pressable, Alert, StatusBar, Dimensions, Share, Animated } from 'react-native';
+import { View, Text, FlatList, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, Image, Modal, Pressable, Alert, StatusBar, Dimensions, Share, Animated, Vibration } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import { documentDirectory, getInfoAsync, downloadAsync, deleteAsync, readAsStringAsync, writeAsStringAsync, EncodingType, StorageAccessFramework } from 'expo-file-system/legacy';
@@ -103,6 +103,7 @@ export default function ChatScreen({ route, navigation }) {
       }
       await setNotificationAudioMode();
       notificationPlayer.play();
+      Vibration.vibrate([0, 200, 100, 200]);
     } catch (error) {
       console.log('Error playing message sound', error);
     }
@@ -129,10 +130,13 @@ export default function ChatScreen({ route, navigation }) {
   }, [userId]);
 
   useEffect(() => {
+    let ignore = false;
     const connectWs = (accessToken, myId) => {
       const protocol = API_BASE_URL.startsWith('https') ? 'wss://' : 'ws://';
       const wsUrl = `${protocol}${API_BASE_URL.replace('http://', '').replace('https://', '')}/chat/ws/${accessToken}`;
       console.log('[ChatScreen] Connecting to WS:', wsUrl.split('/ws/')[0] + '/ws/***');
+      
+      if (ignore) return;
       
       const newWs = new WebSocket(wsUrl);
       ws.current = newWs;
@@ -176,13 +180,20 @@ export default function ChatScreen({ route, navigation }) {
 
           if (isRelated) {
             setMessages(prev => {
-              if (prev.find(m => m.id === message.id)) return prev;
+              if (prev.find(m => Number(m.id) === Number(message.id))) {
+                console.log('[Chat WS] Message already in state:', message.id);
+                return prev;
+              }
               const newMessages = [message, ...prev];
+              console.log('[Chat WS] Added message to state. New count:', newMessages.length);
               return newMessages;
             });
             setSkip(prev => prev + 1);
             
-            if (Number(message.sender_id) === Number(userId)) {
+            const isIncoming = Number(message.sender_id) === Number(userId);
+            console.log(`[Chat WS] isRelated true. isIncoming: ${isIncoming}, id: ${message.id}`);
+
+            if (isIncoming) {
               playMessageSound();
               if (newWs.readyState === WebSocket.OPEN) {
                 newWs.send(JSON.stringify({
@@ -218,10 +229,12 @@ export default function ChatScreen({ route, navigation }) {
       const accessToken = await storage.getAccessToken();
       setToken(accessToken);
 
+      let myId = null;
       // Загрузка данных текущего пользователя для корректной фильтрации WS
       try {
         const userRes = await usersApi.getMe();
-        setCurrentUserIdLocal(userRes.data.id);
+        myId = userRes.data.id;
+        setCurrentUserIdLocal(myId);
       } catch (err) {
         console.log('Failed to load current user', err);
       }
@@ -245,7 +258,12 @@ export default function ChatScreen({ route, navigation }) {
       // Загрузка данных собеседника
       usersApi.getUser(userId).then(res => setInterlocutor(res.data)).catch(err => console.log(err));
 
-      const myId = userRes.data.id;
+      if (!myId) {
+        console.error('[ChatScreen] Cannot initialize chat: myId is null');
+        return;
+      }
+
+      if (ignore) return;
       // WebSocket соединение
       connectWs(accessToken, myId);
 
@@ -268,7 +286,11 @@ export default function ChatScreen({ route, navigation }) {
     initChat();
 
     return () => {
-      if (ws.current) ws.current.close();
+      ignore = true;
+      if (ws.current) {
+        ws.current.close();
+        ws.current = null;
+      }
     };
   }, [userId]);
 
@@ -790,13 +812,13 @@ export default function ChatScreen({ route, navigation }) {
     const isVideo = item.message_type === 'video';
     const isVoice = item.message_type === 'voice';
     const isFile = item.message_type === 'file';
-    const isReceived = item.sender_id === userId;
-    const isOwner = item.sender_id === currentUserIdLocal;
+    const isReceived = Number(item.sender_id) === Number(userId);
+    const isOwner = Number(item.sender_id) === Number(currentUserIdLocal);
     const isSelected = selectedIds.includes(item.id);
 
     // Группировка: если предыдущее сообщение от того же отправителя и разница во времени менее 2 минут
     const prevMsg = messages[index + 1]; // Помним, что FlatList inverted
-    const isGrouped = prevMsg && prevMsg.sender_id === item.sender_id && 
+    const isGrouped = prevMsg && Number(prevMsg.sender_id) === Number(item.sender_id) && 
                       (new Date(item.timestamp) - new Date(prevMsg.timestamp)) < 120000;
 
     const handleFullScreen = (uri, type) => {
@@ -1080,6 +1102,7 @@ export default function ChatScreen({ route, navigation }) {
       <FlatList
         ref={chatFlatListRef}
         data={messages}
+        extraData={[messages.length, currentUserIdLocal, selectedIds.length, theme]}
         keyExtractor={(item) => (item.id || Math.random()).toString()}
         renderItem={renderMessageItem}
         onEndReached={loadMoreMessages}
@@ -1092,6 +1115,10 @@ export default function ChatScreen({ route, navigation }) {
             animated: true 
           });
         }}
+        removeClippedSubviews={false}
+        initialNumToRender={15}
+        maxToRenderPerBatch={10}
+        windowSize={10}
       />
 
       <Modal

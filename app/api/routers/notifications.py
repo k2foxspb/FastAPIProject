@@ -29,9 +29,17 @@ class ConnectionManager:
                 del self.active_connections[user_id]
 
     async def send_personal_message(self, message: dict, user_id: int):
+        print(f"DEBUG: NotificationsManager trying to send message to user {user_id}. Type: {type(user_id)}")
+        print(f"DEBUG: Active connections: {list(self.active_connections.keys())}")
         if user_id in self.active_connections:
             for connection in self.active_connections[user_id]:
-                await connection.send_json(message)
+                try:
+                    await connection.send_json(message)
+                    print(f"DEBUG: NotificationsManager sent message to user {user_id}: {message.get('type')}")
+                except Exception as e:
+                    print(f"ERROR: NotificationsManager failed to send to user {user_id}: {e}")
+        else:
+            print(f"DEBUG: User {user_id} NOT found in active connections.")
 
     async def broadcast(self, message: dict):
         for user_id in self.active_connections:
