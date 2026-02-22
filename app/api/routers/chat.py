@@ -186,10 +186,17 @@ async def websocket_chat_endpoint(
                 await db.commit()
                 await db.refresh(new_msg)
 
+                # Находим отправителя для имени (понадобится для уведомлений)
+                sender_result = await db.execute(select(UserModel.first_name, UserModel.last_name).where(UserModel.id == user_id))
+                sender_row = sender_result.first()
+                sender_name = f"{sender_row.first_name} {sender_row.last_name}".strip() if sender_row and (sender_row.first_name or sender_row.last_name) else "Пользователь"
+                if not sender_name: sender_name = "Пользователь"
+
                 # Готовим данные ответа
                 response_data = {
                     "id": new_msg.id,
                     "sender_id": user_id,
+                    "sender_name": sender_name,
                     "receiver_id": receiver_id,
                     "message": content,
                     "file_path": file_path,
@@ -225,11 +232,6 @@ async def websocket_chat_endpoint(
                 receiver_result = await db.execute(select(UserModel).where(UserModel.id == receiver_id))
                 receiver = receiver_result.scalar_one_or_none()
                 if receiver and receiver.fcm_token:
-                    # Находим отправителя для имени
-                    sender_result = await db.execute(select(UserModel).where(UserModel.id == user_id))
-                    sender = sender_result.scalar_one_or_none()
-                    sender_name = f"{sender.first_name} {sender.last_name}" if sender and (sender.first_name or sender.last_name) else "Новое сообщение"
-                    
                     # Если сообщение пустое (только файл), пишем тип файла
                     body = content if content else f"Отправил {message_type}"
                     
@@ -288,10 +290,17 @@ async def send_message_api(
     await db.commit()
     await db.refresh(new_msg)
 
+    # Находим отправителя для имени
+    sender_result = await db.execute(select(UserModel.first_name, UserModel.last_name).where(UserModel.id == user_id))
+    sender_row = sender_result.first()
+    sender_name = f"{sender_row.first_name} {sender_row.last_name}".strip() if sender_row and (sender_row.first_name or sender_row.last_name) else "Пользователь"
+    if not sender_name: sender_name = "Пользователь"
+
     # Готовим данные ответа
     response_data = {
         "id": new_msg.id,
         "sender_id": user_id,
+        "sender_name": sender_name,
         "receiver_id": receiver_id,
         "message": content,
         "file_path": file_path,
@@ -324,9 +333,6 @@ async def send_message_api(
     receiver_result = await db.execute(select(UserModel).where(UserModel.id == receiver_id))
     receiver = receiver_result.scalar_one_or_none()
     if receiver and receiver.fcm_token:
-        sender_result = await db.execute(select(UserModel).where(UserModel.id == user_id))
-        sender = sender_result.scalar_one_or_none()
-        sender_name = f"{sender.first_name} {sender.last_name}" if sender and (sender.first_name or sender.last_name) else "Новое сообщение"
         body = content if content else f"Отправил {message_type}"
         
         await send_fcm_notification(

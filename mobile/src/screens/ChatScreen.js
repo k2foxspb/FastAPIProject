@@ -25,7 +25,7 @@ export default function ChatScreen({ route, navigation }) {
   const insets = useSafeAreaInsets();
   const { theme } = useTheme();
   const colors = themeConstants[theme];
-  const { setActiveChatId, fetchDialogs, currentUserId, notifications } = useNotifications();
+  const { setActiveChatId, fetchDialogs, currentUserId, notifications, connect } = useNotifications();
   const { userId, userName } = route.params;
   const [messages, setMessages] = useState([]);
   const [inputText, setInputText] = useState('');
@@ -66,6 +66,18 @@ export default function ChatScreen({ route, navigation }) {
   const screenWidth = Dimensions.get('window').width;
   const [currentMediaIndex, setCurrentMediaIndex] = useState(0);
   const recordingDotOpacity = useRef(new Animated.Value(1)).current;
+
+  // Обозначаем активный чат в контексте уведомлений и гарантируем восстановление WS уведомлений при выходе
+  useEffect(() => {
+    setActiveChatId(userId);
+    return () => {
+      setActiveChatId(null);
+      // На всякий случай убеждаемся, что сокет уведомлений активен после выхода из чата
+      storage.getAccessToken().then((tok) => {
+        if (tok) connect(tok);
+      });
+    };
+  }, [userId, setActiveChatId, connect]);
 
   useEffect(() => {
     if (isRecording) {
@@ -289,8 +301,9 @@ export default function ChatScreen({ route, navigation }) {
               }
               // markAsRead API call is redundant if we use WS, 
               // but we'll keep it as a backup for reliability 
-              // but remove fetchDialogs from here to avoid request spam.
               chatApi.markAsRead(userId, accessToken);
+              // Обновляем список диалогов мгновенно, чтобы бейджи/превью были актуальны
+              fetchDialogs();
             }
           }
         } catch (err) {
@@ -1261,6 +1274,7 @@ export default function ChatScreen({ route, navigation }) {
         maxToRenderPerBatch={10}
         windowSize={10}
         style={{ flex: 1 }}
+        contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: 16 }}
       />
 
       <Modal
@@ -1420,12 +1434,23 @@ export default function ChatScreen({ route, navigation }) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f5f5f5' },
+  container: { 
+    flex: 1, 
+    backgroundColor: '#f5f5f5',
+    ...Platform.select({
+      web: {
+        height: '100vh',
+        maxHeight: '100vh',
+        overflow: 'hidden'
+      }
+    })
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     padding: 10,
     borderBottomWidth: 1,
+    flexShrink: 0,
     elevation: 2,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
@@ -1535,7 +1560,7 @@ const styles = StyleSheet.create({
   statusIcon: {
     marginLeft: 2,
   },
-  inputContainer: { flexDirection: 'row', padding: 10, backgroundColor: '#fff' },
+  inputContainer: { flexDirection: 'row', padding: 10, backgroundColor: '#fff', flexShrink: 0 },
   selectionHeader: {
     flex: 1,
     flexDirection: 'row',

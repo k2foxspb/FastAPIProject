@@ -15,6 +15,7 @@ class ChatMessageCreate(ChatMessageBase):
 class ChatMessageResponse(ChatMessageBase):
     id: int
     sender_id: int
+    sender_name: Optional[str] = None
     timestamp: datetime
     is_read: int
 

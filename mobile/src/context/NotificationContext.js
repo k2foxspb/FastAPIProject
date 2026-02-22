@@ -1,11 +1,12 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
-import { Vibration, AppState } from 'react-native';
+import { Vibration, AppState, Alert } from 'react-native';
 import { useAudioPlayer } from 'expo-audio';
 import { API_BASE_URL } from '../constants';
 import { usersApi, chatApi } from '../api';
 import { storage } from '../utils/storage';
 import { setNotificationAudioMode } from '../utils/audioSettings';
 import { isWithinQuietHours } from '../utils/quietHours';
+import { navigationRef } from '../navigation/NavigationService';
 
 const NotificationContext = createContext();
 
@@ -39,11 +40,19 @@ export const NotificationProvider = ({ children }) => {
   useEffect(() => {
     const subscription = AppState.addEventListener('change', nextAppState => {
       appState.current = nextAppState;
+      // При возврате в активное состояние пытаемся восстановить соединение нотификаций
+      if (nextAppState === 'active') {
+        if (!ws.current || (ws.current.readyState !== WebSocket.OPEN && ws.current.readyState !== WebSocket.CONNECTING)) {
+          storage.getAccessToken().then((tok) => {
+            if (tok) connect(tok);
+          });
+        }
+      }
     });
     return () => {
       subscription.remove();
     };
-  }, []);
+  }, [connect]);
 
   useEffect(() => {
     const loadUser = async () => {
@@ -101,6 +110,7 @@ export const NotificationProvider = ({ children }) => {
 
   const lastToken = useRef(null);
   const heartbeatInterval = useRef(null);
+  const shouldReconnect = useRef(true);
 
   const connect = React.useCallback((token) => {
     if (!token || token === 'null' || token === 'undefined') {
@@ -118,6 +128,7 @@ export const NotificationProvider = ({ children }) => {
     }
 
     lastToken.current = token;
+    shouldReconnect.current = true;
 
     const protocol = API_BASE_URL.startsWith('https') ? 'wss://' : 'ws://';
     const wsUrl = `${protocol}${API_BASE_URL.replace('http://', '').replace('https://', '')}/ws/notifications?token=${token}`;
@@ -189,6 +200,42 @@ export const NotificationProvider = ({ children }) => {
             console.log('[NotificationContext] Playing sound for new message from:', senderId);
             playNotificationSound();
             Vibration.vibrate([0, 200, 100, 200]);
+
+            // Визуальное оповещение внутри приложения с быстрым переходом в чат
+            try {
+              const dlg = dialogs.find(d => Number(d.user_id) === Number(senderId));
+              const senderName = payload.data.sender_name || (
+                dlg ? (`${dlg.first_name || ''} ${dlg.last_name || ''}`.trim() || dlg.email || 'Новый диалог') : 'Новый диалог'
+              );
+              const preview = (payload.data.message && payload.data.message.trim())
+                ? payload.data.message.trim().slice(0, 80)
+                : (payload.data.message_type === 'media_group' ? 'Медиафайлы' : (payload.data.message_type || 'Сообщение'));
+
+              Alert.alert(
+                'Новое сообщение',
+                `${senderName}: ${preview}`,
+                [
+                  {
+                    text: 'Открыть',
+                    onPress: () => {
+                      try {
+                        if (navigationRef?.isReady?.()) {
+                          navigationRef.navigate('Messages', {
+                            screen: 'Chat',
+                            params: { userId: senderId, userName: senderName }
+                          });
+                        }
+                      } catch (e) {
+                        console.log('Navigation to chat failed:', e);
+                      }
+                    }
+                  },
+                  { text: 'Закрыть', style: 'cancel' }
+                ]
+              );
+            } catch (e) {
+              console.log('Failed to show in-app alert for new message:', e);
+            }
           }
         }
 
@@ -205,16 +252,14 @@ export const NotificationProvider = ({ children }) => {
         clearInterval(heartbeatInterval.current);
         heartbeatInterval.current = null;
       }
-      
-      // Auto-reconnect on unexpected close (1006 or 4003 which we use for invalid token)
-      // But only if we have a token and it was previously connected
-      if (e.code !== 1000 && e.code !== 1001) {
-         console.log('[NotificationContext] Notifications WS unexpected close, will try to reconnect in 5s...');
-         setTimeout(() => {
-           storage.getAccessToken().then(token => {
-             if (token) connect(token);
-           });
-         }, 5000);
+      // Всегда пробуем восстановиться, если это не был явный disconnect()
+      if (shouldReconnect.current) {
+        console.log('[NotificationContext] Will try to reconnect notifications WS in 3s...');
+        setTimeout(() => {
+          storage.getAccessToken().then(token => {
+            if (token) connect(token);
+          });
+        }, 3000);
       }
     };
 
@@ -227,8 +272,9 @@ export const NotificationProvider = ({ children }) => {
   }, [fetchDialogs, fetchFriendRequestsCount, playNotificationSound]);
 
   const disconnect = React.useCallback(() => {
+    shouldReconnect.current = false;
     if (ws.current) {
-      ws.current.close();
+      ws.current.close(1000);
       ws.current = null;
     }
   }, []);
