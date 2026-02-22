@@ -25,7 +25,7 @@ export default function ChatScreen({ route, navigation }) {
   const insets = useSafeAreaInsets();
   const { theme } = useTheme();
   const colors = themeConstants[theme];
-  const { setActiveChatId, fetchDialogs } = useNotifications();
+  const { setActiveChatId, fetchDialogs, currentUserId, notifications } = useNotifications();
   const { userId, userName } = route.params;
   const [messages, setMessages] = useState([]);
   const [inputText, setInputText] = useState('');
@@ -45,7 +45,6 @@ export default function ChatScreen({ route, navigation }) {
   const [skip, setSkip] = useState(0);
   const [interlocutor, setInterlocutor] = useState(null);
   const [attachmentsLocalCount, setAttachmentsLocalCount] = useState(0);
-  const [currentUserIdLocal, setCurrentUserIdLocal] = useState(null);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState([]);
   const [isRecording, setIsRecording] = useState(false);
@@ -57,6 +56,7 @@ export default function ChatScreen({ route, navigation }) {
   const isMounted = useRef(true);
   const LIMIT = 15;
   const ws = useRef(null);
+  const lastProcessedNotificationId = useRef(null);
   const videoPlayerRef = useRef(null);
   const chatFlatListRef = useRef(null);
   const recordingOptions = useMemo(() => RecordingPresets.HIGH_QUALITY, []);
@@ -108,6 +108,61 @@ export default function ChatScreen({ route, navigation }) {
       console.log('Error playing message sound', error);
     }
   };
+
+  // Резервный механизм: слушаем глобальные уведомления, если Chat WS подводит
+  useEffect(() => {
+    if (notifications.length > 0) {
+      const lastNotify = notifications[0];
+      const notifyType = lastNotify.type;
+      
+      // Чтобы не обрабатывать одно и то же уведомление многократно при перерисовках
+      const notifyKey = `${notifyType}_${lastNotify.data?.id || lastNotify.message_id || lastNotify.data?.from_user_id || Math.random()}`;
+      if (notifyKey === lastProcessedNotificationId.current) return;
+      lastProcessedNotificationId.current = notifyKey;
+
+      if (notifyType === 'new_message' && lastNotify.data) {
+        const message = lastNotify.data;
+        const msgSenderId = Number(message.sender_id);
+        const msgReceiverId = Number(message.receiver_id);
+        const currentChatId = Number(userId);
+        const myIdNum = Number(currentUserId);
+
+        const isRelated = (msgSenderId === currentChatId && msgReceiverId === myIdNum) || 
+                          (msgSenderId === myIdNum && msgReceiverId === currentChatId);
+        
+        if (isRelated) {
+          setMessages(prev => {
+            if (prev.find(m => Number(m.id) === Number(message.id))) return prev;
+            console.log('[ChatScreen Backup] New message added:', message.id);
+            return [message, ...prev];
+          });
+          setSkip(prev => prev + 1);
+          if (Number(message.sender_id) === Number(userId)) {
+             playMessageSound();
+          }
+        }
+      } else if (notifyType === 'message_deleted') {
+        const msgId = lastNotify.message_id;
+        if (msgId) {
+          setMessages(prev => {
+            if (prev.find(m => m.id === msgId)) {
+              console.log('[ChatScreen Backup] Message deleted:', msgId);
+              return prev.filter(m => m.id !== msgId);
+            }
+            return prev;
+          });
+        }
+      } else if (notifyType === 'messages_read' || notifyType === 'your_messages_read') {
+        const readerId = lastNotify.reader_id || lastNotify.data?.reader_id || lastNotify.data?.from_user_id;
+        if (Number(readerId) === Number(userId) || Number(readerId) === Number(currentUserId)) {
+          console.log('[ChatScreen Backup] Messages marked as read by:', readerId);
+          setMessages(prev => prev.map(m => 
+            (m.sender_id && Number(m.sender_id) === Number(currentUserId)) ? { ...m, is_read: true } : m
+          ));
+        }
+      }
+    }
+  }, [notifications, userId, currentUserId]);
 
   useEffect(() => {
     isMounted.current = true;
@@ -179,19 +234,20 @@ export default function ChatScreen({ route, navigation }) {
                             (msgSenderId === myIdNum && msgReceiverId === currentChatId);
 
           if (isRelated) {
+            console.log(`[Chat WS] isRelated true. msgId=${message.id}, sender=${msgSenderId}, chat=${currentChatId}`);
             setMessages(prev => {
               if (prev.find(m => Number(m.id) === Number(message.id))) {
                 console.log('[Chat WS] Message already in state:', message.id);
                 return prev;
               }
               const newMessages = [message, ...prev];
-              console.log('[Chat WS] Added message to state. New count:', newMessages.length);
+              console.log('[Chat WS] Added message via Chat WS. New count:', newMessages.length);
               return newMessages;
             });
             setSkip(prev => prev + 1);
             
             const isIncoming = Number(message.sender_id) === Number(userId);
-            console.log(`[Chat WS] isRelated true. isIncoming: ${isIncoming}, id: ${message.id}`);
+            console.log(`[Chat WS] isIncoming: ${isIncoming}, id: ${message.id}`);
 
             if (isIncoming) {
               playMessageSound();
@@ -214,8 +270,12 @@ export default function ChatScreen({ route, navigation }) {
         // Реконнект при неожиданном закрытии
         if (e.code !== 1000 && isMounted.current) {
           console.log('[Chat WS] Reconnecting in 3s...');
-          setTimeout(() => {
-            if (isMounted.current) connectWs(accessToken, myId);
+          setTimeout(async () => {
+            if (isMounted.current) {
+              const freshToken = await storage.getAccessToken();
+              setToken(freshToken); // Обновляем токен в стейте для других запросов
+              connectWs(freshToken, myId);
+            }
           }, 3000);
         }
       };
@@ -234,7 +294,6 @@ export default function ChatScreen({ route, navigation }) {
       try {
         const userRes = await usersApi.getMe();
         myId = userRes.data.id;
-        setCurrentUserIdLocal(myId);
       } catch (err) {
         console.log('Failed to load current user', err);
       }
@@ -443,8 +502,15 @@ export default function ChatScreen({ route, navigation }) {
           console.log('[Chat WS] Message sent:', inputText.trim());
           setInputText('');
         } else {
-          console.warn('[Chat WS] Cannot send: WebSocket not open. State:', ws.current?.readyState);
-          Alert.alert('Ошибка', 'Соединение с сервером потеряно. Попробуйте еще раз через секунду.');
+          console.log('[ChatScreen] WS not open, sending via API fallback');
+          const res = await chatApi.sendMessage(msgData, token);
+          if (res.data) {
+            setMessages(prev => {
+              if (prev.find(m => m.id === res.data.id)) return prev;
+              return [res.data, ...prev];
+            });
+            setInputText('');
+          }
         }
       } catch (err) {
         console.error('[Chat WS] Send error:', err);
@@ -463,13 +529,22 @@ export default function ChatScreen({ route, navigation }) {
           // Для одиночных голосовых сообщений отправляем здесь
           // Для медиа и документов теперь отправляем вручную в функциях загрузки
           if (autoSendOnUpload && !batchMode) { 
+            const msgData = {
+              receiver_id: userId,
+              file_path: result.file_path,
+              message_type: result.message_type
+            };
             if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-              const msgData = {
-                receiver_id: userId,
-                file_path: result.file_path,
-                message_type: result.message_type
-              };
               ws.current.send(JSON.stringify(msgData));
+            } else {
+              chatApi.sendMessage(msgData, token).then(res => {
+                if (res.data) {
+                  setMessages(prev => {
+                    if (prev.find(m => m.id === res.data.id)) return prev;
+                    return [res.data, ...prev];
+                  });
+                }
+              });
             }
           } 
           setUploadingProgress(null);
@@ -535,21 +610,29 @@ export default function ChatScreen({ route, navigation }) {
         }
 
         if (attachmentsLocal.length > 0) {
-          if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-            if (attachmentsLocal.length === 1) {
-              const msgData = {
+          const msgData = attachmentsLocal.length === 1 
+            ? {
                 receiver_id: userId,
                 file_path: attachmentsLocal[0].file_path,
                 message_type: attachmentsLocal[0].type
-              };
-              ws.current.send(JSON.stringify(msgData));
-            } else {
-              ws.current.send(JSON.stringify({
+              }
+            : {
                 receiver_id: userId,
                 attachments: attachmentsLocal,
                 message_type: 'media_group'
-              }));
-            }
+              };
+
+          if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+            ws.current.send(JSON.stringify(msgData));
+          } else {
+            chatApi.sendMessage(msgData, token).then(res => {
+              if (res.data) {
+                setMessages(prev => {
+                  if (prev.find(m => m.id === res.data.id)) return prev;
+                  return [res.data, ...prev];
+                });
+              }
+            });
           }
         }
       }
@@ -813,7 +896,7 @@ export default function ChatScreen({ route, navigation }) {
     const isVoice = item.message_type === 'voice';
     const isFile = item.message_type === 'file';
     const isReceived = Number(item.sender_id) === Number(userId);
-    const isOwner = Number(item.sender_id) === Number(currentUserIdLocal);
+    const isOwner = Number(item.sender_id) === Number(currentUserId);
     const isSelected = selectedIds.includes(item.id);
 
     // Группировка: если предыдущее сообщение от того же отправителя и разница во времени менее 2 минут
@@ -1102,7 +1185,7 @@ export default function ChatScreen({ route, navigation }) {
       <FlatList
         ref={chatFlatListRef}
         data={messages}
-        extraData={[messages.length, currentUserIdLocal, selectedIds.length, theme]}
+        extraData={[messages.length, currentUserId, selectedIds.length, theme, userId]}
         keyExtractor={(item) => (item.id || Math.random()).toString()}
         renderItem={renderMessageItem}
         onEndReached={loadMoreMessages}

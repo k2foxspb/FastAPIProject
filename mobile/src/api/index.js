@@ -169,6 +169,7 @@ export const chatApi = {
   initUpload: (data, token) => api.post('/chat/upload/init', data, { params: { token } }),
   getUploadStatus: (uploadId, token) => api.get(`/chat/upload/status/${uploadId}`, { params: { token } }),
   getActiveUploads: (token) => api.get('/chat/upload/active', { params: { token } }),
+  sendMessage: (data, token) => api.post('/chat/message', data, { params: { token } }),
 };
 
 export const cartApi = {

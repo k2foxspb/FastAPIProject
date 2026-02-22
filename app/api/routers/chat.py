@@ -82,6 +82,9 @@ async def websocket_chat_endpoint(
 ):
     # Accept immediately to avoid handshake rejection issues
     await websocket.accept()
+    
+    # Clean token (remove potential quotes if passed incorrectly)
+    token = token.strip().strip('"').strip("'")
 
     user_id = await get_user_from_token(token, db)
     if user_id is None:
@@ -243,6 +246,95 @@ async def websocket_chat_endpoint(
         import traceback
         traceback.print_exc()
         manager.disconnect(websocket, user_id)
+
+@router.post("/message", response_model=ChatMessageResponse)
+async def send_message_api(
+    msg_in: ChatMessageCreate,
+    token: str,
+    db: AsyncSession = Depends(get_async_db)
+):
+    user_id = await get_user_from_token(token, db)
+    if user_id is None:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    
+    receiver_id = msg_in.receiver_id
+    content = msg_in.message
+    file_path = msg_in.file_path
+    attachments = msg_in.attachments
+    message_type = msg_in.message_type
+    
+    if attachments and len(attachments) > 0:
+        message_type = "media_group"
+        try:
+            file_path = json.dumps(attachments)
+        except Exception:
+            file_path = None
+    
+    # Сохраняем в базу
+    new_msg = ChatMessage(
+        sender_id=user_id,
+        receiver_id=receiver_id,
+        message=content,
+        file_path=file_path,
+        message_type=message_type
+    )
+    db.add(new_msg)
+    await db.commit()
+    await db.refresh(new_msg)
+
+    # Готовим данные ответа
+    response_data = {
+        "id": new_msg.id,
+        "sender_id": user_id,
+        "receiver_id": receiver_id,
+        "message": content,
+        "file_path": file_path,
+        "message_type": message_type,
+        "timestamp": new_msg.timestamp.isoformat() if hasattr(new_msg.timestamp, 'isoformat') else new_msg.timestamp,
+        "is_read": 0
+    }
+    if message_type == "media_group":
+        try:
+            response_data["attachments"] = attachments or json.loads(file_path or "[]")
+        except Exception:
+            response_data["attachments"] = []
+
+    # Уведомляем через WebSocket чата (обоих участников)
+    await manager.send_personal_message(response_data, receiver_id)
+    await manager.send_personal_message(response_data, user_id)
+
+    # Уведомляем через глобальный WS уведомлений
+    await notifications_manager.send_personal_message({
+        "type": "new_message",
+        "data": response_data
+    }, receiver_id)
+    
+    await notifications_manager.send_personal_message({
+        "type": "new_message",
+        "data": response_data
+    }, user_id)
+
+    # FCM Notification
+    receiver_result = await db.execute(select(UserModel).where(UserModel.id == receiver_id))
+    receiver = receiver_result.scalar_one_or_none()
+    if receiver and receiver.fcm_token:
+        sender_result = await db.execute(select(UserModel).where(UserModel.id == user_id))
+        sender = sender_result.scalar_one_or_none()
+        sender_name = f"{sender.first_name} {sender.last_name}" if sender and (sender.first_name or sender.last_name) else "Новое сообщение"
+        body = content if content else f"Отправил {message_type}"
+        
+        await send_fcm_notification(
+            token=receiver.fcm_token,
+            title=sender_name,
+            body=body,
+            sender_id=user_id,
+            data={
+                "chat_id": str(user_id),
+                "message_id": str(new_msg.id)
+            }
+        )
+
+    return response_data
 
 @router.get("/history/{other_user_id}", response_model=List[ChatMessageResponse])
 async def get_chat_history(
