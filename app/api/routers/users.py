@@ -1,3 +1,4 @@
+import asyncio
 import jwt
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -1449,12 +1450,12 @@ async def send_friend_request(
     await notification_manager.send_personal_message(msg, user_id)
     
     if target_user.fcm_token:
-        await send_fcm_notification(
+        asyncio.create_task(send_fcm_notification(
             token=target_user.fcm_token,
             title="Новая заявка в друзья",
             body=f"{msg['sender_name']} хочет добавить вас в друзья",
             data=msg
-        )
+        ))
 
     return new_friendship
 
@@ -1498,12 +1499,12 @@ async def accept_friend_request(
     await notification_manager.send_personal_message(msg, sender_id)
     
     if sender and sender.fcm_token:
-        await send_fcm_notification(
+        asyncio.create_task(send_fcm_notification(
             token=sender.fcm_token,
             title="Заявка принята",
             body=f"{msg['sender_name']} принял вашу заявку в друзья",
             data=msg
-        )
+        ))
 
     return friendship
 

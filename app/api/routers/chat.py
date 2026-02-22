@@ -235,7 +235,7 @@ async def websocket_chat_endpoint(
                     # Если сообщение пустое (только файл), пишем тип файла
                     body = content if content else f"Отправил {message_type}"
                     
-                    await send_fcm_notification(
+                    asyncio.create_task(send_fcm_notification(
                         token=receiver.fcm_token,
                         title=sender_name,
                         body=body,
@@ -244,7 +244,7 @@ async def websocket_chat_endpoint(
                             "chat_id": str(user_id),
                             "message_id": str(new_msg.id)
                         }
-                    )
+                    ))
             else:
                 logger.debug(f"Message skipped. receiver_id={receiver_id_raw}, content={bool(content)}, file_path={bool(file_path)}")
 
@@ -335,7 +335,7 @@ async def send_message_api(
     if receiver and receiver.fcm_token:
         body = content if content else f"Отправил {message_type}"
         
-        await send_fcm_notification(
+        asyncio.create_task(send_fcm_notification(
             token=receiver.fcm_token,
             title=sender_name,
             body=body,
@@ -344,7 +344,7 @@ async def send_message_api(
                 "chat_id": str(user_id),
                 "message_id": str(new_msg.id)
             }
-        )
+        ))
 
     return response_data
 

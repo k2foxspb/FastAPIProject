@@ -60,62 +60,58 @@ async def send_fcm_notification(
         logger.warning("FCM: Empty token provided, skipping notification")
         return False
 
-    # Подготовка данных для уведомления
-    # Все значения в data должны быть строками для Firebase Admin SDK
-    fcm_data = {}
-    if data:
-        for k, v in data.items():
-            fcm_data[k] = str(v)
-    
-    if sender_id:
-        fcm_data["sender_id"] = str(sender_id)
-    
-    if "type" not in fcm_data:
-        fcm_data["type"] = "new_message"
+    try:
+        # Подготовка данных для уведомления
+        # Все значения в data должны быть строками для Firebase Admin SDK
+        fcm_data = {}
+        if data:
+            for k, v in data.items():
+                fcm_data[k] = str(v)
+        
+        if sender_id:
+            fcm_data["sender_id"] = str(sender_id)
+        
+        if "type" not in fcm_data:
+            fcm_data["type"] = "new_message"
 
-    logger.debug(f"FCM: Preparing message for token {token[:15]}... | Data: {fcm_data}")
+        logger.debug(f"FCM: Preparing message for token {token[:15]}... | Data: {fcm_data}")
 
-    # Создание объекта уведомления
-    notification = messaging.Notification(
-        title=title,
-        body=body,
-    )
-
-    # Настройки для Android (каналы, группировка)
-    # Используем group вместо tag, чтобы сообщения от одного пользователя 
-    # не заменяли друг друга, а группировались (стакались) в шторке.
-    group_key = f"user_msg_{sender_id}" if sender_id else "general_msg"
-    android_config = messaging.AndroidConfig(
-        priority='high',
-        notification=messaging.AndroidNotification(
-            group=group_key,
-            channel_id="messages",
-            sound="default",
-            click_action="FLUTTER_NOTIFICATION_CLICK" # Для некоторых плагинов это важно
+        # Создание объекта уведомления
+        notification = messaging.Notification(
+            title=title,
+            body=body,
         )
-    )
 
-    # Настройки для iOS (APNS)
-    apns_config = messaging.APNSConfig(
-        payload=messaging.APNSPayload(
-            aps=messaging.Aps(
+        # Настройки для Android (каналы, группировка)
+        android_config = messaging.AndroidConfig(
+            priority='high',
+            notification=messaging.AndroidNotification(
+                channel_id="messages",
                 sound="default",
-                thread_id=str(sender_id) if sender_id else None,
-                content_available=True # Позволяет приложению проснуться в фоне
+                click_action="FLUTTER_NOTIFICATION_CLICK" # Для некоторых плагинов это важно
             )
         )
-    )
 
-    # Создание сообщения
-    message = messaging.Message(
-        notification=notification,
-        data=fcm_data,
-        token=token,
-        android=android_config,
-        apns=apns_config
-    )
+        # Настройки для iOS (APNS)
+        apns_config = messaging.APNSConfig(
+            payload=messaging.APNSPayload(
+                aps=messaging.Aps(
+                    sound="default",
+                    thread_id=str(sender_id) if sender_id else None,
+                    content_available=True # Позволяет приложению проснуться в фоне
+                )
+            )
+        )
 
-    try:
+        # Создание сообщения
+        message = messaging.Message(
+            notification=notification,
+            data=fcm_data,
+            token=token,
+            android=android_config,
+            apns=apns_config
+        )
+
         # Отправка сообщения (выполняем в отдельном потоке, так как Admin SDK синхронный)
         loop = asyncio.get_event_loop()
         logger.info(f"FCM: Attempting to send message to {token[:15]}... Title: {title}")
