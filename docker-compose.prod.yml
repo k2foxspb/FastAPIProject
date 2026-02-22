@@ -114,7 +114,7 @@ services:
       - web
 
   certbot:
-    image: cr.yandex/mirror/certbot/certbot
+    image: certbot/certbot
     user: "0:0"
     volumes:
       - /etc/letsencrypt:/etc/letsencrypt
