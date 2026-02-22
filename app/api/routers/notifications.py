@@ -122,7 +122,13 @@ async def websocket_endpoint(
             while True:
                 # Ожидаем данных от клиента (пинги или просто поддерживаем соединение)
                 data = await websocket.receive_text()
-                # Можно добавить обработку входящих сообщений, если нужно
+                try:
+                    import json
+                    message_data = json.loads(data)
+                    if message_data.get("type") == "ping":
+                        await websocket.send_json({"type": "pong"})
+                except Exception:
+                    pass
     except WebSocketDisconnect:
         if user_id is not None:
             logger.info(f"WS Disconnected: user_id={user_id}")

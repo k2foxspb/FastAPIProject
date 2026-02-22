@@ -105,6 +105,11 @@ async def websocket_chat_endpoint(
             
             # Обработка разных типов сообщений через WebSocket
             msg_type = message_data.get("type", "message")
+            
+            if msg_type == "ping":
+                await websocket.send_json({"type": "pong"})
+                continue
+                
             print(f"DEBUG: Chat WS received message type '{msg_type}' from user {user_id}")
 
             if msg_type == "mark_read":

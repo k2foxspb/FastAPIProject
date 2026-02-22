@@ -30,6 +30,11 @@ export const NotificationProvider = ({ children }) => {
     currentUserIdRef.current = currentUserId;
   }, [currentUserId]);
   const notificationPlayer = useAudioPlayer(require('../../assets/sounds/message.mp3'));
+  const notificationPlayerRef = useRef(notificationPlayer);
+
+  useEffect(() => {
+    notificationPlayerRef.current = notificationPlayer;
+  }, [notificationPlayer]);
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', nextAppState => {
@@ -86,11 +91,16 @@ export const NotificationProvider = ({ children }) => {
         return;
       }
       await setNotificationAudioMode();
-      notificationPlayer.play();
+      if (notificationPlayerRef.current) {
+        notificationPlayerRef.current.play();
+      }
     } catch (error) {
       console.log('Error playing notification sound', error);
     }
-  }, [notificationPlayer]);
+  }, []);
+
+  const lastToken = useRef(null);
+  const heartbeatInterval = useRef(null);
 
   const connect = React.useCallback((token) => {
     if (!token || token === 'null' || token === 'undefined') {
@@ -99,23 +109,32 @@ export const NotificationProvider = ({ children }) => {
     }
 
     if (ws.current && (ws.current.readyState === WebSocket.OPEN || ws.current.readyState === WebSocket.CONNECTING)) {
-      console.log('Notifications WS already connected or connecting');
-      return;
-    }
-
-    if (ws.current) {
+      if (lastToken.current === token) {
+        console.log('Notifications WS already connected or connecting with same token');
+        return;
+      }
+      console.log('Notifications WS connected with different token, closing old one');
       ws.current.close();
     }
 
+    lastToken.current = token;
+
     const protocol = API_BASE_URL.startsWith('https') ? 'wss://' : 'ws://';
     const wsUrl = `${protocol}${API_BASE_URL.replace('http://', '').replace('https://', '')}/ws/notifications?token=${token}`;
-    console.log('Connecting to notifications WS:', wsUrl.split('?')[0] + '?token=***');
+    console.log('[NotificationContext] Connecting to notifications WS:', wsUrl.split('?')[0] + '?token=***');
     
-    ws.current = new WebSocket(wsUrl);
+    try {
+      ws.current = new WebSocket(wsUrl);
 
     ws.current.onopen = () => {
-      console.log('Notifications WS connected');
+      console.log('[NotificationContext] Notifications WS connected');
       setIsConnected(true);
+      if (heartbeatInterval.current) clearInterval(heartbeatInterval.current);
+      heartbeatInterval.current = setInterval(() => {
+        if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+          ws.current.send(JSON.stringify({ type: 'ping' }));
+        }
+      }, 30000);
     };
 
     ws.current.onmessage = (e) => {
@@ -124,9 +143,22 @@ export const NotificationProvider = ({ children }) => {
         console.log('[NotificationContext] Notification received:', payload.type, payload.data?.id || '');
         
         if (payload.type === 'new_message' || payload.type === 'messages_read' || payload.type === 'your_messages_read' || payload.type === 'message_deleted') {
-          console.log('[NotificationContext] Triggering fetchDialogs due to:', payload.type);
-          // Обновляем список диалогов при получении нового сообщения, пометке о прочтении или удалении
-          fetchDialogs();
+          // Если это новое сообщение, проверяем, не в этом ли мы чате сейчас
+          if (payload.type === 'new_message') {
+            const senderId = payload.data.sender_id;
+            const isActiveChat = Number(activeChatIdRef.current) === Number(senderId);
+            if (isActiveChat) {
+              console.log('[NotificationContext] Skipping fetchDialogs for active chat message');
+              // Не прерываем совсем, так как уведомление может содержать важные метаданные, 
+              // но fetchDialogs() сделает сам ChatScreen
+            } else {
+              console.log('[NotificationContext] Triggering fetchDialogs due to:', payload.type);
+              fetchDialogs();
+            }
+          } else {
+            console.log('[NotificationContext] Triggering fetchDialogs due to:', payload.type);
+            fetchDialogs();
+          }
         }
 
         if (payload.type === 'user_status') {
@@ -167,13 +199,17 @@ export const NotificationProvider = ({ children }) => {
     };
 
     ws.current.onclose = (e) => {
-      console.log('Notifications WS closed:', e.code, e.reason);
+      console.log('[NotificationContext] Notifications WS closed:', e.code, e.reason);
       setIsConnected(false);
+      if (heartbeatInterval.current) {
+        clearInterval(heartbeatInterval.current);
+        heartbeatInterval.current = null;
+      }
       
       // Auto-reconnect on unexpected close (1006 or 4003 which we use for invalid token)
       // But only if we have a token and it was previously connected
       if (e.code !== 1000 && e.code !== 1001) {
-         console.log('Notifications WS unexpected close, will try to reconnect in 5s...');
+         console.log('[NotificationContext] Notifications WS unexpected close, will try to reconnect in 5s...');
          setTimeout(() => {
            storage.getAccessToken().then(token => {
              if (token) connect(token);
@@ -183,8 +219,11 @@ export const NotificationProvider = ({ children }) => {
     };
 
     ws.current.onerror = (e) => {
-      console.error('Notifications WS error:', e.message);
+      console.error('[NotificationContext] Notifications WS error:', e.message || 'Unknown error');
     };
+  } catch (err) {
+    console.error('[NotificationContext] Error creating WebSocket:', err);
+  }
   }, [fetchDialogs, fetchFriendRequestsCount, playNotificationSound]);
 
   const disconnect = React.useCallback(() => {
@@ -196,6 +235,9 @@ export const NotificationProvider = ({ children }) => {
 
   useEffect(() => {
     return () => {
+      if (heartbeatInterval.current) {
+        clearInterval(heartbeatInterval.current);
+      }
       disconnect();
     };
   }, []);

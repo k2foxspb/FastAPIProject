@@ -190,20 +190,44 @@ export default function ChatScreen({ route, navigation }) {
     };
   }, [userId]);
 
+  const lastParams = useRef({ userId: null, token: null });
+  const heartbeatInterval = useRef(null);
+
+  const startHeartbeat = (wsInstance) => {
+    if (heartbeatInterval.current) clearInterval(heartbeatInterval.current);
+    heartbeatInterval.current = setInterval(() => {
+      if (wsInstance.readyState === WebSocket.OPEN) {
+        wsInstance.send(JSON.stringify({ type: 'ping' }));
+      }
+    }, 30000); // 30 seconds
+  };
+
   useEffect(() => {
     let ignore = false;
     const connectWs = (accessToken, myId) => {
+      if (lastParams.current.userId === userId && lastParams.current.token === accessToken && ws.current && (ws.current.readyState === WebSocket.OPEN || ws.current.readyState === WebSocket.CONNECTING)) {
+        console.log('[ChatScreen] Already connected or connecting to this chat, skipping.');
+        return;
+      }
+      
       const protocol = API_BASE_URL.startsWith('https') ? 'wss://' : 'ws://';
       const wsUrl = `${protocol}${API_BASE_URL.replace('http://', '').replace('https://', '')}/chat/ws/${accessToken}`;
       console.log('[ChatScreen] Connecting to WS:', wsUrl.split('/ws/')[0] + '/ws/***');
       
       if (ignore) return;
       
+      if (ws.current) {
+        ws.current.close(1000);
+      }
+
+      lastParams.current = { userId, token: accessToken };
+      
       const newWs = new WebSocket(wsUrl);
       ws.current = newWs;
 
       newWs.onopen = () => {
         console.log('[Chat WS] Connected');
+        startHeartbeat(newWs);
       };
 
       newWs.onmessage = (e) => {
@@ -263,7 +287,10 @@ export default function ChatScreen({ route, navigation }) {
                   other_id: userId
                 }));
               }
-              chatApi.markAsRead(userId, accessToken).then(() => fetchDialogs());
+              // markAsRead API call is redundant if we use WS, 
+              // but we'll keep it as a backup for reliability 
+              // but remove fetchDialogs from here to avoid request spam.
+              chatApi.markAsRead(userId, accessToken);
             }
           }
         } catch (err) {
@@ -273,11 +300,15 @@ export default function ChatScreen({ route, navigation }) {
 
       newWs.onclose = (e) => {
         console.log('[Chat WS] Closed:', e.code, e.reason);
+        if (heartbeatInterval.current) {
+          clearInterval(heartbeatInterval.current);
+          heartbeatInterval.current = null;
+        }
         // Реконнект при неожиданном закрытии
         if (e.code !== 1000 && isMounted.current) {
           console.log('[Chat WS] Reconnecting in 3s...');
           setTimeout(async () => {
-            if (isMounted.current) {
+            if (isMounted.current && !ignore) {
               const freshToken = await storage.getAccessToken();
               setToken(freshToken); // Обновляем токен в стейте для других запросов
               connectWs(freshToken, myId);
@@ -352,6 +383,10 @@ export default function ChatScreen({ route, navigation }) {
 
     return () => {
       ignore = true;
+      if (heartbeatInterval.current) {
+        clearInterval(heartbeatInterval.current);
+        heartbeatInterval.current = null;
+      }
       if (ws.current) {
         ws.current.close();
         ws.current = null;

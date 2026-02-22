@@ -207,6 +207,20 @@ api.interceptors.request.use(
 );
 
 // Добавляем перехватчик для отладки сетевых ошибок
+let isRefreshing = false;
+let failedQueue = [];
+
+const processQueue = (error, token = null) => {
+  failedQueue.forEach(prom => {
+    if (error) {
+      prom.reject(error);
+    } else {
+      prom.resolve(token);
+    }
+  });
+  failedQueue = [];
+};
+
 api.interceptors.response.use(
   response => {
     console.log(`[API Success]: ${response.config.method?.toUpperCase()} ${response.config.url} - ${response.status}`);
@@ -216,28 +230,54 @@ api.interceptors.response.use(
     const originalRequest = error.config;
     console.log(`[API Error]: ${originalRequest?.method?.toUpperCase()} ${originalRequest?.url} - Status: ${error.response?.status}, Message: ${error.message}`);
 
-    // Если ошибка 401 и это не повторный запрос и у нас есть refresh_token
+    // Если ошибка 401 и это не повторный запрос
     if (error.response?.status === 401 && !originalRequest._retry) {
-      originalRequest._retry = true;
-      try {
-        const refreshToken = await storage.getRefreshToken();
-        if (refreshToken) {
-          const res = await usersApi.refreshAccessToken(refreshToken);
-          const newAccessToken = res.data.access_token;
-          
-          if (newAccessToken) {
-            await storage.saveTokens(newAccessToken, refreshToken);
-            setAuthToken(newAccessToken);
-            originalRequest.headers['Authorization'] = `Bearer ${newAccessToken}`;
+      if (isRefreshing) {
+        return new Promise(function(resolve, reject) {
+          failedQueue.push({ resolve, reject });
+        })
+          .then(token => {
+            originalRequest.headers['Authorization'] = 'Bearer ' + token;
             return api(originalRequest);
-          }
-        }
-      } catch (refreshError) {
-        console.error('Failed to refresh token:', refreshError);
-        // Если не удалось обновить токен, выходим из системы
-        await storage.clearTokens();
-        setAuthToken(null);
+          })
+          .catch(err => {
+            return Promise.reject(err);
+          });
       }
+
+      originalRequest._retry = true;
+      isRefreshing = true;
+
+      return new Promise(async (resolve, reject) => {
+        try {
+          const refreshToken = await storage.getRefreshToken();
+          if (refreshToken) {
+            console.log('[API] Attempting to refresh token...');
+            const res = await usersApi.refreshAccessToken(refreshToken);
+            const newAccessToken = res.data.access_token;
+            
+            if (newAccessToken) {
+              await storage.saveTokens(newAccessToken, refreshToken);
+              setAuthToken(newAccessToken);
+              processQueue(null, newAccessToken);
+              originalRequest.headers['Authorization'] = `Bearer ${newAccessToken}`;
+              resolve(api(originalRequest));
+            } else {
+              throw new Error('No access token in refresh response');
+            }
+          } else {
+            throw new Error('No refresh token available');
+          }
+        } catch (refreshError) {
+          console.error('[API] Failed to refresh token:', refreshError);
+          processQueue(refreshError, null);
+          await storage.clearTokens();
+          setAuthToken(null);
+          reject(refreshError);
+        } finally {
+          isRefreshing = false;
+        }
+      });
     }
 
     console.log('[API Error Detail]:', {
