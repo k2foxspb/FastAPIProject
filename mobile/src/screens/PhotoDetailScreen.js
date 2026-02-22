@@ -412,7 +412,7 @@ export default function PhotoDetailScreen({ route, navigation }) {
                 const updatedPhotos = [...photos];
                 updatedPhotos[newIndex] = res.data;
                 setPhotos(updatedPhotos);
-              });
+              }).catch(err => console.log('Failed to fetch photo detail', err));
               loadComments(photo.id);
             }
           }

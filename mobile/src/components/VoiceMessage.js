@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { getShadow } from '../utils/shadowStyles';
 import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Alert, Platform } from 'react-native';
 import { Audio, useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -162,14 +163,10 @@ export default function VoiceMessage({ item, currentUserId }) {
 
   return (
     <View style={[
-      styles.container,
+      styles.container, 
       { 
         backgroundColor: isReceived ? colors.surface : colors.primary,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.1,
-        shadowRadius: 2,
-        elevation: 1,
+        ...getShadow('#000', { width: 0, height: 1 }, 0.1, 2, 1),
       }
     ]}>
       <TouchableOpacity onPress={loadAndPlay} disabled={loading} style={styles.playButton}>

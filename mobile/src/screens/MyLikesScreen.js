@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, FlatList, StyleSheet, TouchableOpacity, RefreshControl, ActivityIndicator, Dimensions } from 'react-native';
+import { getShadow } from '../utils/shadowStyles';
 import FadeInImage from '../components/FadeInImage';
 import { usersApi } from '../api';
 import { getFullUrl } from '../utils/urlHelper';
@@ -164,7 +165,7 @@ const styles = StyleSheet.create({
   tab: { flex: 1, paddingVertical: 15, alignItems: 'center' },
   tabText: { fontSize: 16, fontWeight: 'bold' },
   listContent: { padding: 5 },
-  newsCard: { borderRadius: 12, marginBottom: 12, marginHorizontal: 5, elevation: 3, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, overflow: 'hidden' },
+  newsCard: { borderRadius: 12, marginBottom: 12, marginHorizontal: 5, overflow: 'hidden', ...getShadow('#000', { width: 0, height: 2 }, 0.1, 4, 3) },
   newsRow: { flexDirection: 'row' },
   newsThumbnail: { width: 100, height: 100, borderRadius: 0 },
   newsTextContainer: { flex: 1, padding: 12, justifyContent: 'space-between' },

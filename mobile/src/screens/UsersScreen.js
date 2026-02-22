@@ -10,17 +10,20 @@ import { formatStatus, formatName } from '../utils/formatters';
 export default function UsersScreen({ navigation }) {
   const { theme } = useTheme();
   const colors = themeConstants[theme];
-  const { fetchFriendRequestsCount } = useNotifications();
+  const { fetchFriendRequestsCount, currentUser, loadingUser } = useNotifications();
   const [users, setUsers] = useState([]);
   const [friends, setFriends] = useState([]);
   const [requests, setRequests] = useState([]);
   const [search, setSearch] = useState('');
-  const [currentUserId, setCurrentUserId] = useState(null);
+  const [currentUserId, setCurrentUserId] = useState(currentUser?.id);
   const [activeTab, setActiveTab] = useState('all'); // 'all', 'friends'
 
   useEffect(() => {
-    usersApi.getMe().then(res => setCurrentUserId(res.data.id)).catch(err => console.log(err));
-  }, []);
+    if (loadingUser) return;
+    if (currentUser) {
+      setCurrentUserId(currentUser.id);
+    }
+  }, [currentUser, loadingUser]);
 
   const fetchData = async () => {
     try {

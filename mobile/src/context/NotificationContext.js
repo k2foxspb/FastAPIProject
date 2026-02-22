@@ -16,12 +16,22 @@ export const NotificationProvider = ({ children }) => {
   const [unreadTotal, setUnreadTotal] = useState(0);
   const [friendRequestsCount, setFriendRequestsCount] = useState(0);
   const [isConnected, setIsConnected] = useState(false);
+  const [currentUser, setCurrentUser] = useState(null);
+  const [loadingUser, setLoadingUser] = useState(true);
   const [currentUserId, setCurrentUserId] = useState(null);
   const [activeChatId, setActiveChatId] = useState(null);
   const activeChatIdRef = useRef(null);
   const currentUserIdRef = useRef(null);
+  const dialogsRef = useRef([]);
   const appState = useRef(AppState.currentState);
   const ws = useRef(null);
+  const lastToken = useRef(null);
+  const reconnectTimer = useRef(null);
+  const reconnectAttempt = useRef(0);
+  const shouldReconnect = useRef(true);
+
+  const notificationPlayer = useAudioPlayer(require('../../assets/sounds/message.mp3'));
+  const notificationPlayerRef = useRef(notificationPlayer);
 
   useEffect(() => {
     activeChatIdRef.current = activeChatId;
@@ -30,41 +40,16 @@ export const NotificationProvider = ({ children }) => {
   useEffect(() => {
     currentUserIdRef.current = currentUserId;
   }, [currentUserId]);
-  const notificationPlayer = useAudioPlayer(require('../../assets/sounds/message.mp3'));
-  const notificationPlayerRef = useRef(notificationPlayer);
+
+  useEffect(() => {
+    dialogsRef.current = dialogs;
+    const total = dialogs.reduce((acc, d) => acc + (d.unread_count || 0), 0);
+    setUnreadTotal(total);
+  }, [dialogs]);
 
   useEffect(() => {
     notificationPlayerRef.current = notificationPlayer;
   }, [notificationPlayer]);
-
-  useEffect(() => {
-    const subscription = AppState.addEventListener('change', nextAppState => {
-      appState.current = nextAppState;
-      // При возврате в активное состояние пытаемся восстановить соединение нотификаций
-      if (nextAppState === 'active') {
-        if (!ws.current || (ws.current.readyState !== WebSocket.OPEN && ws.current.readyState !== WebSocket.CONNECTING)) {
-          storage.getAccessToken().then((tok) => {
-            if (tok) connect(tok);
-          });
-        }
-      }
-    });
-    return () => {
-      subscription.remove();
-    };
-  }, [connect]);
-
-  useEffect(() => {
-    const loadUser = async () => {
-      try {
-        const userRes = await usersApi.getMe();
-        setCurrentUserId(userRes.data.id);
-      } catch (err) {
-        console.log('Failed to load current user in NotificationContext', err);
-      }
-    };
-    loadUser();
-  }, []);
 
   const fetchDialogs = React.useCallback(async () => {
     try {
@@ -72,8 +57,6 @@ export const NotificationProvider = ({ children }) => {
       if (!token) return;
       const res = await chatApi.getDialogs(token);
       setDialogs(res.data);
-      const total = res.data.reduce((acc, d) => acc + d.unread_count, 0);
-      setUnreadTotal(total);
     } catch (err) {
       console.error('Failed to fetch dialogs:', err);
     }
@@ -101,16 +84,18 @@ export const NotificationProvider = ({ children }) => {
       }
       await setNotificationAudioMode();
       if (notificationPlayerRef.current) {
-        notificationPlayerRef.current.play();
+        await notificationPlayerRef.current.play();
       }
     } catch (error) {
       console.log('Error playing notification sound', error);
     }
   }, []);
 
-  const lastToken = useRef(null);
-  const heartbeatInterval = useRef(null);
-  const shouldReconnect = useRef(true);
+  const clearUnread = React.useCallback((userId) => {
+    setDialogs(prev => prev.map(d => 
+      Number(d.user_id) === Number(userId) ? { ...d, unread_count: 0 } : d
+    ));
+  }, []);
 
   const connect = React.useCallback((token) => {
     if (!token || token === 'null' || token === 'undefined') {
@@ -140,6 +125,11 @@ export const NotificationProvider = ({ children }) => {
     ws.current.onopen = () => {
       console.log('[NotificationContext] Notifications WS connected');
       setIsConnected(true);
+      reconnectAttempt.current = 0; // Reset attempts on successful connection
+      if (reconnectTimer.current) {
+        clearTimeout(reconnectTimer.current);
+        reconnectTimer.current = null;
+      }
       if (heartbeatInterval.current) clearInterval(heartbeatInterval.current);
       heartbeatInterval.current = setInterval(() => {
         if (ws.current && ws.current.readyState === WebSocket.OPEN) {
@@ -153,22 +143,58 @@ export const NotificationProvider = ({ children }) => {
         const payload = JSON.parse(e.data);
         console.log('[NotificationContext] Notification received:', payload.type, payload.data?.id || '');
         
-        if (payload.type === 'new_message' || payload.type === 'messages_read' || payload.type === 'your_messages_read' || payload.type === 'message_deleted') {
-          // Если это новое сообщение, проверяем, не в этом ли мы чате сейчас
-          if (payload.type === 'new_message') {
-            const senderId = payload.data.sender_id;
-            const isActiveChat = Number(activeChatIdRef.current) === Number(senderId);
-            if (isActiveChat) {
-              console.log('[NotificationContext] Skipping fetchDialogs for active chat message');
-              // Не прерываем совсем, так как уведомление может содержать важные метаданные, 
-              // но fetchDialogs() сделает сам ChatScreen
+        if (payload.type === 'new_message') {
+          const message = payload.data;
+          setDialogs(prev => {
+            const index = prev.findIndex(d => 
+              Number(d.user_id) === Number(message.sender_id) || 
+              Number(d.user_id) === Number(message.receiver_id)
+            );
+
+            if (index !== -1) {
+              const newDialogs = [...prev];
+              const d = newDialogs[index];
+              const isFromMe = Number(message.sender_id) === Number(currentUserIdRef.current);
+              const otherUserId = isFromMe ? Number(message.receiver_id) : Number(message.sender_id);
+              const isActiveChat = Number(activeChatIdRef.current) === otherUserId;
+
+              newDialogs[index] = {
+                ...d,
+                last_message: message.message || (message.message_type === 'media_group' ? 'Медиафайлы' : (message.message_type || 'Сообщение')),
+                last_message_time: message.created_at,
+                unread_count: (isFromMe || isActiveChat) ? d.unread_count : ((d.unread_count || 0) + 1)
+              };
+
+              // Перемещаем диалог в начало списка
+              const [updated] = newDialogs.splice(index, 1);
+              newDialogs.unshift(updated);
+              return newDialogs;
             } else {
-              console.log('[NotificationContext] Triggering fetchDialogs due to:', payload.type);
+              // Новый диалог, загружаем весь список, чтобы получить данные пользователя
               fetchDialogs();
+              return prev;
             }
-          } else {
-            console.log('[NotificationContext] Triggering fetchDialogs due to:', payload.type);
-            fetchDialogs();
+          });
+        }
+
+        if (payload.type === 'message_deleted') {
+          const msgId = payload.message_id || payload.data?.id;
+          if (msgId) {
+             // Мы не знаем, было ли это последнее сообщение, 
+             // поэтому для надежности обновляем список диалогов через API
+             fetchDialogs();
+          }
+        }
+
+        if (payload.type === 'messages_read' || payload.type === 'your_messages_read') {
+          const readerId = payload.reader_id || payload.data?.reader_id || payload.data?.from_user_id;
+          const isMe = Number(readerId) === Number(currentUserIdRef.current);
+          const otherId = isMe ? (payload.data?.from_user_id || payload.data?.user_id) : readerId;
+          
+          if (isMe && otherId) {
+            setDialogs(prev => prev.map(d => 
+              Number(d.user_id) === Number(otherId) ? { ...d, unread_count: 0 } : d
+            ));
           }
         }
 
@@ -180,30 +206,22 @@ export const NotificationProvider = ({ children }) => {
           ));
         }
 
-        if (payload.type === 'messages_read' || payload.type === 'your_messages_read') {
-           // Если мы в чате, то WebSocket чата сам обновит сообщения,
-           // но если мы в списке диалогов, нам нужно обновить состояние диалогов, что делает fetchDialogs() выше.
-        }
-
         if (payload.type === 'friend_request' || payload.type === 'friend_accept') {
-          // Обновляем счетчик заявок в друзья
           fetchFriendRequestsCount();
         }
 
         if (payload.type === 'new_message') {
           const senderId = payload.data.sender_id;
-          // Если приложение открыто, но мы НЕ в чате с этим пользователем и это не наше сообщение
           const isActiveChat = Number(activeChatIdRef.current) === Number(senderId);
           const isMe = Number(senderId) === Number(currentUserIdRef.current);
           
           if (appState.current === 'active' && !isActiveChat && !isMe) {
-            console.log('[NotificationContext] Playing sound for new message from:', senderId);
             playNotificationSound();
             Vibration.vibrate([0, 200, 100, 200]);
 
             // Визуальное оповещение внутри приложения с быстрым переходом в чат
             try {
-              const dlg = dialogs.find(d => Number(d.user_id) === Number(senderId));
+              const dlg = dialogsRef.current.find(d => Number(d.user_id) === Number(senderId));
               const senderName = payload.data.sender_name || (
                 dlg ? (`${dlg.first_name || ''} ${dlg.last_name || ''}`.trim() || dlg.email || 'Новый диалог') : 'Новый диалог'
               );
@@ -252,14 +270,27 @@ export const NotificationProvider = ({ children }) => {
         clearInterval(heartbeatInterval.current);
         heartbeatInterval.current = null;
       }
+      
+      // Clear any existing reconnect timer
+      if (reconnectTimer.current) {
+        clearTimeout(reconnectTimer.current);
+        reconnectTimer.current = null;
+      }
+
       // Всегда пробуем восстановиться, если это не был явный disconnect()
       if (shouldReconnect.current) {
-        console.log('[NotificationContext] Will try to reconnect notifications WS in 3s...');
-        setTimeout(() => {
-          storage.getAccessToken().then(token => {
-            if (token) connect(token);
-          });
-        }, 3000);
+        // Exponential backoff: 2s, 4s, 8s, 16s, max 30s
+        const delay = Math.min(30000, Math.pow(2, reconnectAttempt.current) * 2000);
+        console.log(`[NotificationContext] Will try to reconnect notifications WS in ${delay/1000}s... (Attempt ${reconnectAttempt.current + 1})`);
+        
+        reconnectTimer.current = setTimeout(() => {
+          reconnectAttempt.current += 1;
+          storage.getAccessToken()
+            .then(token => {
+              if (token) connect(token);
+            })
+            .catch(err => console.log('Failed to get token for reconnect', err));
+        }, delay);
       }
     };
 
@@ -273,10 +304,52 @@ export const NotificationProvider = ({ children }) => {
 
   const disconnect = React.useCallback(() => {
     shouldReconnect.current = false;
+    if (reconnectTimer.current) {
+      clearTimeout(reconnectTimer.current);
+      reconnectTimer.current = null;
+    }
     if (ws.current) {
       ws.current.close(1000);
       ws.current = null;
     }
+  }, []);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', nextAppState => {
+      appState.current = nextAppState;
+      // При возврате в активное состояние пытаемся восстановить соединение нотификаций
+      if (nextAppState === 'active') {
+        if (!ws.current || (ws.current.readyState !== WebSocket.OPEN && ws.current.readyState !== WebSocket.CONNECTING)) {
+          storage.getAccessToken()
+            .then((tok) => {
+              if (tok) connect(tok);
+            })
+            .catch(err => console.log('Failed to get token on AppState change', err));
+        }
+      }
+    });
+    return () => {
+      subscription.remove();
+    };
+  }, [connect]);
+
+  useEffect(() => {
+    const loadUser = async () => {
+      setLoadingUser(true);
+      try {
+        const token = await storage.getAccessToken();
+        if (token) {
+          const userRes = await usersApi.getMe();
+          setCurrentUser(userRes.data);
+          setCurrentUserId(userRes.data.id);
+        }
+      } catch (err) {
+        console.log('Failed to load current user in NotificationContext', err);
+      } finally {
+        setLoadingUser(false);
+      }
+    };
+    loadUser();
   }, []);
 
   useEffect(() => {
@@ -286,7 +359,7 @@ export const NotificationProvider = ({ children }) => {
       }
       disconnect();
     };
-  }, []);
+  }, [disconnect]);
 
   useEffect(() => {
     if (isConnected) {
@@ -307,9 +380,12 @@ export const NotificationProvider = ({ children }) => {
       isConnected, 
       connect, 
       disconnect,
+      currentUser,
+      loadingUser,
       currentUserId,
       activeChatId,
-      setActiveChatId
+      setActiveChatId,
+      clearUnread
     }}>
       {children}
     </NotificationContext.Provider>

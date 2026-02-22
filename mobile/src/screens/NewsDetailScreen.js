@@ -6,6 +6,7 @@ import { getFullUrl } from '../utils/urlHelper';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
 import { Ionicons as Icon } from '@expo/vector-icons';
+import { useNotifications } from '../context/NotificationContext';
 
 const { width } = Dimensions.get('window');
 
@@ -13,6 +14,7 @@ export default function NewsDetailScreen({ route, navigation }) {
   const { newsId, newsItem: initialNewsItem } = route.params;
   const { theme } = useTheme();
   const colors = themeConstants[theme];
+  const { currentUser } = useNotifications();
   
   const [news, setNews] = useState(initialNewsItem || null);
   const [loading, setLoading] = useState(!initialNewsItem);
@@ -20,13 +22,17 @@ export default function NewsDetailScreen({ route, navigation }) {
   const [comments, setComments] = useState([]);
   const [newComment, setNewComment] = useState('');
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState(currentUser);
 
   useEffect(() => {
     loadNews();
     loadComments();
-    fetchUser();
-  }, []);
+    if (!currentUser) {
+      fetchUser();
+    } else {
+      setUser(currentUser);
+    }
+  }, [currentUser]);
 
   const fetchUser = async () => {
     try {

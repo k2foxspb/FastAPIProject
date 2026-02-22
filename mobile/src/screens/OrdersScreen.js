@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
 } from 'react-native';
+import { getShadow } from '../utils/shadowStyles';
 import { useFocusEffect } from '@react-navigation/native';
 import { ordersApi } from '../api';
 import { useTheme } from '../context/ThemeContext';
@@ -116,11 +117,7 @@ const styles = StyleSheet.create({
     padding: 15,
     marginBottom: 15,
     borderWidth: 1,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
+    ...getShadow('#000', { width: 0, height: 1 }, 0.1, 2, 2),
   },
   orderHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
   orderNumber: { fontSize: 16, fontWeight: 'bold' },

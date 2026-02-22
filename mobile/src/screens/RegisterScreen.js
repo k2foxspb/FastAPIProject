@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { getShadow } from '../utils/shadowStyles';
 import { View, Text, TextInput, StyleSheet, TouchableOpacity, Alert, KeyboardAvoidingView, Platform, ScrollView, Image } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons as Icon } from '@expo/vector-icons';
@@ -177,7 +178,7 @@ const styles = StyleSheet.create({
   avatarPlaceholder: { alignItems: 'center' },
   removeAvatar: { position: 'absolute', top: 0, right: 0, backgroundColor: '#fff', borderRadius: 12 },
   label: { fontSize: 16, marginBottom: 12, fontWeight: '500', alignSelf: 'flex-start' },
-  button: { height: 52, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginTop: 8, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4 },
+  button: { height: 52, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginTop: 8, ...getShadow('#000', { width: 0, height: 2 }, 0.1, 4, 2) },
   buttonDisabled: { opacity: 0.7 },
   buttonText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
   linkButton: { marginTop: 20, alignItems: 'center' },

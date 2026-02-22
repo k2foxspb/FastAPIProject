@@ -1,18 +1,28 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
+import { getShadow } from '../utils/shadowStyles';
 import { Ionicons as Icon } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
 import { usersApi } from '../api';
 
+import { useNotifications } from '../context/NotificationContext';
+
 export default function AdminScreen({ navigation }) {
   const { theme } = useTheme();
   const colors = themeConstants[theme];
-  const [role, setRole] = useState(null);
+  const { currentUser, loadingUser } = useNotifications();
+  const [role, setRole] = useState(currentUser?.role);
 
   useEffect(() => {
-    usersApi.getMe().then(res => setRole(res.data.role)).catch(() => setRole(null));
-  }, []);
+    if (loadingUser) return;
+    
+    if (currentUser) {
+      setRole(currentUser.role);
+    } else {
+      setRole(null);
+    }
+  }, [currentUser, loadingUser]);
 
   const adminMenu = [
     { title: 'Пользователи и Роли', icon: 'people-outline', screen: 'AdminUsers', ownerOnly: true },
@@ -68,11 +78,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginBottom: 12,
     borderWidth: 1,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
+    ...getShadow('#000', { width: 0, height: 1 }, 0.1, 2, 2),
   },
   menuItemLeft: { flexDirection: 'row', alignItems: 'center' },
   menuItemText: { fontSize: 16, fontWeight: '600', marginLeft: 15 },

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, FlatList, Image, ActivityIndicator, TouchableOpacity, Alert, Modal, Pressable, Dimensions, Share, Platform } from 'react-native';
+import { getShadow } from '../utils/shadowStyles';
 import { Ionicons as Icon } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
@@ -282,11 +283,7 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     borderWidth: 1,
     minWidth: 60,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 1,
+    ...getShadow('#000', { width: 0, height: 1 }, 0.1, 2, 1),
   },
   u2Bubble: {
     borderBottomLeftRadius: 2

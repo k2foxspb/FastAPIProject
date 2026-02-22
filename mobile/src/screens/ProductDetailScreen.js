@@ -6,6 +6,7 @@ import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
 import { Ionicons as Icon } from '@expo/vector-icons';
 import { formatName } from '../utils/formatters';
+import { useNotifications } from '../context/NotificationContext';
 
 const { width } = Dimensions.get('window');
 
@@ -13,11 +14,12 @@ export default function ProductDetailScreen({ route, navigation }) {
   const { productId } = route.params;
   const { theme } = useTheme();
   const colors = themeConstants[theme];
+  const { currentUser } = useNotifications();
   
   const [product, setProduct] = useState(null);
   const [reviews, setReviews] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState(currentUser);
   const [rating, setRating] = useState(5);
   const [comment, setComment] = useState('');
   const [submittingReview, setSubmittingReview] = useState(false);
@@ -26,21 +28,32 @@ export default function ProductDetailScreen({ route, navigation }) {
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
-      const [productRes, reviewsRes, userRes] = await Promise.all([
+      const promises = [
         productsApi.getProduct(productId),
         productsApi.getReviews(productId),
-        usersApi.getMe().catch(() => ({ data: null }))
-      ]);
+      ];
+      
+      let userData = currentUser;
+      const results = await Promise.all(promises);
+      const [productRes, reviewsRes] = results;
+      
+      if (!userData) {
+        try {
+          const uRes = await usersApi.getMe();
+          userData = uRes.data;
+        } catch (e) {}
+      }
+      
       setProduct(productRes.data);
       setReviews(reviewsRes.data);
-      setUser(userRes.data);
+      setUser(userData);
     } catch (err) {
       console.error(err);
       Alert.alert('Ошибка', 'Не удалось загрузить данные о товаре');
     } finally {
       setLoading(false);
     }
-  }, [productId]);
+  }, [productId, currentUser]);
 
   useEffect(() => {
     loadData();

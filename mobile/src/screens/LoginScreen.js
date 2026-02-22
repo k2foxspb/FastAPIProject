@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { getShadow } from '../utils/shadowStyles';
 import { View, Text, TextInput, StyleSheet, TouchableOpacity, Alert, KeyboardAvoidingView, Platform } from 'react-native';
 import { usersApi, setAuthToken } from '../api';
 import { useNotifications } from '../context/NotificationContext';
@@ -94,7 +95,7 @@ const styles = StyleSheet.create({
   inner: { flex: 1, justifyContent: 'center', padding: 24 },
   title: { fontSize: 28, fontWeight: 'bold', marginBottom: 32, textAlign: 'center' },
   input: { height: 52, borderWidth: 1, borderRadius: 12, paddingHorizontal: 16, marginBottom: 16, fontSize: 16 },
-  button: { height: 52, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginTop: 8, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4 },
+  button: { height: 52, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginTop: 8, ...getShadow('#000', { width: 0, height: 2 }, 0.1, 4, 2) },
   buttonDisabled: { opacity: 0.7 },
   buttonText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
   linkButton: { marginTop: 20, alignItems: 'center' },

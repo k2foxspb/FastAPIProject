@@ -1,7 +1,7 @@
 import firebase_admin
 import asyncio
 from loguru import logger
-from firebase_admin import credentials, messaging
+from firebase_admin import credentials, messaging, exceptions
 from typing import Optional
 import os
 from app.core.config import FIREBASE_SERVICE_ACCOUNT_PATH
@@ -120,25 +120,17 @@ async def send_fcm_notification(
         
         logger.success(f"FCM: Successfully sent message. Response: {response}")
         return True
-    except messaging.UnregisteredError:
+    except (messaging.UnregisteredError, exceptions.NotFoundError):
         # Токен больше не валиден (приложение удалено или токен протух)
         logger.warning(f"FCM: Token is unregistered (invalid): {token[:15]}...")
         return False
-    except messaging.InvalidArgumentError as e:
+    except (messaging.InvalidArgumentError, exceptions.InvalidArgumentError) as e:
         # Токен имеет неверный формат или другие аргументы неверны
         logger.warning(f"FCM: Invalid arguments (bad token format?): {e}")
         return False
-    except messaging.QuotaExceededError:
-        logger.error("FCM: Quota exceeded for project")
-        return False
-    except messaging.SenderIdMismatchError:
-        logger.error("FCM: Sender ID mismatch")
-        return False
-    except messaging.ThirdPartyAuthError:
-        logger.error("FCM: Third party authentication error (APNs issue?)")
-        return False
-    except messaging.ApiCallError as e:
-        logger.error(f"FCM: API call error: {e}")
+    except exceptions.FirebaseError as e:
+        # Общая ошибка Firebase SDK
+        logger.error(f"FCM: Firebase error for token {token[:15]}...: {e}")
         return False
     except Exception as e:
         logger.error(f"FCM: Request failed for token {token[:15]}... | Error: {type(e).__name__}: {e}")

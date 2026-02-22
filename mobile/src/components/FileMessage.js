@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { getShadow } from '../utils/shadowStyles';
 import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Alert, Platform } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { documentDirectory, getInfoAsync, downloadAsync, getContentUriAsync, readAsStringAsync, writeAsStringAsync, EncodingType, StorageAccessFramework } from 'expo-file-system/legacy';
@@ -202,11 +203,7 @@ export default function FileMessage({ item, currentUserId }) {
       styles.container, 
       { 
         backgroundColor: isReceived ? colors.surface : colors.primary,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.1,
-        shadowRadius: 2,
-        elevation: 1,
+        ...getShadow('#000', { width: 0, height: 1 }, 0.1, 2, 1),
       }
     ]}>
       <TouchableOpacity 

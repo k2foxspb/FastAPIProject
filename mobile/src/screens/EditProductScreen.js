@@ -6,11 +6,12 @@ import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
 import { getFullUrl } from '../utils/urlHelper';
 import { Ionicons as Icon } from '@expo/vector-icons';
-
+import { useNotifications } from '../context/NotificationContext';
 
 export default function EditProductScreen({ route, navigation }) {
   const { theme } = useTheme();
   const colors = themeConstants[theme];
+  const { currentUser } = useNotifications();
   const product = route.params?.product;
   const isEditing = !!product;
 
@@ -41,13 +42,22 @@ export default function EditProductScreen({ route, navigation }) {
   const loadInitialData = async () => {
     setLoading(true);
     try {
-      const [categoriesRes, userRes] = await Promise.all([
+      const promises = [
         productsApi.getCategories(),
-        usersApi.getMe().catch(() => ({ data: null }))
-      ]);
+      ];
+      
+      let userData = currentUser;
+      const [categoriesRes] = await Promise.all(promises);
+      
+      if (!userData) {
+        try {
+          const uRes = await usersApi.getMe();
+          userData = uRes.data;
+        } catch (e) {}
+      }
       
       setCategories(categoriesRes.data);
-      if (userRes.data) setUser(userRes.data);
+      if (userData) setUser(userData);
 
       if (!isEditing && categoriesRes.data.length > 0 && !categoryId) {
         setCategoryId(categoriesRes.data[0].id);

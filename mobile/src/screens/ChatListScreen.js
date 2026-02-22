@@ -8,14 +8,18 @@ import { API_BASE_URL } from '../constants';
 import { formatName } from '../utils/formatters';
 
 export default function ChatListScreen({ navigation }) {
-  const { dialogs, fetchDialogs } = useNotifications();
+  const { dialogs, fetchDialogs, isConnected } = useNotifications();
   const { theme } = useTheme();
   const colors = themeConstants[theme];
 
   useFocusEffect(
     useCallback(() => {
-      fetchDialogs();
-    }, [])
+      // Только если WS еще не подключен или список пуст, делаем запрос.
+      // В остальных случаях полагаемся на real-time обновления через WS.
+      if (!isConnected || dialogs.length === 0) {
+        fetchDialogs();
+      }
+    }, [isConnected, dialogs.length, fetchDialogs])
   );
 
   const getAvatarUrl = (url) => {

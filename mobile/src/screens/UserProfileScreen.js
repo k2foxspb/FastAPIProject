@@ -1,5 +1,6 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, Image, FlatList, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { getShadow } from '../utils/shadowStyles';
+import { View, Text, StyleSheet, Image, FlatList, ScrollView, TouchableOpacity, ActivityIndicator, Platform } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { usersApi, adminApi, newsApi } from '../api';
 import { API_BASE_URL } from '../constants';
@@ -349,9 +350,9 @@ const styles = StyleSheet.create({
   errorText: { marginBottom: 10 },
   retryBtn: { padding: 10, borderRadius: 5 },
   retryText: { color: '#fff' },
-  activityButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 15, borderRadius: 12, borderWidth: 1, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2 },
+  activityButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 15, borderRadius: 12, borderWidth: 1, ...getShadow('#000', { width: 0, height: 1 }, 0.1, 2, 2) },
   activityButtonText: { marginLeft: 10, fontWeight: 'bold', fontSize: 14 },
-  postCard: { borderRadius: 12, marginBottom: 16, elevation: 3, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2, borderWidth: 1, overflow: 'hidden' },
+  postCard: { borderRadius: 12, marginBottom: 16, borderWidth: 1, overflow: 'hidden', ...getShadow('#000', { width: 0, height: 1 }, 0.1, 2, 3) },
   postAuthorHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 10, borderBottomWidth: 0.5, borderBottomColor: 'rgba(0,0,0,0.05)' },
   authorInfo: { flexDirection: 'row', alignItems: 'center' },
   authorAvatar: { width: 32, height: 32, borderRadius: 16, marginRight: 8 },

@@ -1,5 +1,6 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, Image, FlatList, ScrollView, TouchableOpacity, Modal, TouchableWithoutFeedback, Switch, Alert } from 'react-native';
+import { getShadow } from '../utils/shadowStyles';
+import { View, Text, StyleSheet, Image, FlatList, ScrollView, TouchableOpacity, Modal, TouchableWithoutFeedback, Switch, Alert, Platform } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import api, { usersApi, newsApi, setAuthToken } from '../api';
 import { Ionicons as Icon } from '@expo/vector-icons';
@@ -16,7 +17,7 @@ export default function ProfileScreen({ navigation }) {
   const [error, setError] = useState(null);
   const [isSettingsVisible, setSettingsVisible] = useState(false);
   const [quietHours, setQuietHours] = useState({ enabled: false, start: '22:00', end: '08:00' });
-  const { disconnect } = useNotifications();
+  const { disconnect, currentUser, loadingUser } = useNotifications();
   const { theme, isDark, toggleTheme, isSystemTheme, useSystemThemeSetting } = useTheme();
   const colors = themeConstants[theme];
 
@@ -156,37 +157,45 @@ export default function ProfileScreen({ navigation }) {
         ),
       });
 
-      usersApi
-        .getMe()
-        .then(res => {
-          setUser(res.data);
-          return newsApi.getUserNews(res.data.id);
-        })
-        .then(res => setPosts(res.data))
-        .catch(err => {
+      const fetchProfile = async () => {
+        if (loadingUser) return;
+        
+        try {
+          let userData = currentUser;
+          if (!userData) {
+            // Если пользователя всё еще нет и загрузка завершена, значит он не авторизован
+            handleLogout();
+            return;
+          }
+          setUser(userData);
+          const postsRes = await newsApi.getUserNews(userData.id);
+          setPosts(postsRes.data);
+        } catch (err) {
           const status = err?.response?.status;
           if (status === 401) {
-            // Не авторизован — отправляем на экран входа
             handleLogout();
           } else {
             setError('Не удалось загрузить профиль');
             console.log(err);
           }
-        });
+        }
+      };
+
+      fetchProfile();
 
       // Загрузка настроек тихих часов
-      Promise.all([
-        storage.getItem('quiet_hours_enabled'),
-        storage.getItem('quiet_hours_start'),
-        storage.getItem('quiet_hours_end')
-      ]).then(([enabled, start, end]) => {
-        setQuietHours({
-          enabled: enabled === 'true',
-          start: start || '22:00',
-          end: end || '08:00'
-        });
-      });
-    }, [navigation, colors.text])
+      storage.getItem('quiet_hours_enabled').then(enabled => {
+        storage.getItem('quiet_hours_start').then(start => {
+          storage.getItem('quiet_hours_end').then(end => {
+            setQuietHours({
+              enabled: enabled === 'true',
+              start: start || '22:00',
+              end: end || '08:00'
+            });
+          }).catch(() => {});
+        }).catch(() => {});
+      }).catch(() => {});
+    }, [navigation, colors.text, currentUser, loadingUser])
   );
 
   const toggleQuietHours = async () => {
@@ -562,9 +571,9 @@ const styles = StyleSheet.create({
     marginTop: 5,
   },
   activityRow: { flexDirection: 'row', justifyContent: 'space-between' },
-  activityButton: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 15, borderRadius: 12, borderWidth: 1, marginHorizontal: 5, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2 },
+  activityButton: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 15, borderRadius: 12, borderWidth: 1, marginHorizontal: 5, ...getShadow('#000', { width: 0, height: 1 }, 0.1, 2, 2) },
   activityButtonText: { marginLeft: 10, fontWeight: 'bold', fontSize: 14 },
-  postCard: { borderRadius: 12, marginBottom: 16, elevation: 3, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2, borderWidth: 1, overflow: 'hidden' },
+  postCard: { borderRadius: 12, marginBottom: 16, borderWidth: 1, overflow: 'hidden', ...getShadow('#000', { width: 0, height: 1 }, 0.1, 2, 3) },
   postAuthorHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 10, borderBottomWidth: 0.5, borderBottomColor: 'rgba(0,0,0,0.05)' },
   authorInfo: { flexDirection: 'row', alignItems: 'center' },
   authorAvatar: { width: 32, height: 32, borderRadius: 16, marginRight: 8 },

@@ -75,13 +75,17 @@ function AppContent() {
 
     // Проверка сохраненной сессии
     const checkSession = async () => {
-      const token = await storage.getAccessToken();
-      console.log('[App] Checking session, token exists:', !!token);
-      if (token) {
-        setAuthToken(token);
-        connect(token);
-        // Обновляем FCM токен на сервере после авторизации
-        updateServerFcmToken();
+      try {
+        const token = await storage.getAccessToken();
+        console.log('[App] Checking session, token exists:', !!token);
+        if (token) {
+          setAuthToken(token);
+          connect(token);
+          // Обновляем FCM токен на сервере после авторизации
+          updateServerFcmToken().catch(e => console.log('FCM Update failed', e));
+        }
+      } catch (err) {
+        console.log('checkSession failed', err);
       }
     };
     checkSession();

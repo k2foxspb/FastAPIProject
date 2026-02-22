@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image, TextInput, Alert, ActivityIndicator, Platform, Switch, ScrollView } from 'react-native';
+import { getShadow } from '../utils/shadowStyles';
 import * as ImagePicker from 'expo-image-picker';
 import { usersApi } from '../api';
 import { Ionicons as Icon } from '@expo/vector-icons';
@@ -233,11 +234,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.2,
-    shadowRadius: 1,
+    ...getShadow('#000', { width: 0, height: 1 }, 0.2, 1, 2),
   },
   addMoreBtn: {
     width: 120,
