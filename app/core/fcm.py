@@ -1,4 +1,6 @@
 import firebase_admin
+import asyncio
+from loguru import logger
 from firebase_admin import credentials, messaging
 from typing import Optional
 import os
@@ -8,13 +10,16 @@ from app.core.config import FIREBASE_SERVICE_ACCOUNT_PATH
 # Мы инициализируем его один раз при импорте модуля
 try:
     if not firebase_admin._apps:
-        if os.path.exists(FIREBASE_SERVICE_ACCOUNT_PATH):
-            cred = credentials.Certificate(FIREBASE_SERVICE_ACCOUNT_PATH)
+        # Пытаемся найти файл по абсолютному пути, если относительный не сработал
+        abs_path = os.path.abspath(FIREBASE_SERVICE_ACCOUNT_PATH)
+        if os.path.exists(abs_path):
+            logger.info(f"Initializing Firebase Admin SDK with service account from {abs_path}")
+            cred = credentials.Certificate(abs_path)
             firebase_admin.initialize_app(cred)
         else:
-            print(f"WARNING: Firebase service account file not found at {FIREBASE_SERVICE_ACCOUNT_PATH}")
+            logger.warning(f"Firebase service account file NOT found at {abs_path}. FCM notifications will be disabled.")
 except Exception as e:
-    print(f"ERROR: Failed to initialize Firebase Admin SDK: {e}")
+    logger.error(f"Failed to initialize Firebase Admin SDK: {e}")
 
 async def send_fcm_notification(
     token: str, 
@@ -28,7 +33,11 @@ async def send_fcm_notification(
     используя Firebase Admin SDK.
     """
     if not firebase_admin._apps:
-        print("WARNING: Firebase Admin SDK not initialized, skipping notification")
+        logger.warning("Firebase Admin SDK not initialized, skipping notification")
+        return False
+
+    if not token:
+        logger.warning("Empty token provided for FCM, skipping notification")
         return False
 
     # Подготовка данных для уведомления
@@ -82,11 +91,11 @@ async def send_fcm_notification(
     )
 
     try:
-        # Отправка сообщения (синхронный вызов в Admin SDK, 
-        # но в FastAPI обычно этого достаточно, либо можно обернуть в run_in_executor)
-        response = messaging.send(message)
-        print(f"Successfully sent message: {response}")
+        # Отправка сообщения (выполняем в отдельном потоке, так как Admin SDK синхронный)
+        loop = asyncio.get_event_loop()
+        response = await loop.run_in_executor(None, lambda: messaging.send(message))
+        logger.info(f"Successfully sent FCM message: {response}")
         return True
     except Exception as e:
-        print(f"FCM request failed: {e}")
+        logger.error(f"FCM request failed for token {token[:10]}... : {e}")
         return False
