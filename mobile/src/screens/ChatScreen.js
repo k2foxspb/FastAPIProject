@@ -12,7 +12,7 @@ import { uploadManager } from '../utils/uploadManager';
 import CachedMedia from '../components/CachedMedia';
 import VoiceMessage from '../components/VoiceMessage';
 import FileMessage from '../components/FileMessage';
-import { Video, ResizeMode, Audio } from 'expo-av';
+import { Audio } from 'expo-av';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
@@ -1097,7 +1097,7 @@ export default function ChatScreen({ route, navigation }) {
                 <CachedMedia 
                   item={mediaItem}
                   style={styles.fullScreenVideo}
-                  resizeMode={ResizeMode.CONTAIN}
+                  resizeMode="contain"
                   useNativeControls={true}
                   shouldPlay={currentMediaIndex === index}
                   isMuted={false}

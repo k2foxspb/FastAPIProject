@@ -1,7 +1,7 @@
 import './src/utils/firebaseInit'; // Гарантированная инициализация первым делом
 import React, { useEffect } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
-// import * as Linking from 'expo-linking';
+import * as Linking from 'expo-linking';
 import { Alert } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import TabNavigator from './src/navigation/TabNavigator';
@@ -16,7 +16,6 @@ function AppContent() {
   const { connect } = useNotifications();
   const { theme } = useTheme();
 
-/*
   const linking = {
     prefixes: [Linking.createURL('/'), 'fokinfun://'],
     config: {
@@ -52,7 +51,6 @@ function AppContent() {
       };
     },
   };
-*/
 
   useEffect(() => {
     // Устанавливаем режим аудио для всего приложения
@@ -75,7 +73,7 @@ function AppContent() {
   }, [connect]);
 
   return (
-    <NavigationContainer /* linking={linking} */>
+    <NavigationContainer linking={linking}>
       <StatusBar style={theme === 'dark' ? 'light' : 'dark'} backgroundColor={theme === 'dark' ? '#000000' : '#FFFFFF'} />
       <TabNavigator />
     </NavigationContainer>

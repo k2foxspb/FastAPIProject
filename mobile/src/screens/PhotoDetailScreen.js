@@ -15,7 +15,7 @@ import {
   KeyboardAvoidingView,
   Platform
 } from 'react-native';
-import { Video, ResizeMode } from 'expo-av';
+import { useVideoPlayer, VideoView } from 'expo-video';
 import { usersApi } from '../api';
 import { Ionicons as Icon } from '@expo/vector-icons';
 import { getFullUrl } from '../utils/urlHelper';
@@ -23,6 +23,30 @@ import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
 
 const { width, height } = Dimensions.get('window');
+
+const VideoItem = ({ uri, style, useNativeControls, shouldPlay }) => {
+  const player = useVideoPlayer(uri, (p) => {
+    p.loop = true;
+    if (shouldPlay) p.play();
+  });
+
+  useEffect(() => {
+    if (shouldPlay) {
+      player.play();
+    } else {
+      player.pause();
+    }
+  }, [shouldPlay, player]);
+
+  return (
+    <VideoView
+      player={player}
+      style={style}
+      contentFit="contain"
+      nativeControls={useNativeControls}
+    />
+  );
+};
 
 export default function PhotoDetailScreen({ route, navigation }) {
   const { theme } = useTheme();
@@ -294,15 +318,13 @@ export default function PhotoDetailScreen({ route, navigation }) {
             style={styles.imageWrapper}
           >
             {mediaIsVideo ? (
-              <Video
-                source={{ uri: mediaUrl }}
+              <VideoItem
+                uri={mediaUrl}
                 style={[
                   styles.fullPhoto,
                   isSelected && { opacity: 0.7 }
                 ]}
                 useNativeControls
-                resizeMode={ResizeMode.CONTAIN}
-                isLooping
                 shouldPlay={currentIndex === index}
               />
             ) : (

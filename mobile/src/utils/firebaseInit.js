@@ -37,23 +37,38 @@ const initializeFirebase = () => {
       console.log('Default app not found via firebase.app(), will try initializeApp');
     }
 
-// Manual configuration from google-services.json
-    const firebaseConfig = {
-      apiKey: "AIzaSyAwKCJuxsxfnY6aloE5lnDn-triTVBswxE",
-      appId: "1:176773891332:android:01174694c19132ed0ffc51",
-      projectId: "fastapi-f628e",
-      storageBucket: "fastapi-f628e.firebasestorage.app",
-      messagingSenderId: "176773891332"
-    };
-
-    console.log('Calling firebase.initializeApp(config)...');
-    const app = firebase.initializeApp(firebaseConfig);
-    console.log('firebase.initializeApp result:', app ? 'Success' : 'Failed');
-    console.log('firebase.apps.length after init:', firebase.apps.length);
-    if (firebase.apps.length > 0) {
-      console.log('Apps:', firebase.apps.map(a => a.name).join(', '));
+// Manual configuration (fallback for some environments)
+    let firebaseConfig = null;
+    if (Platform.OS === 'android') {
+      firebaseConfig = {
+        apiKey: "AIzaSyAwKCJuxsxfnY6aloE5lnDn-triTVBswxE",
+        appId: "1:176773891332:android:01174694c19132ed0ffc51",
+        projectId: "fastapi-f628e",
+        storageBucket: "fastapi-f628e.firebasestorage.app",
+        messagingSenderId: "176773891332"
+      };
+    } else if (Platform.OS === 'ios') {
+      // Add your iOS Firebase config here if auto-init from GoogleService-Info.plist fails
+      /*
+      firebaseConfig = {
+        apiKey: "...",
+        appId: "...",
+        projectId: "...",
+        storageBucket: "...",
+        messagingSenderId: "..."
+      };
+      */
     }
-    return app;
+
+    if (firebaseConfig) {
+      console.log('Calling firebase.initializeApp(config) for', Platform.OS);
+      const app = firebase.initializeApp(firebaseConfig);
+      console.log('firebase.initializeApp result:', app ? 'Success' : 'Failed');
+      return app;
+    } else {
+      console.warn('No Firebase config provided for', Platform.OS, '. Relying on native auto-initialization.');
+      return firebase.app();
+    }
   } catch (error) {
     if (error.message.includes('already exists') || error.message.includes('already initialized')) {
       console.log('Firebase app already exists, returning default.');

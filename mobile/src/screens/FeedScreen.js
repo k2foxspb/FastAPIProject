@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, FlatList, StyleSheet, TouchableOpacity, RefreshControl, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, FlatList, StyleSheet, TouchableOpacity, RefreshControl, ActivityIndicator, Alert, Image } from 'react-native';
 import FadeInImage from '../components/FadeInImage';
 import FadeInView from '../components/FadeInView';
 import { productsApi, newsApi, usersApi, cartApi } from '../api';
