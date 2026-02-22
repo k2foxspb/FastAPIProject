@@ -97,6 +97,13 @@ async def websocket_chat_endpoint(
 
     # Using our custom connect that doesn't call accept() again
     await manager.connect(websocket, user_id)
+
+    # Fetch sender name once for the session
+    sender_result = await db.execute(select(UserModel.first_name, UserModel.last_name).where(UserModel.id == user_id))
+    sender_row = sender_result.first()
+    sender_name = f"{sender_row.first_name} {sender_row.last_name}".strip() if sender_row and (sender_row.first_name or sender_row.last_name) else "Пользователь"
+    if not sender_name: sender_name = "Пользователь"
+
     try:
         while True:
             data = await websocket.receive_text()
@@ -129,22 +136,22 @@ async def websocket_chat_endpoint(
                     )
                     await db.commit()
                     
-                    # Уведомляем отправителя
-                    await notifications_manager.send_personal_message({
-                        "type": "your_messages_read",
-                        "data": {"reader_id": user_id}
-                    }, int(other_id))
-                    
-                    await manager.send_personal_message({
-                        "type": "messages_read",
-                        "reader_id": user_id
-                    }, int(other_id))
-
-                    # Уведомляем самого пользователя, чтобы обновить его список диалогов (сбросить счетчик)
-                    await notifications_manager.send_personal_message({
-                        "type": "messages_read",
-                        "data": {"from_user_id": int(other_id)}
-                    }, user_id)
+                    # Уведомляем всех участников одновременно
+                    await asyncio.gather(
+                        notifications_manager.send_personal_message({
+                            "type": "your_messages_read",
+                            "data": {"reader_id": user_id}
+                        }, int(other_id)),
+                        manager.send_personal_message({
+                            "type": "messages_read",
+                            "reader_id": user_id
+                        }, int(other_id)),
+                        notifications_manager.send_personal_message({
+                            "type": "messages_read",
+                            "data": {"from_user_id": int(other_id)}
+                        }, user_id),
+                        return_exceptions=True
+                    )
                 continue
 
             # Стандартная отправка сообщения
@@ -186,11 +193,7 @@ async def websocket_chat_endpoint(
                 await db.commit()
                 await db.refresh(new_msg)
 
-                # Находим отправителя для имени (понадобится для уведомлений)
-                sender_result = await db.execute(select(UserModel.first_name, UserModel.last_name).where(UserModel.id == user_id))
-                sender_row = sender_result.first()
-                sender_name = f"{sender_row.first_name} {sender_row.last_name}".strip() if sender_row and (sender_row.first_name or sender_row.last_name) else "Пользователь"
-                if not sender_name: sender_name = "Пользователь"
+                # sender_name is already fetched once above the loop
 
                 # Готовим данные ответа
                 response_data = {
@@ -211,21 +214,20 @@ async def websocket_chat_endpoint(
                     except Exception:
                         response_data["attachments"] = []
                 
-                await manager.send_personal_message(response_data, receiver_id)
-                # Отправляем подтверждение отправителю
-                await manager.send_personal_message(response_data, user_id)
-
-                # Уведомляем через глобальный WS уведомлений получателя
-                await notifications_manager.send_personal_message({
-                    "type": "new_message",
-                    "data": response_data
-                }, receiver_id)
-                
-                # Уведомляем также отправителя, чтобы его список диалогов обновился (последнее сообщение)
-                await notifications_manager.send_personal_message({
-                    "type": "new_message",
-                    "data": response_data
-                }, user_id)
+                # Рассылаем сообщения всем участникам параллельно для минимальной задержки
+                await asyncio.gather(
+                    manager.send_personal_message(response_data, receiver_id),
+                    manager.send_personal_message(response_data, user_id),
+                    notifications_manager.send_personal_message({
+                        "type": "new_message",
+                        "data": response_data
+                    }, receiver_id),
+                    notifications_manager.send_personal_message({
+                        "type": "new_message",
+                        "data": response_data
+                    }, user_id),
+                    return_exceptions=True
+                )
 
                 # Отправляем Пуш через FCM, если получатель не подключен к WebSocket
                 # Находим получателя, чтобы взять его fcm_token
@@ -314,20 +316,20 @@ async def send_message_api(
         except Exception:
             response_data["attachments"] = []
 
-    # Уведомляем через WebSocket чата (обоих участников)
-    await manager.send_personal_message(response_data, receiver_id)
-    await manager.send_personal_message(response_data, user_id)
-
-    # Уведомляем через глобальный WS уведомлений
-    await notifications_manager.send_personal_message({
-        "type": "new_message",
-        "data": response_data
-    }, receiver_id)
-    
-    await notifications_manager.send_personal_message({
-        "type": "new_message",
-        "data": response_data
-    }, user_id)
+    # Уведомляем всех параллельно
+    await asyncio.gather(
+        manager.send_personal_message(response_data, receiver_id),
+        manager.send_personal_message(response_data, user_id),
+        notifications_manager.send_personal_message({
+            "type": "new_message",
+            "data": response_data
+        }, receiver_id),
+        notifications_manager.send_personal_message({
+            "type": "new_message",
+            "data": response_data
+        }, user_id),
+        return_exceptions=True
+    )
 
     # FCM Notification
     receiver_result = await db.execute(select(UserModel).where(UserModel.id == receiver_id))

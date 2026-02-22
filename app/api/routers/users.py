@@ -1447,7 +1447,7 @@ async def send_friend_request(
         "sender_name": f"{current_user.first_name} {current_user.last_name}" if current_user.first_name else current_user.email,
         "message": "sent you a friend request"
     }
-    await notification_manager.send_personal_message(msg, user_id)
+    asyncio.create_task(notification_manager.send_personal_message(msg, user_id))
     
     if target_user.fcm_token:
         asyncio.create_task(send_fcm_notification(
@@ -1496,7 +1496,7 @@ async def accept_friend_request(
         "sender_name": f"{current_user.first_name} {current_user.last_name}" if current_user.first_name else current_user.email,
         "message": "accepted your friend request"
     }
-    await notification_manager.send_personal_message(msg, sender_id)
+    asyncio.create_task(notification_manager.send_personal_message(msg, sender_id))
     
     if sender and sender.fcm_token:
         asyncio.create_task(send_fcm_notification(

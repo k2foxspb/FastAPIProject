@@ -124,6 +124,10 @@ async def send_fcm_notification(
         # Токен больше не валиден (приложение удалено или токен протух)
         logger.warning(f"FCM: Token is unregistered (invalid): {token[:15]}...")
         return False
+    except messaging.InvalidArgumentError as e:
+        # Токен имеет неверный формат или другие аргументы неверны
+        logger.warning(f"FCM: Invalid arguments (bad token format?): {e}")
+        return False
     except messaging.QuotaExceededError:
         logger.error("FCM: Quota exceeded for project")
         return False
@@ -132,6 +136,9 @@ async def send_fcm_notification(
         return False
     except messaging.ThirdPartyAuthError:
         logger.error("FCM: Third party authentication error (APNs issue?)")
+        return False
+    except messaging.ApiCallError as e:
+        logger.error(f"FCM: API call error: {e}")
         return False
     except Exception as e:
         logger.error(f"FCM: Request failed for token {token[:15]}... | Error: {type(e).__name__}: {e}")
