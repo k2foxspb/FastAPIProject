@@ -160,6 +160,12 @@ export default function ChatScreen({ route, navigation }) {
             (m.sender_id && Number(m.sender_id) === Number(currentUserId)) ? { ...m, is_read: true } : m
           ));
         }
+      } else if (notifyType === 'user_status' && lastNotify.data) {
+        const { user_id, status, last_seen } = lastNotify.data;
+        if (Number(user_id) === Number(userId)) {
+          console.log('[ChatScreen Backup] Interlocutor status changed:', status);
+          setInterlocutor(prev => prev ? { ...prev, status, last_seen } : null);
+        }
       }
     }
   }, [notifications, userId, currentUserId]);
@@ -487,7 +493,7 @@ export default function ChatScreen({ route, navigation }) {
     }
   };
 
-  const sendMessage = () => {
+  const sendMessage = async () => {
     if (selectionMode) return;
     if (inputText.trim()) {
       const msgData = {

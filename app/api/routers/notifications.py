@@ -8,6 +8,7 @@ from datetime import datetime
 from app.core.config import SECRET_KEY, ALGORITHM
 from app.api.dependencies import get_async_db
 from app.models.users import User as UserModel
+from loguru import logger
 
 router = APIRouter(prefix="/ws", tags=["websocket"])
 
@@ -29,17 +30,17 @@ class ConnectionManager:
                 del self.active_connections[user_id]
 
     async def send_personal_message(self, message: dict, user_id: int):
-        print(f"DEBUG: NotificationsManager trying to send message to user {user_id}. Type: {type(user_id)}")
-        print(f"DEBUG: Active connections: {list(self.active_connections.keys())}")
+        logger.debug(f"NotificationsManager trying to send message to user {user_id}. Type: {type(user_id)}")
+        logger.debug(f"Active connections: {list(self.active_connections.keys())}")
         if user_id in self.active_connections:
             for connection in self.active_connections[user_id]:
                 try:
                     await connection.send_json(message)
-                    print(f"DEBUG: NotificationsManager sent message to user {user_id}: {message.get('type')}")
+                    logger.debug(f"NotificationsManager sent message to user {user_id}: {message.get('type')}")
                 except Exception as e:
-                    print(f"ERROR: NotificationsManager failed to send to user {user_id}: {e}")
+                    logger.error(f"NotificationsManager failed to send to user {user_id}: {e}")
         else:
-            print(f"DEBUG: User {user_id} NOT found in active connections.")
+            logger.debug(f"User {user_id} NOT found in active connections.")
 
     async def broadcast(self, message: dict):
         for user_id in self.active_connections:
@@ -68,12 +69,14 @@ async def get_user_from_token(token: str, db: AsyncSession):
         return None
 
 async def update_user_status(user_id: int, status: str, db: AsyncSession):
+    last_seen = datetime.now().isoformat() if status == "offline" else None
     await db.execute(
         update(UserModel)
         .where(UserModel.id == user_id)
-        .values(status=status, last_seen=datetime.now().isoformat() if status == "offline" else None)
+        .values(status=status, last_seen=last_seen)
     )
     await db.commit()
+    return last_seen
 
 @router.websocket("/notifications")
 async def websocket_endpoint(
@@ -84,10 +87,10 @@ async def websocket_endpoint(
     await websocket.accept()
     
     token = websocket.query_params.get("token")
-    print(f"WS Attempt: token={token[:10]}..." if token else "WS Attempt: no token")
+    logger.info(f"WS Attempt (notifications): token={token[:10]}..." if token else "WS Attempt (notifications): no token")
 
     if not token or token == "null" or token == "undefined":
-        print(f"WS Connection rejected: missing or invalid token ('{token}')")
+        logger.warning(f"WS Connection rejected: missing or invalid token ('{token}')")
         await websocket.close(code=4003)
         return
 
@@ -95,29 +98,56 @@ async def websocket_endpoint(
     token = token.strip().strip('"').strip("'")
 
     from app.database import async_session_maker
-    async with async_session_maker() as db:
-        user_id = await get_user_from_token(token, db)
-        if user_id is None:
-            print(f"WS Connection rejected: invalid token payload for token: {token[:20]}...")
-            await websocket.close(code=4003)
-            return
+    user_id = None
+    try:
+        async with async_session_maker() as db:
+            user_id = await get_user_from_token(token, db)
+            if user_id is None:
+                logger.warning(f"WS Connection rejected: invalid token payload for token: {token[:20]}...")
+                await websocket.close(code=4003)
+                return
 
-        await manager.connect(websocket, user_id)
-        print(f"WS Connected: user_id={user_id}")
-        await update_user_status(user_id, "online", db)
-        
-        try:
+            await manager.connect(websocket, user_id)
+            logger.info(f"WS Connected: user_id={user_id}")
+            last_seen = await update_user_status(user_id, "online", db)
+            await manager.broadcast({
+                "type": "user_status",
+                "data": {
+                    "user_id": user_id,
+                    "status": "online",
+                    "last_seen": last_seen
+                }
+            })
+            
             while True:
                 # Ожидаем данных от клиента (пинги или просто поддерживаем соединение)
                 data = await websocket.receive_text()
                 # Можно добавить обработку входящих сообщений, если нужно
-        except WebSocketDisconnect:
-            print(f"WS Disconnected: user_id={user_id}")
+    except WebSocketDisconnect:
+        if user_id is not None:
+            logger.info(f"WS Disconnected: user_id={user_id}")
             manager.disconnect(websocket, user_id)
             async with async_session_maker() as db_off:
-                await update_user_status(user_id, "offline", db_off)
-        except Exception as e:
-            print(f"WS Error for user_id={user_id}: {e}")
+                last_seen = await update_user_status(user_id, "offline", db_off)
+                await manager.broadcast({
+                    "type": "user_status",
+                    "data": {
+                        "user_id": user_id,
+                        "status": "offline",
+                        "last_seen": last_seen
+                    }
+                })
+    except Exception as e:
+        logger.error(f"WS Error for user_id={user_id if user_id is not None else 'unknown'}: {e}")
+        if user_id is not None:
             manager.disconnect(websocket, user_id)
             async with async_session_maker() as db_err:
-                await update_user_status(user_id, "offline", db_err)
+                last_seen = await update_user_status(user_id, "offline", db_err)
+                await manager.broadcast({
+                    "type": "user_status",
+                    "data": {
+                        "user_id": user_id,
+                        "status": "offline",
+                        "last_seen": last_seen
+                    }
+                })

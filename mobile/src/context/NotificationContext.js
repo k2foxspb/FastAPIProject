@@ -129,6 +129,14 @@ export const NotificationProvider = ({ children }) => {
           fetchDialogs();
         }
 
+        if (payload.type === 'user_status') {
+          const { user_id, status, last_seen } = payload.data;
+          console.log(`[NotificationContext] User ${user_id} status changed to ${status}`);
+          setDialogs(prev => prev.map(d => 
+            Number(d.user_id) === Number(user_id) ? { ...d, status, last_seen } : d
+          ));
+        }
+
         if (payload.type === 'messages_read' || payload.type === 'your_messages_read') {
            // Если мы в чате, то WebSocket чата сам обновит сообщения,
            // но если мы в списке диалогов, нам нужно обновить состояние диалогов, что делает fetchDialogs() выше.
