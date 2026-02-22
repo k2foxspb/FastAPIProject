@@ -9,6 +9,7 @@ from starlette.websockets import WebSocketDisconnect, WebSocket
 
 from app.core.celery_app import celery_app as celery
 from app.tasks.example_tasks import send_notification as call_background_task
+from app.core.fcm import send_fcm_notification
 
 
 router = APIRouter(prefix="", tags=["health"])
@@ -55,6 +56,20 @@ async def test_celery_task(email: str = "k2foxspb@mail.ru"):
     """Тестовый эндпоинт для проверки Celery."""
     call_background_task.delay(email, 'Это тестовое сообщение из эндпоинта health-check')
     return {"message": f"Task sent to Celery for {email}"}
+
+
+@router.get("/test-fcm-log")
+async def test_fcm_log():
+    """Тестовый эндпоинт для проверки логов FCM."""
+    logger.info("FCM Log test: Triggering send_fcm_notification")
+    # Используем несуществующий токен, чтобы вызвать ошибку или предупреждение, 
+    # но главное — увидеть логи в выводе.
+    await send_fcm_notification(
+        token="test_token_123",
+        title="Test FCM Log",
+        body="This is a test notification to check logging"
+    )
+    return {"message": "FCM notification attempt logged"}
 templates = Jinja2Templates(directory="app/templates")
 @router.get("/", response_class=HTMLResponse)
 def read_index(request: Request):

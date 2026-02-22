@@ -68,6 +68,22 @@ export default function AdminChatDetailScreen({ route, navigation }) {
   const handleDownloadMedia = async () => {
     if (!fullScreenMedia) return;
 
+    if (Platform.OS === 'web') {
+      try {
+        const uri = fullScreenMedia.uri;
+        const fileName = uri.split('/').pop() || 'file';
+        const link = document.createElement('a');
+        link.href = uri;
+        link.setAttribute('download', fileName);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      } catch (e) {
+        window.open(fullScreenMedia.uri, '_blank');
+      }
+      return;
+    }
+
     try {
       const uri = fullScreenMedia.uri;
       const fileName = uri.split('/').pop() || 'file';

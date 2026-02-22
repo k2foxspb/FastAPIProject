@@ -8,6 +8,8 @@ from app.core.config import FIREBASE_SERVICE_ACCOUNT_PATH
 
 # Инициализация Firebase Admin SDK
 # Мы инициализируем его один раз при импорте модуля
+logger.info("FCM: Module loaded, checking Firebase initialization...")
+
 try:
     if not firebase_admin._apps:
         # Пытаемся найти файл по нескольким возможным путям
@@ -22,18 +24,22 @@ try:
         
         found_path = None
         for path in possible_paths:
+            logger.debug(f"FCM: Checking path {path}")
             if os.path.exists(path):
                 found_path = path
                 break
         
         if found_path:
-            logger.info(f"Initializing Firebase Admin SDK with service account from {found_path}")
+            logger.info(f"FCM: Initializing Firebase Admin SDK with service account from {found_path}")
             cred = credentials.Certificate(found_path)
             firebase_admin.initialize_app(cred)
+            logger.success("FCM: Firebase Admin SDK initialized successfully")
         else:
-            logger.warning(f"Firebase service account file '{FIREBASE_SERVICE_ACCOUNT_PATH}' NOT found in any of these locations: {possible_paths}. FCM notifications will be disabled.")
+            logger.warning(f"FCM: Firebase service account file '{FIREBASE_SERVICE_ACCOUNT_PATH}' NOT found in any of these locations: {possible_paths}. FCM notifications will be disabled.")
+    else:
+        logger.info("FCM: Firebase Admin SDK already initialized")
 except Exception as e:
-    logger.error(f"Failed to initialize Firebase Admin SDK: {e}")
+    logger.error(f"FCM: Failed to initialize Firebase Admin SDK: {e}")
 
 async def send_fcm_notification(
     token: str, 

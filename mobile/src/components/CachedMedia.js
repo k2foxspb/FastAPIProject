@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Image, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Image, TouchableOpacity, StyleSheet, ActivityIndicator, Platform } from 'react-native';
 import { cacheDirectory, getInfoAsync, downloadAsync } from 'expo-file-system/legacy';
 import { API_BASE_URL } from '../constants';
 import VideoPlayer from './VideoPlayer';
@@ -21,6 +21,13 @@ const CachedMedia = ({ item, onFullScreen, style, resizeMode = "cover", useNativ
       setLoading(false);
       return;
     }
+
+    if (Platform.OS === 'web') {
+      setLocalUri(remoteUri);
+      setLoading(false);
+      return;
+    }
+
     const loadMedia = async () => {
       try {
         if (item.file_path && (item.file_path.startsWith('file://') || item.file_path.startsWith('content://'))) {

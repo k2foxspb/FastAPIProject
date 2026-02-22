@@ -488,6 +488,22 @@ export default function ChatScreen({ route, navigation }) {
     const currentMedia = fullScreenMedia?.list[currentMediaIndex];
     if (!currentMedia) return;
 
+    if (Platform.OS === 'web') {
+      try {
+        const uri = currentMedia.uri;
+        const fileName = uri.split('/').pop();
+        const link = document.createElement('a');
+        link.href = uri;
+        link.setAttribute('download', fileName);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      } catch (e) {
+        window.open(currentMedia.uri, '_blank');
+      }
+      return;
+    }
+
     try {
       const uri = currentMedia.uri;
       const fileName = uri.split('/').pop();
@@ -1077,10 +1093,10 @@ export default function ChatScreen({ route, navigation }) {
             )
           )}
           {isVoice && (
-            <VoiceMessage item={item} currentUserId={currentUserIdLocal} />
+            <VoiceMessage item={item} currentUserId={currentUserId} />
           )}
           {isFile && (
-            <FileMessage item={item} currentUserId={currentUserIdLocal} />
+            <FileMessage item={item} currentUserId={currentUserId} />
           )}
           {item.message && (
             <Text style={[
@@ -1159,9 +1175,10 @@ export default function ChatScreen({ route, navigation }) {
 
   return (
     <KeyboardAvoidingView 
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'} 
+      behavior={Platform.OS === 'ios' ? 'padding' : (Platform.OS === 'android' ? 'height' : undefined)} 
       style={[styles.container, { backgroundColor: colors.background }]}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+      enabled={Platform.OS !== 'web'}
     >
       <View style={[styles.header, { 
         borderBottomColor: colors.border, 
@@ -1175,7 +1192,7 @@ export default function ChatScreen({ route, navigation }) {
             </TouchableOpacity>
             <Text style={[styles.selectionTitle, { color: colors.text }]}>Выбрано: {selectedIds.length}</Text>
             <TouchableOpacity onPress={handleBulkDelete} disabled={selectedIds.length === 0}>
-              <MaterialIcons name="trash-can-outline" size={24} color={selectedIds.length > 0 ? colors.error : colors.textSecondary} />
+              <MaterialIcons name="delete" size={24} color={selectedIds.length > 0 ? colors.error : colors.textSecondary} />
             </TouchableOpacity>
           </View>
         ) : (
@@ -1243,6 +1260,7 @@ export default function ChatScreen({ route, navigation }) {
         initialNumToRender={15}
         maxToRenderPerBatch={10}
         windowSize={10}
+        style={{ flex: 1 }}
       />
 
       <Modal
@@ -1311,90 +1329,92 @@ export default function ChatScreen({ route, navigation }) {
         </View>
       </Modal>
 
-      <View style={[
-        styles.inputContainer, 
-        { 
-          backgroundColor: colors.background, 
-          borderTopColor: colors.border, 
-          borderTopWidth: 1,
-          paddingBottom: Math.max(insets.bottom, 12) + 5 // Поднимаем чуть выше и учитываем безопасную зону
-        }
-      ]}>
-        {recordedUri ? (
-          <View style={styles.recordedContainer}>
-            <TouchableOpacity onPress={deleteRecording} style={styles.deleteRecordingButton}>
-              <MaterialIcons name="delete" size={24} color={colors.error} />
-            </TouchableOpacity>
-            <View style={styles.recordingWaveformPlaceholder}>
-              <MaterialIcons name="mic" size={20} color={colors.primary} />
-              <Text style={[styles.recordingTimeText, { color: colors.text }]}>Голосовое сообщение ({formatRecordingTime(recordingDuration)})</Text>
-            </View>
-            <TouchableOpacity onPress={() => uploadVoiceMessage(recordedUri)} style={[styles.sendButton, { marginRight: 10 }]}>
-              <MaterialIcons name="send" size={24} color={colors.primary} />
-            </TouchableOpacity>
-          </View>
-        ) : (
-          <>
-            {!isRecording && (
-              <View style={{ flexDirection: 'row' }}>
-                <TouchableOpacity 
-                  onPress={pickAndUploadDocument} 
-                  style={styles.attachButton}
-                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                >
-                  <MaterialIcons name="insert-drive-file" size={24} color={colors.primary} />
-                </TouchableOpacity>
-                <TouchableOpacity 
-                  onPress={pickAndUploadFile} 
-                  style={styles.attachButton}
-                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                >
-                  <MaterialIcons name="image" size={24} color={colors.primary} />
-                </TouchableOpacity>
+      {!selectionMode && (
+        <View style={[
+          styles.inputContainer, 
+          { 
+            backgroundColor: colors.background, 
+            borderTopColor: colors.border, 
+            borderTopWidth: 1,
+            paddingBottom: Platform.OS === 'web' ? 20 : Math.max(insets.bottom, 12) + 5
+          }
+        ]}>
+          {recordedUri ? (
+            <View style={styles.recordedContainer}>
+              <TouchableOpacity onPress={deleteRecording} style={styles.deleteRecordingButton}>
+                <MaterialIcons name="delete" size={24} color={colors.error} />
+              </TouchableOpacity>
+              <View style={styles.recordingWaveformPlaceholder}>
+                <MaterialIcons name="mic" size={20} color={colors.primary} />
+                <Text style={[styles.recordingTimeText, { color: colors.text }]}>Голосовое сообщение ({formatRecordingTime(recordingDuration)})</Text>
               </View>
-            )}
-            
-            {isRecording ? (
-              <View style={styles.recordingContainer}>
-                <View style={styles.recordingIndicator}>
-                  <Animated.View style={[styles.recordingDot, { opacity: recordingDotOpacity }]} />
-                  <Text style={[styles.recordingTimeText, { color: colors.error }]}>
-                    {formatRecordingTime(recorderStatus.durationMillis || recordingDuration)}
-                  </Text>
-                </View>
-                <Text style={[styles.recordingHint, { color: colors.textSecondary }]}>Отпустите для завершения</Text>
-              </View>
-            ) : (
-              <TextInput
-                style={[styles.input, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]}
-                value={inputText}
-                onChangeText={setInputText}
-                placeholder="Сообщение..."
-                placeholderTextColor={colors.textSecondary}
-                multiline
-              />
-            )}
-
-            {(inputText.trim() && !isRecording) ? (
-              <TouchableOpacity onPress={sendMessage} style={[styles.sendButton, { marginRight: 10 }]}>
+              <TouchableOpacity onPress={() => uploadVoiceMessage(recordedUri)} style={[styles.sendButton, { marginRight: 10 }]}>
                 <MaterialIcons name="send" size={24} color={colors.primary} />
               </TouchableOpacity>
-            ) : (
-              <TouchableOpacity 
-                onPressIn={startRecording} 
-                onPressOut={stopRecording} 
-                style={[
-                  styles.sendButton, 
-                  { marginRight: 10 },
-                  isRecording && { backgroundColor: colors.primary + '20', borderRadius: 20 }
-                ]}
-              >
-                <MaterialIcons name={isRecording ? "mic" : "mic-none"} size={24} color={isRecording ? colors.error : colors.primary} />
-              </TouchableOpacity>
-            )}
-          </>
-        )}
-      </View>
+            </View>
+          ) : (
+            <>
+              {!isRecording && (
+                <View style={{ flexDirection: 'row' }}>
+                  <TouchableOpacity 
+                    onPress={pickAndUploadDocument} 
+                    style={styles.attachButton}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  >
+                    <MaterialIcons name="insert-drive-file" size={24} color={colors.primary} />
+                  </TouchableOpacity>
+                  <TouchableOpacity 
+                    onPress={pickAndUploadFile} 
+                    style={styles.attachButton}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  >
+                    <MaterialIcons name="image" size={24} color={colors.primary} />
+                  </TouchableOpacity>
+                </View>
+              )}
+              
+              {isRecording ? (
+                <View style={styles.recordingContainer}>
+                  <View style={styles.recordingIndicator}>
+                    <Animated.View style={[styles.recordingDot, { opacity: recordingDotOpacity }]} />
+                    <Text style={[styles.recordingTimeText, { color: colors.error }]}>
+                      {formatRecordingTime(recorderStatus.durationMillis || recordingDuration)}
+                    </Text>
+                  </View>
+                  <Text style={[styles.recordingHint, { color: colors.textSecondary }]}>Отпустите для завершения</Text>
+                </View>
+              ) : (
+                <TextInput
+                  style={[styles.input, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]}
+                  value={inputText}
+                  onChangeText={setInputText}
+                  placeholder="Сообщение..."
+                  placeholderTextColor={colors.textSecondary}
+                  multiline
+                />
+              )}
+
+              {(inputText.trim() && !isRecording) ? (
+                <TouchableOpacity onPress={sendMessage} style={[styles.sendButton, { marginRight: 10 }]}>
+                  <MaterialIcons name="send" size={24} color={colors.primary} />
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity 
+                  onPressIn={startRecording} 
+                  onPressOut={stopRecording} 
+                  style={[
+                    styles.sendButton, 
+                    { marginRight: 10 },
+                    isRecording && { backgroundColor: colors.primary + '20', borderRadius: 20 }
+                  ]}
+                >
+                  <MaterialIcons name={isRecording ? "mic" : "mic-none"} size={24} color={isRecording ? colors.error : colors.primary} />
+                </TouchableOpacity>
+              )}
+            </>
+          )}
+        </View>
+      )}
     </KeyboardAvoidingView>
   );
 }

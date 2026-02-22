@@ -59,6 +59,11 @@ export default function FileMessage({ item, currentUserId }) {
   const localFileUri = item.file_path ? `${documentDirectory}${fileName}` : null;
 
   const handleDownloadAndOpen = async () => {
+    if (Platform.OS === 'web') {
+      const win = window.open(remoteUri, '_blank');
+      if (win) win.focus();
+      return;
+    }
     if (!item.file_path || !localFileUri) {
       Alert.alert('Ошибка', 'Путь к файлу отсутствует');
       return;
@@ -102,6 +107,19 @@ export default function FileMessage({ item, currentUserId }) {
   };
 
   const handleDownload = async () => {
+    if (Platform.OS === 'web') {
+      try {
+        const link = document.createElement('a');
+        link.href = remoteUri;
+        link.setAttribute('download', fileName);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      } catch (e) {
+        window.open(remoteUri, '_blank');
+      }
+      return;
+    }
     if (!item.file_path || !localFileUri) {
       Alert.alert('Ошибка', 'Путь к файлу отсутствует');
       return;
@@ -146,6 +164,10 @@ export default function FileMessage({ item, currentUserId }) {
   };
 
   const handleShare = async () => {
+    if (Platform.OS === 'web') {
+      Alert.alert('Инфо', 'Используйте функцию "Поделиться" вашего браузера');
+      return;
+    }
     if (!item.file_path || !localFileUri) {
       Alert.alert('Ошибка', 'Путь к файлу отсутствует');
       return;

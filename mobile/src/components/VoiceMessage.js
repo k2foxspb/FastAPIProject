@@ -41,6 +41,10 @@ export default function VoiceMessage({ item, currentUserId }) {
   }, [audioSource, player]);
 
   useEffect(() => {
+    if (Platform.OS === 'web') {
+      setLoading(false);
+      return;
+    }
     const checkLocal = async () => {
       try {
         const fileInfo = await getInfoAsync(localFileUri);
@@ -62,7 +66,7 @@ export default function VoiceMessage({ item, currentUserId }) {
       return;
     }
 
-    if (!localUri) {
+    if (!localUri && Platform.OS !== 'web') {
       setLoading(true);
       try {
         const fileInfo = await getInfoAsync(localFileUri);
@@ -85,6 +89,23 @@ export default function VoiceMessage({ item, currentUserId }) {
   };
 
   const handleDownload = async () => {
+    if (Platform.OS === 'web') {
+      try {
+        // Simple download trigger for web
+        const link = document.createElement('a');
+        link.href = remoteUri;
+        link.setAttribute('download', fileName);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      } catch (e) {
+        console.log('Web download failed', e);
+        // Fallback
+        const win = window.open(remoteUri, '_blank');
+        if (win) win.focus();
+      }
+      return;
+    }
     setLoading(true);
     try {
       let uri = localUri;
