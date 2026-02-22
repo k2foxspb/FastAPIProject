@@ -196,7 +196,18 @@ def check_admin_permission(model_name: str):
             return True
         
         if current_user.role == "admin":
-            # Проверяем разрешения в базе
+            # Администраторы не должны иметь доступа к чатам
+            if model_name == "chats":
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN, 
+                    detail="Admins are not allowed to manage chats"
+                )
+
+            # Модели, доступные всем админам по умолчанию
+            if model_name in ["moderation", "news", "categories", "products", "orders", "reviews"]:
+                return True
+
+            # Проверяем разрешения в базе для остальных моделей (например, 'users' или будущие модули)
             result = await db.execute(
                 select(AdminPermissionModel).where(
                     AdminPermissionModel.admin_id == current_user.id,

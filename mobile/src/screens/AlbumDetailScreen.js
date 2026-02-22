@@ -192,7 +192,7 @@ export default function AlbumDetailScreen({ route, navigation }) {
                 if (status !== 'granted') return;
                 
                 let result = await ImagePicker.launchImageLibraryAsync({
-                  mediaTypes: ['images'],
+                  mediaTypes: ['images', 'videos'],
                   allowsMultipleSelection: true,
                   quality: 0.8,
                 });
@@ -200,11 +200,15 @@ export default function AlbumDetailScreen({ route, navigation }) {
                 if (!result.canceled && result.assets.length > 0) {
                   setLoading(true);
                   const formData = new FormData();
-                  result.assets.forEach((image, index) => {
-                    const uri = image.uri;
-                    const name = uri.split('/').pop() || `photo_${index}.jpg`;
+                  result.assets.forEach((asset, index) => {
+                    const uri = asset.uri;
+                    const isVideo = asset.type === 'video';
+                    const defaultExt = isVideo ? 'mp4' : 'jpg';
+                    const name = uri.split('/').pop() || `media_${index}.${defaultExt}`;
                     const match = /\.(\w+)$/.exec(name);
-                    const type = match ? `image/${match[1]}` : `image/jpeg`;
+                    const ext = match ? match[1] : defaultExt;
+                    const type = isVideo ? `video/${ext}` : `image/${ext}`;
+                    
                     formData.append('files', {
                       uri: Platform.OS === 'ios' ? uri.replace('file://', '') : uri,
                       name,
@@ -216,7 +220,7 @@ export default function AlbumDetailScreen({ route, navigation }) {
                   
                   await usersApi.bulkUploadPhotos(formData);
                   fetchAlbum();
-                  Alert.alert('Успех', `${result.assets.length} фото загружено`);
+                  Alert.alert('Успех', `${result.assets.length} медиа загружено`);
                 }
               } catch (e) {
                 Alert.alert('Ошибка', 'Не удалось загрузить фото');

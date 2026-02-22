@@ -42,6 +42,8 @@ from app.tasks.example_tasks import send_verification_email_task
 import os
 import uuid
 import io
+import tempfile
+import cv2
 from PIL import Image
 from fastapi import UploadFile, File, Form
 from datetime import datetime
@@ -692,40 +694,75 @@ os.makedirs(USER_MEDIA_ROOT, exist_ok=True)
 
 async def save_user_photo(file: UploadFile) -> tuple[str, str]:
     file_extension = os.path.splitext(file.filename or "")[1] or ".jpg"
+    is_video = file_extension.lower() in [".mp4", ".mov", ".avi", ".mkv", ".webm"]
     original_name = f"{uuid.uuid4()}{file_extension}"
     content = await file.read()
 
     # Сохраняем оригинал через абстракцию хранилища
-    original_url, _ = storage.save_file(
+    original_url, original_fs_path = storage.save_file(
         category="users",
         filename_hint=original_name,
         fileobj=io.BytesIO(content),
-        content_type=file.content_type or "image/jpeg",
+        content_type=file.content_type or ("video/mp4" if is_video else "image/jpeg"),
         private=False,
     )
 
-    # Пытаемся создать миниатюру
-    thumb_name = f"{os.path.splitext(original_name)[0]}_thumb{file_extension}"
+    thumb_name = f"{os.path.splitext(original_name)[0]}_thumb.jpg"
     thumb_url = original_url
-    try:
-        with Image.open(io.BytesIO(content)) as img:
-            img.thumbnail((400, 400))
-            if file_extension.lower() in [".jpg", ".jpeg"] and img.mode in ("RGBA", "P"):
-                img = img.convert("RGB")
-            thumb_buffer = io.BytesIO()
-            # Определяем формат по расширению
-            fmt = "JPEG" if file_extension.lower() in [".jpg", ".jpeg"] else None
-            img.save(thumb_buffer, format=fmt)
-            thumb_buffer.seek(0)
-            thumb_url, _ = storage.save_file(
-                category="users",
-                filename_hint=thumb_name,
-                fileobj=thumb_buffer,
-                content_type=file.content_type or "image/jpeg",
-                private=False,
-            )
-    except Exception:
-        thumb_url = original_url
+
+    if is_video:
+        try:
+            # Для видео пытаемся достать первый кадр через OpenCV
+            # Нужно сохранить временный файл для OpenCV, если это не S3 и у нас нет локального пути (или всегда)
+            temp_video = tempfile.NamedTemporaryFile(delete=False, suffix=file_extension)
+            temp_video.write(content)
+            temp_video.close()
+            
+            cap = cv2.VideoCapture(temp_video.name)
+            success, frame = cap.read()
+            if success:
+                # Конвертируем BGR в RGB для Pillow
+                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                img = Image.fromarray(frame_rgb)
+                img.thumbnail((400, 400))
+                
+                thumb_buffer = io.BytesIO()
+                img.save(thumb_buffer, format="JPEG")
+                thumb_buffer.seek(0)
+                
+                thumb_url, _ = storage.save_file(
+                    category="users",
+                    filename_hint=thumb_name,
+                    fileobj=thumb_buffer,
+                    content_type="image/jpeg",
+                    private=False,
+                )
+            cap.release()
+            os.unlink(temp_video.name)
+        except Exception as e:
+            print(f"DEBUG: Error extracting video frame: {e}")
+            thumb_url = original_url
+    else:
+        # Пытаемся создать миниатюру для изображения
+        try:
+            with Image.open(io.BytesIO(content)) as img:
+                img.thumbnail((400, 400))
+                if file_extension.lower() in [".jpg", ".jpeg"] and img.mode in ("RGBA", "P"):
+                    img = img.convert("RGB")
+                thumb_buffer = io.BytesIO()
+                # Определяем формат по расширению
+                fmt = "JPEG" if file_extension.lower() in [".jpg", ".jpeg"] else "PNG"
+                img.save(thumb_buffer, format=fmt)
+                thumb_buffer.seek(0)
+                thumb_url, _ = storage.save_file(
+                    category="users",
+                    filename_hint=thumb_name,
+                    fileobj=thumb_buffer,
+                    content_type=file.content_type or "image/jpeg",
+                    private=False,
+                )
+        except Exception:
+            thumb_url = original_url
 
     return original_url, thumb_url
 

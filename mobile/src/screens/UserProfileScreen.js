@@ -165,64 +165,51 @@ export default function UserProfileScreen({ route, navigation }) {
       </View>
 
       <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: colors.text }]}>Альбомы ({user.albums?.length || 0})</Text>
-        {user.albums && user.albums.map(album => (
-          <View key={album.id} style={styles.album}>
-            <Text style={[styles.albumTitle, { color: colors.text }]}>
-              {album.title} 
-              {album.privacy === 'private' && <Icon name="lock-closed" size={14} color={colors.textSecondary} style={{ marginLeft: 5 }} />}
-              {album.privacy === 'friends' && <Icon name="people" size={14} color={colors.textSecondary} style={{ marginLeft: 5 }} />}
-            </Text>
-            <FlatList
-              horizontal
-              data={album.photos}
-              keyExtractor={(item) => item.id.toString()}
-              renderItem={({ item }) => (
-                <TouchableOpacity 
-                  onPress={() => navigation.navigate('PhotoDetail', { 
-                    photoId: item.id,
-                    initialPhotos: album.photos,
-                    albumId: album.id,
-                    isOwner: false
-                  })}
-                >
-                  <Image source={{ uri: getFullUrl(item.preview_url || item.image_url) }} style={styles.photo} />
-                </TouchableOpacity>
-              )}
-              showsHorizontalScrollIndicator={false}
-            />
-          </View>
-        ))}
+        <TouchableOpacity 
+          style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}
+          onPress={() => navigation.navigate('UserMedia', { userId: user.id, initialUser: user, isOwner: false })}
+        >
+          <Text style={[styles.sectionTitle, { color: colors.text, marginBottom: 0 }]}>Фотографии и видео ({user.photos?.length || 0})</Text>
+          <Icon name="chevron-forward" size={20} color={colors.textSecondary} />
+        </TouchableOpacity>
 
-        <Text style={[styles.sectionTitle, { marginTop: 20, color: colors.text }]}>Все фотографии ({user.photos?.length || 0})</Text>
-        <View style={styles.photoGrid}>
-          {user.photos && user.photos.map(photo => (
-            <TouchableOpacity 
-              key={photo.id} 
-              onPress={() => navigation.navigate('PhotoDetail', { 
-                photoId: photo.id, 
-                initialPhotos: user.photos,
-                isOwner: false
-              })}
-              style={styles.gridPhotoContainer}
-            >
-              <Image 
-                source={{ uri: getFullUrl(photo.preview_url || photo.image_url) }} 
-                style={styles.gridPhoto} 
-              />
-              {photo.privacy === 'private' && (
-                <View style={styles.privateBadge}>
-                  <Icon name="lock-closed" size={12} color="#fff" />
-                </View>
-              )}
-              {photo.privacy === 'friends' && (
-                <View style={styles.privateBadge}>
-                  <Icon name="people" size={12} color="#fff" />
-                </View>
-              )}
-            </TouchableOpacity>
-          ))}
-        </View>
+        <FlatList
+          horizontal
+          data={user.photos}
+          keyExtractor={(item) => item.id.toString()}
+          renderItem={({ item }) => {
+            const isVideo = item.image_url && ['mp4', 'm4v', 'mov', 'avi', 'mkv', 'webm'].includes(item.image_url.split('.').pop().toLowerCase());
+            return (
+              <TouchableOpacity 
+                onPress={() => navigation.navigate('PhotoDetail', { 
+                  photoId: item.id, 
+                  initialPhotos: user.photos,
+                  isOwner: false
+                })}
+                style={{ position: 'relative' }}
+              >
+                <Image source={{ uri: getFullUrl(item.preview_url || item.image_url) }} style={styles.photo} />
+                {isVideo && (
+                  <View style={[styles.privateBadge, { top: 5, right: 15, backgroundColor: 'rgba(0,0,0,0.5)' }]}>
+                    <Icon name="play" size={12} color="#fff" />
+                  </View>
+                )}
+                {item.privacy === 'private' && (
+                  <View style={[styles.privateBadge, { top: 5, right: isVideo ? 35 : 15 }]}>
+                    <Icon name="lock-closed" size={12} color="#fff" />
+                  </View>
+                )}
+                {item.privacy === 'friends' && (
+                  <View style={[styles.privateBadge, { top: 5, right: isVideo ? 35 : 15 }]}>
+                    <Icon name="people" size={12} color="#fff" />
+                  </View>
+                )}
+              </TouchableOpacity>
+            );
+          }}
+          showsHorizontalScrollIndicator={false}
+          style={{ marginBottom: 15 }}
+        />
       </View>
     </ScrollView>
   );
@@ -284,5 +271,7 @@ const styles = StyleSheet.create({
   },
   errorText: { marginBottom: 10 },
   retryBtn: { padding: 10, borderRadius: 5 },
-  retryText: { color: '#fff' }
+  retryText: { color: '#fff' },
+  activityButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 15, borderRadius: 12, borderWidth: 1, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2 },
+  activityButtonText: { marginLeft: 10, fontWeight: 'bold', fontSize: 14 },
 });

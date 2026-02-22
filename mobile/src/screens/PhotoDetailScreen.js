@@ -15,6 +15,7 @@ import {
   KeyboardAvoidingView,
   Platform
 } from 'react-native';
+import { Video, ResizeMode } from 'expo-av';
 import { usersApi } from '../api';
 import { Ionicons as Icon } from '@expo/vector-icons';
 import { getFullUrl } from '../utils/urlHelper';
@@ -262,8 +263,17 @@ export default function PhotoDetailScreen({ route, navigation }) {
     );
   };
 
+  const isVideo = (url) => {
+    if (!url) return false;
+    const ext = url.split('.').pop().toLowerCase();
+    return ['mp4', 'm4v', 'mov', 'avi', 'mkv', 'webm'].includes(ext);
+  };
+
   const renderItem = ({ item, index }) => {
     const isSelected = selectedIds.includes(item.id);
+    const mediaUrl = getFullUrl(item.image_url);
+    const mediaIsVideo = isVideo(item.image_url);
+
     return (
       <View style={styles.slide}>
         <ScrollView
@@ -283,14 +293,28 @@ export default function PhotoDetailScreen({ route, navigation }) {
             onLongPress={isOwner && !selectionMode ? enterSelectionMode : null}
             style={styles.imageWrapper}
           >
-            <Image 
-              source={{ uri: getFullUrl(item.image_url) }} 
-              style={[
-                styles.fullPhoto,
-                isSelected && { opacity: 0.7 }
-              ]} 
-              resizeMode="contain" 
-            />
+            {mediaIsVideo ? (
+              <Video
+                source={{ uri: mediaUrl }}
+                style={[
+                  styles.fullPhoto,
+                  isSelected && { opacity: 0.7 }
+                ]}
+                useNativeControls
+                resizeMode={ResizeMode.CONTAIN}
+                isLooping
+                shouldPlay={currentIndex === index}
+              />
+            ) : (
+              <Image 
+                source={{ uri: mediaUrl }} 
+                style={[
+                  styles.fullPhoto,
+                  isSelected && { opacity: 0.7 }
+                ]} 
+                resizeMode="contain" 
+              />
+            )}
             {selectionMode && (
               <View style={styles.selectionOverlay}>
                 <Icon 

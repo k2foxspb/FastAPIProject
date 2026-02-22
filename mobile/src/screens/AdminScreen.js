@@ -22,7 +22,7 @@ export default function AdminScreen({ navigation }) {
     { title: 'Товары', icon: 'cart-outline', screen: 'AdminProducts' },
     { title: 'Заказы', icon: 'receipt-outline', screen: 'AdminOrders' },
     { title: 'Отзывы', icon: 'star-outline', screen: 'AdminReviews' },
-    { title: 'Чаты пользователей', icon: 'chatbubbles-outline', screen: 'AdminChats' },
+    { title: 'Чаты пользователей', icon: 'chatbubbles-outline', screen: 'AdminChats', ownerOnly: true },
     { title: 'Загрузить новую версию приложения', icon: 'cloud-upload-outline', screen: 'AdminAppUpload', ownerOnly: true },
   ];
 

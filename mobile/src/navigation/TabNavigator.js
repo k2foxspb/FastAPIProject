@@ -12,6 +12,7 @@ import UploadPhotoScreen from '../screens/UploadPhotoScreen';
 import EditProfileScreen from '../screens/EditProfileScreen';
 import UsersScreen from '../screens/UsersScreen';
 import UserProfileScreen from '../screens/UserProfileScreen';
+import UserMediaScreen from '../screens/UserMediaScreen';
 import ChatListScreen from '../screens/ChatListScreen';
 import ChatScreen from '../screens/ChatScreen';
 import FeedScreen from '../screens/FeedScreen';
@@ -69,6 +70,7 @@ function ChatStack() {
         })} 
       />
       <Stack.Screen name="UserProfile" component={UserProfileScreen} options={{ title: 'Профиль пользователя' }} />
+      <Stack.Screen name="UserMedia" component={UserMediaScreen} options={{ title: 'Медиафайлы' }} />
       <Stack.Screen name="PhotoDetail" component={PhotoDetailScreen} options={{ title: 'Фотография' }} />
     </Stack.Navigator>
   );
@@ -90,6 +92,7 @@ function ProfileStack() {
       <Stack.Screen name="Orders" component={OrdersScreen} options={{ title: 'Мои заказы' }} />
       <Stack.Screen name="CreateAlbum" component={CreateAlbumScreen} options={{ title: 'Новый альбом' }} />
       <Stack.Screen name="AlbumDetail" component={AlbumDetailScreen} options={{ title: 'Альбом' }} />
+      <Stack.Screen name="UserMedia" component={UserMediaScreen} options={{ title: 'Медиафайлы' }} />
       <Stack.Screen name="PhotoDetail" component={PhotoDetailScreen} options={{ title: 'Фотография' }} />
       <Stack.Screen name="UploadPhoto" component={UploadPhotoScreen} options={{ title: 'Загрузить фото' }} />
       <Stack.Screen name="EditProfile" component={EditProfileScreen} options={{ title: 'Редактировать профиль' }} />
@@ -144,6 +147,7 @@ function UsersStack() {
     >
       <Stack.Screen name="UsersMain" component={UsersScreen} options={{ title: 'Пользователи' }} />
       <Stack.Screen name="UserProfile" component={UserProfileScreen} options={{ title: 'Профиль пользователя' }} />
+      <Stack.Screen name="UserMedia" component={UserMediaScreen} options={{ title: 'Медиафайлы' }} />
       <Stack.Screen name="PhotoDetail" component={PhotoDetailScreen} options={{ title: 'Фотография' }} />
     </Stack.Navigator>
   );
@@ -168,6 +172,7 @@ function FeedStack() {
       <Stack.Screen name="EditProduct" component={EditProductScreen} options={{ title: 'Товар' }} />
       <Stack.Screen name="ProductDetail" component={ProductDetailScreen} options={{ title: 'О товаре' }} />
       <Stack.Screen name="UserProfile" component={UserProfileScreen} options={{ title: 'Профиль пользователя' }} />
+      <Stack.Screen name="UserMedia" component={UserMediaScreen} options={{ title: 'Медиафайлы' }} />
     </Stack.Navigator>
   );
 }

@@ -240,62 +240,48 @@ export default function ProfileScreen({ navigation }) {
       </View>
 
       <View style={styles.section}>
-        <View style={styles.sectionHeader}>
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>Альбомы</Text>
-          <View style={{ flexDirection: 'row' }}>
-            <TouchableOpacity onPress={() => navigation.navigate('UploadPhoto')} style={{ marginRight: 15 }}>
-              <Icon name="camera-outline" size={28} color={colors.primary} />
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => navigation.navigate('CreateAlbum')}>
-              <Icon name="add-circle-outline" size={28} color={colors.primary} />
-            </TouchableOpacity>
-          </View>
+        <TouchableOpacity 
+          style={styles.sectionHeader}
+          onPress={() => navigation.navigate('UserMedia', { userId: user.id, initialUser: user, isOwner: true })}
+        >
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Фотографии и видео</Text>
+          <Icon name="chevron-forward" size={20} color={colors.border} style={{ marginLeft: 5 }} />
+        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', position: 'absolute', right: 20, top: 20 }}>
+          <TouchableOpacity onPress={() => navigation.navigate('UploadPhoto')} style={{ marginRight: 15 }}>
+            <Icon name="camera-outline" size={28} color={colors.primary} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => navigation.navigate('CreateAlbum')}>
+            <Icon name="add-circle-outline" size={28} color={colors.primary} />
+          </TouchableOpacity>
         </View>
 
-        {user.albums && user.albums.map(album => (
-          <TouchableOpacity 
-            key={album.id} 
-            style={styles.album}
-            onPress={() => navigation.navigate('AlbumDetail', { albumId: album.id })}
-          >
-            <View style={styles.albumTitleRow}>
-              <Text style={[styles.albumTitle, { color: colors.text }]}>{album.title}</Text>
-              <Icon name="chevron-forward" size={20} color={colors.border} />
-            </View>
-            <FlatList
-              horizontal
-              data={album.photos}
-              keyExtractor={(item) => item.id.toString()}
-              renderItem={({ item }) => (
-                <TouchableOpacity onPress={() => navigation.navigate('PhotoDetail', { 
-                  photoId: item.id,
-                  initialPhotos: album.photos,
-                  albumId: album.id,
-                  isOwner: true
-                })}>
-                  <Image source={{ uri: getFullUrl(item.preview_url || item.image_url) }} style={styles.photo} />
-                </TouchableOpacity>
-              )}
-              showsHorizontalScrollIndicator={false}
-            />
-          </TouchableOpacity>
-        ))}
-
-        <Text style={[styles.sectionTitle, { marginTop: 20, color: colors.text }]}>Все фотографии</Text>
-        <View style={styles.photoGrid}>
-          {user.photos && user.photos.map(photo => (
-            <TouchableOpacity 
-              key={photo.id} 
-              onPress={() => navigation.navigate('PhotoDetail', { 
-                photoId: photo.id,
+        <FlatList
+          horizontal
+          data={user.photos}
+          keyExtractor={(item) => item.id.toString()}
+          renderItem={({ item }) => {
+            const isVideo = item.image_url && ['mp4', 'm4v', 'mov', 'avi', 'mkv', 'webm'].includes(item.image_url.split('.').pop().toLowerCase());
+            return (
+              <TouchableOpacity onPress={() => navigation.navigate('PhotoDetail', { 
+                photoId: item.id,
                 initialPhotos: user.photos,
                 isOwner: true
-              })}
-            >
-              <Image source={{ uri: getFullUrl(photo.preview_url || photo.image_url) }} style={styles.gridPhoto} />
-            </TouchableOpacity>
-          ))}
-        </View>
+              })}>
+                <View style={{ position: 'relative' }}>
+                  <Image source={{ uri: getFullUrl(item.preview_url || item.image_url) }} style={styles.photo} />
+                  {isVideo && (
+                    <View style={styles.videoBadge}>
+                      <Icon name="play" size={12} color="#fff" />
+                    </View>
+                  )}
+                </View>
+              </TouchableOpacity>
+            );
+          }}
+          showsHorizontalScrollIndicator={false}
+          style={{ marginBottom: 15 }}
+        />
       </View>
     </ScrollView>
   );
@@ -315,6 +301,14 @@ const styles = StyleSheet.create({
   albumTitleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 },
   albumTitle: { fontSize: 16, fontWeight: '500' },
   photo: { width: 100, height: 100, marginRight: 10, borderRadius: 5 },
+  videoBadge: {
+    position: 'absolute',
+    top: 5,
+    right: 15,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderRadius: 10,
+    padding: 2,
+  },
   photoGrid: { flexDirection: 'row', flexWrap: 'wrap' },
   gridPhoto: { width: 100, height: 100, margin: 5, borderRadius: 5 },
   logoutButton: {

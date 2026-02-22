@@ -24,8 +24,8 @@ export default function UploadPhotoScreen({ route, navigation }) {
       }
 
       let result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
-        allowsMultipleSelection: true, // Разрешаем выбор нескольких фото
+        mediaTypes: ['images', 'videos'],
+        allowsMultipleSelection: true, // Разрешаем выбор нескольких фото/видео
         quality: 0.8,
       });
 
@@ -49,9 +49,12 @@ export default function UploadPhotoScreen({ route, navigation }) {
     
     images.forEach((image, index) => {
       const uri = image.uri;
-      const name = uri.split('/').pop() || `photo_${index}.jpg`;
+      const isVideo = image.type === 'video';
+      const defaultExt = isVideo ? 'mp4' : 'jpg';
+      const name = uri.split('/').pop() || `media_${index}.${defaultExt}`;
       const match = /\.(\w+)$/.exec(name);
-      const type = match ? `image/${match[1]}` : `image/jpeg`;
+      const ext = match ? match[1] : defaultExt;
+      const type = isVideo ? `video/${ext}` : `image/${ext}`;
 
       formData.append('files', {
         uri: Platform.OS === 'ios' ? uri.replace('file://', '') : uri,
@@ -69,17 +72,9 @@ export default function UploadPhotoScreen({ route, navigation }) {
     formData.append('privacy', privacy);
 
     try {
-      if (images.length === 1) {
-        // Если выбрано одно фото, можно использовать старый метод или новый
-        // Для единообразия и тестирования нового метода используем bulkUploadPhotos
-        // Но старый метод принимает 'file' а не 'files', поэтому пересоздаем formData для одного файла
-        // Или просто всегда используем bulkUploadPhotos с 'files'
-        await usersApi.bulkUploadPhotos(formData);
-      } else {
-        await usersApi.bulkUploadPhotos(formData);
-      }
+      await usersApi.bulkUploadPhotos(formData);
       
-      Alert.alert('Успех', `${images.length} фото загружено`);
+      Alert.alert('Успех', `${images.length} медиа загружено`);
       navigation.goBack();
     } catch (err) {
       Alert.alert('Ошибка', 'Не удалось загрузить фотографии. ' + (err.message || 'Попробуйте еще раз.'));
@@ -103,6 +98,11 @@ export default function UploadPhotoScreen({ route, navigation }) {
               {images.map((img, index) => (
                 <View key={index} style={styles.previewWrapper}>
                   <Image source={{ uri: img.uri }} style={styles.previewThumbnail} />
+                  {img.type === 'video' && (
+                    <View style={styles.videoIndicator}>
+                      <Icon name="play" size={20} color="#fff" />
+                    </View>
+                  )}
                   <TouchableOpacity 
                     style={[styles.removeBadge, { backgroundColor: colors.error }]} 
                     onPress={() => removeImage(index)}
@@ -179,7 +179,7 @@ export default function UploadPhotoScreen({ route, navigation }) {
             <ActivityIndicator color="#fff" />
           ) : (
             <Text style={styles.uploadBtnText}>
-              {images.length > 1 ? `Загрузить ${images.length} фото` : 'Загрузить'}
+              {images.length > 1 ? `Загрузить (${images.length})` : 'Загрузить'}
             </Text>
           )}
         </TouchableOpacity>
@@ -210,6 +210,19 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
     borderRadius: 8,
+  },
+  videoIndicator: {
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    transform: [{ translateX: -15 }, { translateY: -15 }],
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1,
   },
   removeBadge: {
     position: 'absolute',
