@@ -311,31 +311,54 @@ export default function PhotoDetailScreen({ route, navigation }) {
           onResponderTerminationRequest={() => true}
           scrollEnabled={false} // Disable internal scroll to let FlatList handle swipes
         >
-          <TouchableOpacity 
-            activeOpacity={1} 
-            onPress={selectionMode ? () => toggleSelection(item.id) : toggleDescription}
-            onLongPress={isOwner && !selectionMode ? enterSelectionMode : null}
-            style={styles.imageWrapper}
-          >
+          <View style={styles.imageWrapper}>
             {mediaIsVideo ? (
-              <VideoItem
-                uri={mediaUrl}
-                style={[
-                  styles.fullPhoto,
-                  isSelected && { opacity: 0.7 }
-                ]}
-                useNativeControls
-                shouldPlay={currentIndex === index}
-              />
+              <View style={styles.fullPhoto}>
+                <VideoItem
+                  uri={mediaUrl}
+                  style={[
+                    styles.fullPhoto,
+                    isSelected && { opacity: 0.7 }
+                  ]}
+                  useNativeControls={!selectionMode}
+                  shouldPlay={currentIndex === index && !selectionMode}
+                />
+                {!selectionMode && (
+                  <>
+                    <TouchableOpacity 
+                      style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '20%', zIndex: 5 }} 
+                      onPress={toggleDescription}
+                    />
+                    <TouchableOpacity 
+                      style={{ position: 'absolute', bottom: 80, left: 0, right: 0, height: '20%', zIndex: 5 }} 
+                      onPress={toggleDescription}
+                    />
+                  </>
+                )}
+                {selectionMode && (
+                  <TouchableOpacity 
+                    style={StyleSheet.absoluteFill} 
+                    onPress={() => toggleSelection(item.id)}
+                    activeOpacity={1}
+                  />
+                )}
+              </View>
             ) : (
-              <Image 
-                source={{ uri: mediaUrl }} 
-                style={[
-                  styles.fullPhoto,
-                  isSelected && { opacity: 0.7 }
-                ]} 
-                resizeMode="contain" 
-              />
+              <TouchableOpacity 
+                activeOpacity={1} 
+                onPress={selectionMode ? () => toggleSelection(item.id) : toggleDescription}
+                onLongPress={isOwner && !selectionMode ? enterSelectionMode : null}
+                style={styles.fullPhoto}
+              >
+                <Image 
+                  source={{ uri: mediaUrl }} 
+                  style={[
+                    styles.fullPhoto,
+                    isSelected && { opacity: 0.7 }
+                  ]} 
+                  resizeMode="contain" 
+                />
+              </TouchableOpacity>
             )}
             {selectionMode && (
               <View style={styles.selectionOverlay}>
@@ -346,7 +369,7 @@ export default function PhotoDetailScreen({ route, navigation }) {
                 />
               </View>
             )}
-          </TouchableOpacity>
+          </View>
         </ScrollView>
       </View>
     );
@@ -401,28 +424,40 @@ export default function PhotoDetailScreen({ route, navigation }) {
       />
 
       {/* Верхняя панель управления */}
-      {(showDescription || selectionMode) && (
-        <View style={[styles.header, selectionMode && { backgroundColor: 'rgba(0,0,0,0.8)' }]}>
-          <TouchableOpacity 
-            style={styles.backButton} 
-            onPress={() => selectionMode ? setSelectionMode(false) : navigation.goBack()}
-          >
-            <Icon name={selectionMode ? "close-outline" : "chevron-back"} size={35} color="#fff" />
-          </TouchableOpacity>
-          
-          <Text style={styles.headerTitle}>
-            {selectionMode ? `Выбрано: ${selectedIds.length}` : `${currentIndex + 1} из ${photos.length}`}
-          </Text>
+      <View style={[
+        styles.header, 
+        (showDescription || selectionMode) ? { backgroundColor: 'rgba(0,0,0,0.8)' } : { backgroundColor: 'transparent' },
+        { zIndex: 50 }
+      ]}>
+        <TouchableOpacity 
+          style={styles.backButton} 
+          onPress={() => selectionMode ? setSelectionMode(false) : navigation.goBack()}
+        >
+          <Icon name={selectionMode ? "close-outline" : "chevron-back"} size={35} color="#fff" />
+        </TouchableOpacity>
+        
+        <Text style={styles.headerTitle}>
+          {selectionMode ? `Выбрано: ${selectedIds.length}` : `${currentIndex + 1} из ${photos.length}`}
+        </Text>
 
-          <View style={styles.headerRight}>
-            {isOwner && (
-              <TouchableOpacity onPress={deletePhotos} style={styles.headerButton}>
-                <Icon name="trash-outline" size={28} color="#fff" />
-              </TouchableOpacity>
-            )}
-          </View>
+        <View style={styles.headerRight}>
+          {!selectionMode && (
+            <TouchableOpacity onPress={toggleDescription} style={styles.headerButton}>
+              <Icon name={showDescription ? "information-circle" : "information-circle-outline"} size={28} color="#fff" />
+            </TouchableOpacity>
+          )}
+          {isOwner && !selectionMode && (
+            <TouchableOpacity onPress={enterSelectionMode} style={styles.headerButton}>
+              <Icon name="checkbox-outline" size={28} color="#fff" />
+            </TouchableOpacity>
+          )}
+          {selectionMode && (
+            <TouchableOpacity onPress={deletePhotos} disabled={selectedIds.length === 0} style={styles.headerButton}>
+              <Icon name="trash-outline" size={28} color={selectedIds.length > 0 ? "#fff" : "rgba(255,255,255,0.3)"} />
+            </TouchableOpacity>
+          )}
         </View>
-      )}
+      </View>
 
       {/* Описание и реакции (показываются по тапу) */}
       {showDescription && photos[currentIndex] && (

@@ -45,10 +45,7 @@ const VideoPlayer = ({ uri, isMuted = false, isLooping = false, shouldPlay = fal
 
 const styles = StyleSheet.create({
   container: {
-    width: 200,
-    height: 150,
     backgroundColor: '#000',
-    borderRadius: 14,
     overflow: 'hidden',
   },
   video: {

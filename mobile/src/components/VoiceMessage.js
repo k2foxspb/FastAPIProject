@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Alert, Platform } from 'react-native';
-import { Audio, useAudioPlayer } from 'expo-audio';
+import { Audio, useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
@@ -28,7 +28,17 @@ export default function VoiceMessage({ item, currentUserId }) {
   const localFileUri = `${cacheDirectory}${fileName}`;
 
   const audioSource = localUri || remoteUri;
-  const player = useAudioPlayer(audioSource);
+  // We use useAudioPlayer without an initial source to keep the player instance stable.
+  // This prevents the "already released" crash when the source changes (e.g. after downloading the file)
+  // while an async function (like loadAndPlay) is still using the old player instance.
+  const player = useAudioPlayer();
+  const status = useAudioPlayerStatus(player);
+
+  useEffect(() => {
+    if (audioSource) {
+      player.replace(audioSource);
+    }
+  }, [audioSource, player]);
 
   useEffect(() => {
     const checkLocal = async () => {
@@ -116,16 +126,16 @@ export default function VoiceMessage({ item, currentUserId }) {
     }
   };
 
-  const formatTime = (millis) => {
-    const totalSeconds = millis / 1000;
+  const formatTime = (seconds) => {
+    const totalSeconds = Math.floor(seconds || 0);
     const minutes = Math.floor(totalSeconds / 60);
-    const seconds = Math.floor(totalSeconds % 60);
-    return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
+    const remainingSeconds = totalSeconds % 60;
+    return `${minutes}:${remainingSeconds < 10 ? '0' : ''}${remainingSeconds}`;
   };
 
-  const position = player.currentTime || 0;
-  const duration = player.duration || 0;
-  const isPlaying = player.playing;
+  const position = status.currentTime || 0;
+  const duration = status.duration || 0;
+  const isPlaying = status.playing;
   const progress = duration > 0 ? (position / duration) * 100 : 0;
   const isReceived = item.sender_id !== currentUserId;
 

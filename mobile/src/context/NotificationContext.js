@@ -1,10 +1,11 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { Vibration, AppState } from 'react-native';
-import { createAudioPlayer } from 'expo-audio';
+import { useAudioPlayer } from 'expo-audio';
 import { API_BASE_URL } from '../constants';
 import { usersApi, chatApi } from '../api';
 import { storage } from '../utils/storage';
 import { setNotificationAudioMode } from '../utils/audioSettings';
+import { isWithinQuietHours } from '../utils/quietHours';
 
 const NotificationContext = createContext();
 
@@ -18,6 +19,7 @@ export const NotificationProvider = ({ children }) => {
   const [activeChatId, setActiveChatId] = useState(null);
   const appState = useRef(AppState.currentState);
   const ws = useRef(null);
+  const notificationPlayer = useAudioPlayer(require('../../assets/sounds/message.mp3'));
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', nextAppState => {
@@ -69,9 +71,12 @@ export const NotificationProvider = ({ children }) => {
 
   const playNotificationSound = async () => {
     try {
+      if (await isWithinQuietHours()) {
+        console.log('[NotificationContext] Quiet hours active, skipping sound');
+        return;
+      }
       await setNotificationAudioMode();
-      const player = createAudioPlayer(require('../../assets/sounds/message.mp3'));
-      player.play();
+      notificationPlayer.play();
     } catch (error) {
       console.log('Error playing notification sound', error);
     }
@@ -108,9 +113,14 @@ export const NotificationProvider = ({ children }) => {
         const payload = JSON.parse(e.data);
         console.log('Notification received:', payload);
         
-        if (payload.type === 'new_message' || payload.type === 'messages_read' || payload.type === 'your_messages_read') {
-          // Обновляем список диалогов при получении нового сообщения или пометке о прочтении
+        if (payload.type === 'new_message' || payload.type === 'messages_read' || payload.type === 'your_messages_read' || payload.type === 'message_deleted') {
+          // Обновляем список диалогов при получении нового сообщения, пометке о прочтении или удалении
           fetchDialogs();
+        }
+
+        if (payload.type === 'messages_read' || payload.type === 'your_messages_read') {
+           // Если мы в чате, то WebSocket чата сам обновит сообщения,
+           // но если мы в списке диалогов, нам нужно обновить состояние диалогов, что делает fetchDialogs() выше.
         }
 
         if (payload.type === 'friend_request' || payload.type === 'friend_accept') {
@@ -120,8 +130,8 @@ export const NotificationProvider = ({ children }) => {
 
         if (payload.type === 'new_message') {
           const senderId = payload.data.sender_id;
-          // Если приложение открыто, но мы НЕ в чате с этим пользователем
-          if (appState.current === 'active' && activeChatId !== senderId) {
+          // Если приложение открыто, но мы НЕ в чате с этим пользователем и это не наше сообщение
+          if (appState.current === 'active' && activeChatId !== senderId && senderId !== currentUserId) {
             playNotificationSound();
           }
         }

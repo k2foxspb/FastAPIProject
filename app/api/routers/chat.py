@@ -116,6 +116,12 @@ async def websocket_chat_endpoint(
                         "type": "messages_read",
                         "reader_id": user_id
                     }, int(other_id))
+
+                    # Уведомляем самого пользователя, чтобы обновить его список диалогов (сбросить счетчик)
+                    await notifications_manager.send_personal_message({
+                        "type": "messages_read",
+                        "data": {"from_user_id": int(other_id)}
+                    }, user_id)
                 continue
 
             # Стандартная отправка сообщения
@@ -126,6 +132,9 @@ async def websocket_chat_endpoint(
             message_type = message_data.get("message_type", "text")
             
             if receiver_id and (content or file_path or (attachments and len(attachments) > 0)):
+                # Приводим к int для корректного поиска в менеджерах соединений
+                receiver_id = int(receiver_id)
+                
                 # Если пришли вложения списком — считаем это медиа-группой и сохраняем
                 if attachments and len(attachments) > 0:
                     message_type = "media_group"
@@ -173,11 +182,17 @@ async def websocket_chat_endpoint(
                 # Отправляем подтверждение отправителю
                 await manager.send_personal_message(response_data, user_id)
 
-                # Уведомляем через глобальный WS уведомлений
+                # Уведомляем через глобальный WS уведомлений получателя
                 await notifications_manager.send_personal_message({
                     "type": "new_message",
                     "data": response_data
                 }, receiver_id)
+                
+                # Уведомляем также отправителя, чтобы его список диалогов обновился (последнее сообщение)
+                await notifications_manager.send_personal_message({
+                    "type": "new_message",
+                    "data": response_data
+                }, user_id)
 
                 # Отправляем Пуш через FCM, если получатель не подключен к WebSocket
                 # Находим получателя, чтобы взять его fcm_token

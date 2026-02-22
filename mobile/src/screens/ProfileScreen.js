@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, Image, FlatList, ScrollView, TouchableOpacity, Modal, TouchableWithoutFeedback } from 'react-native';
+import { View, Text, StyleSheet, Image, FlatList, ScrollView, TouchableOpacity, Modal, TouchableWithoutFeedback, Switch, Alert } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import api, { usersApi, newsApi, setAuthToken } from '../api';
 import { Ionicons as Icon } from '@expo/vector-icons';
@@ -15,6 +15,7 @@ export default function ProfileScreen({ navigation }) {
   const [posts, setPosts] = useState([]);
   const [error, setError] = useState(null);
   const [isSettingsVisible, setSettingsVisible] = useState(false);
+  const [quietHours, setQuietHours] = useState({ enabled: false, start: '22:00', end: '08:00' });
   const { disconnect } = useNotifications();
   const { theme, isDark, toggleTheme, isSystemTheme, useSystemThemeSetting } = useTheme();
   const colors = themeConstants[theme];
@@ -172,8 +173,49 @@ export default function ProfileScreen({ navigation }) {
             console.log(err);
           }
         });
+
+      // Загрузка настроек тихих часов
+      Promise.all([
+        storage.getItem('quiet_hours_enabled'),
+        storage.getItem('quiet_hours_start'),
+        storage.getItem('quiet_hours_end')
+      ]).then(([enabled, start, end]) => {
+        setQuietHours({
+          enabled: enabled === 'true',
+          start: start || '22:00',
+          end: end || '08:00'
+        });
+      });
     }, [navigation, colors.text])
   );
+
+  const toggleQuietHours = async () => {
+    const newState = { ...quietHours, enabled: !quietHours.enabled };
+    setQuietHours(newState);
+    await storage.saveItem('quiet_hours_enabled', newState.enabled ? 'true' : 'false');
+  };
+
+  const changeQuietTime = (type) => {
+    const times = type === 'start' 
+      ? ['20:00', '21:00', '22:00', '23:00', '00:00']
+      : ['06:00', '07:00', '08:00', '09:00', '10:00'];
+      
+    Alert.alert(
+      type === 'start' ? 'Начало "тихого времени"' : 'Конец "тихого времени"',
+      'Выберите время:',
+      [
+        ...times.map(t => ({
+          text: t,
+          onPress: async () => {
+            const newState = { ...quietHours, [type]: t };
+            setQuietHours(newState);
+            await storage.saveItem(`quiet_hours_${type}`, t);
+          }
+        })),
+        { text: 'Отмена', style: 'cancel' }
+      ]
+    );
+  };
 
   if (!user) return (
     <View style={[styles.center, { backgroundColor: colors.background }]}>
@@ -277,6 +319,34 @@ export default function ProfileScreen({ navigation }) {
                       <Text style={[styles.themeOptionText, !isSystemTheme && isDark && { color: '#fff' }]}>Тёмная</Text>
                     </TouchableOpacity>
                   </View>
+                </View>
+
+                <View style={[styles.menuSection, { borderTopWidth: 1, borderTopColor: colors.border, marginTop: 5 }]}>
+                  <View style={styles.quietHoursHeader}>
+                    <Text style={[styles.menuSectionTitle, { color: colors.textSecondary, marginBottom: 0 }]}>Тихие часы (DND)</Text>
+                    <Switch 
+                      value={quietHours.enabled} 
+                      onValueChange={toggleQuietHours}
+                      trackColor={{ false: colors.border, true: colors.primary + '80' }}
+                      thumbColor={quietHours.enabled ? colors.primary : '#f4f3f4'}
+                    />
+                  </View>
+                  
+                  {quietHours.enabled && (
+                    <View style={styles.timePickerRow}>
+                      <TouchableOpacity style={styles.timeButton} onPress={() => changeQuietTime('start')}>
+                        <Text style={[styles.timeButtonLabel, { color: colors.textSecondary }]}>С </Text>
+                        <Text style={[styles.timeButtonText, { color: colors.primary }]}>{quietHours.start}</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={styles.timeButton} onPress={() => changeQuietTime('end')}>
+                        <Text style={[styles.timeButtonLabel, { color: colors.textSecondary }]}>До </Text>
+                        <Text style={[styles.timeButtonText, { color: colors.primary }]}>{quietHours.end}</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                  <Text style={[styles.menuHint, { color: colors.textSecondary }]}>
+                    В это время звуковые уведомления в приложении будут отключены.
+                  </Text>
                 </View>
 
                 <TouchableOpacity 
@@ -458,6 +528,38 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
     color: '#8E8E93',
+  },
+  quietHoursHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  timePickerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  timeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.05)',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    marginRight: 10,
+  },
+  timeButtonLabel: {
+    fontSize: 12,
+  },
+  timeButtonText: {
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  menuHint: {
+    fontSize: 11,
+    fontStyle: 'italic',
+    marginTop: 5,
   },
   activityRow: { flexDirection: 'row', justifyContent: 'space-between' },
   activityButton: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 15, borderRadius: 12, borderWidth: 1, marginHorizontal: 5, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2 },

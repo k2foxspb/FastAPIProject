@@ -60,29 +60,39 @@ const CachedMedia = ({ item, onFullScreen, style, resizeMode = "cover", useNativ
   const isVideo = item.message_type === 'video' || item.type === 'video';
 
   return (
-    <TouchableOpacity 
-      disabled={!onFullScreen} 
-      onPress={() => onFullScreen && onFullScreen(localUri, item.message_type || item.type)}
-      style={style}
-    >
+    <View style={style}>
       {isVideo ? (
-        <VideoPlayer 
-          uri={localUri} 
-          isMuted={isMuted} 
-          isLooping={!useNativeControls} 
-          shouldPlay={shouldPlay} 
-          style={style || styles.thumbnail}
-          useNativeControls={useNativeControls}
-          resizeMode={resizeMode}
-        />
+        <View style={style || styles.thumbnail}>
+          <VideoPlayer 
+            uri={localUri} 
+            isMuted={isMuted} 
+            isLooping={!useNativeControls} 
+            shouldPlay={shouldPlay} 
+            style={StyleSheet.absoluteFill}
+            useNativeControls={useNativeControls}
+            resizeMode={resizeMode}
+          />
+          {onFullScreen && (
+            <TouchableOpacity 
+              style={StyleSheet.absoluteFill} 
+              onPress={() => onFullScreen(localUri, item.message_type || item.type)}
+            />
+          )}
+        </View>
       ) : (
-        <Image 
-          source={{ uri: localUri }} 
-          style={style || styles.thumbnail} 
-          resizeMode={resizeMode}
-        />
+        <TouchableOpacity 
+          disabled={!onFullScreen} 
+          onPress={() => onFullScreen && onFullScreen(localUri, item.message_type || item.type)}
+          style={style || styles.thumbnail}
+        >
+          <Image 
+            source={{ uri: localUri }} 
+            style={StyleSheet.absoluteFill} 
+            resizeMode={resizeMode}
+          />
+        </TouchableOpacity>
       )}
-    </TouchableOpacity>
+    </View>
   );
 };
 

@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, FlatList, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, Image, Modal, Pressable, Alert, StatusBar, Dimensions, Share } from 'react-native';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { View, Text, FlatList, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, Image, Modal, Pressable, Alert, StatusBar, Dimensions, Share, Animated } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import { documentDirectory, getInfoAsync, downloadAsync, deleteAsync, readAsStringAsync, writeAsStringAsync, EncodingType, StorageAccessFramework } from 'expo-file-system/legacy';
@@ -12,13 +12,14 @@ import { uploadManager } from '../utils/uploadManager';
 import CachedMedia from '../components/CachedMedia';
 import VoiceMessage from '../components/VoiceMessage';
 import FileMessage from '../components/FileMessage';
-import { Audio, useAudioRecorder, useAudioPlayer, RecordingPresets, AudioModule, requestRecordingPermissionsAsync, createAudioPlayer } from 'expo-audio';
+import { Audio, useAudioRecorder, useAudioRecorderState, useAudioPlayer, RecordingPresets, AudioModule, requestRecordingPermissionsAsync, createAudioPlayer } from 'expo-audio';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
 import { formatStatus, formatName, formatFileSize } from '../utils/formatters';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { setPlaybackAudioMode, setRecordingAudioMode, setNotificationAudioMode } from '../utils/audioSettings';
+import { isWithinQuietHours } from '../utils/quietHours';
 
 export default function ChatScreen({ route, navigation }) {
   const insets = useSafeAreaInsets();
@@ -53,43 +54,172 @@ export default function ChatScreen({ route, navigation }) {
   const recordingInterval = useRef(null);
   const isStartingRecording = useRef(false);
   const stopRequested = useRef(false);
+  const isMounted = useRef(true);
   const LIMIT = 15;
   const ws = useRef(null);
   const videoPlayerRef = useRef(null);
   const chatFlatListRef = useRef(null);
-  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  const recordingOptions = useMemo(() => RecordingPresets.HIGH_QUALITY, []);
+  const recorder = useAudioRecorder(recordingOptions);
+  const recorderStatus = useAudioRecorderState(recorder);
+  const notificationPlayer = useAudioPlayer(require('../../assets/sounds/message.mp3'));
   const screenWidth = Dimensions.get('window').width;
   const [currentMediaIndex, setCurrentMediaIndex] = useState(0);
+  const recordingDotOpacity = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    if (isRecording) {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(recordingDotOpacity, {
+            toValue: 0.3,
+            duration: 500,
+            useNativeDriver: true,
+          }),
+          Animated.timing(recordingDotOpacity, {
+            toValue: 1,
+            duration: 500,
+            useNativeDriver: true,
+          }),
+        ])
+      ).start();
+    } else {
+      recordingDotOpacity.setValue(1);
+    }
+  }, [isRecording]);
+
+  useEffect(() => {
+    if (recorderStatus.isRecording) {
+      setRecordingDuration(recorderStatus.durationMillis);
+    }
+  }, [recorderStatus.durationMillis, recorderStatus.isRecording]);
 
   // Звук для нового сообщения в чате
   const playMessageSound = async () => {
     try {
+      if (await isWithinQuietHours()) {
+        console.log('[ChatScreen] Quiet hours active, skipping sound');
+        return;
+      }
       await setNotificationAudioMode();
-      const player = createAudioPlayer(require('../../assets/sounds/message.mp3'));
-      player.play();
+      notificationPlayer.play();
     } catch (error) {
       console.log('Error playing message sound', error);
     }
   };
 
   useEffect(() => {
+    isMounted.current = true;
+    return () => {
+      isMounted.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
     setActiveChatId(userId);
     return () => {
       setActiveChatId(null);
-      if (recorder.isRecording) {
-        recorder.stop().catch(() => {});
-      }
+      // We don't call recorder.stop() here because useAudioRecorder manages its own lifecycle.
+      // Calling it manually during unmount can race with the hook's internal cleanup.
       if (recordingInterval.current) {
         clearInterval(recordingInterval.current);
         recordingInterval.current = null;
       }
     };
-  }, [userId, recorder]);
+  }, [userId]);
 
   useEffect(() => {
+    const connectWs = (accessToken) => {
+      const protocol = API_BASE_URL.startsWith('https') ? 'wss://' : 'ws://';
+      const wsUrl = `${protocol}${API_BASE_URL.replace('http://', '').replace('https://', '')}/chat/ws/${accessToken}`;
+      console.log('[ChatScreen] Connecting to WS:', wsUrl.split('/ws/')[0] + '/ws/***');
+      
+      const newWs = new WebSocket(wsUrl);
+      ws.current = newWs;
+
+      newWs.onopen = () => {
+        console.log('[Chat WS] Connected');
+      };
+
+      newWs.onmessage = (e) => {
+        try {
+          const message = JSON.parse(e.data);
+          if (!message || typeof message !== 'object') return;
+          
+          console.log('[Chat WS] Received message:', message.id, message.type || message.message_type);
+          
+          if (message.type === 'message_deleted') {
+            if (message.message_id) {
+              setMessages(prev => prev.filter(m => m.id !== message.message_id));
+            }
+            // Также обновляем список диалогов, так как последнее сообщение могло измениться
+            fetchDialogs();
+            return;
+          }
+
+          if (message.type === 'messages_read' || message.type === 'your_messages_read') {
+            // Обновляем статус прочтения у наших сообщений
+            setMessages(prev => prev.map(m => 
+              (m.sender_id && m.sender_id === currentUserIdLocal) ? { ...m, is_read: true } : m
+            ));
+            return;
+          }
+          
+          // Проверяем, относится ли сообщение к текущему чату
+          const isRelated = (message.sender_id === userId && message.receiver_id === currentUserIdLocal) || 
+                            (message.sender_id === currentUserIdLocal && message.receiver_id === userId);
+
+          if (isRelated) {
+            setMessages(prev => {
+              if (prev.find(m => m.id === message.id)) return prev;
+              const newMessages = [message, ...prev];
+              return newMessages;
+            });
+            setSkip(prev => prev + 1);
+            
+            if (message.sender_id === userId) {
+              playMessageSound();
+              if (newWs.readyState === WebSocket.OPEN) {
+                newWs.send(JSON.stringify({
+                  type: 'mark_read',
+                  other_id: userId
+                }));
+              }
+              chatApi.markAsRead(userId, accessToken).then(() => fetchDialogs());
+            }
+          }
+        } catch (err) {
+          console.error('[Chat WS] Error processing message:', err);
+        }
+      };
+
+      newWs.onclose = (e) => {
+        console.log('[Chat WS] Closed:', e.code, e.reason);
+        // Реконнект при неожиданном закрытии
+        if (e.code !== 1000 && isMounted.current) {
+          console.log('[Chat WS] Reconnecting in 3s...');
+          setTimeout(() => {
+            if (isMounted.current) connectWs(accessToken);
+          }, 3000);
+        }
+      };
+
+      newWs.onerror = (e) => {
+        console.error('[Chat WS] Error:', e.message);
+      };
+    };
+
     const initChat = async () => {
       const accessToken = await storage.getAccessToken();
       setToken(accessToken);
+
+      // Загрузка данных текущего пользователя для корректной фильтрации WS
+      try {
+        const userRes = await usersApi.getMe();
+        setCurrentUserIdLocal(userRes.data.id);
+      } catch (err) {
+        console.log('Failed to load current user', err);
+      }
 
       // Загрузка начальной истории
       try {
@@ -110,13 +240,8 @@ export default function ChatScreen({ route, navigation }) {
       // Загрузка данных собеседника
       usersApi.getUser(userId).then(res => setInterlocutor(res.data)).catch(err => console.log(err));
 
-      // Загрузка данных текущего пользователя
-      usersApi.getMe().then(res => setCurrentUserIdLocal(res.data.id)).catch(err => console.log(err));
-
       // WebSocket соединение
-      const protocol = API_BASE_URL.startsWith('https') ? 'wss://' : 'ws://';
-      const wsUrl = `${protocol}${API_BASE_URL.replace('http://', '').replace('https://', '')}/chat/ws/${accessToken}`;
-      ws.current = new WebSocket(wsUrl);
+      connectWs(accessToken);
 
       // Проверка активных загрузок
       uploadManager.getActiveUploadsForReceiver(userId).then(activeUploads => {
@@ -132,58 +257,6 @@ export default function ChatScreen({ route, navigation }) {
           });
         }
       });
-
-      ws.current.onmessage = (e) => {
-        try {
-          const message = JSON.parse(e.data);
-          // Check if message is defined
-          if (!message || typeof message !== 'object') return;
-          
-          console.log('[Chat WS] Received message:', message.id, message.message_type);
-          
-          if (message.type === 'message_deleted') {
-            if (message.message_id) {
-              setMessages(prev => prev.filter(m => m.id !== message.message_id));
-            }
-            return;
-          }
-
-          if (message.type === 'messages_read') {
-            // Обновляем статус прочтения у наших сообщений
-            setMessages(prev => prev.map(m => 
-              (m.sender_id && m.sender_id === currentUserIdLocal) ? { ...m, is_read: true } : m
-            ));
-            return;
-          }
-          
-          if (message.sender_id && (message.sender_id === userId || (message.receiver_id === userId))) {
-            // Если мы в этом чате, то сообщение от собеседника или наше подтверждение
-            setMessages(prev => {
-              if (prev.find(m => m.id === message.id)) return prev;
-              const newMessages = [message, ...prev];
-              console.log('[Chat WS] Updating messages state. New count:', newMessages.length);
-              return newMessages;
-            });
-            setSkip(prev => prev + 1);
-            
-            // Если сообщение от собеседника, помечаем как прочитанное и играем звук
-            if (message.sender_id === userId) {
-              playMessageSound();
-              // Отправляем через WS что прочитали для мгновенного обновления у отправителя
-              if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-                ws.current.send(JSON.stringify({
-                  type: 'mark_read',
-                  other_id: userId
-                }));
-              }
-              // Также вызываем API для обновления в БД и счетчиков
-              chatApi.markAsRead(userId, accessToken).then(() => fetchDialogs());
-            }
-          }
-        } catch (err) {
-          console.error('[Chat WS] Error processing message:', err);
-        }
-      };
     };
 
     initChat();
@@ -251,7 +324,7 @@ export default function ChatScreen({ route, navigation }) {
     setAllMedia(media);
   }, [messages]);
 
-  const openFullScreen = (uri) => {
+  const openFullScreen = (uri, type) => {
     // Для видео/фото из кэша uri может быть локальным путем (file://...)
     // Нам нужно сопоставить его с элементом в allMedia
     const index = allMedia.findIndex(m => {
@@ -259,7 +332,7 @@ export default function ChatScreen({ route, navigation }) {
       // Проверяем по имени файла, если uri локальный
       const fileName = uri.split('/').pop();
       const mFileName = m.uri.split('/').pop();
-      return fileName === mFileName;
+      return fileName && mFileName && fileName === mFileName;
     });
     
     if (index !== -1) {
@@ -279,7 +352,7 @@ export default function ChatScreen({ route, navigation }) {
     } else {
       // Fallback если вдруг не нашли в общем списке
       setCurrentMediaIndex(0);
-      setFullScreenMedia({ index: 0, list: [{ uri, type: 'image' }] });
+      setFullScreenMedia({ index: 0, list: [{ uri, type: type || 'image', file_path: uri }] });
     }
   };
 
@@ -560,29 +633,33 @@ export default function ChatScreen({ route, navigation }) {
       setRecordingDuration(0);
 
       const permission = await requestRecordingPermissionsAsync();
+      if (!isMounted.current) return;
+
       if (permission.status === "granted") {
         // Проверяем, не отпустил ли пользователь кнопку пока мы ждали пермишенов
-        if (stopRequested.current) {
+        if (stopRequested.current || (recorder && recorder.isReleased)) {
           setIsRecording(false);
           isStartingRecording.current = false;
           return;
         }
 
         await setRecordingAudioMode();
+        if (!isMounted.current) return;
         
         // Снова проверяем, не отпустил ли пользователь кнопку
-        if (stopRequested.current) {
+        if (stopRequested.current || (recorder && recorder.isReleased)) {
           setIsRecording(false);
           isStartingRecording.current = false;
           return;
         }
 
-        await recorder.prepareToRecordAsync();
-        await recorder.record();
+        // В expo-audio не нужно вызывать prepareToRecordAsync, вызываем сразу record()
+        // и проверяем isReleased перед каждым вызовом
+        if (recorder && !recorder.isReleased) {
+          await recorder.record();
+        }
         
-        recordingInterval.current = setInterval(() => {
-          setRecordingDuration(prev => prev + 100);
-        }, 100);
+        if (!isMounted.current) return;
       } else {
         setIsRecording(false);
         Alert.alert('Доступ запрещен', 'Нам нужно разрешение на микрофон для записи голосовых сообщений');
@@ -602,27 +679,18 @@ export default function ChatScreen({ route, navigation }) {
     // Сразу сбрасываем визуальное состояние, чтобы кнопка «отжалась»
     setIsRecording(false);
 
-    if (recordingInterval.current) {
-      clearInterval(recordingInterval.current);
-      recordingInterval.current = null;
-    }
-
-    // Если мы всё еще в процессе запуска
-    if (isStartingRecording.current) {
-      console.log('[ChatScreen] stopRecording called while still starting');
-      return;
-    }
-
-    try {
-      if (recorder.isRecording) {
+    if (recorder && !recorder.isReleased && recorder.isRecording) {
+      try {
         await recorder.stop();
+        if (!isMounted.current || (recorder && recorder.isReleased)) return;
+        
         const uri = recorder.uri;
         if (uri) {
           setRecordedUri(uri);
         }
+      } catch (err) {
+        console.error('Failed to stop recording', err);
       }
-    } catch (err) {
-      console.error('Failed to stop recording', err);
     }
   };
 
@@ -718,7 +786,7 @@ export default function ChatScreen({ route, navigation }) {
         toggleSelection(item.id);
         return;
       }
-      openFullScreen(uri);
+      openFullScreen(uri, type);
     };
 
     const toggleSelection = (id) => {
@@ -1120,8 +1188,10 @@ export default function ChatScreen({ route, navigation }) {
             {isRecording ? (
               <View style={styles.recordingContainer}>
                 <View style={styles.recordingIndicator}>
-                  <View style={styles.recordingDot} />
-                  <Text style={[styles.recordingTimeText, { color: colors.error }]}>{formatRecordingTime(recordingDuration)}</Text>
+                  <Animated.View style={[styles.recordingDot, { opacity: recordingDotOpacity }]} />
+                  <Text style={[styles.recordingTimeText, { color: colors.error }]}>
+                    {formatRecordingTime(recorderStatus.durationMillis || recordingDuration)}
+                  </Text>
                 </View>
                 <Text style={[styles.recordingHint, { color: colors.textSecondary }]}>Отпустите для завершения</Text>
               </View>
