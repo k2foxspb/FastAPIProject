@@ -19,7 +19,7 @@ WORKDIR $HOME
 
 # копирование проекта FastAPI в рабочую директорию
 COPY app app
-COPY requirements.txt alembic.ini .env ./
+COPY requirements.txt alembic.ini .env firebase-service-account.json* ./
 
 # обновление pip
 # установка зависимостей из списка requirements.txt

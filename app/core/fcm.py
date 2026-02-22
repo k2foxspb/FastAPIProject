@@ -10,14 +10,28 @@ from app.core.config import FIREBASE_SERVICE_ACCOUNT_PATH
 # Мы инициализируем его один раз при импорте модуля
 try:
     if not firebase_admin._apps:
-        # Пытаемся найти файл по абсолютному пути, если относительный не сработал
-        abs_path = os.path.abspath(FIREBASE_SERVICE_ACCOUNT_PATH)
-        if os.path.exists(abs_path):
-            logger.info(f"Initializing Firebase Admin SDK with service account from {abs_path}")
-            cred = credentials.Certificate(abs_path)
+        # Пытаемся найти файл по нескольким возможным путям
+        possible_paths = [
+            # 1. По абсолютному пути из конфига
+            os.path.abspath(FIREBASE_SERVICE_ACCOUNT_PATH),
+            # 2. В корне проекта (на уровень выше пакета app)
+            os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), FIREBASE_SERVICE_ACCOUNT_PATH),
+            # 3. В текущей директории
+            os.path.join(os.getcwd(), FIREBASE_SERVICE_ACCOUNT_PATH),
+        ]
+        
+        found_path = None
+        for path in possible_paths:
+            if os.path.exists(path):
+                found_path = path
+                break
+        
+        if found_path:
+            logger.info(f"Initializing Firebase Admin SDK with service account from {found_path}")
+            cred = credentials.Certificate(found_path)
             firebase_admin.initialize_app(cred)
         else:
-            logger.warning(f"Firebase service account file NOT found at {abs_path}. FCM notifications will be disabled.")
+            logger.warning(f"Firebase service account file '{FIREBASE_SERVICE_ACCOUNT_PATH}' NOT found in any of these locations: {possible_paths}. FCM notifications will be disabled.")
 except Exception as e:
     logger.error(f"Failed to initialize Firebase Admin SDK: {e}")
 
