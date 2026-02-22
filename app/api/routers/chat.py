@@ -1,5 +1,6 @@
 from typing import Dict, List, Optional
 import json
+import asyncio
 import os
 import uuid
 import io
@@ -46,12 +47,13 @@ class ChatManager:
     async def send_personal_message(self, message: dict, user_id: int):
         logger.debug(f"ChatManager trying to send message to user {user_id}. Connections: {len(self.active_connections.get(user_id, []))}")
         if user_id in self.active_connections:
-            for connection in self.active_connections[user_id]:
-                try:
-                    await connection.send_json(message)
+            tasks = [connection.send_json(message) for connection in self.active_connections[user_id]]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            for i, result in enumerate(results):
+                if isinstance(result, Exception):
+                    logger.error(f"ChatManager failed to send to user {user_id}: {result}")
+                else:
                     logger.debug(f"ChatManager sent message to user {user_id}: {message.get('id')}")
-                except Exception as e:
-                    logger.error(f"ChatManager failed to send to user {user_id}: {e}")
         else:
             logger.debug(f"User {user_id} NOT connected to Chat WS")
 

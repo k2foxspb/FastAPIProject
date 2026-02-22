@@ -1,4 +1,5 @@
 from typing import Dict, List
+import asyncio
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import update, select
@@ -33,19 +34,23 @@ class ConnectionManager:
         logger.debug(f"NotificationsManager trying to send message to user {user_id}. Type: {type(user_id)}")
         logger.debug(f"Active connections: {list(self.active_connections.keys())}")
         if user_id in self.active_connections:
-            for connection in self.active_connections[user_id]:
-                try:
-                    await connection.send_json(message)
+            tasks = [connection.send_json(message) for connection in self.active_connections[user_id]]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            for i, result in enumerate(results):
+                if isinstance(result, Exception):
+                    logger.error(f"NotificationsManager failed to send to user {user_id}: {result}")
+                else:
                     logger.debug(f"NotificationsManager sent message to user {user_id}: {message.get('type')}")
-                except Exception as e:
-                    logger.error(f"NotificationsManager failed to send to user {user_id}: {e}")
         else:
             logger.debug(f"User {user_id} NOT found in active connections.")
 
     async def broadcast(self, message: dict):
+        tasks = []
         for user_id in self.active_connections:
             for connection in self.active_connections[user_id]:
-                await connection.send_json(message)
+                tasks.append(connection.send_json(message))
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
 
 manager = ConnectionManager()
 
@@ -118,7 +123,8 @@ async def websocket_endpoint(
                     "last_seen": last_seen
                 }
             })
-            
+    
+        try:
             while True:
                 # Ожидаем данных от клиента (пинги или просто поддерживаем соединение)
                 data = await websocket.receive_text()
@@ -129,20 +135,20 @@ async def websocket_endpoint(
                         await websocket.send_json({"type": "pong"})
                 except Exception:
                     pass
-    except WebSocketDisconnect:
-        if user_id is not None:
-            logger.info(f"WS Disconnected: user_id={user_id}")
-            manager.disconnect(websocket, user_id)
-            async with async_session_maker() as db_off:
-                last_seen = await update_user_status(user_id, "offline", db_off)
-                await manager.broadcast({
-                    "type": "user_status",
-                    "data": {
-                        "user_id": user_id,
-                        "status": "offline",
-                        "last_seen": last_seen
-                    }
-                })
+        except WebSocketDisconnect:
+            if user_id is not None:
+                logger.info(f"WS Disconnected: user_id={user_id}")
+                manager.disconnect(websocket, user_id)
+                async with async_session_maker() as db_off:
+                    last_seen = await update_user_status(user_id, "offline", db_off)
+                    await manager.broadcast({
+                        "type": "user_status",
+                        "data": {
+                            "user_id": user_id,
+                            "status": "offline",
+                            "last_seen": last_seen
+                        }
+                    })
     except Exception as e:
         logger.error(f"WS Error for user_id={user_id if user_id is not None else 'unknown'}: {e}")
         if user_id is not None:
