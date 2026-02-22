@@ -33,11 +33,11 @@ async def send_fcm_notification(
     используя Firebase Admin SDK.
     """
     if not firebase_admin._apps:
-        logger.warning("Firebase Admin SDK not initialized, skipping notification")
+        logger.warning("FCM: Firebase Admin SDK not initialized, skipping notification")
         return False
 
     if not token:
-        logger.warning("Empty token provided for FCM, skipping notification")
+        logger.warning("FCM: Empty token provided, skipping notification")
         return False
 
     # Подготовка данных для уведомления
@@ -50,7 +50,10 @@ async def send_fcm_notification(
     if sender_id:
         fcm_data["sender_id"] = str(sender_id)
     
-    fcm_data["type"] = "new_message"
+    if "type" not in fcm_data:
+        fcm_data["type"] = "new_message"
+
+    logger.debug(f"FCM: Preparing message for token {token[:15]}... | Data: {fcm_data}")
 
     # Создание объекта уведомления
     notification = messaging.Notification(
@@ -67,7 +70,8 @@ async def send_fcm_notification(
         notification=messaging.AndroidNotification(
             group=group_key,
             channel_id="messages",
-            sound="default"
+            sound="default",
+            click_action="FLUTTER_NOTIFICATION_CLICK" # Для некоторых плагинов это важно
         )
     )
 
@@ -76,7 +80,8 @@ async def send_fcm_notification(
         payload=messaging.APNSPayload(
             aps=messaging.Aps(
                 sound="default",
-                thread_id=str(sender_id) if sender_id else None
+                thread_id=str(sender_id) if sender_id else None,
+                content_available=True # Позволяет приложению проснуться в фоне
             )
         )
     )
@@ -93,9 +98,25 @@ async def send_fcm_notification(
     try:
         # Отправка сообщения (выполняем в отдельном потоке, так как Admin SDK синхронный)
         loop = asyncio.get_event_loop()
+        logger.info(f"FCM: Attempting to send message to {token[:15]}... Title: {title}")
+        
         response = await loop.run_in_executor(None, lambda: messaging.send(message))
-        logger.info(f"Successfully sent FCM message: {response}")
+        
+        logger.success(f"FCM: Successfully sent message. Response: {response}")
         return True
+    except messaging.UnregisteredError:
+        # Токен больше не валиден (приложение удалено или токен протух)
+        logger.warning(f"FCM: Token is unregistered (invalid): {token[:15]}...")
+        return False
+    except messaging.QuotaExceededError:
+        logger.error("FCM: Quota exceeded for project")
+        return False
+    except messaging.SenderIdMismatchError:
+        logger.error("FCM: Sender ID mismatch")
+        return False
+    except messaging.ThirdPartyAuthError:
+        logger.error("FCM: Third party authentication error (APNs issue?)")
+        return False
     except Exception as e:
-        logger.error(f"FCM request failed for token {token[:10]}... : {e}")
+        logger.error(f"FCM: Request failed for token {token[:15]}... | Error: {type(e).__name__}: {e}")
         return False

@@ -24,6 +24,7 @@ DOMAIN = os.getenv("DOMAIN", "http://79.133.183.129")
 MOBILE_DEEPLINK = os.getenv("MOBILE_DEEPLINK", "fokinfun://verify-email")
 
 CORS_ORIGINS = [
+    "http://localhost:8081",
     "http://79.133.183.129",
     "https://79.133.183.129",
     "http://fokin.fun",

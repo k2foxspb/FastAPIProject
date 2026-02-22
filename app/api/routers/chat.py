@@ -21,6 +21,7 @@ from app.schemas.chat import (
 )
 from app.api.routers.notifications import manager as notifications_manager
 from app.core.fcm import send_fcm_notification
+from loguru import logger
 from app.utils import storage
 
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -43,16 +44,16 @@ class ChatManager:
                 del self.active_connections[user_id]
 
     async def send_personal_message(self, message: dict, user_id: int):
-        print(f"DEBUG: ChatManager trying to send message to user {user_id}. Connections: {len(self.active_connections.get(user_id, []))}")
+        logger.debug(f"ChatManager trying to send message to user {user_id}. Connections: {len(self.active_connections.get(user_id, []))}")
         if user_id in self.active_connections:
             for connection in self.active_connections[user_id]:
                 try:
                     await connection.send_json(message)
-                    print(f"DEBUG: ChatManager sent message to user {user_id}: {message.get('id')}")
+                    logger.debug(f"ChatManager sent message to user {user_id}: {message.get('id')}")
                 except Exception as e:
-                    print(f"ERROR: ChatManager failed to send to user {user_id}: {e}")
+                    logger.error(f"ChatManager failed to send to user {user_id}: {e}")
         else:
-            print(f"DEBUG: User {user_id} NOT connected to Chat WS")
+            logger.debug(f"User {user_id} NOT connected to Chat WS")
 
 manager = ChatManager()
 
@@ -88,7 +89,7 @@ async def websocket_chat_endpoint(
 
     user_id = await get_user_from_token(token, db)
     if user_id is None:
-        print(f"Chat WS rejected: invalid token {token[:10]}...")
+        logger.warning(f"Chat WS rejected: invalid token {token[:10]}...")
         await websocket.close(code=4003)
         return
 
@@ -100,7 +101,7 @@ async def websocket_chat_endpoint(
             try:
                 message_data = json.loads(data)
             except json.JSONDecodeError as e:
-                print(f"DEBUG: Chat WS JSON error: {e}, data={data[:100]}")
+                logger.error(f"Chat WS JSON error: {e}, data={data[:100]}")
                 continue
             
             # Обработка разных типов сообщений через WebSocket
@@ -110,7 +111,7 @@ async def websocket_chat_endpoint(
                 await websocket.send_json({"type": "pong"})
                 continue
                 
-            print(f"DEBUG: Chat WS received message type '{msg_type}' from user {user_id}")
+            logger.debug(f"Chat WS received message type '{msg_type}' from user {user_id}")
 
             if msg_type == "mark_read":
                 other_id = message_data.get("other_id")
@@ -156,7 +157,7 @@ async def websocket_chat_endpoint(
                 try:
                     receiver_id = int(receiver_id_raw)
                 except (ValueError, TypeError):
-                    print(f"DEBUG: Invalid receiver_id format: {receiver_id_raw}")
+                    logger.warning(f"Invalid receiver_id format: {receiver_id_raw}")
                     continue
                 
                 # Если пришли вложения списком — считаем это медиа-группой и сохраняем
@@ -166,10 +167,10 @@ async def websocket_chat_endpoint(
                     try:
                         file_path = json.dumps(attachments)
                     except Exception as e:
-                        print(f"DEBUG: Failed to serialize attachments: {e}")
+                        logger.error(f"Failed to serialize attachments: {e}")
                         file_path = None
                 
-                print(f"DEBUG: Saving message: type={message_type}, sender={user_id}, receiver={receiver_id}")
+                logger.debug(f"Saving message: type={message_type}, sender={user_id}, receiver={receiver_id}")
                 
                 # Сохраняем в базу
                 new_msg = ChatMessage(
@@ -241,15 +242,13 @@ async def websocket_chat_endpoint(
                         }
                     )
             else:
-                print(f"DEBUG: Message skipped. receiver_id={receiver_id_raw}, content={bool(content)}, file_path={bool(file_path)}")
+                logger.debug(f"Message skipped. receiver_id={receiver_id_raw}, content={bool(content)}, file_path={bool(file_path)}")
 
     except WebSocketDisconnect:
-        print(f"DEBUG: Chat WS disconnected for user {user_id}")
+        logger.info(f"Chat WS disconnected for user {user_id}")
         manager.disconnect(websocket, user_id)
     except Exception as e:
-        print(f"ERROR in chat WS for user {user_id}: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.error(f"Error in chat WS for user {user_id}: {e}")
         manager.disconnect(websocket, user_id)
 
 @router.post("/message", response_model=ChatMessageResponse)
@@ -541,7 +540,7 @@ async def delete_message(
             if os.path.exists(abs_path):
                 os.remove(abs_path)
         except Exception as e:
-            print(f"Error deleting chat file: {e}")
+            logger.error(f"Error deleting chat file: {e}")
 
     # Уведомляем участников через WebSocket чата
     delete_event = {
@@ -609,7 +608,7 @@ async def bulk_delete_messages(
                     if os.path.exists(abs_path):
                         os.remove(abs_path)
                 except Exception as e:
-                    print(f"Error deleting chat file: {e}")
+                    logger.error(f"Error deleting chat file: {e}")
         else:
             msg.deleted_by_receiver = True
 
@@ -717,9 +716,7 @@ async def init_upload(
     except HTTPException:
         raise
     except Exception as e:
-        print(f"Error in init_upload: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.error(f"Error in init_upload: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/upload/active", response_model=List[dict])
@@ -780,26 +777,26 @@ async def upload_chunk(
     chunk: Optional[UploadFile] = File(None),
     db: AsyncSession = Depends(get_async_db)
 ):
-    print(f"DEBUG: upload_chunk called for {upload_id}")
-    print(f"DEBUG: Params: offset={offset}, q_offset={q_offset}, token={token[:10] if token else None}, q_token={q_token[:10] if q_token else None}")
+    logger.debug(f"upload_chunk called for {upload_id}")
+    logger.debug(f"Params: offset={offset}, q_offset={q_offset}, token={token[:10] if token else None}, q_token={q_token[:10] if q_token else None}")
     
     # Support token and offset from multiple sources for maximum resilience
     actual_token = token or q_token
     actual_offset = offset if offset is not None else q_offset
     
     if actual_token is None:
-        print("DEBUG: Missing token")
+        logger.debug("Missing token")
         raise HTTPException(status_code=401, detail="Missing token")
     
     # Clean token (remove potential quotes)
     actual_token = actual_token.strip().strip('"').strip("'")
 
     if actual_offset is None:
-        print("DEBUG: Missing offset")
+        logger.debug("Missing offset")
         raise HTTPException(status_code=422, detail="Missing offset")
         
     if chunk is None:
-        print("DEBUG: Missing chunk file")
+        logger.debug("Missing chunk file")
         # Log all fields for debugging
         return {"status": "error", "message": "Missing chunk", "debug_received_params": {
             "offset": offset, "q_offset": q_offset, "token_provided": bool(actual_token)

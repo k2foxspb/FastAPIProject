@@ -734,8 +734,16 @@ async def update_fcm_token(
     """
     Обновляет FCM токен для текущего пользователя.
     """
+    from loguru import logger
+    old_token = current_user.fcm_token
     current_user.fcm_token = body.fcm_token
     await db.commit()
+    
+    if old_token != body.fcm_token:
+        logger.info(f"FCM: Token updated for user {current_user.id} ({current_user.email}). Token: {body.fcm_token[:15]}...")
+    else:
+        logger.debug(f"FCM: Token remains the same for user {current_user.id}")
+        
     return {"status": "ok"}
 
 
