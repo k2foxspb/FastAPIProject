@@ -1,4 +1,4 @@
-FROM cr.yandex/mirror/python:3.12-alpine
+FROM python:3.12-alpine
 
 # устанавливаем переменные окружения
 ENV HOME=/home/fast \

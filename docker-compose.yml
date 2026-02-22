@@ -24,7 +24,7 @@ services:
 
   redis:
     restart: always
-    image: cr.yandex/mirror/redis:7-alpine
+    image: redis:7-alpine
     ports:
       - "6379:6379"
 
@@ -48,7 +48,7 @@ services:
 
   db:
     restart: always
-    image: cr.yandex/mirror/postgres:15
+    image: postgres:15
     volumes:
       - postgres_data:/var/lib/postgresql/data/
     env_file:

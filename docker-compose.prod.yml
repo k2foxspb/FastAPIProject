@@ -45,7 +45,7 @@ services:
 
   redis:
 
-    image: cr.yandex/mirror/redis:7-alpine
+    image: redis:7-alpine
     user: "0:0"
     expose:
       - "6379"
@@ -90,7 +90,7 @@ services:
 
   db:
 
-    image: cr.yandex/mirror/postgres:15
+    image: postgres:15
     user: "0:0"
     volumes:
       - postgres_data:/var/lib/postgresql/data/
