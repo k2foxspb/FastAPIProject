@@ -3,25 +3,27 @@ import messaging from '@react-native-firebase/messaging';
 import { Alert, Platform } from 'react-native';
 import { usersApi } from '../api';
 import { storage } from './storage';
-import { firebaseApp } from './firebaseInit';
+import { initializeFirebase } from './firebaseInit';
 import { navigationRef } from '../navigation/NavigationService';
 
 // Ensure Firebase is initialized before accessing messaging()
-const getMessaging = () => {
+const getMessaging = async () => {
   if (Platform.OS === 'web') return null;
 
   try {
     // Check if we have any initialized apps
     if (firebase.apps.length === 0) {
-
-      if (!firebaseApp) {
-
-        return null;
-      }
+      await initializeFirebase();
     }
+    
+    if (firebase.apps.length === 0) {
+      console.log('[FCM] Still no apps after initializeFirebase()');
+      return null;
+    }
+    
     return messaging();
   } catch (e) {
-
+    console.error('[FCM] Error in getMessaging:', e);
     return null;
   }
 };
@@ -29,7 +31,7 @@ const getMessaging = () => {
 export async function requestUserPermission() {
   if (Platform.OS === 'web') return false;
   try {
-    const msg = getMessaging();
+    const msg = await getMessaging();
     if (!msg) return false;
     const authStatus = await msg.requestPermission();
     const enabled =
@@ -47,10 +49,10 @@ export async function requestUserPermission() {
   }
 }
 
-export function setupCloudMessaging() {
+export async function setupCloudMessaging() {
   if (Platform.OS === 'web') return;
   try {
-    const msg = getMessaging();
+    const msg = await getMessaging();
     if (!msg) {
       console.log('Messaging not available during setupCloudMessaging, will skip for now.');
       return;
@@ -145,7 +147,7 @@ export function setupCloudMessaging() {
 export async function getFcmToken() {
   if (Platform.OS === 'web') return null;
   try {
-    const msg = getMessaging();
+    const msg = await getMessaging();
     if (!msg) {
       console.log('[FCM] Messaging not available');
       return null;
@@ -202,18 +204,22 @@ export async function updateServerFcmToken(passedToken = null) {
     const response = await usersApi.updateFcmToken(token);
     
     if (response.data && response.data.status === 'ok') {
-      console.log('FCM Token updated on server SUCCESSFULLY:', token.substring(0, 15) + '...');
+      console.log('[FCM] Token updated on server SUCCESSFULLY:', token.substring(0, 15) + '...');
       // Store the last synced token and timestamp to avoid redundant updates
       await storage.saveItem('last_synced_fcm_token', token);
       await storage.saveItem('last_fcm_sync_time', new Date().toISOString());
+      return { success: true, token };
     } else {
-      console.log('FCM Token update response:', response.data);
+      console.log('[FCM] Token update response:', response.data);
+      return { success: false, error: 'Unexpected server response' };
     }
   } catch (error) {
     if (error.response) {
-      console.error('Failed to update FCM token on server (Response Error):', error.response.status, error.response.data);
+      console.error('[FCM] Failed to update FCM token on server (Response Error):', error.response.status, error.response.data);
+      return { success: false, error: `Server error: ${error.response.status}` };
     } else {
-      console.error('Failed to update FCM token on server:', error.message);
+      console.error('[FCM] Failed to update FCM token on server:', error.message);
+      return { success: false, error: error.message };
     }
   }
 }

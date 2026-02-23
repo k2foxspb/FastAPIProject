@@ -310,6 +310,7 @@ class FirebaseConfigResponse(BaseModel):
     projectId: str
     storageBucket: str
     messagingSenderId: str
+    databaseURL: str | None = None
 
 
 class Friendship(BaseModel):

@@ -72,7 +72,8 @@ async def get_firebase_config():
         "appId": "1:176773891332:android:01174694c19132ed0ffc51",
         "projectId": "fastapi-f628e",
         "storageBucket": "fastapi-f628e.firebasestorage.app",
-        "messagingSenderId": "176773891332"
+        "messagingSenderId": "176773891332",
+        "databaseURL": "https://fastapi-f628e-default-rtdb.firebaseio.com"
     }
     
     # Пытаемся взять из google-services.json если он есть в корне или в mobile
@@ -97,6 +98,9 @@ async def get_firebase_config():
                     if info.get("project_number"): config["messagingSenderId"] = info["project_number"]
                     if client_info.get("mobilesdk_app_id"): config["appId"] = client_info["mobilesdk_app_id"]
                     if api_key: config["apiKey"] = api_key
+                    # Add databaseURL if present
+                    if gs.get("project_info", {}).get("firebase_url"):
+                        config["databaseURL"] = gs["project_info"]["firebase_url"]
                 logger.info(f"FCM Config: Loaded from {path}")
                 break
             except Exception as e:

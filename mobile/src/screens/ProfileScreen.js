@@ -16,6 +16,7 @@ export default function ProfileScreen({ navigation }) {
   const [posts, setPosts] = useState([]);
   const [error, setError] = useState(null);
   const [isSettingsVisible, setSettingsVisible] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [quietHours, setQuietHours] = useState({ enabled: false, start: '22:00', end: '08:00' });
   const { disconnect, currentUser, loadingUser } = useNotifications();
   const { theme, isDark, toggleTheme, isSystemTheme, useSystemThemeSetting } = useTheme();
@@ -32,6 +33,25 @@ export default function ProfileScreen({ navigation }) {
   const handleEditProfile = () => {
     setSettingsVisible(false);
     navigation.navigate('EditProfile', { user });
+  };
+
+  const handleSyncNotifications = async () => {
+    try {
+      setSyncing(true);
+      const { updateServerFcmToken } = require('../utils/notifications');
+      const result = await updateServerFcmToken();
+      
+      if (result && result.success) {
+        Alert.alert('Success', 'Push notifications synchronized successfully!');
+      } else {
+        const errorMsg = result?.error || 'Unknown error';
+        Alert.alert('Sync Failed', `Failed to synchronize: ${errorMsg}\n\nPlease check if notifications are allowed in system settings.`);
+      }
+    } catch (e) {
+      Alert.alert('Error', `Error during synchronization: ${e.message}`);
+    } finally {
+      setSyncing(false);
+    }
   };
 
   const openAvatarAlbum = () => {
@@ -362,6 +382,19 @@ export default function ProfileScreen({ navigation }) {
                   </Text>
                 </View>
 
+                <View style={[styles.menuDivider, { backgroundColor: colors.border }]} />
+
+                <TouchableOpacity 
+                  style={styles.menuItem} 
+                  onPress={handleSyncNotifications}
+                  disabled={syncing}
+                >
+                  <Icon name="sync-outline" size={22} color={colors.primary} />
+                  <Text style={[styles.menuItemText, { color: colors.primary }]}>
+                    {syncing ? 'Синхронизация...' : 'Синхронизировать уведомления'}
+                  </Text>
+                </TouchableOpacity>
+
                 <TouchableOpacity 
                   style={[styles.menuItem, { marginTop: 10 }]} 
                   onPress={handleLogout}
@@ -573,6 +606,10 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontStyle: 'italic',
     marginTop: 5,
+  },
+  menuDivider: {
+    height: 1,
+    marginVertical: 10,
   },
   activityRow: { flexDirection: 'row', justifyContent: 'space-between' },
   activityButton: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 15, borderRadius: 12, borderWidth: 1, marginHorizontal: 5, ...getShadow('#000', { width: 0, height: 1 }, 0.1, 2, 2) },
