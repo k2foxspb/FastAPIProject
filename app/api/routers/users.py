@@ -22,7 +22,7 @@ from app.schemas.users import (
     UserPhotoCreate, UserPhotoUpdate, UserPhoto as UserPhotoSchema,
     FCMTokenUpdate, BulkDeletePhotosRequest, Friendship as FriendshipSchema,
     UserPhotoComment as UserPhotoCommentSchema, UserPhotoCommentCreate,
-    TokenResponse
+    TokenResponse, FirebaseConfigResponse
 )
 from app.schemas.news import News as NewsSchema, NewsComment as NewsCommentSchema
 from app.schemas.reviews import Review as ReviewSchema
@@ -54,6 +54,67 @@ from app.utils import storage
 from sqlalchemy.orm import selectinload
 
 router = APIRouter(prefix="/users", tags=["users"])
+
+
+@router.get("/firebase-config", response_model=FirebaseConfigResponse)
+async def get_firebase_config():
+    """
+    Возвращает публичные параметры Firebase для мобильного приложения.
+    Берет часть данных из google-services.json, если он доступен.
+    """
+    import json
+    import os
+    
+    # По умолчанию (fallback)
+    config = {
+        "apiKey": "AIzaSyAwKCJuxsxfnY6aloE5lnDn-triTVBswxE",
+        "appId": "1:176773891332:android:01174694c19132ed0ffc51",
+        "projectId": "fastapi-f628e",
+        "storageBucket": "fastapi-f628e.firebasestorage.app",
+        "messagingSenderId": "176773891332"
+    }
+    
+    # Пытаемся взять из google-services.json если он есть в корне или в mobile
+    gs_paths = [
+        "mobile/google-services.json",
+        "google-services.json"
+    ]
+    
+    for path in gs_paths:
+        if os.path.exists(path):
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    gs = json.load(f)
+                    info = gs.get("project_info", {})
+                    client = gs.get("client", [{}])[0]
+                    client_info = client.get("client_info", {})
+                    api_key = client.get("api_key", [{}])[0].get("current_key")
+                    
+                    if info.get("project_id"): config["projectId"] = info["project_id"]
+                    if info.get("storage_bucket"): config["storageBucket"] = info["storage_bucket"]
+                    if info.get("project_number"): config["messagingSenderId"] = info["project_number"]
+                    if client_info.get("mobilesdk_app_id"): config["appId"] = client_info["mobilesdk_app_id"]
+                    if api_key: config["apiKey"] = api_key
+                break
+            except Exception:
+                continue
+
+    # Пытаемся уточнить projectId из firebase-service-account.json если он есть
+    sa_path = "firebase-service-account.json"
+    if os.path.exists(sa_path):
+        try:
+            with open(sa_path, "r", encoding="utf-8") as f:
+                sa = json.load(f)
+                if sa.get("project_id"):
+                    config["projectId"] = sa["project_id"]
+                    # Также часто Project Number можно достать из client_id или других полей, 
+                    # но гарантированно Project Number в SA JSON нет.
+                    # Однако, если projectId совпадает с тем что мы нашли в google-services, 
+                    # то и messagingSenderId будет верным.
+        except Exception:
+            pass
+            
+    return config
 
 
 @router.get("", response_model=list[UserSchema])

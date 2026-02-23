@@ -1,4 +1,4 @@
-import './src/utils/firebaseInit'; // Гарантированная инициализация первым делом
+import { initializeFirebase } from './src/utils/firebaseInit'; // Гарантированная инициализация
 import React, { useEffect } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import * as Linking from 'expo-linking';
@@ -70,14 +70,17 @@ function AppContent() {
     // Устанавливаем режим аудио для всего приложения
     setPlaybackAudioMode();
     
-    requestUserPermission().then(granted => {
-      if (granted) {
-        // Если разрешение получено, пробуем получить и сохранить токен
-        const { getFcmToken } = require('./src/utils/notifications');
-        getFcmToken().catch(e => console.log('Initial getFcmToken failed', e));
-      }
+    // Сначала инициализируем Firebase (теперь это async)
+    initializeFirebase().then(() => {
+      requestUserPermission().then(granted => {
+        if (granted) {
+          // Если разрешение получено, пробуем получить и сохранить токен
+          const { getFcmToken } = require('./src/utils/notifications');
+          getFcmToken().catch(e => console.log('Initial getFcmToken failed', e));
+        }
+      });
+      setupCloudMessaging();
     });
-    setupCloudMessaging();
 
     // Проверка сохраненной сессии
     const checkSession = async () => {

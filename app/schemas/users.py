@@ -304,6 +304,14 @@ class TokenResponse(BaseModel):
     fcm_token: str | None = None
 
 
+class FirebaseConfigResponse(BaseModel):
+    apiKey: str
+    appId: str
+    projectId: str
+    storageBucket: str
+    messagingSenderId: str
+
+
 class Friendship(BaseModel):
     id: int
     user_id: int

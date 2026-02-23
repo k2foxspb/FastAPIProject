@@ -2,9 +2,11 @@ import firebase from '@react-native-firebase/app';
 import messaging from '@react-native-firebase/messaging';
 import { Platform, Alert } from 'react-native';
 import Constants from 'expo-constants';
+import { usersApi } from '../api';
+import { storage } from './storage';
 
 // Initialize Firebase
-const initializeFirebase = () => {
+const initializeFirebase = async () => {
   if (Platform.OS === 'web') return null;
 
   // Проверка на Expo Go
@@ -12,11 +14,6 @@ const initializeFirebase = () => {
   if (isExpoGo) {
     const msg = 'React Native Firebase (Messaging) NOT supported in Expo Go. Use a Development Build (npx expo run:android).';
     console.warn('⚠️ ' + msg);
-    // Показываем Alert только один раз при загрузке, чтобы не спамить
-    if (__DEV__) {
-       // Мы не можем вызвать Alert прямо здесь, так как UI может быть не готов, 
-       // но мы логируем это максимально заметно.
-    }
   }
 
   try {
@@ -25,21 +22,34 @@ const initializeFirebase = () => {
       return firebase.app();
     }
 
-    // Attempting to use the native auto-initialization first
-    console.log('No apps found, checking if we can just use the default app...');
+    // Manual configuration (fallback for some environments)
+    let firebaseConfig = null;
+    
+    // Пытаемся получить конфиг с сервера для динамической настройки
     try {
-      const app = firebase.app();
-      if (app) {
-        console.log('Default app found via firebase.app()');
-        return app;
+      console.log('Fetching Firebase config from server...');
+      const response = await usersApi.getFirebaseConfig();
+      if (response.data && response.data.apiKey) {
+        firebaseConfig = response.data;
+        console.log('Firebase config fetched from server successfully');
+        // Кэшируем конфиг
+        await storage.saveItem('firebase_remote_config', JSON.stringify(firebaseConfig));
       }
     } catch (e) {
-      console.log('Default app not found via firebase.app(), will try initializeApp');
+      console.log('Failed to fetch Firebase config from server, checking cache...');
+      try {
+        const cachedConfig = await storage.getItem('firebase_remote_config');
+        if (cachedConfig) {
+          firebaseConfig = JSON.parse(cachedConfig);
+          console.log('Using cached Firebase config');
+        }
+      } catch (cacheErr) {
+        console.log('No cached config found');
+      }
     }
 
-// Manual configuration (fallback for some environments)
-    let firebaseConfig = null;
-    if (Platform.OS === 'android') {
+    if (!firebaseConfig && Platform.OS === 'android') {
+      console.log('Using hardcoded fallback Firebase config for Android');
       firebaseConfig = {
         apiKey: "AIzaSyAwKCJuxsxfnY6aloE5lnDn-triTVBswxE",
         appId: "1:176773891332:android:01174694c19132ed0ffc51",
@@ -47,37 +57,21 @@ const initializeFirebase = () => {
         storageBucket: "fastapi-f628e.firebasestorage.app",
         messagingSenderId: "176773891332"
       };
-    } else if (Platform.OS === 'ios') {
-      // Add your iOS Firebase config here if auto-init from GoogleService-Info.plist fails
-      /*
-      firebaseConfig = {
-        apiKey: "...",
-        appId: "...",
-        projectId: "...",
-        storageBucket: "...",
-        messagingSenderId: "..."
-      };
-      */
     }
 
     if (firebaseConfig) {
       console.log('Calling firebase.initializeApp(config) for', Platform.OS);
       try {
-        // Use a unique app name to avoid "already exists" errors 
-        // while also checking if it helps the apps array.
-        const appName = `fastapi-app-${Date.now()}`;
-        console.log(`Initializing with app name: ${appName}`);
-        const app = firebase.initializeApp(firebaseConfig, appName);
+        // Проверяем, не инициализировано ли уже приложение (например, нативным кодом)
+        if (firebase.apps.length > 0) return firebase.app();
+        
+        const app = firebase.initializeApp(firebaseConfig);
         console.log('firebase.initializeApp result: SUCCESS');
-        console.log('Apps count after initializeApp (named):', firebase.apps.length);
-        
-        // If it's still 0, something is fundamentally wrong with the native bridge.
-        if (firebase.apps.length === 0) {
-          console.error('CRITICAL: firebase.apps is still empty after initializeApp!');
-        }
-        
         return app;
       } catch (err) {
+        if (err.message.includes('already exists')) {
+          return firebase.app();
+        }
         console.error('Error during firebase.initializeApp:', err);
         return null;
       }
@@ -104,12 +98,8 @@ const initializeFirebase = () => {
   }
 };
 
-// Execute initialization immediately
-const firebaseApp = initializeFirebase();
-
 // Background message handler
 if (Platform.OS !== 'web') {
-  // Use a small delay or check for apps length to ensure native side is ready
   const registerBackgroundHandler = (attempts = 0) => {
     try {
       if (firebase.apps.length > 0) {
@@ -118,25 +108,9 @@ if (Platform.OS !== 'web') {
         });
         console.log('Background message handler registered successfully');
       } else {
-        // If we have no apps yet, try to initialize it once more if we've waited a bit
-        if (attempts === 5 || attempts === 15) {
-            console.log(`Still no apps at attempt ${attempts}, trying initializeFirebase() one more time...`);
-            initializeFirebase();
+        if (attempts < 20) {
+          setTimeout(() => registerBackgroundHandler(attempts + 1), 1000);
         }
-
-        // Only warn every 10 attempts to reduce log spam (approx every 10s)
-        if (attempts % 10 === 0) {
-          console.warn(`Waiting for Firebase initialization to register background handler... (Attempt ${attempts + 1})`);
-          console.log('Current firebase.apps state:', JSON.stringify(firebase.apps));
-        }
-        
-        // Also try to re-run initialization if it failed or hasn't started
-        if (attempts > 0 && attempts % 30 === 0) {
-          console.log('Attempting to re-initialize Firebase (Force restart)...');
-          initializeFirebase();
-        }
-
-        setTimeout(() => registerBackgroundHandler(attempts + 1), 1000);
       }
     } catch (error) {
       console.error('Failed to register background message handler:', error);
@@ -146,5 +120,6 @@ if (Platform.OS !== 'web') {
   registerBackgroundHandler();
 }
 
-export { firebaseApp };
+// Экспортируем функцию для явного вызова при старте приложения
+export { initializeFirebase };
 export default initializeFirebase;
