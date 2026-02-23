@@ -8,7 +8,7 @@ import { storage } from '../utils/storage';
 import { setNotificationAudioMode } from '../utils/audioSettings';
 import { isWithinQuietHours } from '../utils/quietHours';
 import { navigationRef } from '../navigation/NavigationService';
-import { updateServerFcmToken } from '../utils/notifications';
+import { updateServerFcmToken, checkAndRemindPermissions } from '../utils/notifications';
 
 const NotificationContext = createContext();
 
@@ -647,6 +647,11 @@ export const NotificationProvider = ({ children }) => {
         
         // Also ensure FCM token is up to date on the server when app returns to foreground
         updateServerFcmToken().catch(e => console.log('[NotificationContext] FCM Sync failed on foreground', e));
+        
+        // Soft reminder to enable notifications if they are disabled (shown at most once per cooldown period)
+        setTimeout(() => {
+          checkAndRemindPermissions().catch(e => console.log('[NotificationContext] Reminder failed', e));
+        }, 800);
       }
     });
     return () => {

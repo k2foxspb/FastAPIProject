@@ -100,6 +100,17 @@ export default function ChatScreen({ route, navigation }) {
   useEffect(() => {
     console.log('[ChatScreen] Active chat set to:', userId);
     setActiveChatId(userId);
+
+    // Очищаем уведомления для этого пользователя при входе в чат
+    if (Platform.OS !== 'web') {
+      try {
+        const notifee = require('@notifee/react-native').default;
+        notifee.cancelNotification(`sender_${userId}`).catch(() => {});
+      } catch (e) {
+        console.log('[ChatScreen] Error canceling notification:', e);
+      }
+    }
+
     return () => {
       console.log('[ChatScreen] Active chat cleared (was', userId, ')');
       setActiveChatId(null);

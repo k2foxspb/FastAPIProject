@@ -102,10 +102,7 @@ async def send_fcm_notification(
         android_config = messaging.AndroidConfig(
             priority='high',
             ttl=3600 * 24,  # 24 часа
-            notification=messaging.AndroidNotification(
-                channel_id="messages",
-                sound="default",
-            ),
+            # Без notification в AndroidConfig: оставляем data-only на Android
         )
 
         # Настройки для iOS (APNS) с видимым алертом
@@ -126,14 +123,17 @@ async def send_fcm_notification(
             )
         )
 
-        # Создание сообщения: добавляем поле notification, чтобы система показала уведомление
-        # (Android — системное уведомление в фоне/килле; iOS — через APNS payload выше)
+        # Создание сообщения:
+        # ВАЖНО: НЕ добавляем глобальное поле notification=..., чтобы Android-клиент
+        # получал data-only сообщение и мог показать кастомное уведомление с кнопками
+        # (через Notifee в background handler).
+        # Для iOS уведомление (alert) сконфигурировано внутри apns_config выше.
         message = messaging.Message(
             data=fcm_data,
             token=token,
             android=android_config,
-            apns=apns_config,
-            notification=messaging.Notification(title=title, body=body)
+            apns=apns_config
+            # notification=messaging.Notification(title=title, body=body) # Убираем для Android data-only
         )
 
         # Отправка сообщения (выполняем в отдельном потоке, так как Admin SDK синхронный)

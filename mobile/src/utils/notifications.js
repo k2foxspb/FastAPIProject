@@ -1,6 +1,6 @@
 import firebase from '@react-native-firebase/app';
 import messaging from '@react-native-firebase/messaging';
-import { Alert, Platform, Vibration } from 'react-native';
+import { Alert, Platform, Vibration, Linking } from 'react-native';
 import notifee, { AndroidImportance, AndroidStyle, EventType } from '@notifee/react-native';
 import { usersApi, chatApi, setAuthToken } from '../api';
 import { storage } from './storage';
@@ -42,6 +42,15 @@ export async function requestUserPermission() {
     if (enabled) {
       console.log('Authorization status:', authStatus);
       return true;
+    } else if (authStatus === messaging.AuthorizationStatus.DENIED) {
+      Alert.alert(
+        'Уведомления отключены',
+        'Чтобы не пропускать сообщения, разрешите приложению отправлять уведомления в настройках телефона.',
+        [
+          { text: 'Позже', style: 'cancel' },
+          { text: 'В настройки', onPress: () => Platform.OS === 'ios' ? Linking.openURL('app-settings:') : Linking.openSettings() }
+        ]
+      );
     }
     return false;
   } catch (error) {
@@ -136,6 +145,12 @@ export async function setupCloudMessaging() {
 
         if (type === 'new_message' && senderId) {
           console.log('[FCM] Navigating to Chat with userId:', senderId);
+          // Сразу очищаем пачку уведомлений при переходе
+          try {
+            const notifee = require('@notifee/react-native').default;
+            notifee.cancelNotification(`sender_${senderId}`).catch(() => {});
+          } catch (_) {}
+
           navigationRef.navigate('Messages', {
             screen: 'Chat',
             params: { userId: senderId, userName: senderName }
@@ -426,5 +441,65 @@ if (Platform.OS !== 'web') {
     });
   } catch (e) {
     console.log('[Notifee] onForegroundEvent setup error:', e?.message || e);
+  }
+}
+
+
+// --- Soft reminder to enable notifications (non-intrusive) ---
+export async function checkAndRemindPermissions(options = {}) {
+  if (Platform.OS === 'web') return;
+  try {
+    const { cooldownHours = 24 } = options;
+
+    // Respect user opt-out
+    try {
+      const optOut = await storage.getItem('notif_reminder_opt_out');
+      if (optOut === '1' || optOut === true) return;
+    } catch (_) {}
+
+    // Cross-platform permission check via Notifee
+    let settings;
+    try {
+      settings = await notifee.getNotificationSettings();
+    } catch (e) {
+      console.log('[Notifications] getNotificationSettings failed:', e?.message || e);
+      return;
+    }
+    const status = settings?.authorizationStatus;
+    const enabled = status === notifee.AuthorizationStatus.AUTHORIZED || status === notifee.AuthorizationStatus.PROVISIONAL;
+    if (enabled) return;
+
+    // Cooldown to avoid being annoying
+    try {
+      const lastAt = await storage.getItem('notif_reminder_last_at');
+      if (lastAt) {
+        const lastMs = Date.parse(lastAt);
+        if (!Number.isNaN(lastMs)) {
+          const diffH = (Date.now() - lastMs) / 36e5;
+          if (diffH < cooldownHours) {
+            return;
+          }
+        }
+      }
+    } catch (_) {}
+
+    Alert.alert(
+      'Включите уведомления',
+      'Чтобы не пропускать новые сообщения, включите уведомления для приложения в настройках телефона.',
+      [
+        { text: 'Не напоминать', style: 'destructive', onPress: async () => { try { await storage.saveItem('notif_reminder_opt_out', '1'); } catch (_) {} } },
+        { text: 'Позже', style: 'cancel' },
+        { text: 'В настройки', onPress: () => Platform.OS === 'ios' ? Linking.openURL('app-settings:') : Linking.openSettings() },
+      ]
+    );
+
+    try {
+      await storage.saveItem('notif_reminder_last_at', new Date().toISOString());
+      const cntRaw = await storage.getItem('notif_reminder_count');
+      const cnt = cntRaw ? parseInt(cntRaw, 10) || 0 : 0;
+      await storage.saveItem('notif_reminder_count', String(cnt + 1));
+    } catch (_) {}
+  } catch (e) {
+    console.log('[Notifications] checkAndRemindPermissions error:', e?.message || e);
   }
 }
