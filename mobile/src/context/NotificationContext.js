@@ -108,6 +108,9 @@ export const NotificationProvider = ({ children }) => {
     try {
       chatWs.current = new WebSocket(wsUrl);
 
+      // Reset reconnect attempt on manual connect if requested
+      // (not here, we reset on onopen)
+
       // Timeout for connection
       const connectionTimeout = setTimeout(() => {
         if (chatWs.current?.readyState === WebSocket.CONNECTING) {
@@ -118,7 +121,7 @@ export const NotificationProvider = ({ children }) => {
 
       chatWs.current.onopen = () => {
         clearTimeout(connectionTimeout);
-        console.log('[NotificationContext] Chat WS connected');
+        console.log('[NotificationContext] Chat WS connected. readyState:', chatWs.current.readyState);
         chatWsReconnectAttempt.current = 0;
         if (chatWsReconnectTimer.current) {
           clearTimeout(chatWsReconnectTimer.current);
@@ -140,6 +143,13 @@ export const NotificationProvider = ({ children }) => {
           const payload = JSON.parse(e.data);
           const msgType = payload.type || payload.msg_type;
           
+          if (!msgType && payload.id && payload.sender_id) {
+            // Raw message without type - treat as new_message
+            console.log('[NotificationContext] Received raw message via Chat WS:', payload.id);
+            payload.type = 'new_message';
+            payload.data = { ...payload };
+          }
+
           if (msgType === 'dialogs_list') {
             setDialogs(payload.data || []);
           } else if (msgType === 'chat_history') {

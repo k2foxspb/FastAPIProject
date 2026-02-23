@@ -56,8 +56,16 @@ class ChatManager:
             for i, result in enumerate(results):
                 if isinstance(result, Exception):
                     logger.error(f"ChatManager failed to send to user {user_id}: {result}")
+                    # Remove broken connection
+                    try:
+                        self.active_connections[user_id].pop(i)
+                    except:
+                        pass
                 else:
                     logger.debug(f"ChatManager sent message to user {user_id}: {message.get('id')}")
+            
+            if user_id in self.active_connections and not self.active_connections[user_id]:
+                del self.active_connections[user_id]
         else:
             logger.debug(f"User {user_id} NOT connected to Chat WS")
 

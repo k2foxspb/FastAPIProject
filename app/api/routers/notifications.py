@@ -47,10 +47,18 @@ class ConnectionManager:
             for i, result in enumerate(results):
                 if isinstance(result, Exception):
                     logger.error(f"NotificationsManager failed to send to user {user_id}: {result}")
+                    # Remove broken connection
+                    try:
+                        self.active_connections[user_id].pop(i)
+                    except:
+                        pass
                 else:
                     logger.debug(f"NotificationsManager sent message to user {user_id}: {message.get('type')}")
+            
+            if user_id in self.active_connections and not self.active_connections[user_id]:
+                del self.active_connections[user_id]
         else:
-            logger.debug(f"User {user_id} NOT found in active connections.")
+            logger.debug(f"User {user_id} NOT found in Notifications active connections.")
 
     async def broadcast(self, message: dict):
         tasks = []

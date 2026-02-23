@@ -121,6 +121,11 @@ export default function ChatScreen({ route, navigation }) {
 
   // Основной механизм: слушаем уведомления из контекста
   const lastProcessedNotificationRef = useRef(notifications.length > 0 ? notifications[0] : null);
+  const currentUserIdRef = useRef(currentUserId);
+
+  useEffect(() => {
+    currentUserIdRef.current = currentUserId;
+  }, [currentUserId]);
 
   useEffect(() => {
     if (notifications.length > 0) {
@@ -138,7 +143,7 @@ export default function ChatScreen({ route, navigation }) {
         const msgSenderId = Number(message.sender_id);
         const msgReceiverId = Number(message.receiver_id);
         const currentChatId = Number(userId);
-        const myIdNum = Number(currentUserId);
+        const myIdNum = Number(currentUserIdRef.current || currentUserId);
 
         console.log('[ChatScreen] Message check - from:', msgSenderId, 'to:', msgReceiverId, 'currentChat:', currentChatId, 'myId:', myIdNum);
 
