@@ -99,6 +99,7 @@ async def send_fcm_notification(
         # Настройки для Android (каналы, группировка)
         android_config = messaging.AndroidConfig(
             priority='high',
+            ttl=3600 * 24, # 24 часа
             notification=messaging.AndroidNotification(
                 channel_id="messages",
                 sound="default",
@@ -107,7 +108,10 @@ async def send_fcm_notification(
                 default_vibrate_timings=True,
                 default_sound=True,
                 tag="chat_message", # Группировка уведомлений, чтобы не спамить
-                visibility='public' # Чтобы уведомление было видно на заблокированном экране
+                visibility='public', # Чтобы уведомление было видно на заблокированном экране
+                sticky=False,
+                local_only=False,
+                priority='max' # Дополнительный приоритет для AndroidNotification
             )
         )
 

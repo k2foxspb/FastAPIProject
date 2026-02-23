@@ -115,7 +115,7 @@ if (Platform.OS !== 'web') {
     try {
       if (firebase.apps.length > 0) {
         messaging().setBackgroundMessageHandler(async remoteMessage => {
-          console.log('Message handled in the background!', remoteMessage);
+          console.log('[FCM] Message handled in the background!', JSON.stringify(remoteMessage, null, 2));
         });
         console.log('Background message handler registered successfully');
       } else {

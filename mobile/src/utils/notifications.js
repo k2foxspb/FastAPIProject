@@ -75,7 +75,7 @@ export async function setupCloudMessaging() {
 
     // Обработка уведомлений, когда приложение на переднем плане
     const unsubscribe = msg.onMessage(async remoteMessage => {
-      console.log('Foreground message received:', remoteMessage);
+      console.log('[FCM] Foreground message received:', JSON.stringify(remoteMessage, null, 2));
       
       // На переднем плане Firebase не показывает уведомление сам.
       // Обычно мы полагаемся на WebSocket, но если пользователь хочет видеть системный пуш даже в приложении:
@@ -87,11 +87,13 @@ export async function setupCloudMessaging() {
               title: remoteMessage.notification?.title || 'Новое сообщение',
               body: remoteMessage.notification?.body || '',
               data: remoteMessage.data,
+              sound: 'default',
             },
             trigger: null, // немедленно
           });
+          console.log('[FCM] Foreground notification scheduled via expo-notifications');
         } catch (e) {
-          console.log('Error showing foreground notification via expo:', e);
+          console.log('[FCM] Error showing foreground notification via expo:', e);
         }
       }
     });
