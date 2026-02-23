@@ -401,7 +401,11 @@ if (Platform.OS !== 'web') {
     // Фоновая обработка FCM: собираем локальные уведомления через Notifee (Android)
     messaging().setBackgroundMessageHandler(async remoteMessage => {
       if (Platform.OS === 'android') {
-        await displayBundledMessage(remoteMessage);
+        // Если сервер прислал системный блок notification, ОС сама покажет уведомление — избегаем дубликатов
+        const hasSystemNotification = !!(remoteMessage?.notification && (remoteMessage.notification.title || remoteMessage.notification.body));
+        if (!hasSystemNotification) {
+          await displayBundledMessage(remoteMessage);
+        }
       }
     });
   } catch (e) {

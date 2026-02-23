@@ -96,10 +96,16 @@ async def send_fcm_notification(
 
         logger.debug(f"FCM: Preparing message for token {token} | Data: {fcm_data}")
 
-        # Настройки для Android (data-only): высокая приоритетность, без видимого Notification
+        # Настройки для Android: высокая приоритетность.
+        # ВАЖНО: добавляем AndroidNotification (channel_id, sound), чтобы в фоне/килле ОС гарантированно показывала системное уведомление
+        # даже если клиентский обработчик не сработал (например, Doze/ограничения производителя).
         android_config = messaging.AndroidConfig(
             priority='high',
-            ttl=3600 * 24, # 24 часа
+            ttl=3600 * 24,  # 24 часа
+            notification=messaging.AndroidNotification(
+                channel_id="messages",
+                sound="default",
+            ),
         )
 
         # Настройки для iOS (APNS) с видимым алертом
@@ -120,12 +126,14 @@ async def send_fcm_notification(
             )
         )
 
-        # Создание сообщения: без поля notification (Android получит data-only)
+        # Создание сообщения: добавляем поле notification, чтобы система показала уведомление
+        # (Android — системное уведомление в фоне/килле; iOS — через APNS payload выше)
         message = messaging.Message(
             data=fcm_data,
             token=token,
             android=android_config,
-            apns=apns_config
+            apns=apns_config,
+            notification=messaging.Notification(title=title, body=body)
         )
 
         # Отправка сообщения (выполняем в отдельном потоке, так как Admin SDK синхронный)
