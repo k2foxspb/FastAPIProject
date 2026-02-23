@@ -19,16 +19,24 @@ class ConnectionManager:
         self.active_connections: Dict[int, List[WebSocket]] = {}
 
     async def connect(self, websocket: WebSocket, user_id: int):
-        # Removal of await websocket.accept() as it is handled by the endpoint
         if user_id not in self.active_connections:
             self.active_connections[user_id] = []
+        
+        # Close and remove any existing stale connections for this user if they are already connected
+        # Optional: Some apps allow multiple tabs/devices, so we just add to the list.
+        # But if the user has many stale ones, we might want to prune them.
         self.active_connections[user_id].append(websocket)
+        logger.debug(f"NotificationsManager: User {user_id} connected. Active sockets: {len(self.active_connections[user_id])}")
 
     def disconnect(self, websocket: WebSocket, user_id: int):
         if user_id in self.active_connections:
-            self.active_connections[user_id].remove(websocket)
-            if not self.active_connections[user_id]:
-                del self.active_connections[user_id]
+            try:
+                self.active_connections[user_id].remove(websocket)
+                if not self.active_connections[user_id]:
+                    del self.active_connections[user_id]
+                logger.debug(f"NotificationsManager: User {user_id} disconnected. Remaining sockets: {len(self.active_connections.get(user_id, []))}")
+            except ValueError:
+                pass
 
     async def send_personal_message(self, message: dict, user_id: int):
         logger.debug(f"NotificationsManager trying to send message to user {user_id}. Type: {type(user_id)}")

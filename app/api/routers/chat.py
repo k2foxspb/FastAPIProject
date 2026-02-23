@@ -33,16 +33,20 @@ class ChatManager:
         self.active_connections: Dict[int, List[WebSocket]] = {}
 
     async def connect(self, websocket: WebSocket, user_id: int):
-        # Removal of await websocket.accept() as it is handled by the endpoint
         if user_id not in self.active_connections:
             self.active_connections[user_id] = []
         self.active_connections[user_id].append(websocket)
+        logger.debug(f"ChatManager: User {user_id} connected. Sockets: {len(self.active_connections[user_id])}")
 
     def disconnect(self, websocket: WebSocket, user_id: int):
         if user_id in self.active_connections:
-            self.active_connections[user_id].remove(websocket)
-            if not self.active_connections[user_id]:
-                del self.active_connections[user_id]
+            try:
+                self.active_connections[user_id].remove(websocket)
+                if not self.active_connections[user_id]:
+                    del self.active_connections[user_id]
+                logger.debug(f"ChatManager: User {user_id} disconnected. Sockets: {len(self.active_connections.get(user_id, []))}")
+            except ValueError:
+                pass
 
     async def send_personal_message(self, message: dict, user_id: int):
         logger.debug(f"ChatManager trying to send message to user {user_id}. Connections: {len(self.active_connections.get(user_id, []))}")
