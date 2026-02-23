@@ -143,6 +143,10 @@ export const NotificationProvider = ({ children }) => {
           const payload = JSON.parse(e.data);
           const msgType = payload.type || payload.msg_type;
           
+          if (!payload.type) {
+            payload.type = msgType;
+          }
+          
           if (!msgType && payload.id && payload.sender_id) {
             // Raw message without type - treat as new_message
             console.log('[NotificationContext] Received raw message via Chat WS:', payload.id);
@@ -395,6 +399,9 @@ export const NotificationProvider = ({ children }) => {
     socket.onmessage = (e) => {
       try {
         const payload = JSON.parse(e.data);
+        if (!payload.type && payload.msg_type) {
+          payload.type = payload.msg_type;
+        }
         console.log('[NotificationContext] Notification received:', payload.type, payload.data?.id || payload.message_id || '');
         
         if (payload.type === 'friend_requests_count') {

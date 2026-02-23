@@ -54,6 +54,22 @@ export function setupCloudMessaging() {
       console.log('Messaging not available during setupCloudMessaging, will skip for now.');
       return;
     }
+
+    // Создаем канал уведомлений для Android
+    if (Platform.OS === 'android') {
+      try {
+        const { Notifications } = require('expo-notifications');
+        Notifications.setNotificationChannelAsync('messages', {
+          name: 'Сообщения',
+          importance: Notifications.AndroidImportance.MAX,
+          vibrationPattern: [0, 250, 250, 250],
+          lightColor: '#FF231F7C',
+        }).catch(err => console.log('Error creating notification channel:', err));
+      } catch (e) {
+        console.log('expo-notifications not available, skipping channel creation.');
+      }
+    }
+
     // Обработка уведомлений, когда приложение на переднем плане
     const unsubscribe = msg.onMessage(async remoteMessage => {
       console.log('Foreground message received:', remoteMessage);

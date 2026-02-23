@@ -120,7 +120,7 @@ export default function ChatScreen({ route, navigation }) {
   };
 
   // Основной механизм: слушаем уведомления из контекста
-  const lastProcessedNotificationRef = useRef(notifications.length > 0 ? notifications[0] : null);
+  const lastProcessedNotificationRef = useRef(null);
   const currentUserIdRef = useRef(currentUserId);
 
   useEffect(() => {
@@ -129,94 +129,102 @@ export default function ChatScreen({ route, navigation }) {
 
   useEffect(() => {
     if (notifications.length > 0) {
-      const lastNotify = notifications[0];
+      // Находим индекс последнего обработанного уведомления
+      const lastIdx = lastProcessedNotificationRef.current 
+        ? notifications.findIndex(n => n === lastProcessedNotificationRef.current)
+        : -1;
       
-      // Skip if we already processed this exact notification object
-      if (lastProcessedNotificationRef.current === lastNotify) return;
-      lastProcessedNotificationRef.current = lastNotify;
-
-      const notifyType = lastNotify.type;
-
-    if (notifyType === 'new_message' && lastNotify.data) {
-        const message = lastNotify.data;
-        console.log('[ChatScreen] Processing new message notification:', message.id, 'from:', message.sender_id, 'text:', message.message);
-        const msgSenderId = Number(message.sender_id);
-        const msgReceiverId = Number(message.receiver_id);
-        const currentChatId = Number(userId);
-        const myIdNum = Number(currentUserIdRef.current || currentUserId);
-
-        console.log('[ChatScreen] Message check - from:', msgSenderId, 'to:', msgReceiverId, 'currentChat:', currentChatId, 'myId:', myIdNum);
-
-        const isRelated = (msgSenderId === currentChatId && msgReceiverId === myIdNum) || 
-                          (msgSenderId === myIdNum && msgReceiverId === currentChatId);
+      // Выделяем новые уведомления (те, что до последнего обработанного)
+      const newNotifications = lastIdx === -1 ? notifications : notifications.slice(0, lastIdx);
+      
+      // Обрабатываем в хронологическом порядке (с конца массива к началу)
+      [...newNotifications].reverse().forEach(lastNotify => {
+        const notifyType = lastNotify.type || lastNotify.msg_type;
         
-        if (isRelated) {
-          setMessages(prev => {
-            if (prev.find(m => Number(m.id) === Number(message.id))) {
-              console.log('[ChatScreen] Message already exists, skipping:', message.id);
-              return prev;
-            }
-            console.log('[ChatScreen] Adding message to list:', message.id);
-            return [message, ...prev];
-          });
-          setSkip(prev => prev + 1);
+        if (notifyType === 'new_message' && lastNotify.data) {
+          const message = lastNotify.data;
+          console.log('[ChatScreen] Processing new message notification:', message.id, 'from:', message.sender_id, 'text:', message.message);
+          const msgSenderId = Number(message.sender_id);
+          const msgReceiverId = Number(message.receiver_id);
+          const currentChatId = Number(userId);
+          const myIdNum = Number(currentUserIdRef.current || currentUserId);
+
+          console.log('[ChatScreen] Message check - from:', msgSenderId, 'to:', msgReceiverId, 'currentChat:', currentChatId, 'myId:', myIdNum);
+
+          const isRelated = (msgSenderId === currentChatId && msgReceiverId === myIdNum) || 
+                            (msgSenderId === myIdNum && msgReceiverId === currentChatId);
           
-          if (msgSenderId === currentChatId) {
-            // Сообщение от собеседника
-            clearUnread(userId);
-            const isAppActive = AppState.currentState === 'active';
-            if (isAppActive) {
-              playMessageSound();
-              markAsReadWs(userId);
+          if (isRelated) {
+            setMessages(prev => {
+              if (prev.find(m => Number(m.id) === Number(message.id))) {
+                console.log('[ChatScreen] Message already exists, skipping:', message.id);
+                return prev;
+              }
+              console.log('[ChatScreen] Adding message to list:', message.id);
+              return [message, ...prev];
+            });
+            setSkip(prev => prev + 1);
+            
+            if (msgSenderId === currentChatId) {
+              // Сообщение от собеседника
+              clearUnread(userId);
+              const isAppActive = AppState.currentState === 'active';
+              if (isAppActive) {
+                playMessageSound();
+                markAsReadWs(userId);
+              }
+            } else {
+              // Сообщение от меня
+              console.log('[ChatScreen] My message added to list');
             }
           } else {
-            // Сообщение от меня
-            console.log('[ChatScreen] My message added to list');
+            console.log('[ChatScreen] Message not related to this chat, ignoring');
           }
-        } else {
-          console.log('[ChatScreen] Message not related to this chat, ignoring');
+        } else if (notifyType === 'message_deleted') {
+          const msgId = lastNotify.message_id || lastNotify.data?.id;
+          if (msgId) {
+            setMessages(prev => {
+              if (prev.find(m => m.id === msgId)) {
+                return prev.filter(m => m.id !== msgId);
+              }
+              return prev;
+            });
+            fetchDialogs();
+          }
+        } else if (notifyType === 'messages_read' || notifyType === 'your_messages_read' || notifyType === 'mark_read') {
+          const readerId = lastNotify.reader_id || lastNotify.data?.reader_id || lastNotify.data?.from_user_id || lastNotify.other_id;
+          if (Number(readerId) === Number(userId) || Number(readerId) === Number(currentUserId)) {
+            setMessages(prev => prev.map(m => 
+              (m.sender_id && Number(m.sender_id) === Number(currentUserId)) ? { ...m, is_read: true } : m
+            ));
+          }
+        } else if (notifyType === 'user_status' && lastNotify.data) {
+          const { user_id, status, last_seen } = lastNotify.data;
+          if (Number(user_id) === Number(userId)) {
+            setInterlocutor(prev => prev ? { ...prev, status, last_seen } : null);
+          }
         }
-      } else if (notifyType === 'message_deleted') {
-        const msgId = lastNotify.message_id;
-        if (msgId) {
-          setMessages(prev => {
-            if (prev.find(m => m.id === msgId)) {
-              return prev.filter(m => m.id !== msgId);
-            }
-            return prev;
-          });
-          fetchDialogs();
-        }
-      } else if (notifyType === 'messages_read' || notifyType === 'your_messages_read') {
-        const readerId = lastNotify.reader_id || lastNotify.data?.reader_id || lastNotify.data?.from_user_id;
-        if (Number(readerId) === Number(userId) || Number(readerId) === Number(currentUserId)) {
-          setMessages(prev => prev.map(m => 
-            (m.sender_id && Number(m.sender_id) === Number(currentUserId)) ? { ...m, is_read: true } : m
-          ));
-        }
-      } else if (notifyType === 'user_status' && lastNotify.data) {
-        const { user_id, status, last_seen } = lastNotify.data;
-        if (Number(user_id) === Number(userId)) {
-          setInterlocutor(prev => prev ? { ...prev, status, last_seen } : null);
-        }
-      }
+      });
+      
+      // Запоминаем последнее уведомление из списка как обработанное
+      lastProcessedNotificationRef.current = notifications[0];
     }
   }, [notifications, userId, currentUserId]);
 
   // Добавляем слушатель состояния приложения, чтобы помечать прочитанным при возврате в активный чат
   useEffect(() => {
     const subscription = AppState.addEventListener('change', nextAppState => {
-      if (nextAppState === 'active' && activeChatIdRef.current) {
+      if (nextAppState === 'active' && userId) {
         console.log('[ChatScreen] App became active while in chat, check if we should mark as read');
         // Помечаем как прочитанные только если экран действительно в фокусе (через Ref не совсем надежно, но в этом компоненте должно работать)
-        markAsReadWs(activeChatIdRef.current);
-        clearUnread(activeChatIdRef.current);
+        markAsReadWs(userId);
+        clearUnread(userId);
       }
     });
     return () => {
       subscription.remove();
     };
-  }, [markAsReadWs, clearUnread]);
+  }, [markAsReadWs, clearUnread, userId]);
 
   useEffect(() => {
     isMounted.current = true;

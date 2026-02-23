@@ -74,7 +74,7 @@ async def send_fcm_notification(
         if "type" not in fcm_data:
             fcm_data["type"] = "new_message"
 
-        logger.debug(f"FCM: Preparing message for token {token[:15]}... | Data: {fcm_data}")
+        logger.debug(f"FCM: Preparing message for token {token} | Data: {fcm_data}")
 
         # Создание объекта уведомления
         notification = messaging.Notification(
@@ -88,7 +88,11 @@ async def send_fcm_notification(
             notification=messaging.AndroidNotification(
                 channel_id="messages",
                 sound="default",
-                click_action="FLUTTER_NOTIFICATION_CLICK" # Для некоторых плагинов это важно
+                click_action="FLUTTER_NOTIFICATION_CLICK", # Для некоторых плагинов это важно
+                notification_priority='PRIORITY_MAX', # Увеличиваем приоритет на уровне Android
+                default_vibrate_timings=True,
+                default_sound=True,
+                tag="chat_message" # Группировка уведомлений, чтобы не спамить
             )
         )
 
@@ -98,7 +102,9 @@ async def send_fcm_notification(
                 aps=messaging.Aps(
                     sound="default",
                     thread_id=str(sender_id) if sender_id else None,
-                    content_available=True # Позволяет приложению проснуться в фоне
+                    content_available=True, # Позволяет приложению проснуться в фоне
+                    mutable_content=True,
+                    category="NEW_MESSAGE"
                 )
             )
         )
@@ -114,24 +120,27 @@ async def send_fcm_notification(
 
         # Отправка сообщения (выполняем в отдельном потоке, так как Admin SDK синхронный)
         loop = asyncio.get_event_loop()
-        logger.info(f"FCM: Attempting to send message to {token[:15]}... Title: {title}")
+        logger.info(f"FCM: Attempting to send message to {token[:20]}... Title: {title}")
         
-        response = await loop.run_in_executor(None, lambda: messaging.send(message))
-        
-        logger.success(f"FCM: Successfully sent message. Response: {response}")
-        return True
+        try:
+            response = await loop.run_in_executor(None, lambda: messaging.send(message))
+            logger.success(f"FCM: Successfully sent message to {token[:20]}... Response: {response}")
+            return True
+        except Exception as e:
+            logger.error(f"FCM: Internal error during messaging.send: {e}")
+            raise e
     except (messaging.UnregisteredError, exceptions.NotFoundError):
         # Токен больше не валиден (приложение удалено или токен протух)
-        logger.warning(f"FCM: Token is unregistered (invalid): {token[:15]}...")
+        logger.warning(f"FCM: Token is unregistered (invalid): {token}")
         return False
     except (messaging.InvalidArgumentError, exceptions.InvalidArgumentError) as e:
         # Токен имеет неверный формат или другие аргументы неверны
-        logger.warning(f"FCM: Invalid arguments (bad token format?): {e}")
+        logger.warning(f"FCM: Invalid arguments (bad token format?): {e} | Token: {token}")
         return False
     except exceptions.FirebaseError as e:
         # Общая ошибка Firebase SDK
-        logger.error(f"FCM: Firebase error for token {token[:15]}...: {e}")
+        logger.error(f"FCM: Firebase error for token {token[:20]}...: {e}")
         return False
     except Exception as e:
-        logger.error(f"FCM: Request failed for token {token[:15]}... | Error: {type(e).__name__}: {e}")
+        logger.error(f"FCM: Request failed for token {token[:20]}... | Error: {type(e).__name__}: {e}")
         return False
