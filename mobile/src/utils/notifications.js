@@ -2,6 +2,7 @@ import firebase from '@react-native-firebase/app';
 import messaging from '@react-native-firebase/messaging';
 import { Alert, Platform } from 'react-native';
 import { usersApi } from '../api';
+import { storage } from './storage';
 import { firebaseApp } from './firebaseInit';
 import { navigationRef } from '../navigation/NavigationService';
 
