@@ -146,7 +146,10 @@ export async function getFcmToken() {
   if (Platform.OS === 'web') return null;
   try {
     const msg = getMessaging();
-    if (!msg) return null;
+    if (!msg) {
+      console.log('[FCM] Messaging not available');
+      return null;
+    }
     
     // Register for remote notifications on iOS
     if (Platform.OS === 'ios') {
@@ -154,13 +157,18 @@ export async function getFcmToken() {
     }
 
     const token = await msg.getToken();
-    console.log('FCM Token:', token);
+    console.log('[FCM] Token obtained:', token ? (token.substring(0, 15) + '...') : 'NULL');
     if (token) {
       await storage.saveItem('fcm_token', token);
+    } else {
+      console.warn('[FCM] No token returned from getToken()');
     }
     return token;
   } catch (error) {
-    console.error('Failed to get FCM token:', error);
+    console.error('[FCM] Failed to get FCM token:', error);
+    // Дополнительные детали ошибки
+    if (error.code) console.log('[FCM] Error code:', error.code);
+    if (error.message) console.log('[FCM] Error message:', error.message);
     return null;
   }
 }

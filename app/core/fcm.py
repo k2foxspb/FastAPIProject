@@ -20,6 +20,8 @@ try:
             os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), FIREBASE_SERVICE_ACCOUNT_PATH),
             # 3. В текущей директории
             os.path.join(os.getcwd(), FIREBASE_SERVICE_ACCOUNT_PATH),
+            # 4. В поддиректории app (на случай запуска из корня)
+            os.path.join(os.getcwd(), "app", FIREBASE_SERVICE_ACCOUNT_PATH),
         ]
         
         found_path = None
@@ -31,15 +33,27 @@ try:
         
         if found_path:
             logger.info(f"FCM: Initializing Firebase Admin SDK with service account from {found_path}")
-            cred = credentials.Certificate(found_path)
-            firebase_admin.initialize_app(cred)
-            logger.success("FCM: Firebase Admin SDK initialized successfully")
+            try:
+                cred = credentials.Certificate(found_path)
+                firebase_admin.initialize_app(cred)
+                logger.success("FCM: Firebase Admin SDK initialized successfully")
+            except Exception as init_err:
+                logger.error(f"FCM: Error initializing with certificate {found_path}: {init_err}")
+                # Если файл поврежден или не подходит, пытаемся инициализировать по умолчанию (из ENV)
+                firebase_admin.initialize_app()
+                logger.info("FCM: Initialized with default application credentials (ENV)")
         else:
-            logger.warning(f"FCM: Firebase service account file '{FIREBASE_SERVICE_ACCOUNT_PATH}' NOT found in any of these locations: {possible_paths}. FCM notifications will be disabled.")
+            logger.warning(f"FCM: Firebase service account file '{FIREBASE_SERVICE_ACCOUNT_PATH}' NOT found. Trying default init.")
+            try:
+                firebase_admin.initialize_app()
+                logger.success("FCM: Firebase Admin SDK initialized via default credentials (ENV)")
+            except Exception as env_err:
+                logger.error(f"FCM: Failed default initialization: {env_err}")
+                logger.warning(f"FCM: Firebase service account file '{FIREBASE_SERVICE_ACCOUNT_PATH}' NOT found in any of these locations: {possible_paths}. FCM notifications will be disabled.")
     else:
         logger.info("FCM: Firebase Admin SDK already initialized")
 except Exception as e:
-    logger.error(f"FCM: Failed to initialize Firebase Admin SDK: {e}")
+    logger.exception(f"FCM: Critical error during Firebase Admin SDK module loading: {e}")
 
 async def send_fcm_notification(
     token: str, 

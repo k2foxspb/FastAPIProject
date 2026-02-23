@@ -64,6 +64,7 @@ async def get_firebase_config():
     """
     import json
     import os
+    from loguru import logger
     
     # По умолчанию (fallback)
     config = {
@@ -77,7 +78,8 @@ async def get_firebase_config():
     # Пытаемся взять из google-services.json если он есть в корне или в mobile
     gs_paths = [
         "mobile/google-services.json",
-        "google-services.json"
+        "google-services.json",
+        "app/google-services.json"
     ]
     
     for path in gs_paths:
@@ -95,8 +97,10 @@ async def get_firebase_config():
                     if info.get("project_number"): config["messagingSenderId"] = info["project_number"]
                     if client_info.get("mobilesdk_app_id"): config["appId"] = client_info["mobilesdk_app_id"]
                     if api_key: config["apiKey"] = api_key
+                logger.info(f"FCM Config: Loaded from {path}")
                 break
-            except Exception:
+            except Exception as e:
+                logger.error(f"FCM Config: Error reading {path}: {e}")
                 continue
 
     # Пытаемся уточнить projectId из firebase-service-account.json если он есть
@@ -107,14 +111,49 @@ async def get_firebase_config():
                 sa = json.load(f)
                 if sa.get("project_id"):
                     config["projectId"] = sa["project_id"]
-                    # Также часто Project Number можно достать из client_id или других полей, 
-                    # но гарантированно Project Number в SA JSON нет.
-                    # Однако, если projectId совпадает с тем что мы нашли в google-services, 
-                    # то и messagingSenderId будет верным.
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error(f"FCM Config: Error reading {sa_path}: {e}")
             
     return config
+
+
+@router.get("/fcm-status")
+async def get_fcm_status():
+    """Проверка статуса инициализации Firebase Admin SDK."""
+    import firebase_admin
+    from app.core.config import FIREBASE_SERVICE_ACCOUNT_PATH
+    
+    status = {
+        "initialized": len(firebase_admin._apps) > 0,
+        "apps_count": len(firebase_admin._apps),
+        "service_account_path": os.path.abspath(FIREBASE_SERVICE_ACCOUNT_PATH),
+        "service_account_exists": os.path.exists(FIREBASE_SERVICE_ACCOUNT_PATH),
+        "env_google_application_credentials": os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+    }
+    return status
+
+
+@router.post("/test-fcm")
+async def test_fcm_notification(
+    current_user: UserModel = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """Отправка тестового уведомления текущему пользователю."""
+    if not current_user.fcm_token:
+        raise HTTPException(status_code=400, detail="FCM token not found for current user")
+    
+    from app.core.fcm import send_fcm_notification
+    success = await send_fcm_notification(
+        token=current_user.fcm_token,
+        title="Тестовое уведомление",
+        body="Это тестовое пуш-уведомление от сервера",
+        data={"type": "test", "time": str(datetime.now())}
+    )
+    
+    if success:
+        return {"status": "success", "message": "Notification sent"}
+    else:
+        return {"status": "error", "message": "Failed to send notification"}
 
 
 @router.get("", response_model=list[UserSchema])
