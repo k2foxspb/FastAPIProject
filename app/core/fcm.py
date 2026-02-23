@@ -89,7 +89,7 @@ async def send_fcm_notification(
                 channel_id="messages",
                 sound="default",
                 click_action="FLUTTER_NOTIFICATION_CLICK", # Для некоторых плагинов это важно
-                notification_priority='PRIORITY_MAX', # Увеличиваем приоритет на уровне Android
+                # notification_priority='PRIORITY_MAX', # Увеличиваем приоритет на уровне Android - удалено так как вызывает TypeError
                 default_vibrate_timings=True,
                 default_sound=True,
                 tag="chat_message", # Группировка уведомлений, чтобы не спамить
@@ -138,7 +138,7 @@ async def send_fcm_notification(
         # Токен больше не валиден (приложение удалено или токен протух)
         logger.warning(f"FCM: Token is unregistered (invalid): {token}")
         return False
-    except (messaging.InvalidArgumentError, exceptions.InvalidArgumentError) as e:
+    except exceptions.InvalidArgumentError as e:
         # Токен имеет неверный формат или другие аргументы неверны
         logger.warning(f"FCM: Invalid arguments (bad token format?): {e} | Token: {token}")
         return False
