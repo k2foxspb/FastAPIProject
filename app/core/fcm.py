@@ -92,19 +92,24 @@ async def send_fcm_notification(
                 notification_priority='PRIORITY_MAX', # Увеличиваем приоритет на уровне Android
                 default_vibrate_timings=True,
                 default_sound=True,
-                tag="chat_message" # Группировка уведомлений, чтобы не спамить
+                tag="chat_message", # Группировка уведомлений, чтобы не спамить
+                visibility='public' # Чтобы уведомление было видно на заблокированном экране
             )
         )
 
         # Настройки для iOS (APNS)
         apns_config = messaging.APNSConfig(
+            headers={
+                "apns-priority": "10", # Немедленная доставка
+            },
             payload=messaging.APNSPayload(
                 aps=messaging.Aps(
                     sound="default",
                     thread_id=str(sender_id) if sender_id else None,
                     content_available=True, # Позволяет приложению проснуться в фоне
                     mutable_content=True,
-                    category="NEW_MESSAGE"
+                    category="NEW_MESSAGE",
+                    badge=1 # Показываем бейдж на иконке
                 )
             )
         )

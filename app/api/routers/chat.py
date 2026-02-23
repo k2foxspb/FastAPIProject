@@ -412,6 +412,7 @@ async def websocket_chat_endpoint(
                     # Если сообщение пустое (только файл), пишем тип файла
                     body = content if content else f"Отправил {message_type}"
                     
+                    logger.info(f"FCM: Triggering notification for receiver {receiver_id} with token {receiver.fcm_token[:15]}...")
                     asyncio.create_task(send_fcm_notification(
                         token=receiver.fcm_token,
                         title=sender_name,
@@ -422,6 +423,8 @@ async def websocket_chat_endpoint(
                             "message_id": str(new_msg.id)
                         }
                     ))
+                else:
+                    logger.debug(f"FCM: Skipping notification for receiver {receiver_id}. No token found.")
             else:
                 logger.debug(f"Message skipped. receiver_id={receiver_id_raw}, content={bool(content)}, file_path={bool(file_path)}")
 
@@ -510,6 +513,7 @@ async def send_message_api(
     if receiver and receiver.fcm_token:
         body = content if content else f"Отправил {message_type}"
         
+        logger.info(f"FCM (API): Triggering notification for receiver {receiver_id} with token {receiver.fcm_token[:15]}...")
         asyncio.create_task(send_fcm_notification(
             token=receiver.fcm_token,
             title=sender_name,
@@ -520,6 +524,8 @@ async def send_message_api(
                 "message_id": str(new_msg.id)
             }
         ))
+    else:
+        logger.debug(f"FCM (API): Skipping notification for receiver {receiver_id}. No token found.")
 
     return response_data
 

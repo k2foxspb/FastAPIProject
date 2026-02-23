@@ -73,7 +73,24 @@ export function setupCloudMessaging() {
     // Обработка уведомлений, когда приложение на переднем плане
     const unsubscribe = msg.onMessage(async remoteMessage => {
       console.log('Foreground message received:', remoteMessage);
-      // На переднем плане не показываем системные уведомления — UI и звук обрабатываются через WS/NotificationContext
+      
+      // На переднем плане Firebase не показывает уведомление сам.
+      // Обычно мы полагаемся на WebSocket, но если пользователь хочет видеть системный пуш даже в приложении:
+      if (Platform.OS === 'android') {
+        try {
+          const { Notifications } = require('expo-notifications');
+          await Notifications.scheduleNotificationAsync({
+            content: {
+              title: remoteMessage.notification?.title || 'Новое сообщение',
+              body: remoteMessage.notification?.body || '',
+              data: remoteMessage.data,
+            },
+            trigger: null, // немедленно
+          });
+        } catch (e) {
+          console.log('Error showing foreground notification via expo:', e);
+        }
+      }
     });
 
     // Обработка обновления токена
