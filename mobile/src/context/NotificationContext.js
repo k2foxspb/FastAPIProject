@@ -11,8 +11,27 @@ import { navigationRef } from '../navigation/NavigationService';
 const NotificationContext = createContext();
 
 export const NotificationProvider = ({ children }) => {
-  const [notifications, setNotifications] = useState([]);
+  const [historyListeners] = useState(new Set());
+
+  const getHistoryWs = React.useCallback((otherUserId, limit = 15, skip = 0) => {
+    if (chatWs.current && chatWs.current.readyState === WebSocket.OPEN) {
+      chatWs.current.send(JSON.stringify({
+        type: 'get_history',
+        other_user_id: otherUserId,
+        limit,
+        skip
+      }));
+      return true;
+    }
+    return false;
+  }, []);
+
+  const onHistoryReceived = React.useCallback((callback) => {
+    historyListeners.add(callback);
+    return () => historyListeners.delete(callback);
+  }, [historyListeners]);
   const [dialogs, setDialogs] = useState([]);
+  const [notifications, setNotifications] = useState([]);
   const [unreadTotal, setUnreadTotal] = useState(0);
   const [friendRequestsCount, setFriendRequestsCount] = useState(0);
   const [isConnected, setIsConnected] = useState(false);
@@ -29,9 +48,17 @@ export const NotificationProvider = ({ children }) => {
   const reconnectTimer = useRef(null);
   const reconnectAttempt = useRef(0);
   const shouldReconnect = useRef(true);
+  const heartbeatInterval = useRef(null);
 
   const notificationPlayer = useAudioPlayer(require('../../assets/sounds/message.mp3'));
   const notificationPlayerRef = useRef(notificationPlayer);
+
+  const chatWs = useRef(null);
+  const chatWsReconnectTimer = useRef(null);
+  const chatWsReconnectAttempt = useRef(0);
+  const chatWsShouldReconnect = useRef(true);
+  const chatWsLastToken = useRef(null);
+  const chatWsHeartbeatInterval = useRef(null);
 
   useEffect(() => {
     activeChatIdRef.current = activeChatId;
@@ -50,6 +77,133 @@ export const NotificationProvider = ({ children }) => {
   useEffect(() => {
     notificationPlayerRef.current = notificationPlayer;
   }, [notificationPlayer]);
+
+  const connectChatWs = React.useCallback((token) => {
+    if (!token || token === 'null' || token === 'undefined') {
+      console.log('[NotificationContext] Skipping Chat WS connect: no token');
+      return;
+    }
+
+    if (chatWs.current && (chatWs.current.readyState === WebSocket.OPEN || chatWs.current.readyState === WebSocket.CONNECTING)) {
+      if (chatWsLastToken.current === token) {
+        console.log('[NotificationContext] Chat WS already connected or connecting');
+        return;
+      }
+      chatWs.current.close();
+    }
+
+    chatWsLastToken.current = token;
+    chatWsShouldReconnect.current = true;
+
+    const protocol = API_BASE_URL.startsWith('https') ? 'wss://' : 'ws://';
+    const baseUrlClean = API_BASE_URL.replace('http://', '').replace('https://', '');
+    const wsUrl = `${protocol}${baseUrlClean}/chat/ws/${encodeURIComponent(token)}`;
+    
+    console.log('[NotificationContext] Connecting to Chat WS...');
+    try {
+      chatWs.current = new WebSocket(wsUrl);
+
+      chatWs.current.onopen = () => {
+        console.log('[NotificationContext] Chat WS connected');
+        chatWsReconnectAttempt.current = 0;
+        if (chatWsReconnectTimer.current) {
+          clearTimeout(chatWsReconnectTimer.current);
+          chatWsReconnectTimer.current = null;
+        }
+        if (chatWsHeartbeatInterval.current) clearInterval(chatWsHeartbeatInterval.current);
+        chatWsHeartbeatInterval.current = setInterval(() => {
+          if (chatWs.current && chatWs.current.readyState === WebSocket.OPEN) {
+            chatWs.current.send(JSON.stringify({ type: 'ping' }));
+          }
+        }, 30000);
+
+        // Request initial dialogs list through WS
+        chatWs.current.send(JSON.stringify({ type: 'get_dialogs' }));
+      };
+
+      chatWs.current.onmessage = (e) => {
+        try {
+          const payload = JSON.parse(e.data);
+          if (payload.type === 'dialogs_list') {
+            console.log('[NotificationContext] Dialogs list received via WS');
+            setDialogs(payload.data);
+          } else if (payload.type === 'chat_history') {
+            console.log('[NotificationContext] Chat history received via WS');
+            historyListeners.forEach(cb => cb(payload));
+          }
+        } catch (err) {}
+      };
+
+      chatWs.current.onclose = (e) => {
+        console.log('[NotificationContext] Chat WS closed:', e.code);
+        if (chatWsHeartbeatInterval.current) {
+          clearInterval(chatWsHeartbeatInterval.current);
+          chatWsHeartbeatInterval.current = null;
+        }
+        if (chatWsShouldReconnect.current) {
+          const delay = Math.min(30000, Math.pow(2, chatWsReconnectAttempt.current) * 2000);
+          chatWsReconnectTimer.current = setTimeout(() => {
+            chatWsReconnectAttempt.current += 1;
+            storage.getAccessToken().then(tok => { if (tok) connectChatWs(tok); });
+          }, delay);
+        }
+      };
+
+      chatWs.current.onerror = (e) => {
+        console.error('[NotificationContext] Chat WS error');
+      };
+    } catch (err) {
+      console.error('[NotificationContext] Error creating Chat WebSocket:', err);
+    }
+  }, []);
+
+  const sendMessage = React.useCallback((msgData) => {
+    if (chatWs.current && chatWs.current.readyState === WebSocket.OPEN) {
+      chatWs.current.send(JSON.stringify({
+        type: 'message',
+        ...msgData
+      }));
+      return true;
+    } else {
+      console.error('[NotificationContext] Chat WS not connected, cannot send message');
+      // If Chat WS is down, try to reconnect
+      storage.getAccessToken().then(tok => { if (tok) connectChatWs(tok); });
+      return false;
+    }
+  }, [connectChatWs]);
+
+  const markAsReadWs = React.useCallback((otherId) => {
+    if (chatWs.current && chatWs.current.readyState === WebSocket.OPEN) {
+      chatWs.current.send(JSON.stringify({
+        type: 'mark_read',
+        other_id: otherId
+      }));
+      return true;
+    }
+    return false;
+  }, []);
+
+  const deleteMessageWs = React.useCallback((messageId) => {
+    if (chatWs.current && chatWs.current.readyState === WebSocket.OPEN) {
+      chatWs.current.send(JSON.stringify({
+        type: 'delete_message',
+        message_id: messageId
+      }));
+      return true;
+    }
+    return false;
+  }, []);
+
+  const bulkDeleteMessagesWs = React.useCallback((messageIds) => {
+    if (chatWs.current && chatWs.current.readyState === WebSocket.OPEN) {
+      chatWs.current.send(JSON.stringify({
+        type: 'bulk_delete',
+        message_ids: message_ids
+      }));
+      return true;
+    }
+    return false;
+  }, []);
 
   const fetchDialogs = React.useCallback(async () => {
     try {
@@ -114,16 +268,21 @@ export const NotificationProvider = ({ children }) => {
 
     lastToken.current = token;
     shouldReconnect.current = true;
+    
+    // Also connect to Chat WS
+    connectChatWs(token);
 
     const protocol = API_BASE_URL.startsWith('https') ? 'wss://' : 'ws://';
-    const wsUrl = `${protocol}${API_BASE_URL.replace('http://', '').replace('https://', '')}/ws/notifications?token=${token}`;
+    const baseUrlClean = API_BASE_URL.replace('http://', '').replace('https://', '');
+    const wsUrl = `${protocol}${baseUrlClean}/ws/notifications?token=${encodeURIComponent(token)}`;
     console.log('[NotificationContext] Connecting to notifications WS:', wsUrl.split('?')[0] + '?token=***');
     
     try {
+      console.log('[NotificationContext] Creating new WebSocket instance...');
       ws.current = new WebSocket(wsUrl);
 
     ws.current.onopen = () => {
-      console.log('[NotificationContext] Notifications WS connected');
+      console.log('[NotificationContext] Notifications WS connected. readyState:', ws.current.readyState);
       setIsConnected(true);
       reconnectAttempt.current = 0; // Reset attempts on successful connection
       if (reconnectTimer.current) {
@@ -141,8 +300,12 @@ export const NotificationProvider = ({ children }) => {
     ws.current.onmessage = (e) => {
       try {
         const payload = JSON.parse(e.data);
-        console.log('[NotificationContext] Notification received:', payload.type, payload.data?.id || '');
+        console.log('[NotificationContext] Notification received:', payload.type, payload.data?.id || payload.message_id || '');
         
+        if (payload.type === 'friend_requests_count') {
+          setFriendRequestsCount(payload.count);
+        }
+
         if (payload.type === 'new_message') {
           const message = payload.data;
           setDialogs(prev => {
@@ -219,41 +382,7 @@ export const NotificationProvider = ({ children }) => {
             playNotificationSound();
             Vibration.vibrate([0, 200, 100, 200]);
 
-            // Визуальное оповещение внутри приложения с быстрым переходом в чат
-            try {
-              const dlg = dialogsRef.current.find(d => Number(d.user_id) === Number(senderId));
-              const senderName = payload.data.sender_name || (
-                dlg ? (`${dlg.first_name || ''} ${dlg.last_name || ''}`.trim() || dlg.email || 'Новый диалог') : 'Новый диалог'
-              );
-              const preview = (payload.data.message && payload.data.message.trim())
-                ? payload.data.message.trim().slice(0, 80)
-                : (payload.data.message_type === 'media_group' ? 'Медиафайлы' : (payload.data.message_type || 'Сообщение'));
-
-              Alert.alert(
-                'Новое сообщение',
-                `${senderName}: ${preview}`,
-                [
-                  {
-                    text: 'Открыть',
-                    onPress: () => {
-                      try {
-                        if (navigationRef?.isReady?.()) {
-                          navigationRef.navigate('Messages', {
-                            screen: 'Chat',
-                            params: { userId: senderId, userName: senderName }
-                          });
-                        }
-                      } catch (e) {
-                        console.log('Navigation to chat failed:', e);
-                      }
-                    }
-                  },
-                  { text: 'Закрыть', style: 'cancel' }
-                ]
-              );
-            } catch (e) {
-              console.log('Failed to show in-app alert for new message:', e);
-            }
+            // Визуальное оповещение внутри приложения удалено по просьбе пользователя
           }
         }
 
@@ -295,22 +424,43 @@ export const NotificationProvider = ({ children }) => {
     };
 
     ws.current.onerror = (e) => {
-      console.error('[NotificationContext] Notifications WS error:', e.message || 'Unknown error');
+      console.error('[NotificationContext] Notifications WS error event details:', {
+        type: e.type,
+        readyState: ws.current?.readyState,
+        url: wsUrl.split('?')[0]
+      });
+      // Log more details if available
+      if (e.message) console.error('[NotificationContext] Error message:', e.message);
     };
   } catch (err) {
     console.error('[NotificationContext] Error creating WebSocket:', err);
   }
   }, [fetchDialogs, fetchFriendRequestsCount, playNotificationSound]);
 
+  useEffect(() => {
+    storage.getAccessToken().then(token => {
+      if (token) connect(token);
+    });
+  }, [connect]);
+
   const disconnect = React.useCallback(() => {
     shouldReconnect.current = false;
+    chatWsShouldReconnect.current = false;
     if (reconnectTimer.current) {
       clearTimeout(reconnectTimer.current);
       reconnectTimer.current = null;
     }
+    if (chatWsReconnectTimer.current) {
+      clearTimeout(chatWsReconnectTimer.current);
+      chatWsReconnectTimer.current = null;
+    }
     if (ws.current) {
       ws.current.close(1000);
       ws.current = null;
+    }
+    if (chatWs.current) {
+      chatWs.current.close(1000);
+      chatWs.current = null;
     }
   }, []);
 
@@ -357,6 +507,9 @@ export const NotificationProvider = ({ children }) => {
       if (heartbeatInterval.current) {
         clearInterval(heartbeatInterval.current);
       }
+      if (chatWsHeartbeatInterval.current) {
+        clearInterval(chatWsHeartbeatInterval.current);
+      }
       disconnect();
     };
   }, [disconnect]);
@@ -380,6 +533,12 @@ export const NotificationProvider = ({ children }) => {
       isConnected, 
       connect, 
       disconnect,
+      sendMessage,
+      getHistoryWs,
+      onHistoryReceived,
+      markAsReadWs,
+      deleteMessageWs,
+      bulkDeleteMessagesWs,
       currentUser,
       loadingUser,
       currentUserId,

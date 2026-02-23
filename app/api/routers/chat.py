@@ -119,6 +119,36 @@ async def websocket_chat_endpoint(
             if msg_type == "ping":
                 await websocket.send_json({"type": "pong"})
                 continue
+            
+            if msg_type == "get_dialogs":
+                from app.api.routers.chat import get_dialogs as fetch_dialogs_api
+                try:
+                    dialogs_list = await fetch_dialogs_api(token=token, db=db)
+                    await websocket.send_json({
+                        "type": "dialogs_list",
+                        "data": dialogs_list
+                    })
+                except Exception as e:
+                    logger.error(f"WS get_dialogs error: {e}")
+                continue
+            
+            if msg_type == "get_history":
+                other_user_id = message_data.get("other_user_id")
+                limit = message_data.get("limit", 15)
+                skip = message_data.get("skip", 0)
+                if other_user_id:
+                    from app.api.routers.chat import get_chat_history as fetch_history_api
+                    try:
+                        history = await fetch_history_api(other_user_id=int(other_user_id), token=token, limit=limit, skip=skip, db=db)
+                        await websocket.send_json({
+                            "type": "chat_history",
+                            "other_user_id": other_user_id,
+                            "data": history,
+                            "skip": skip
+                        })
+                    except Exception as e:
+                        logger.error(f"WS get_history error: {e}")
+                continue
                 
             logger.debug(f"Chat WS received message type '{msg_type}' from user {user_id}")
 
@@ -152,6 +182,123 @@ async def websocket_chat_endpoint(
                         }, user_id),
                         return_exceptions=True
                     )
+                continue
+
+            if msg_type == "delete_message":
+                message_id = message_data.get("message_id")
+                if message_id:
+                    result = await db.execute(select(ChatMessage).where(ChatMessage.id == message_id))
+                    message = result.scalar_one_or_none()
+
+                    if message:
+                        is_sender = message.sender_id == user_id
+                        is_receiver = message.receiver_id == user_id
+
+                        if is_sender or is_receiver:
+                            receiver_id = message.receiver_id
+                            sender_id = message.sender_id
+                            file_path = message.file_path
+
+                            if is_sender:
+                                await db.delete(message)
+                            else:
+                                message.deleted_by_receiver = True
+                            
+                            await db.commit()
+
+                            if is_sender and file_path:
+                                try:
+                                    root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                                    abs_path = os.path.join(root_dir, file_path.lstrip("/"))
+                                    if os.path.exists(abs_path):
+                                        os.remove(abs_path)
+                                except Exception as e:
+                                    logger.error(f"Error deleting chat file via WS: {e}")
+
+                            delete_event = {
+                                "type": "message_deleted",
+                                "message_id": message_id,
+                                "sender_id": sender_id,
+                                "receiver_id": receiver_id,
+                                "deleted_for_all": is_sender
+                            }
+                            
+                            if is_sender:
+                                await asyncio.gather(
+                                    manager.send_personal_message(delete_event, receiver_id),
+                                    manager.send_personal_message(delete_event, user_id),
+                                    notifications_manager.send_personal_message(delete_event, receiver_id),
+                                    notifications_manager.send_personal_message(delete_event, user_id),
+                                    return_exceptions=True
+                                )
+                            else:
+                                await asyncio.gather(
+                                    manager.send_personal_message(delete_event, user_id),
+                                    notifications_manager.send_personal_message(delete_event, user_id),
+                                    return_exceptions=True
+                                )
+                continue
+
+            if msg_type == "bulk_delete":
+                message_ids = message_data.get("message_ids", [])
+                if message_ids:
+                    result = await db.execute(
+                        select(ChatMessage).where(
+                            ChatMessage.id.in_(message_ids),
+                            or_(
+                                ChatMessage.sender_id == user_id,
+                                ChatMessage.receiver_id == user_id
+                            )
+                        )
+                    )
+                    messages = result.scalars().all()
+                    
+                    if messages:
+                        root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                        
+                        for msg in messages:
+                            m_receiver_id = msg.receiver_id
+                            m_sender_id = msg.sender_id
+                            m_file_path = msg.file_path
+                            m_id = msg.id
+                            
+                            m_is_sender = m_sender_id == user_id
+                            
+                            if m_is_sender:
+                                await db.delete(msg)
+                                if m_file_path:
+                                    try:
+                                        m_abs_path = os.path.join(root_dir, m_file_path.lstrip("/"))
+                                        if os.path.exists(m_abs_path):
+                                            os.remove(m_abs_path)
+                                    except Exception as e:
+                                        logger.error(f"Error bulk deleting chat file via WS: {e}")
+                            else:
+                                msg.deleted_by_receiver = True
+
+                            m_delete_event = {
+                                "type": "message_deleted",
+                                "message_id": m_id,
+                                "sender_id": m_sender_id,
+                                "receiver_id": m_receiver_id,
+                                "deleted_for_all": m_is_sender
+                            }
+                            
+                            if m_is_sender:
+                                await asyncio.gather(
+                                    manager.send_personal_message(m_delete_event, m_receiver_id),
+                                    manager.send_personal_message(m_delete_event, user_id),
+                                    notifications_manager.send_personal_message(m_delete_event, m_receiver_id),
+                                    notifications_manager.send_personal_message(m_delete_event, user_id),
+                                    return_exceptions=True
+                                )
+                            else:
+                                await asyncio.gather(
+                                    manager.send_personal_message(m_delete_event, user_id),
+                                    notifications_manager.send_personal_message(m_delete_event, user_id),
+                                    return_exceptions=True
+                                )
+                        await db.commit()
                 continue
 
             # Стандартная отправка сообщения

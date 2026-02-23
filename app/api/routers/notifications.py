@@ -2,7 +2,7 @@ from typing import Dict, List
 import asyncio
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import update, select
+from sqlalchemy import update, select, func
 import jwt
 from datetime import datetime
 
@@ -89,18 +89,24 @@ async def websocket_endpoint(
 ):
     # Accept the connection first to prevent 403 Forbidden on handshake
     # Note: We must accept before we can reliably read query params or headers in some environments
-    await websocket.accept()
+    logger.info("New WS Connection request received at /notifications")
+    try:
+        await websocket.accept()
+        logger.info("WS connection accepted on server side")
+    except Exception as e:
+        logger.error(f"WS accept failed: {e}")
+        return
     
     token = websocket.query_params.get("token")
+    if token:
+        token = token.strip().strip('"').strip("'")
+        
     logger.info(f"WS Attempt (notifications): token={token[:10]}..." if token else "WS Attempt (notifications): no token")
 
     if not token or token == "null" or token == "undefined":
         logger.warning(f"WS Connection rejected: missing or invalid token ('{token}')")
         await websocket.close(code=4003)
         return
-
-    # Clean token (remove potential quotes if passed incorrectly)
-    token = token.strip().strip('"').strip("'")
 
     from app.database import async_session_maker
     user_id = None
@@ -123,6 +129,27 @@ async def websocket_endpoint(
                     "last_seen": last_seen
                 }
             })
+
+            # Send initial friend request count
+            from app.api.routers.users import get_friend_requests
+            try:
+                # We need a proper user object or just user_id if the function allows
+                # get_friend_requests(db, current_user)
+                # Let's just do a direct query for simplicity to avoid dependency hell
+                from app.models.users import Friendship
+                result = await db.execute(
+                    select(func.count(Friendship.id)).where(
+                        Friendship.friend_id == user_id,
+                        Friendship.status == "pending"
+                    )
+                )
+                count = result.scalar()
+                await websocket.send_json({
+                    "type": "friend_requests_count",
+                    "count": count
+                })
+            except Exception as e:
+                logger.error(f"Failed to send initial friend requests count: {e}")
     
         try:
             while True:

@@ -14,12 +14,12 @@ export default function ChatListScreen({ navigation }) {
 
   useFocusEffect(
     useCallback(() => {
-      // Только если WS еще не подключен или список пуст, делаем запрос.
-      // В остальных случаях полагаемся на real-time обновления через WS.
-      if (!isConnected || dialogs.length === 0) {
+      // If not connected, we might still want to fetch once via API as fallback
+      // but primarily we rely on get_dialogs via WS in connectChatWs
+      if (!isConnected) {
         fetchDialogs();
       }
-    }, [isConnected, dialogs.length, fetchDialogs])
+    }, [isConnected, fetchDialogs])
   );
 
   const getAvatarUrl = (url) => {
