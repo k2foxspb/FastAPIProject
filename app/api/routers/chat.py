@@ -124,9 +124,18 @@ async def websocket_chat_endpoint(
                 from app.api.routers.chat import get_dialogs as fetch_dialogs_api
                 try:
                     dialogs_list = await fetch_dialogs_api(token=token, db=db)
+                    # Конвертируем datetime в ISO формат для JSON
+                    processed_dialogs = []
+                    for d in dialogs_list:
+                        d_dict = dict(d) if not isinstance(d, dict) else d.copy()
+                        if isinstance(d_dict.get("last_message_time"), datetime):
+                            d_dict["last_message_time"] = d_dict["last_message_time"].isoformat()
+                        processed_dialogs.append(d_dict)
+
+                    logger.info(f"Sending WS dialogs to user {user_id}, count: {len(processed_dialogs)}")
                     await websocket.send_json({
                         "type": "dialogs_list",
-                        "data": dialogs_list
+                        "data": processed_dialogs
                     })
                 except Exception as e:
                     logger.error(f"WS get_dialogs error: {e}")
@@ -140,10 +149,19 @@ async def websocket_chat_endpoint(
                     from app.api.routers.chat import get_chat_history as fetch_history_api
                     try:
                         history = await fetch_history_api(other_user_id=int(other_user_id), token=token, limit=limit, skip=skip, db=db)
+                        # Конвертируем datetime в ISO формат для JSON
+                        processed_history = []
+                        for m in history:
+                            m_dict = dict(m) if not isinstance(m, dict) else m.copy()
+                            if isinstance(m_dict.get("timestamp"), datetime):
+                                m_dict["timestamp"] = m_dict["timestamp"].isoformat()
+                            processed_history.append(m_dict)
+                        
+                        logger.info(f"Sending WS history to user {user_id} for partner {other_user_id}, count: {len(processed_history)}")
                         await websocket.send_json({
                             "type": "chat_history",
-                            "other_user_id": other_user_id,
-                            "data": history,
+                            "other_user_id": int(other_user_id),
+                            "data": processed_history,
                             "skip": skip
                         })
                     except Exception as e:

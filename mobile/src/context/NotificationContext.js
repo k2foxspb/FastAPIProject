@@ -14,13 +14,16 @@ export const NotificationProvider = ({ children }) => {
   const [historyListeners] = useState(new Set());
 
   const getHistoryWs = React.useCallback((otherUserId, limit = 15, skip = 0) => {
+    console.log('[NotificationContext] getHistoryWs called for:', otherUserId, 'chatWs status:', chatWs.current?.readyState);
     if (chatWs.current && chatWs.current.readyState === WebSocket.OPEN) {
-      chatWs.current.send(JSON.stringify({
+      const payload = {
         type: 'get_history',
         other_user_id: otherUserId,
         limit,
         skip
-      }));
+      };
+      console.log('[NotificationContext] Sending get_history via Chat WS:', JSON.stringify(payload));
+      chatWs.current.send(JSON.stringify(payload));
       return true;
     }
     return false;
@@ -124,14 +127,20 @@ export const NotificationProvider = ({ children }) => {
       chatWs.current.onmessage = (e) => {
         try {
           const payload = JSON.parse(e.data);
-          if (payload.type === 'dialogs_list') {
-            console.log('[NotificationContext] Dialogs list received via WS');
-            setDialogs(payload.data);
-          } else if (payload.type === 'chat_history') {
-            console.log('[NotificationContext] Chat history received via WS');
+          const msgType = payload.type || payload.msg_type;
+          console.log('[NotificationContext] Chat WS message received:', msgType || 'UNKNOWN_TYPE', 'Full payload:', JSON.stringify(payload));
+          if (msgType === 'dialogs_list') {
+            console.log('[NotificationContext] Dialogs list received via WS, count:', payload.data?.length);
+            setDialogs(payload.data || []);
+          } else if (msgType === 'chat_history') {
+            console.log('[NotificationContext] Chat history received via WS, count:', payload.data?.length, 'otherUserId:', payload.other_user_id);
             historyListeners.forEach(cb => cb(payload));
+          } else if (msgType === 'pong') {
+            // Keep-alive response
           }
-        } catch (err) {}
+        } catch (err) {
+          console.error('[NotificationContext] Chat WS parse error:', err, 'Raw data:', e.data);
+        }
       };
 
       chatWs.current.onclose = (e) => {

@@ -25,8 +25,12 @@ export default function FeedScreen({ navigation }) {
   const [updatingProductId, setUpdatingProductId] = useState(null);
 
   const loadData = useCallback(async () => {
+    console.log('[FeedScreen] loadData starting... loadingUser:', loadingUser, 'currentUser:', !!currentUser);
     // Ждем, пока NotificationContext загрузит пользователя, чтобы не дублировать запросы
-    if (loadingUser) return;
+    if (loadingUser) {
+      console.log('[FeedScreen] loadData skipped: user still loading');
+      return;
+    }
 
     try {
       const promises = [
@@ -96,6 +100,7 @@ export default function FeedScreen({ navigation }) {
 
   useFocusEffect(
     useCallback(() => {
+      console.log('[FeedScreen] Focused, loading data...');
       loadData();
     }, [loadData])
   );

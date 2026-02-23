@@ -201,7 +201,12 @@ export default function ChatScreen({ route, navigation }) {
 
   useEffect(() => {
     // setActiveChatId(userId); // Дубликат удален
+    console.log('[ChatScreen] Initializing chat effects for userId:', userId);
+    setMessages([]); // Reset messages on mount
+    setHasMore(true);
+    setSkip(0);
     return () => {
+      console.log('[ChatScreen] Cleaning up effects for userId:', userId);
       // setActiveChatId(null); // Дубликат удален
       // We don't call recorder.stop() here because useAudioRecorder manages its own lifecycle.
       // Calling it manually during unmount can race with the hook's internal cleanup.
@@ -213,12 +218,16 @@ export default function ChatScreen({ route, navigation }) {
   }, [userId]);
 
   useEffect(() => {
-    return onHistoryReceived((payload) => {
+    console.log('[ChatScreen] onHistoryReceived listener ATTACHED for userId:', userId);
+    const unsubscribe = onHistoryReceived((payload) => {
+      console.log('[ChatScreen] onHistoryReceived listener TRIGGERED for payload user:', payload.other_user_id, 'screen user:', userId);
       if (Number(payload.other_user_id) === Number(userId)) {
         setMessages(prev => {
           if (payload.skip === 0) {
+            console.log('[ChatScreen] Setting initial messages via WS history (count:', payload.data?.length, ')');
             return payload.data;
           } else {
+            console.log('[ChatScreen] Appending more messages via WS history (count:', payload.data?.length, ')');
             const newMsgs = payload.data.filter(m => !prev.find(pm => pm.id === m.id));
             return [...prev, ...newMsgs];
           }
@@ -236,6 +245,10 @@ export default function ChatScreen({ route, navigation }) {
         setLoadingMore(false);
       }
     });
+    return () => {
+      console.log('[ChatScreen] onHistoryReceived listener DETACHED for userId:', userId);
+      unsubscribe();
+    };
   }, [userId, onHistoryReceived]);
 
   useEffect(() => {
@@ -839,6 +852,17 @@ export default function ChatScreen({ route, navigation }) {
     );
   };
 
+  const formatMessageTime = (timeStr) => {
+    try {
+      if (!timeStr) return '';
+      const date = new Date(timeStr);
+      if (isNaN(date.getTime())) return '';
+      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    } catch (e) {
+      return '';
+    }
+  };
+
   const renderMessageItem = ({ item, index }) => {
     const isImage = item.message_type === 'image';
     const isVideo = item.message_type === 'video';
@@ -1009,7 +1033,7 @@ export default function ChatScreen({ route, navigation }) {
               styles.messageTime, 
               isReceived ? {color: colors.textSecondary} : {color: 'rgba(255,255,255,0.7)'}
             ]}>
-              {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              {formatMessageTime(item.timestamp)}
             </Text>
             {!isReceived && (
               <MaterialIcons 
@@ -1078,29 +1102,7 @@ export default function ChatScreen({ route, navigation }) {
     );
   };
 
-  const handleDeleteMessage = (messageId) => {
-    Alert.alert(
-      'Удалить сообщение?',
-      'Вы уверены, что хотите удалить это сообщение?',
-      [
-        { text: 'Отмена', style: 'cancel' },
-        {
-          text: 'Удалить',
-          style: 'destructive',
-          onPress: () => {
-            const sent = deleteMessageWs(messageId);
-            if (!sent) {
-              Alert.alert('Ошибка', 'Не удалось отправить запрос на удаление. Проверьте соединение.');
-              return;
-            }
-            // Локально удаляем для мгновенного отклика
-            setMessages(prev => prev.filter(m => m.id !== messageId));
-            setSkip(prev => Math.max(0, prev - 1));
-          }
-        }
-      ]
-    );
-  };
+  console.log('[ChatScreen] Rendering, messages count:', messages.length, 'userId:', userId);
 
   return (
     <KeyboardAvoidingView 
@@ -1109,6 +1111,9 @@ export default function ChatScreen({ route, navigation }) {
       keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
       enabled={Platform.OS !== 'web'}
     >
+      <View style={{ backgroundColor: '#FFFF00', padding: 5 }}>
+        <Text style={{ color: '#000' }}>TEST: messages.length = {messages.length}</Text>
+      </View>
       <View style={[styles.header, { 
         borderBottomColor: colors.border, 
         backgroundColor: colors.background, 
