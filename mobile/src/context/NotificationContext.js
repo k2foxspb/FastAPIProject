@@ -7,6 +7,7 @@ import { storage } from '../utils/storage';
 import { setNotificationAudioMode } from '../utils/audioSettings';
 import { isWithinQuietHours } from '../utils/quietHours';
 import { navigationRef } from '../navigation/NavigationService';
+import { updateServerFcmToken } from '../utils/notifications';
 
 const NotificationContext = createContext();
 
@@ -616,6 +617,9 @@ export const NotificationProvider = ({ children }) => {
 
         checkConnection(ws, 'Notifications', connect);
         checkConnection(chatWs, 'Chat', connectChatWs);
+        
+        // Also ensure FCM token is up to date on the server when app returns to foreground
+        updateServerFcmToken().catch(e => console.log('[NotificationContext] FCM Sync failed on foreground', e));
       }
     });
     return () => {
@@ -632,6 +636,9 @@ export const NotificationProvider = ({ children }) => {
         const userRes = await usersApi.getMe();
         setCurrentUser(userRes.data);
         setCurrentUserId(userRes.data.id);
+        
+        // After user is successfully loaded, make sure FCM token is on the server
+        updateServerFcmToken();
       } else {
         setCurrentUser(null);
         setCurrentUserId(null);

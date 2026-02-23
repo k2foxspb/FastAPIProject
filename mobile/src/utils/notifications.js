@@ -96,6 +96,7 @@ export function setupCloudMessaging() {
     // Обработка обновления токена
     msg.onTokenRefresh(token => {
       console.log('FCM Token refreshed:', token);
+      storage.saveItem('fcm_token', token); // Save locally as well
       updateServerFcmToken(token);
     });
 
@@ -153,6 +154,9 @@ export async function getFcmToken() {
 
     const token = await msg.getToken();
     console.log('FCM Token:', token);
+    if (token) {
+      await storage.saveItem('fcm_token', token);
+    }
     return token;
   } catch (error) {
     console.error('Failed to get FCM token:', error);
@@ -162,30 +166,45 @@ export async function getFcmToken() {
 
 export async function updateServerFcmToken(passedToken = null) {
   try {
-    const token = passedToken || await getFcmToken();
+    let token = passedToken;
+    
     if (!token) {
+      // Try to get from local storage first (faster)
+      token = await storage.getItem('fcm_token');
+    }
+    
+    if (!token) {
+      // If still no token, try to fetch it from Firebase
+      token = await getFcmToken();
+    }
 
+    if (!token) {
+      console.log('FCM Token not available yet, will retry later.');
       return;
     }
 
-    // Проверяем наличие токена авторизации в axios
-    const hasAuth = usersApi.updateFcmToken.toString().includes('Authorization') || true; // Просто напоминание
-    
+    // Проверяем наличие токена авторизации
+    const accessToken = await storage.getAccessToken();
+    if (!accessToken) {
+      console.log('User not authenticated, skipping FCM token update on server.');
+      return;
+    }
 
     const response = await usersApi.updateFcmToken(token);
     
     if (response.data && response.data.status === 'ok') {
-      console.log('FCM Token updated on server SUCCESSFULLY:', token);
+      console.log('FCM Token updated on server SUCCESSFULLY:', token.substring(0, 15) + '...');
+      // Store the last synced token and timestamp to avoid redundant updates
+      await storage.saveItem('last_synced_fcm_token', token);
+      await storage.saveItem('last_fcm_sync_time', new Date().toISOString());
     } else {
       console.log('FCM Token update response:', response.data);
     }
   } catch (error) {
     if (error.response) {
       console.error('Failed to update FCM token on server (Response Error):', error.response.status, error.response.data);
-    } else if (error.request) {
-      console.error('Failed to update FCM token on server (No Response):', error.message);
     } else {
-      console.error('Failed to update FCM token on server (Setup Error):', error.message);
+      console.error('Failed to update FCM token on server:', error.message);
     }
   }
 }
