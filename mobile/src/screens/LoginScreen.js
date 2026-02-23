@@ -23,7 +23,9 @@ export default function LoginScreen({ navigation }) {
     }
     try {
       setLoading(true);
-      const res = await usersApi.login(username, password);
+      // Получаем FCM токен перед логином, если он уже есть локально
+      const fcmToken = await storage.getItem('fcm_token');
+      const res = await usersApi.login(username, password, fcmToken);
       const token = res.data?.access_token;
       const refreshToken = res.data?.refresh_token;
       if (!token) {

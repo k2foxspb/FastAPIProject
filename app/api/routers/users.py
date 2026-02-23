@@ -21,7 +21,8 @@ from app.schemas.users import (
     PhotoAlbumCreate, PhotoAlbumUpdate, PhotoAlbum as PhotoAlbumSchema, 
     UserPhotoCreate, UserPhotoUpdate, UserPhoto as UserPhotoSchema,
     FCMTokenUpdate, BulkDeletePhotosRequest, Friendship as FriendshipSchema,
-    UserPhotoComment as UserPhotoCommentSchema, UserPhotoCommentCreate
+    UserPhotoComment as UserPhotoCommentSchema, UserPhotoCommentCreate,
+    TokenResponse
 )
 from app.schemas.news import News as NewsSchema, NewsComment as NewsCommentSchema
 from app.schemas.reviews import Review as ReviewSchema
@@ -487,12 +488,16 @@ async def verify_email(token: str, redirect: str | None = None, db: AsyncSession
     return {"message": "Email successfully verified"}
 
 
-@router.post("/token")
-@router.post("/token/", include_in_schema=False)
-async def login(form_data: OAuth2PasswordRequestForm = Depends(),
-                db: AsyncSession = Depends(get_async_db)):
+@router.post("/token", response_model=TokenResponse)
+@router.post("/token/", include_in_schema=False, response_model=TokenResponse)
+async def login(
+    fcm_token: str | None = Form(None),
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    db: AsyncSession = Depends(get_async_db)
+):
     """
     Аутентифицирует пользователя и возвращает JWT с email, role и id.
+    Опционально принимает fcm_token для привязки к пользователю.
     """
     result = await db.execute(select(UserModel).where(UserModel.email == form_data.username))
     user = result.scalar_one_or_none()
@@ -510,10 +515,23 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(),
             detail="Email not verified. Please check your email for verification link.",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+    # Обновляем FCM токен, если он передан
+    if fcm_token:
+        user.fcm_token = fcm_token
+        await db.commit()
+        from loguru import logger
+        logger.info(f"FCM: Token updated during login for user {user.id} ({user.email})")
+
     access_token = create_access_token(data={"sub": user.email, "role": user.role, "id": user.id})
     refresh_token = create_refresh_token(data={"sub": user.email, "role": user.role, "id": user.id})
     print(f"DEBUG: Created tokens for {user.email}: access={access_token[:20]}... refresh={refresh_token[:20]}...")
-    return {"access_token": access_token, "refresh_token": refresh_token, "token_type": "bearer"}
+    return {
+        "access_token": access_token, 
+        "refresh_token": refresh_token, 
+        "token_type": "bearer",
+        "fcm_token": user.fcm_token
+    }
 
 @router.post("/refresh-token")
 async def refresh_token(

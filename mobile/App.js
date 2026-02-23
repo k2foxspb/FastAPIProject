@@ -70,7 +70,13 @@ function AppContent() {
     // Устанавливаем режим аудио для всего приложения
     setPlaybackAudioMode();
     
-    requestUserPermission();
+    requestUserPermission().then(granted => {
+      if (granted) {
+        // Если разрешение получено, пробуем получить и сохранить токен
+        const { getFcmToken } = require('./src/utils/notifications');
+        getFcmToken().catch(e => console.log('Initial getFcmToken failed', e));
+      }
+    });
     setupCloudMessaging();
 
     // Проверка сохраненной сессии

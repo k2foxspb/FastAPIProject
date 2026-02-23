@@ -24,10 +24,13 @@ export const initAuth = async () => {
 
 export const usersApi = {
   getMe: () => api.get('/users/me'),
-  login: (username, password) => {
+  login: (username, password, fcmToken = null) => {
     const params = new URLSearchParams();
     params.append('username', username);
     params.append('password', password);
+    if (fcmToken) {
+      params.append('fcm_token', fcmToken);
+    }
     return api.post('/users/token', params, {
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',

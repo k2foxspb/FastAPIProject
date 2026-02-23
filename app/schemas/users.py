@@ -297,6 +297,12 @@ class RefreshTokenRequest(BaseModel):
 class FCMTokenUpdate(BaseModel):
     fcm_token: str
 
+class TokenResponse(BaseModel):
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
+    fcm_token: str | None = None
+
 
 class Friendship(BaseModel):
     id: int
