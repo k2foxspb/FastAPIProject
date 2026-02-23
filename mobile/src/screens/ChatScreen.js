@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { getShadow } from '../utils/shadowStyles';
-import { View, Text, FlatList, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, Image, Modal, Pressable, Alert, StatusBar, Dimensions, Share, Animated, Vibration } from 'react-native';
+import { View, Text, FlatList, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, Image, Modal, Pressable, Alert, AppState, StatusBar, Dimensions, Share, Animated, Vibration } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import { documentDirectory, getInfoAsync, downloadAsync, deleteAsync, readAsStringAsync, writeAsStringAsync, EncodingType, StorageAccessFramework } from 'expo-file-system/legacy';
@@ -17,7 +17,7 @@ import { Audio, useAudioRecorder, useAudioRecorderState, useAudioPlayer, Recordi
 import { MaterialIcons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
-import { formatStatus, formatName, formatFileSize } from '../utils/formatters';
+import { formatStatus, formatName, formatFileSize, parseISODate, formatMessageTime } from '../utils/formatters';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { setPlaybackAudioMode, setRecordingAudioMode, setNotificationAudioMode } from '../utils/audioSettings';
 import { isWithinQuietHours } from '../utils/quietHours';
@@ -120,7 +120,7 @@ export default function ChatScreen({ route, navigation }) {
   };
 
   // Основной механизм: слушаем уведомления из контекста
-  const lastProcessedNotificationRef = useRef(null);
+  const lastProcessedNotificationRef = useRef(notifications.length > 0 ? notifications[0] : null);
 
   useEffect(() => {
     if (notifications.length > 0) {
@@ -131,43 +131,51 @@ export default function ChatScreen({ route, navigation }) {
       lastProcessedNotificationRef.current = lastNotify;
 
       const notifyType = lastNotify.type;
-      console.log('[ChatScreen] Processing notification in useEffect:', notifyType, lastNotify.data?.id || '');
 
-      if (notifyType === 'new_message' && lastNotify.data) {
+    if (notifyType === 'new_message' && lastNotify.data) {
         const message = lastNotify.data;
+        console.log('[ChatScreen] Processing new message notification:', message.id, 'from:', message.sender_id, 'text:', message.message);
         const msgSenderId = Number(message.sender_id);
         const msgReceiverId = Number(message.receiver_id);
         const currentChatId = Number(userId);
         const myIdNum = Number(currentUserId);
 
+        console.log('[ChatScreen] Message check - from:', msgSenderId, 'to:', msgReceiverId, 'currentChat:', currentChatId, 'myId:', myIdNum);
+
         const isRelated = (msgSenderId === currentChatId && msgReceiverId === myIdNum) || 
                           (msgSenderId === myIdNum && msgReceiverId === currentChatId);
         
-        if (msgSenderId === currentChatId && msgReceiverId === myIdNum) {
+        if (isRelated) {
           setMessages(prev => {
-            if (prev.find(m => Number(m.id) === Number(message.id))) return prev;
-            console.log('[ChatScreen Notifications] New message added:', message.id);
+            if (prev.find(m => Number(m.id) === Number(message.id))) {
+              console.log('[ChatScreen] Message already exists, skipping:', message.id);
+              return prev;
+            }
+            console.log('[ChatScreen] Adding message to list:', message.id);
             return [message, ...prev];
           });
           setSkip(prev => prev + 1);
-          playMessageSound();
-          // Помечаем как прочитанное через WebSocket
-          markAsReadWs(userId);
-          clearUnread(userId);
-        } else if (msgSenderId === myIdNum && msgReceiverId === currentChatId) {
-          setMessages(prev => {
-            if (prev.find(m => Number(m.id) === Number(message.id))) return prev;
-            console.log('[ChatScreen Notifications] My message added:', message.id);
-            return [message, ...prev];
-          });
-          setSkip(prev => prev + 1);
+          
+          if (msgSenderId === currentChatId) {
+            // Сообщение от собеседника
+            clearUnread(userId);
+            const isAppActive = AppState.currentState === 'active';
+            if (isAppActive) {
+              playMessageSound();
+              markAsReadWs(userId);
+            }
+          } else {
+            // Сообщение от меня
+            console.log('[ChatScreen] My message added to list');
+          }
+        } else {
+          console.log('[ChatScreen] Message not related to this chat, ignoring');
         }
       } else if (notifyType === 'message_deleted') {
         const msgId = lastNotify.message_id;
         if (msgId) {
           setMessages(prev => {
             if (prev.find(m => m.id === msgId)) {
-              console.log('[ChatScreen Notifications] Message deleted:', msgId);
               return prev.filter(m => m.id !== msgId);
             }
             return prev;
@@ -177,7 +185,6 @@ export default function ChatScreen({ route, navigation }) {
       } else if (notifyType === 'messages_read' || notifyType === 'your_messages_read') {
         const readerId = lastNotify.reader_id || lastNotify.data?.reader_id || lastNotify.data?.from_user_id;
         if (Number(readerId) === Number(userId) || Number(readerId) === Number(currentUserId)) {
-          console.log('[ChatScreen Notifications] Messages marked as read by:', readerId);
           setMessages(prev => prev.map(m => 
             (m.sender_id && Number(m.sender_id) === Number(currentUserId)) ? { ...m, is_read: true } : m
           ));
@@ -185,12 +192,26 @@ export default function ChatScreen({ route, navigation }) {
       } else if (notifyType === 'user_status' && lastNotify.data) {
         const { user_id, status, last_seen } = lastNotify.data;
         if (Number(user_id) === Number(userId)) {
-          console.log('[ChatScreen Notifications] Interlocutor status changed:', status);
           setInterlocutor(prev => prev ? { ...prev, status, last_seen } : null);
         }
       }
     }
   }, [notifications, userId, currentUserId]);
+
+  // Добавляем слушатель состояния приложения, чтобы помечать прочитанным при возврате в активный чат
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', nextAppState => {
+      if (nextAppState === 'active' && activeChatIdRef.current) {
+        console.log('[ChatScreen] App became active while in chat, check if we should mark as read');
+        // Помечаем как прочитанные только если экран действительно в фокусе (через Ref не совсем надежно, но в этом компоненте должно работать)
+        markAsReadWs(activeChatIdRef.current);
+        clearUnread(activeChatIdRef.current);
+      }
+    });
+    return () => {
+      subscription.remove();
+    };
+  }, [markAsReadWs, clearUnread]);
 
   useEffect(() => {
     isMounted.current = true;
@@ -201,12 +222,10 @@ export default function ChatScreen({ route, navigation }) {
 
   useEffect(() => {
     // setActiveChatId(userId); // Дубликат удален
-    console.log('[ChatScreen] Initializing chat effects for userId:', userId);
     setMessages([]); // Reset messages on mount
     setHasMore(true);
     setSkip(0);
     return () => {
-      console.log('[ChatScreen] Cleaning up effects for userId:', userId);
       // setActiveChatId(null); // Дубликат удален
       // We don't call recorder.stop() here because useAudioRecorder manages its own lifecycle.
       // Calling it manually during unmount can race with the hook's internal cleanup.
@@ -218,16 +237,12 @@ export default function ChatScreen({ route, navigation }) {
   }, [userId]);
 
   useEffect(() => {
-    console.log('[ChatScreen] onHistoryReceived listener ATTACHED for userId:', userId);
     const unsubscribe = onHistoryReceived((payload) => {
-      console.log('[ChatScreen] onHistoryReceived listener TRIGGERED for payload user:', payload.other_user_id, 'screen user:', userId);
       if (Number(payload.other_user_id) === Number(userId)) {
         setMessages(prev => {
           if (payload.skip === 0) {
-            console.log('[ChatScreen] Setting initial messages via WS history (count:', payload.data?.length, ')');
             return payload.data;
           } else {
-            console.log('[ChatScreen] Appending more messages via WS history (count:', payload.data?.length, ')');
             const newMsgs = payload.data.filter(m => !prev.find(pm => pm.id === m.id));
             return [...prev, ...newMsgs];
           }
@@ -246,7 +261,6 @@ export default function ChatScreen({ route, navigation }) {
       }
     });
     return () => {
-      console.log('[ChatScreen] onHistoryReceived listener DETACHED for userId:', userId);
       unsubscribe();
     };
   }, [userId, onHistoryReceived]);
@@ -289,9 +303,17 @@ export default function ChatScreen({ route, navigation }) {
         }
       }
 
-      // Помечаем как прочитанные через WebSocket
-      markAsReadWs(userId);
-      clearUnread(userId);
+      // Помечаем как прочитанные через WebSocket только если приложение активно и экран в фокусе
+      const isAppActive = AppState.currentState === 'active';
+      console.log('[ChatScreen] initChat, app state:', AppState.currentState);
+      
+      if (isAppActive) {
+        console.log('[ChatScreen] Initializing chat, app is active, marking as read');
+        markAsReadWs(userId);
+        clearUnread(userId);
+      } else {
+        console.log('[ChatScreen] Initializing chat, app is in background, NOT marking as read');
+      }
 
       // Загрузка данных собеседника - сначала из диалогов
       const existingDlg = dialogs.find(d => Number(d.user_id) === Number(userId));
@@ -852,16 +874,6 @@ export default function ChatScreen({ route, navigation }) {
     );
   };
 
-  const formatMessageTime = (timeStr) => {
-    try {
-      if (!timeStr) return '';
-      const date = new Date(timeStr);
-      if (isNaN(date.getTime())) return '';
-      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    } catch (e) {
-      return '';
-    }
-  };
 
   const renderMessageItem = ({ item, index }) => {
     const isImage = item.message_type === 'image';
@@ -875,8 +887,12 @@ export default function ChatScreen({ route, navigation }) {
 
     // Группировка: если предыдущее сообщение от того же отправителя и разница во времени менее 2 минут
     const prevMsg = messages[index + 1]; // Помним, что FlatList inverted
+    
+    const currentMsgDate = parseISODate(item.timestamp);
+    const prevMsgDate = prevMsg ? parseISODate(prevMsg.timestamp) : null;
+    
     const isGrouped = prevMsg && Number(prevMsg.sender_id) === Number(item.sender_id) && 
-                      (new Date(item.timestamp) - new Date(prevMsg.timestamp)) < 120000;
+                      currentMsgDate && prevMsgDate && (currentMsgDate - prevMsgDate) < 120000;
 
     const handleFullScreen = (uri, type) => {
       if (selectionMode) {
@@ -1107,13 +1123,10 @@ export default function ChatScreen({ route, navigation }) {
   return (
     <KeyboardAvoidingView 
       behavior={Platform.OS === 'ios' ? 'padding' : (Platform.OS === 'android' ? 'height' : undefined)} 
-      style={[styles.container, { backgroundColor: colors.background }]}
+      style={[styles.container, { backgroundColor: colors.background, flex: 1 }]}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
       enabled={Platform.OS !== 'web'}
     >
-      <View style={{ backgroundColor: '#FFFF00', padding: 5 }}>
-        <Text style={{ color: '#000' }}>TEST: messages.length = {messages.length}</Text>
-      </View>
       <View style={[styles.header, { 
         borderBottomColor: colors.border, 
         backgroundColor: colors.background, 

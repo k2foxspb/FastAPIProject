@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { getShadow } from '../utils/shadowStyles';
 import { View, Text, StyleSheet, Image, FlatList, ScrollView, TouchableOpacity, ActivityIndicator, Platform } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
@@ -6,6 +6,7 @@ import { usersApi, adminApi, newsApi } from '../api';
 import { API_BASE_URL } from '../constants';
 import { Ionicons as Icon } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
+import { useNotifications } from '../context/NotificationContext';
 import { theme as themeConstants } from '../constants/theme';
 import { formatStatus, formatName } from '../utils/formatters';
 
@@ -13,10 +14,18 @@ export default function UserProfileScreen({ route, navigation }) {
   const { theme } = useTheme();
   const colors = themeConstants[theme];
   const { userId, isAdminView } = route.params;
+  const { userStatuses } = useNotifications();
   const [user, setUser] = useState(null);
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+
+  // Применяем WebSocket статус к текущему пользователю
+  useEffect(() => {
+    if (user && userStatuses[user.id]) {
+      setUser(prev => ({ ...prev, ...userStatuses[user.id] }));
+    }
+  }, [userStatuses, user?.id]);
 
   const fetchUser = useCallback(async () => {
     try {
@@ -24,7 +33,14 @@ export default function UserProfileScreen({ route, navigation }) {
       const userRes = isAdminView 
         ? await adminApi.getUser(userId)
         : await usersApi.getUser(userId);
-      setUser(userRes.data);
+      
+      let userData = userRes.data;
+      // Сразу применяем статус из WebSocket, если он есть
+      if (userStatuses[userData.id]) {
+        userData = { ...userData, ...userStatuses[userData.id] };
+      }
+      
+      setUser(userData);
       
       const postsRes = await newsApi.getUserNews(userId);
       setPosts(postsRes.data);
@@ -36,7 +52,7 @@ export default function UserProfileScreen({ route, navigation }) {
     } finally {
       setLoading(false);
     }
-  }, [userId, isAdminView]);
+  }, [userId, isAdminView, userStatuses]);
 
   const handleFriendAction = async () => {
     try {

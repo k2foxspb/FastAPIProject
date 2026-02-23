@@ -10,13 +10,65 @@ import { formatStatus, formatName } from '../utils/formatters';
 export default function UsersScreen({ navigation }) {
   const { theme } = useTheme();
   const colors = themeConstants[theme];
-  const { fetchFriendRequestsCount, currentUser, loadingUser } = useNotifications();
+  const { fetchFriendRequestsCount, currentUser, loadingUser, userStatuses } = useNotifications();
   const [users, setUsers] = useState([]);
   const [friends, setFriends] = useState([]);
   const [requests, setRequests] = useState([]);
   const [search, setSearch] = useState('');
   const [currentUserId, setCurrentUserId] = useState(currentUser?.id);
   const [activeTab, setActiveTab] = useState('all'); // 'all', 'friends'
+
+  // Применяем WebSocket статусы к локальному списку пользователей
+  useEffect(() => {
+    if (Object.keys(userStatuses).length === 0) return;
+    
+    console.log('[UsersScreen] Applying userStatuses updates:', Object.keys(userStatuses).length);
+    
+    setUsers(prev => {
+      let changed = false;
+      const next = prev.map(u => {
+        if (userStatuses[u.id]) {
+          const statusChanged = u.status !== userStatuses[u.id].status || u.last_seen !== userStatuses[u.id].last_seen;
+          if (statusChanged) {
+            changed = true;
+            return { ...u, ...userStatuses[u.id] };
+          }
+        }
+        return u;
+      });
+      return changed ? next : prev;
+    });
+    
+    setFriends(prev => {
+      let changed = false;
+      const next = prev.map(f => {
+        if (userStatuses[f.id]) {
+          const statusChanged = f.status !== userStatuses[f.id].status || f.last_seen !== userStatuses[f.id].last_seen;
+          if (statusChanged) {
+            changed = true;
+            return { ...f, ...userStatuses[f.id] };
+          }
+        }
+        return f;
+      });
+      return changed ? next : prev;
+    });
+    
+    setRequests(prev => {
+      let changed = false;
+      const next = prev.map(r => {
+        if (userStatuses[r.id]) {
+          const statusChanged = r.status !== userStatuses[r.id].status || r.last_seen !== userStatuses[r.id].last_seen;
+          if (statusChanged) {
+            changed = true;
+            return { ...r, ...userStatuses[r.id] };
+          }
+        }
+        return r;
+      });
+      return changed ? next : prev;
+    });
+  }, [userStatuses]);
 
   useEffect(() => {
     if (loadingUser) return;
@@ -29,14 +81,27 @@ export default function UsersScreen({ navigation }) {
     try {
       if (activeTab === 'all') {
         const res = await usersApi.getUsers(search);
-        setUsers(res.data.filter(u => u.friendship_status !== 'self'));
+        let data = res.data.filter(u => u.friendship_status !== 'self');
+        
+        // Сразу применяем статусы из WebSocket, если они есть
+        data = data.map(u => userStatuses[u.id] ? { ...u, ...userStatuses[u.id] } : u);
+        
+        setUsers(data);
       } else {
         const [friendsRes, requestsRes] = await Promise.all([
           usersApi.getFriendsList(),
           usersApi.getFriendRequests()
         ]);
-        setFriends(friendsRes.data);
-        setRequests(requestsRes.data);
+        
+        let friendsData = friendsRes.data;
+        let requestsData = requestsRes.data;
+        
+        // Применяем статусы
+        friendsData = friendsData.map(f => userStatuses[f.id] ? { ...f, ...userStatuses[f.id] } : f);
+        requestsData = requestsData.map(r => userStatuses[r.id] ? { ...r, ...userStatuses[r.id] } : r);
+        
+        setFriends(friendsData);
+        setRequests(requestsData);
       }
     } catch (err) {
       console.log(err);

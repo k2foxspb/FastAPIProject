@@ -74,13 +74,22 @@ async def get_user_from_token(token: str, db: AsyncSession):
         return None
 
 async def update_user_status(user_id: int, status: str, db: AsyncSession):
-    last_seen = datetime.now().isoformat() if status == "offline" else None
+    last_seen = None
+    if status == "offline":
+        last_seen = datetime.utcnow().isoformat()
+    
     await db.execute(
         update(UserModel)
         .where(UserModel.id == user_id)
-        .values(status=status, last_seen=last_seen)
+        .values(status=status, last_seen=last_seen if status == "offline" else UserModel.last_seen)
     )
     await db.commit()
+    
+    # Получаем актуальный last_seen из базы, если мы его не обновляли (для online)
+    if status == "online":
+        result = await db.execute(select(UserModel.last_seen).where(UserModel.id == user_id))
+        last_seen = result.scalar()
+        
     return last_seen
 
 @router.websocket("/notifications")

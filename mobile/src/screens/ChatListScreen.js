@@ -5,7 +5,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
 import { API_BASE_URL } from '../constants';
-import { formatName } from '../utils/formatters';
+import { formatName, formatMessageTime, parseISODate } from '../utils/formatters';
 
 export default function ChatListScreen({ navigation }) {
   const { dialogs, fetchDialogs, isConnected } = useNotifications();
@@ -28,54 +28,36 @@ export default function ChatListScreen({ navigation }) {
     return `${API_BASE_URL}${url}`;
   };
 
-  console.log('[ChatListScreen] Rendering, dialogs count:', dialogs.length);
-  if (dialogs.length > 0) {
-    console.log('[ChatListScreen] First dialog:', JSON.stringify(dialogs[0]));
-  } else {
-    console.log('[ChatListScreen] Dialogs array is EMPTY in render');
-  }
-
   const formatTime = (timeStr) => {
-    try {
-      if (!timeStr) return '';
-      const date = new Date(timeStr);
-      if (isNaN(date.getTime())) return '';
-      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    } catch (e) {
-      return '';
-    }
+    return formatMessageTime(timeStr);
   };
 
   const renderItem = ({ item }) => {
-    console.log('[ChatListScreen] renderItem called for user:', item.user_id);
     return (
       <TouchableOpacity 
         style={[styles.dialogItem, { 
-          borderBottomColor: '#FF0000', // Ярко-красная граница для теста
-          borderBottomWidth: 2,
-          backgroundColor: '#FFFFFF', // Всегда белый фон для теста
+          borderBottomColor: colors.border,
+          backgroundColor: colors.surface, 
           minHeight: 80,
           width: '100%',
-          opacity: 1,
-          zIndex: 999
         }]}
         onPress={() => navigation.navigate('Chat', { userId: item.user_id, userName: formatName(item) })}
       >
         <Image 
           source={{ uri: getAvatarUrl(item.avatar_url) }} 
-          style={[styles.avatar, { borderWidth: 1, borderColor: '#000' }]} 
+          style={styles.avatar} 
         />
         <View style={styles.content}>
           <View style={styles.header}>
-            <Text style={[styles.email, { color: '#000000' }]} numberOfLines={1}>{formatName(item) || 'Имя не загружено'}</Text>
-            <Text style={[styles.time, { color: '#FF0000' }]}>
+            <Text style={[styles.email, { color: colors.text }]} numberOfLines={1}>{formatName(item) || 'Имя не загружено'}</Text>
+            <Text style={[styles.time, { color: colors.textSecondary }]}>
               {formatTime(item.last_message_time)}
             </Text>
           </View>
           <View style={styles.footer}>
-            <Text style={[styles.lastMessage, { color: '#333333' }]} numberOfLines={1}>{item.last_message || '[Нет сообщения]'}</Text>
+            <Text style={[styles.lastMessage, { color: colors.textSecondary }]} numberOfLines={1}>{item.last_message || '[Нет сообщения]'}</Text>
             {item.unread_count > 0 && (
-              <View style={[styles.badge, { backgroundColor: '#FF0000' }]}>
+              <View style={[styles.badge, { backgroundColor: colors.primary }]}>
                 <Text style={styles.badgeText}>{item.unread_count}</Text>
               </View>
             )}
@@ -95,24 +77,21 @@ export default function ChatListScreen({ navigation }) {
   }
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background, flex: 1, minHeight: 200 }]}>
-      <View style={{ padding: 10, backgroundColor: '#FFFF00' }}>
-        <Text style={{ color: '#000' }}>TEST: dialogs.length = {dialogs.length}</Text>
-      </View>
+    <View style={[styles.container, { backgroundColor: colors.background, flex: 1 }]}>
       <FlatList
         data={dialogs}
-        keyExtractor={(item) => item.user_id.toString()}
+        keyExtractor={(item) => (item.user_id || Math.random()).toString()}
         renderItem={renderItem}
-        contentContainerStyle={[styles.list, { flexGrow: 1 }]}
-        style={{ flex: 1 }}
+        contentContainerStyle={styles.list}
+        style={{ flex: 1, width: '100%' }}
       />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  list: { paddingVertical: 10, minHeight: 100 },
+  container: { flex: 1, width: '100%' },
+  list: { paddingVertical: 10, flexGrow: 1, width: '100%' },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
   hint: { color: 'gray', marginTop: 10, textAlign: 'center' },
   dialogItem: { 
@@ -120,7 +99,8 @@ const styles = StyleSheet.create({
     padding: 15, 
     borderBottomWidth: 1, 
     borderBottomColor: '#f0f0f0',
-    alignItems: 'center' 
+    alignItems: 'center',
+    width: '100%'
   },
   avatar: { width: 50, height: 50, borderRadius: 25, marginRight: 15 },
   content: { flex: 1 },

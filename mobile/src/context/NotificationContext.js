@@ -14,7 +14,6 @@ export const NotificationProvider = ({ children }) => {
   const [historyListeners] = useState(new Set());
 
   const getHistoryWs = React.useCallback((otherUserId, limit = 15, skip = 0) => {
-    console.log('[NotificationContext] getHistoryWs called for:', otherUserId, 'chatWs status:', chatWs.current?.readyState);
     if (chatWs.current && chatWs.current.readyState === WebSocket.OPEN) {
       const payload = {
         type: 'get_history',
@@ -22,7 +21,6 @@ export const NotificationProvider = ({ children }) => {
         limit,
         skip
       };
-      console.log('[NotificationContext] Sending get_history via Chat WS:', JSON.stringify(payload));
       chatWs.current.send(JSON.stringify(payload));
       return true;
     }
@@ -33,6 +31,7 @@ export const NotificationProvider = ({ children }) => {
     historyListeners.add(callback);
     return () => historyListeners.delete(callback);
   }, [historyListeners]);
+  const [userStatuses, setUserStatuses] = useState({});
   const [dialogs, setDialogs] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [unreadTotal, setUnreadTotal] = useState(0);
@@ -68,6 +67,7 @@ export const NotificationProvider = ({ children }) => {
   }, [activeChatId]);
 
   useEffect(() => {
+    console.log('[NotificationContext] currentUserId changed to:', currentUserId);
     currentUserIdRef.current = currentUserId;
   }, [currentUserId]);
 
@@ -87,11 +87,13 @@ export const NotificationProvider = ({ children }) => {
       return;
     }
 
-    if (chatWs.current && (chatWs.current.readyState === WebSocket.OPEN || chatWs.current.readyState === WebSocket.CONNECTING)) {
+    const currentState = chatWs.current?.readyState;
+    if (chatWs.current && (currentState === WebSocket.OPEN || currentState === WebSocket.CONNECTING)) {
       if (chatWsLastToken.current === token) {
-        console.log('[NotificationContext] Chat WS already connected or connecting');
+        console.log(`[NotificationContext] Chat WS already in state ${currentState === WebSocket.OPEN ? 'OPEN' : 'CONNECTING'}`);
         return;
       }
+      console.log('[NotificationContext] Token changed, closing existing Chat WS');
       chatWs.current.close();
     }
 
@@ -102,11 +104,20 @@ export const NotificationProvider = ({ children }) => {
     const baseUrlClean = API_BASE_URL.replace('http://', '').replace('https://', '');
     const wsUrl = `${protocol}${baseUrlClean}/chat/ws/${encodeURIComponent(token)}`;
     
-    console.log('[NotificationContext] Connecting to Chat WS...');
+    console.log('[NotificationContext] Connecting to Chat WS:', wsUrl.split('/ws/')[0] + '/ws/***');
     try {
       chatWs.current = new WebSocket(wsUrl);
 
+      // Timeout for connection
+      const connectionTimeout = setTimeout(() => {
+        if (chatWs.current?.readyState === WebSocket.CONNECTING) {
+          console.log('[NotificationContext] Chat WS connection timeout, closing');
+          chatWs.current.close();
+        }
+      }, 10000);
+
       chatWs.current.onopen = () => {
+        clearTimeout(connectionTimeout);
         console.log('[NotificationContext] Chat WS connected');
         chatWsReconnectAttempt.current = 0;
         if (chatWsReconnectTimer.current) {
@@ -128,19 +139,62 @@ export const NotificationProvider = ({ children }) => {
         try {
           const payload = JSON.parse(e.data);
           const msgType = payload.type || payload.msg_type;
-          console.log('[NotificationContext] Chat WS message received:', msgType || 'UNKNOWN_TYPE', 'Full payload:', JSON.stringify(payload));
+          
           if (msgType === 'dialogs_list') {
-            console.log('[NotificationContext] Dialogs list received via WS, count:', payload.data?.length);
             setDialogs(payload.data || []);
           } else if (msgType === 'chat_history') {
-            console.log('[NotificationContext] Chat history received via WS, count:', payload.data?.length, 'otherUserId:', payload.other_user_id);
             historyListeners.forEach(cb => cb(payload));
           } else if (msgType === 'pong') {
             // Keep-alive response
+          } else if (msgType === 'new_message' && payload.data) {
+            const message = payload.data;
+            const wrappedNotification = payload;
+            const myId = currentUserIdRef.current;
+            const isFromMe = Number(message.sender_id) === Number(myId);
+            
+            console.log('[NotificationContext] Chat WS: Received new_message', {
+              id: message.id,
+              sender_id: message.sender_id,
+              myId,
+              isFromMe
+            });
+            
+            setDialogs(prev => {
+              const index = prev.findIndex(d => 
+                Number(d.user_id) === Number(message.sender_id) || 
+                Number(d.user_id) === Number(message.receiver_id)
+              );
+
+              if (index !== -1) {
+                const newDialogs = [...prev];
+                const d = newDialogs[index];
+                const otherUserId = isFromMe ? Number(message.receiver_id) : Number(message.sender_id);
+                const isActiveChat = Number(activeChatIdRef.current) === otherUserId;
+
+                newDialogs[index] = {
+                  ...d,
+                  last_message: message.message || (message.message_type === 'media_group' ? 'Медиафайлы' : (message.message_type || 'Сообщение')),
+                  last_message_time: message.timestamp || message.created_at,
+                  unread_count: (isFromMe || isActiveChat) ? d.unread_count : ((d.unread_count || 0) + 1)
+                };
+
+                const [updated] = newDialogs.splice(index, 1);
+                newDialogs.unshift(updated);
+                return newDialogs;
+              } else {
+                if (chatWs.current && chatWs.current.readyState === WebSocket.OPEN) {
+                  chatWs.current.send(JSON.stringify({ type: 'get_dialogs' }));
+                }
+                return prev;
+              }
+            });
+
+            setNotifications(prev => {
+              if (prev.some(n => n.type === 'new_message' && n.data?.id === message.id)) return prev;
+              return [wrappedNotification, ...prev];
+            });
           }
-        } catch (err) {
-          console.error('[NotificationContext] Chat WS parse error:', err, 'Raw data:', e.data);
-        }
+        } catch (err) {}
       };
 
       chatWs.current.onclose = (e) => {
@@ -167,16 +221,22 @@ export const NotificationProvider = ({ children }) => {
   }, []);
 
   const sendMessage = React.useCallback((msgData) => {
-    if (chatWs.current && chatWs.current.readyState === WebSocket.OPEN) {
+    const currentState = chatWs.current?.readyState;
+    if (chatWs.current && currentState === WebSocket.OPEN) {
       chatWs.current.send(JSON.stringify({
         type: 'message',
         ...msgData
       }));
       return true;
     } else {
-      console.error('[NotificationContext] Chat WS not connected, cannot send message');
-      // If Chat WS is down, try to reconnect
-      storage.getAccessToken().then(tok => { if (tok) connectChatWs(tok); });
+      console.error(`[NotificationContext] Chat WS not ready (state: ${currentState}), cannot send message`);
+      // If Chat WS is down or connecting, try to reconnect (forcing if stuck)
+      storage.getAccessToken().then(tok => { 
+        if (tok) {
+          // If stuck in CONNECTING for a long time, connect() will handle it via state check
+          connectChatWs(tok);
+        }
+      });
       return false;
     }
   }, [connectChatWs]);
@@ -266,9 +326,10 @@ export const NotificationProvider = ({ children }) => {
       return;
     }
 
-    if (ws.current && (ws.current.readyState === WebSocket.OPEN || ws.current.readyState === WebSocket.CONNECTING)) {
+    const currentState = ws.current?.readyState;
+    if (ws.current && (currentState === WebSocket.OPEN || currentState === WebSocket.CONNECTING)) {
       if (lastToken.current === token) {
-        console.log('Notifications WS already connected or connecting with same token');
+        console.log(`Notifications WS already in state ${currentState === WebSocket.OPEN ? 'OPEN' : 'CONNECTING'}`);
         return;
       }
       console.log('Notifications WS connected with different token, closing old one');
@@ -290,7 +351,16 @@ export const NotificationProvider = ({ children }) => {
       console.log('[NotificationContext] Creating new WebSocket instance...');
       ws.current = new WebSocket(wsUrl);
 
+      // Timeout for connection
+      const connectionTimeout = setTimeout(() => {
+        if (ws.current?.readyState === WebSocket.CONNECTING) {
+          console.log('[NotificationContext] Notifications WS connection timeout, closing');
+          ws.current.close();
+        }
+      }, 10000);
+
     ws.current.onopen = () => {
+      clearTimeout(connectionTimeout);
       console.log('[NotificationContext] Notifications WS connected. readyState:', ws.current.readyState);
       setIsConnected(true);
       reconnectAttempt.current = 0; // Reset attempts on successful connection
@@ -317,6 +387,16 @@ export const NotificationProvider = ({ children }) => {
 
         if (payload.type === 'new_message') {
           const message = payload.data;
+          const myId = currentUserIdRef.current;
+          const isFromMe = Number(message.sender_id) === Number(myId);
+          
+          console.log('[NotificationContext] Notifications WS: Received new_message', {
+            id: message.id,
+            sender_id: message.sender_id,
+            myId,
+            isFromMe
+          });
+          
           setDialogs(prev => {
             const index = prev.findIndex(d => 
               Number(d.user_id) === Number(message.sender_id) || 
@@ -326,14 +406,13 @@ export const NotificationProvider = ({ children }) => {
             if (index !== -1) {
               const newDialogs = [...prev];
               const d = newDialogs[index];
-              const isFromMe = Number(message.sender_id) === Number(currentUserIdRef.current);
               const otherUserId = isFromMe ? Number(message.receiver_id) : Number(message.sender_id);
               const isActiveChat = Number(activeChatIdRef.current) === otherUserId;
 
               newDialogs[index] = {
                 ...d,
                 last_message: message.message || (message.message_type === 'media_group' ? 'Медиафайлы' : (message.message_type || 'Сообщение')),
-                last_message_time: message.created_at,
+                last_message_time: message.timestamp || message.created_at,
                 unread_count: (isFromMe || isActiveChat) ? d.unread_count : ((d.unread_count || 0) + 1)
               };
 
@@ -342,11 +421,17 @@ export const NotificationProvider = ({ children }) => {
               newDialogs.unshift(updated);
               return newDialogs;
             } else {
-              // Новый диалог, загружаем весь список, чтобы получить данные пользователя
-              fetchDialogs();
+              // Новый диалог, запрашиваем список заново через сокет
+              if (chatWs.current && chatWs.current.readyState === WebSocket.OPEN) {
+                chatWs.current.send(JSON.stringify({ type: 'get_dialogs' }));
+              }
               return prev;
             }
           });
+
+          // Добавляем сообщение в notifications даже если оно от себя, 
+          // чтобы экраны (например, ChatScreen) могли его отобразить.
+          // Логика звука ниже сама отфильтрует 'isMe'.
         }
 
         if (payload.type === 'message_deleted') {
@@ -372,7 +457,13 @@ export const NotificationProvider = ({ children }) => {
 
         if (payload.type === 'user_status') {
           const { user_id, status, last_seen } = payload.data;
-          console.log(`[NotificationContext] User ${user_id} status changed to ${status}`);
+          console.log(`[NotificationContext] Real-time user status update: ${user_id} -> ${status} (last_seen: ${last_seen})`);
+          
+          setUserStatuses(prev => ({
+            ...prev,
+            [user_id]: { status, last_seen }
+          }));
+
           setDialogs(prev => prev.map(d => 
             Number(d.user_id) === Number(user_id) ? { ...d, status, last_seen } : d
           ));
@@ -384,18 +475,31 @@ export const NotificationProvider = ({ children }) => {
 
         if (payload.type === 'new_message') {
           const senderId = payload.data.sender_id;
+          const myId = currentUserIdRef.current;
           const isActiveChat = Number(activeChatIdRef.current) === Number(senderId);
-          const isMe = Number(senderId) === Number(currentUserIdRef.current);
+          const isMe = Number(senderId) === Number(myId);
           
-          if (appState.current === 'active' && !isActiveChat && !isMe) {
+          console.log('[NotificationContext] Sound logic check:', {
+            type: payload.type,
+            senderId,
+            myId,
+            isMe,
+            isActiveChat,
+            appState: appState.current
+          });
+          
+          if (appState.current === 'active' && !isActiveChat && !isMe && myId) {
             playNotificationSound();
             Vibration.vibrate([0, 200, 100, 200]);
-
-            // Визуальное оповещение внутри приложения удалено по просьбе пользователя
           }
         }
 
-        setNotifications((prev) => [payload, ...prev]);
+        setNotifications((prev) => {
+          if (payload.type === 'new_message' && prev.some(n => n.type === 'new_message' && n.data?.id === payload.data?.id)) {
+            return prev;
+          }
+          return [payload, ...prev];
+        });
       } catch (err) {
         console.error('Failed to parse notification message:', err);
       }
@@ -476,21 +580,25 @@ export const NotificationProvider = ({ children }) => {
   useEffect(() => {
     const subscription = AppState.addEventListener('change', nextAppState => {
       appState.current = nextAppState;
-      // При возврате в активное состояние пытаемся восстановить соединение нотификаций
+      // При возврате в активное состояние пытаемся восстановить соединение нотификаций и чата
       if (nextAppState === 'active') {
-        if (!ws.current || (ws.current.readyState !== WebSocket.OPEN && ws.current.readyState !== WebSocket.CONNECTING)) {
-          storage.getAccessToken()
-            .then((tok) => {
-              if (tok) connect(tok);
-            })
-            .catch(err => console.log('Failed to get token on AppState change', err));
-        }
+        const checkConnection = (socket, name, connectFn) => {
+          if (!socket.current || (socket.current.readyState !== WebSocket.OPEN && socket.current.readyState !== WebSocket.CONNECTING)) {
+            console.log(`[NotificationContext] App active, ${name} WS disconnected, reconnecting...`);
+            storage.getAccessToken().then(tok => { if (tok) connectFn(tok); });
+          } else {
+            console.log(`[NotificationContext] App active, ${name} WS is ${socket.current.readyState === WebSocket.OPEN ? 'OPEN' : 'CONNECTING'}`);
+          }
+        };
+
+        checkConnection(ws, 'Notifications', connect);
+        checkConnection(chatWs, 'Chat', connectChatWs);
       }
     });
     return () => {
       subscription.remove();
     };
-  }, [connect]);
+  }, [connect, connectChatWs]);
 
   useEffect(() => {
     const loadUser = async () => {
@@ -553,7 +661,8 @@ export const NotificationProvider = ({ children }) => {
       currentUserId,
       activeChatId,
       setActiveChatId,
-      clearUnread
+      clearUnread,
+      userStatuses
     }}>
       {children}
     </NotificationContext.Provider>

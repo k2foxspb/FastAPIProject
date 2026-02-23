@@ -380,17 +380,15 @@ async def websocket_chat_endpoint(
                         response_data["attachments"] = []
                 
                 # Рассылаем сообщения всем участникам параллельно для минимальной задержки
+                chat_event = {
+                    "type": "new_message",
+                    "data": response_data
+                }
                 await asyncio.gather(
-                    manager.send_personal_message(response_data, receiver_id),
-                    manager.send_personal_message(response_data, user_id),
-                    notifications_manager.send_personal_message({
-                        "type": "new_message",
-                        "data": response_data
-                    }, receiver_id),
-                    notifications_manager.send_personal_message({
-                        "type": "new_message",
-                        "data": response_data
-                    }, user_id),
+                    manager.send_personal_message(chat_event, receiver_id),
+                    manager.send_personal_message(chat_event, user_id),
+                    notifications_manager.send_personal_message(chat_event, receiver_id),
+                    notifications_manager.send_personal_message(chat_event, user_id),
                     return_exceptions=True
                 )
 
@@ -482,17 +480,15 @@ async def send_message_api(
             response_data["attachments"] = []
 
     # Уведомляем всех параллельно
+    chat_event = {
+        "type": "new_message",
+        "data": response_data
+    }
     await asyncio.gather(
-        manager.send_personal_message(response_data, receiver_id),
-        manager.send_personal_message(response_data, user_id),
-        notifications_manager.send_personal_message({
-            "type": "new_message",
-            "data": response_data
-        }, receiver_id),
-        notifications_manager.send_personal_message({
-            "type": "new_message",
-            "data": response_data
-        }, user_id),
+        manager.send_personal_message(chat_event, receiver_id),
+        manager.send_personal_message(chat_event, user_id),
+        notifications_manager.send_personal_message(chat_event, receiver_id),
+        notifications_manager.send_personal_message(chat_event, user_id),
         return_exceptions=True
     )
 
@@ -620,7 +616,7 @@ async def get_dialogs(
             "last_name": partner.last_name,
             "avatar_url": getattr(partner, 'avatar_url', None), # Используем getattr если поля нет в модели
             "last_message": last_msg.message if last_msg and last_msg.message else "[Файл]",
-            "last_message_time": last_msg.timestamp if last_msg else datetime.utcnow(),
+            "last_message_time": last_msg.timestamp.isoformat() if last_msg and last_msg.timestamp else datetime.utcnow().isoformat(),
             "unread_count": unread_count or 0,
             "status": partner.status,
             "last_seen": partner.last_seen
