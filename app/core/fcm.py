@@ -85,44 +85,31 @@ async def send_fcm_notification(
         if sender_id:
             fcm_data["sender_id"] = str(sender_id)
         
+        # Добавляем дополнительные данные для клиента (Android data-only)
+        if title:
+            fcm_data["sender_name"] = str(title)
+        if body:
+            fcm_data["text"] = str(body)
+        
         if "type" not in fcm_data:
             fcm_data["type"] = "new_message"
 
         logger.debug(f"FCM: Preparing message for token {token} | Data: {fcm_data}")
 
-        # Создание объекта уведомления
-        notification = messaging.Notification(
-            title=title,
-            body=body,
-        )
-
-        # Настройки для Android (каналы, группировка)
+        # Настройки для Android (data-only): высокая приоритетность, без видимого Notification
         android_config = messaging.AndroidConfig(
             priority='high',
             ttl=3600 * 24, # 24 часа
-            notification=messaging.AndroidNotification(
-                channel_id="messages",
-                sound="default",
-                click_action="FLUTTER_NOTIFICATION_CLICK", # Для некоторых плагинов это важно
-                # notification_priority='PRIORITY_MAX', # Увеличиваем приоритет на уровне Android - удалено так как вызывает TypeError
-                default_vibrate_timings=True,
-                default_sound=True,
-                tag=f"chat_{sender_id}" if sender_id else "chat_message", # Группировка уведомлений по отправителю
-                group_key="com.k2foxspb.fokinfun.MESSAGES", # Общий ключ группы для Android
-                visibility='public', # Чтобы уведомление было видно на заблокированном экране
-                sticky=False,
-                local_only=False,
-                # priority='max' # Дополнительный приоритет для AndroidNotification - может конфликтовать с priority='high' в AndroidConfig
-            )
         )
 
-        # Настройки для iOS (APNS)
+        # Настройки для iOS (APNS) с видимым алертом
         apns_config = messaging.APNSConfig(
             headers={
                 "apns-priority": "10", # Немедленная доставка
             },
             payload=messaging.APNSPayload(
                 aps=messaging.Aps(
+                    alert=messaging.ApsAlert(title=title, body=body),
                     sound="default",
                     thread_id=str(sender_id) if sender_id else None,
                     content_available=True, # Позволяет приложению проснуться в фоне
@@ -133,9 +120,8 @@ async def send_fcm_notification(
             )
         )
 
-        # Создание сообщения
+        # Создание сообщения: без поля notification (Android получит data-only)
         message = messaging.Message(
-            notification=notification,
             data=fcm_data,
             token=token,
             android=android_config,
