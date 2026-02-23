@@ -1083,6 +1083,43 @@ export default function ChatScreen({ route, navigation }) {
     );
   };
 
+  const handleDeleteMessage = (messageId) => {
+    const message = messages.find(m => m.id === messageId);
+    if (!message) return;
+
+    const isOwner = Number(message.sender_id) === Number(currentUserId);
+    
+    Alert.alert(
+      'Удалить сообщение?',
+      isOwner 
+        ? 'Удалить это сообщение для всех участников?' 
+        : 'Удалить это сообщение для себя? У собеседника оно останется.',
+      [
+        { text: 'Отмена', style: 'cancel' },
+        { 
+          text: 'Удалить', 
+          style: 'destructive', 
+          onPress: async () => {
+            try {
+              const sent = deleteMessageWs(messageId);
+              if (!sent) {
+                Alert.alert('Ошибка', 'Не удалось отправить запрос на удаление. Проверьте соединение.');
+                return;
+              }
+
+              // Локально обновляем список сообщений
+              setMessages(prev => prev.filter(m => m.id !== messageId));
+              setSkip(prev => Math.max(0, prev - 1));
+            } catch (error) {
+              console.error('Failed to delete message', error);
+              Alert.alert('Ошибка', 'Не удалось удалить сообщение');
+            }
+          }
+        }
+      ]
+    );
+  };
+
   const handleBulkDelete = () => {
     if (selectedIds.length === 0) return;
     
