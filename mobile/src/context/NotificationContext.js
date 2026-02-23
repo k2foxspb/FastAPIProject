@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useRef, useState } from 'r
 import { Vibration, AppState, Alert } from 'react-native';
 import { useAudioPlayer } from 'expo-audio';
 import { API_BASE_URL } from '../constants';
-import { usersApi, chatApi } from '../api';
+import { usersApi, chatApi, setAuthToken } from '../api';
 import { storage } from '../utils/storage';
 import { setNotificationAudioMode } from '../utils/audioSettings';
 import { isWithinQuietHours } from '../utils/quietHours';
@@ -104,24 +104,22 @@ export const NotificationProvider = ({ children }) => {
     const baseUrlClean = API_BASE_URL.replace('http://', '').replace('https://', '');
     const wsUrl = `${protocol}${baseUrlClean}/chat/ws/${encodeURIComponent(token)}`;
     
-    console.log('[NotificationContext] Connecting to Chat WS:', wsUrl.split('/ws/')[0] + '/ws/***');
+    console.log(`[NotificationContext] Connecting to Chat WS: ${wsUrl.split('/ws/')[0]}/ws/***`);
     try {
-      chatWs.current = new WebSocket(wsUrl);
-
-      // Reset reconnect attempt on manual connect if requested
-      // (not here, we reset on onopen)
+      const socket = new WebSocket(wsUrl);
+      chatWs.current = socket;
 
       // Timeout for connection
       const connectionTimeout = setTimeout(() => {
-        if (chatWs.current?.readyState === WebSocket.CONNECTING) {
+        if (socket.readyState === WebSocket.CONNECTING) {
           console.log('[NotificationContext] Chat WS connection timeout, closing');
-          chatWs.current.close();
+          socket.close();
         }
       }, 10000);
 
-      chatWs.current.onopen = () => {
+      socket.onopen = () => {
         clearTimeout(connectionTimeout);
-        console.log('[NotificationContext] Chat WS connected. readyState:', chatWs.current.readyState);
+        console.log('[NotificationContext] Chat WS connected. readyState:', socket.readyState);
         chatWsReconnectAttempt.current = 0;
         if (chatWsReconnectTimer.current) {
           clearTimeout(chatWsReconnectTimer.current);
@@ -129,16 +127,18 @@ export const NotificationProvider = ({ children }) => {
         }
         if (chatWsHeartbeatInterval.current) clearInterval(chatWsHeartbeatInterval.current);
         chatWsHeartbeatInterval.current = setInterval(() => {
-          if (chatWs.current && chatWs.current.readyState === WebSocket.OPEN) {
-            chatWs.current.send(JSON.stringify({ type: 'ping' }));
+          if (socket.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify({ type: 'ping' }));
           }
         }, 30000);
 
         // Request initial dialogs list through WS
-        chatWs.current.send(JSON.stringify({ type: 'get_dialogs' }));
+        if (socket.readyState === WebSocket.OPEN) {
+          socket.send(JSON.stringify({ type: 'get_dialogs' }));
+        }
       };
 
-      chatWs.current.onmessage = (e) => {
+      socket.onmessage = (e) => {
         try {
           const payload = JSON.parse(e.data);
           const msgType = payload.type || payload.msg_type;
@@ -192,8 +192,8 @@ export const NotificationProvider = ({ children }) => {
                 newDialogs.unshift(updated);
                 return newDialogs;
               } else {
-                if (chatWs.current && chatWs.current.readyState === WebSocket.OPEN) {
-                  chatWs.current.send(JSON.stringify({ type: 'get_dialogs' }));
+                if (socket.readyState === WebSocket.OPEN) {
+                  socket.send(JSON.stringify({ type: 'get_dialogs' }));
                 }
                 return prev;
               }
@@ -207,7 +207,7 @@ export const NotificationProvider = ({ children }) => {
         } catch (err) {}
       };
 
-      chatWs.current.onclose = (e) => {
+      socket.onclose = (e) => {
         console.log('[NotificationContext] Chat WS closed:', e.code);
         if (chatWsHeartbeatInterval.current) {
           clearInterval(chatWsHeartbeatInterval.current);
@@ -222,8 +222,8 @@ export const NotificationProvider = ({ children }) => {
         }
       };
 
-      chatWs.current.onerror = (e) => {
-        console.error('[NotificationContext] Chat WS error');
+      socket.onerror = (e) => {
+        console.error('[NotificationContext] Chat WS error:', e.message);
       };
     } catch (err) {
       console.error('[NotificationContext] Error creating Chat WebSocket:', err);
@@ -359,19 +359,20 @@ export const NotificationProvider = ({ children }) => {
     
     try {
       console.log('[NotificationContext] Creating new WebSocket instance...');
-      ws.current = new WebSocket(wsUrl);
+      const socket = new WebSocket(wsUrl);
+      ws.current = socket;
 
       // Timeout for connection
       const connectionTimeout = setTimeout(() => {
-        if (ws.current?.readyState === WebSocket.CONNECTING) {
+        if (socket.readyState === WebSocket.CONNECTING) {
           console.log('[NotificationContext] Notifications WS connection timeout, closing');
-          ws.current.close();
+          socket.close();
         }
       }, 10000);
 
-    ws.current.onopen = () => {
+    socket.onopen = () => {
       clearTimeout(connectionTimeout);
-      console.log('[NotificationContext] Notifications WS connected. readyState:', ws.current.readyState);
+      console.log('[NotificationContext] Notifications WS connected. readyState:', socket.readyState);
       setIsConnected(true);
       reconnectAttempt.current = 0; // Reset attempts on successful connection
       if (reconnectTimer.current) {
@@ -380,13 +381,18 @@ export const NotificationProvider = ({ children }) => {
       }
       if (heartbeatInterval.current) clearInterval(heartbeatInterval.current);
       heartbeatInterval.current = setInterval(() => {
-        if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-          ws.current.send(JSON.stringify({ type: 'ping' }));
+        if (socket.readyState === WebSocket.OPEN) {
+          socket.send(JSON.stringify({ type: 'ping' }));
         }
       }, 30000);
+
+      // Initial ping to confirm it's working
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ type: 'ping' }));
+      }
     };
 
-    ws.current.onmessage = (e) => {
+    socket.onmessage = (e) => {
       try {
         const payload = JSON.parse(e.data);
         console.log('[NotificationContext] Notification received:', payload.type, payload.data?.id || payload.message_id || '');
@@ -515,7 +521,7 @@ export const NotificationProvider = ({ children }) => {
       }
     };
 
-    ws.current.onclose = (e) => {
+    socket.onclose = (e) => {
       console.log('[NotificationContext] Notifications WS closed:', e.code, e.reason);
       setIsConnected(false);
       if (heartbeatInterval.current) {
@@ -597,7 +603,7 @@ export const NotificationProvider = ({ children }) => {
             console.log(`[NotificationContext] App active, ${name} WS disconnected, reconnecting...`);
             storage.getAccessToken().then(tok => { if (tok) connectFn(tok); });
           } else {
-            console.log(`[NotificationContext] App active, ${name} WS is ${socket.current.readyState === WebSocket.OPEN ? 'OPEN' : 'CONNECTING'}`);
+            console.log(`[NotificationContext] App active, ${name} WS is ${socket.current?.readyState === WebSocket.OPEN ? 'OPEN' : 'CONNECTING'}`);
           }
         };
 
@@ -610,24 +616,36 @@ export const NotificationProvider = ({ children }) => {
     };
   }, [connect, connectChatWs]);
 
-  useEffect(() => {
-    const loadUser = async () => {
-      setLoadingUser(true);
-      try {
-        const token = await storage.getAccessToken();
-        if (token) {
-          const userRes = await usersApi.getMe();
-          setCurrentUser(userRes.data);
-          setCurrentUserId(userRes.data.id);
-        }
-      } catch (err) {
-        console.log('Failed to load current user in NotificationContext', err);
-      } finally {
-        setLoadingUser(false);
+  const loadUser = React.useCallback(async () => {
+    setLoadingUser(true);
+    try {
+      const token = await storage.getAccessToken();
+      if (token) {
+        setAuthToken(token);
+        const userRes = await usersApi.getMe();
+        setCurrentUser(userRes.data);
+        setCurrentUserId(userRes.data.id);
+      } else {
+        setCurrentUser(null);
+        setCurrentUserId(null);
       }
-    };
-    loadUser();
+    } catch (err) {
+      console.log('[NotificationContext] Failed to load current user', err);
+      // Если ошибка 401, токен невалиден
+      if (err?.response?.status === 401) {
+        await storage.clearTokens();
+        setAuthToken(null);
+        setCurrentUser(null);
+        setCurrentUserId(null);
+      }
+    } finally {
+      setLoadingUser(false);
+    }
   }, []);
+
+  useEffect(() => {
+    loadUser();
+  }, [loadUser]);
 
   useEffect(() => {
     return () => {
@@ -667,6 +685,7 @@ export const NotificationProvider = ({ children }) => {
       deleteMessageWs,
       bulkDeleteMessagesWs,
       currentUser,
+      loadUser,
       loadingUser,
       currentUserId,
       activeChatId,

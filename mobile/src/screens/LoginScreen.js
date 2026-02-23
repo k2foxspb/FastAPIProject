@@ -14,7 +14,7 @@ export default function LoginScreen({ navigation }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const { connect } = useNotifications();
+  const { connect, loadUser } = useNotifications();
 
   const onLogin = async () => {
     if (!username || !password) {
@@ -34,6 +34,10 @@ export default function LoginScreen({ navigation }) {
       await storage.saveTokens(token, refreshToken);
       
       setAuthToken(token);
+      
+      // Загружаем данные пользователя ПЕРЕД переходом на другой экран
+      await loadUser();
+      
       // Подключаемся к WebSocket уведомлениям
       connect(token);
       // Обновляем FCM токен на сервере сразу после входа

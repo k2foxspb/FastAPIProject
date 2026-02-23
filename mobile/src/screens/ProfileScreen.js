@@ -139,12 +139,6 @@ export default function ProfileScreen({ navigation }) {
 
   useFocusEffect(
     useCallback(() => {
-      // Если токена нет в заголовках axios, сразу редиректим
-      if (!api.defaults.headers.common['Authorization']) {
-        handleLogout();
-        return;
-      }
-
       // Установка иконки настроек в заголовке
       navigation.setOptions({
         headerRight: () => (
@@ -158,12 +152,22 @@ export default function ProfileScreen({ navigation }) {
       });
 
       const fetchProfile = async () => {
+        // Если идет загрузка данных пользователя в контексте, ждем
         if (loadingUser) return;
         
+        // Проверяем токен. Если его нет ни в axios, ни в хранилище - выходим
+        const token = await storage.getAccessToken();
+        if (!api.defaults.headers.common['Authorization'] && !token) {
+          console.log('[ProfileScreen] No token found, redirecting to Login');
+          handleLogout();
+          return;
+        }
+
         try {
           let userData = currentUser;
           if (!userData) {
             // Если пользователя всё еще нет и загрузка завершена, значит он не авторизован
+            console.log('[ProfileScreen] No currentUser after loading, redirecting to Login');
             handleLogout();
             return;
           }
