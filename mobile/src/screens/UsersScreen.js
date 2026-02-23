@@ -163,8 +163,10 @@ export default function UsersScreen({ navigation }) {
         <View style={styles.userInfo}>
           <Text style={[styles.userName, { color: colors.text }]}>{formatName(item)}</Text>
           <View style={styles.roleStatus}>
-            <Text style={[styles.userRole, { color: colors.textSecondary }]}>{item.role}</Text>
-            <Text style={[styles.statusText, { color: colors.textSecondary }]}> • {formatStatus(item.status, item.last_seen)}</Text>
+            {item.role !== 'buyer' && (
+              <Text style={[styles.userRole, { color: colors.textSecondary }]}>{item.role} • </Text>
+            )}
+            <Text style={[styles.statusText, { color: colors.textSecondary }]}>{formatStatus(item.status, item.last_seen)}</Text>
             <Text style={[styles.statusText, { color: colors.primary, fontWeight: 'bold' }]}>{getFriendshipText()}</Text>
           </View>
         </View>

@@ -1,6 +1,6 @@
 import firebase from '@react-native-firebase/app';
 import messaging from '@react-native-firebase/messaging';
-import { Alert, Platform } from 'react-native';
+import { Alert, Platform, Vibration } from 'react-native';
 import { usersApi } from '../api';
 import { storage } from './storage';
 import { initializeFirebase } from './firebaseInit';
@@ -61,12 +61,14 @@ export async function setupCloudMessaging() {
     // Создаем канал уведомлений для Android
     if (Platform.OS === 'android') {
       try {
-        const { Notifications } = require('expo-notifications');
+        const Notifications = require('expo-notifications');
+        // Канал без вибрации, только со звуком
         Notifications.setNotificationChannelAsync('messages', {
           name: 'Сообщения',
-          importance: Notifications.AndroidImportance.MAX,
-          vibrationPattern: [0, 250, 250, 250],
+          importance: Notifications.AndroidImportance.HIGH,
+          vibrationPattern: [0], // отключаем вибрацию
           lightColor: '#FF231F7C',
+          sound: 'default',
         }).catch(err => console.log('Error creating notification channel:', err));
       } catch (e) {
         console.log('expo-notifications not available, skipping channel creation.');
@@ -76,24 +78,33 @@ export async function setupCloudMessaging() {
     // Обработка уведомлений, когда приложение на переднем плане
     const unsubscribe = msg.onMessage(async remoteMessage => {
       console.log('[FCM] Foreground message received:', JSON.stringify(remoteMessage, null, 2));
-      
-      // На переднем плане Firebase не показывает уведомление сам.
-      // Обычно мы полагаемся на WebSocket, но если пользователь хочет видеть системный пуш даже в приложении:
+
+      // При открытом приложении: только короткий звук, без баннера и без вибрации
       if (Platform.OS === 'android') {
         try {
-          const { Notifications } = require('expo-notifications');
-          await Notifications.scheduleNotificationAsync({
-            content: {
-              title: remoteMessage.notification?.title || 'Новое сообщение',
-              body: remoteMessage.notification?.body || '',
-              data: remoteMessage.data,
-              sound: 'default',
-            },
-            trigger: null, // немедленно
+          const Notifications = require('expo-notifications');
+          const { navigationRef } = require('../navigation/NavigationService');
+
+          // Проверяем, не открыт ли сейчас чат с отправителем — если открыт, не проигрываем системный звук
+          const senderIdRaw = remoteMessage?.data?.sender_id || remoteMessage?.data?.senderId;
+          const senderId = senderIdRaw ? parseInt(senderIdRaw, 10) : null;
+          const currentRoute = navigationRef?.getCurrentRoute?.();
+          const isChatScreen = currentRoute?.name === 'Chat';
+          const currentChatUserId = currentRoute?.params?.userId ? parseInt(currentRoute.params.userId, 10) : null;
+          const isActiveChatWithSender = isChatScreen && senderId && currentChatUserId && Number(currentChatUserId) === Number(senderId);
+
+          // В фореграунде не создаём локальные уведомления вовсе — логику звука/вибрации обрабатывает WS в NotificationContext
+          Notifications.setNotificationHandler({
+            handleNotification: async () => ({
+              shouldShowBanner: false,
+              shouldShowList: false,
+              shouldPlaySound: false,
+              shouldSetBadge: false,
+            }),
           });
-          console.log('[FCM] Foreground notification scheduled via expo-notifications');
+          console.log('[FCM] Foreground received, suppressed by handler (WS will handle sound/vibration)');
         } catch (e) {
-          console.log('[FCM] Error showing foreground notification via expo:', e);
+          console.log('[FCM] Error handling foreground message (sound-only):', e);
         }
       }
     });
@@ -106,27 +117,66 @@ export async function setupCloudMessaging() {
     });
 
     // Унифицированная функция перехода в нужный чат по уведомлению
-    const openChatFromNotification = (remoteMessage) => {
+    const openFromNotification = (remoteMessage) => {
       try {
+        console.log('[FCM] Handling notification click with data:', JSON.stringify(remoteMessage?.data, null, 2));
         const data = remoteMessage?.data || {};
-        const senderIdRaw = data.sender_id || data.senderId || data.user_id || data.userId;
+        const type = data.type || data.msg_type || 'new_message';
+        const senderIdRaw = data.sender_id || data.senderId || data.user_id || data.userId || data.chat_id;
         const senderId = senderIdRaw ? parseInt(senderIdRaw, 10) : null;
         const senderName = data.sender_name || data.senderName || undefined;
-        if (senderId && navigationRef?.isReady?.()) {
+        const newsIdRaw = data.news_id || data.newsId;
+        const newsId = newsIdRaw ? parseInt(newsIdRaw, 10) : null;
+
+        if (!navigationRef?.isReady?.()) {
+          console.log('[FCM] Navigation not ready, skipping');
+          return;
+        }
+
+        if (type === 'new_message' && senderId) {
+          console.log('[FCM] Navigating to Chat with userId:', senderId);
           navigationRef.navigate('Messages', {
             screen: 'Chat',
             params: { userId: senderId, userName: senderName }
           });
+          return;
+        }
+
+        if ((type === 'friend_request' || type === 'friend_accept')) {
+          console.log('[FCM] Navigating to UsersMain (friends tab)');
+          // Users screen is registered as UsersMain in TabNavigator
+          navigationRef.navigate('UsersMain', { initialTab: 'friends' });
+          return;
+        }
+
+        if (type === 'new_post') {
+          if (newsId) {
+            console.log('[FCM] Navigating to NewsDetail with newsId:', newsId);
+            navigationRef.navigate('NewsDetail', { newsId });
+          } else {
+            console.log('[FCM] Navigating to Feed (fallback, no newsId)');
+            navigationRef.navigate('Feed');
+          }
+          return;
+        }
+
+        // Fallbacks
+        if (senderId) {
+          console.log('[FCM] Fallback: navigating to Chat with userId:', senderId);
+          navigationRef.navigate('Messages', { screen: 'Chat', params: { userId: senderId, userName: senderName } });
+        } else {
+          console.log('[FCM] No known target in notification data, opening Feed');
+          navigationRef.navigate('Feed');
         }
       } catch (e) {
-        console.log('openChatFromNotification error:', e);
+        console.error('[FCM] openFromNotification error:', e);
       }
     };
 
     // Обработка клика по уведомлению (когда приложение было в фоне)
     msg.onNotificationOpenedApp(remoteMessage => {
       console.log('Notification opened from background:', remoteMessage?.notification);
-      openChatFromNotification(remoteMessage);
+      openFromNotification(remoteMessage);
     });
 
     // Обработка уведомления, которое открыло приложение из закрытого состояния
@@ -135,7 +185,7 @@ export async function setupCloudMessaging() {
         if (remoteMessage) {
           console.log('Notification opened app from quit state:', remoteMessage?.notification);
           // Небольшая задержка, чтобы навигация успела инициализироваться
-          setTimeout(() => openChatFromNotification(remoteMessage), 500);
+          setTimeout(() => openFromNotification(remoteMessage), 500);
         }
       })
       .catch(err => console.error('getInitialNotification failed:', err));

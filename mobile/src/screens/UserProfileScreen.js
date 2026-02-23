@@ -219,8 +219,10 @@ export default function UserProfileScreen({ route, navigation }) {
         </TouchableOpacity>
         <Text style={[styles.name, { color: colors.text }]}>{formatName(user)}</Text>
         <View style={styles.roleContainer}>
-          <Text style={[styles.role, { color: colors.textSecondary }]}>{user.role}</Text>
-          <Text style={[styles.statusText, { color: colors.textSecondary }]}> • {formatStatus(user.status, user.last_seen)}</Text>
+          {user.role !== 'buyer' && (
+            <Text style={[styles.role, { color: colors.textSecondary }]}>{user.role} • </Text>
+          )}
+          <Text style={[styles.statusText, { color: colors.textSecondary }]}>{formatStatus(user.status, user.last_seen)}</Text>
         </View>
         
         <View style={styles.actionButtons}>

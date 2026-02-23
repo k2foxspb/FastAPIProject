@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { Vibration, AppState, Alert } from 'react-native';
+import Constants from 'expo-constants';
 import { useAudioPlayer } from 'expo-audio';
 import { API_BASE_URL } from '../constants';
 import { usersApi, chatApi, setAuthToken } from '../api';
@@ -282,7 +283,7 @@ export const NotificationProvider = ({ children }) => {
     if (chatWs.current && chatWs.current.readyState === WebSocket.OPEN) {
       chatWs.current.send(JSON.stringify({
         type: 'bulk_delete',
-        message_ids: message_ids
+        message_ids: messageIds
       }));
       return true;
     }
@@ -495,6 +496,19 @@ export const NotificationProvider = ({ children }) => {
 
         if (payload.type === 'friend_request' || payload.type === 'friend_accept') {
           fetchFriendRequestsCount();
+          // Добавляем вибрацию для уведомлений о друзьях
+          if (appState.current === 'active') {
+            console.log(`[NotificationContext] Vibrating for ${payload.type}`);
+            Vibration.vibrate(200);
+          }
+        }
+
+        if (payload.type === 'new_post') {
+          // Уведомление о новом посте друга
+          if (appState.current === 'active') {
+             console.log('[NotificationContext] Vibrating for new_post');
+             Vibration.vibrate(200);
+          }
         }
 
         if (payload.type === 'new_message') {
@@ -512,9 +526,22 @@ export const NotificationProvider = ({ children }) => {
             appState: appState.current
           });
           
-          if (appState.current === 'active' && !isActiveChat && !isMe && myId) {
-            playNotificationSound();
-            Vibration.vibrate([0, 200, 100, 200]);
+          if (appState.current === 'active' && !isMe) {
+            if (isActiveChat) {
+              // В активном чате — только звук
+              console.log('[NotificationContext] Playing sound (isActiveChat: true)');
+              playNotificationSound();
+            } else {
+              // Приложение активно, но не на экране чата — только вибрация
+              console.log('[NotificationContext] Vibrating (isActiveChat: false)');
+              Vibration.vibrate(100);
+            }
+          } else {
+            console.log('[NotificationContext] Sound/Vibration skipped:', {
+              appState: appState.current,
+              isMe,
+              myId
+            });
           }
         }
 
@@ -633,7 +660,8 @@ export const NotificationProvider = ({ children }) => {
       const token = await storage.getAccessToken();
       if (token) {
         setAuthToken(token);
-        const userRes = await usersApi.getMe();
+        const appVersion = Constants.expoConfig?.version || Constants.manifest2?.extra?.expoClient?.version || '1.0.0';
+        const userRes = await usersApi.getMe(appVersion);
         setCurrentUser(userRes.data);
         setCurrentUserId(userRes.data.id);
         

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { getShadow } from '../utils/shadowStyles';
-import { View, Text, FlatList, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, Image, Modal, Pressable, Alert, AppState, StatusBar, Dimensions, Share, Animated, Vibration } from 'react-native';
+import { View, Text, FlatList, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, Image, Modal, Pressable, Alert, AppState, StatusBar, Dimensions, Share, Animated, Vibration, Keyboard } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import { documentDirectory, getInfoAsync, downloadAsync, deleteAsync, readAsStringAsync, writeAsStringAsync, EncodingType, StorageAccessFramework } from 'expo-file-system/legacy';
@@ -61,11 +61,40 @@ export default function ChatScreen({ route, navigation }) {
   const chatFlatListRef = useRef(null);
   const recordingOptions = useMemo(() => RecordingPresets.HIGH_QUALITY, []);
   const recorder = useAudioRecorder(recordingOptions);
-  const recorderStatus = useAudioRecorderState(recorder);
+  const recorderStatus = useAudioRecorderState(recorder, 200);
+
+  useEffect(() => {
+    return () => {
+      try {
+        if (recorder?.isRecording) {
+          recorder.stop();
+        }
+      } catch (e) {
+        console.log('[ChatScreen] cleanup stop error:', e);
+      }
+    };
+  }, [recorder]);
   const notificationPlayer = useAudioPlayer(require('../../assets/sounds/message.mp3'));
   const screenWidth = Dimensions.get('window').width;
   const [currentMediaIndex, setCurrentMediaIndex] = useState(0);
   const recordingDotOpacity = useRef(new Animated.Value(1)).current;
+  const [isKeyboardVisible, setKeyboardVisible] = useState(false);
+
+  useEffect(() => {
+    const keyboardDidShowListener = Keyboard.addListener(
+      'keyboardDidShow',
+      () => setKeyboardVisible(true)
+    );
+    const keyboardDidHideListener = Keyboard.addListener(
+      'keyboardDidHide',
+      () => setKeyboardVisible(false)
+    );
+
+    return () => {
+      keyboardDidHideListener.remove();
+      keyboardDidShowListener.remove();
+    };
+  }, []);
 
   // Обозначаем активный чат в контексте уведомлений и гарантируем восстановление WS уведомлений при выходе
   useEffect(() => {
@@ -101,6 +130,14 @@ export default function ChatScreen({ route, navigation }) {
   useEffect(() => {
     if (recorderStatus.isRecording) {
       setRecordingDuration(recorderStatus.durationMillis);
+    } else if (recorderStatus.durationMillis > 0) {
+      // Если запись остановилась, сохраняем финальную длительность
+      setRecordingDuration(recorderStatus.durationMillis);
+    }
+    
+    // Добавим лог для отладки в реальном времени
+    if (recorderStatus.isRecording && recorderStatus.durationMillis % 1000 < 100) {
+      console.log('[ChatScreen] Recorder status:', recorderStatus.isRecording, 'duration:', recorderStatus.durationMillis);
     }
   }, [recorderStatus.durationMillis, recorderStatus.isRecording]);
 
@@ -113,7 +150,6 @@ export default function ChatScreen({ route, navigation }) {
       }
       await setNotificationAudioMode();
       await notificationPlayer.play();
-      Vibration.vibrate([0, 200, 100, 200]);
     } catch (error) {
       console.log('Error playing message sound', error);
     }
@@ -170,7 +206,7 @@ export default function ChatScreen({ route, navigation }) {
               clearUnread(userId);
               const isAppActive = AppState.currentState === 'active';
               if (isAppActive) {
-                playMessageSound();
+                // playMessageSound(); // Дубликат удален: звук теперь проигрывается только в NotificationContext
                 markAsReadWs(userId);
               }
             } else {
@@ -743,49 +779,104 @@ export default function ChatScreen({ route, navigation }) {
 
   const startRecording = async () => {
     if (isStartingRecording.current) return;
-    
+
     try {
       isStartingRecording.current = true;
       stopRequested.current = false;
-      
-      // Визуально меняем состояние сразу, чтобы кнопка реагировала мгновенно
-      setIsRecording(true);
-      setRecordingDuration(0);
 
+      console.log('[ChatScreen] startRecording - permissions...');
       const permission = await requestRecordingPermissionsAsync();
       if (!isMounted.current) return;
 
-      if (permission.status === "granted") {
-        // Проверяем, не отпустил ли пользователь кнопку пока мы ждали пермишенов
-        if (stopRequested.current || (recorder && recorder.isReleased)) {
-          setIsRecording(false);
+      if (permission.status === 'granted') {
+        if (stopRequested.current) {
           isStartingRecording.current = false;
           return;
         }
 
+        console.log('[ChatScreen] startRecording - setting audio mode...');
         await setRecordingAudioMode();
         if (!isMounted.current) return;
-        
-        // Снова проверяем, не отпустил ли пользователь кнопку
-        if (stopRequested.current || (recorder && recorder.isReleased)) {
-          setIsRecording(false);
+
+        if (stopRequested.current) {
           isStartingRecording.current = false;
           return;
         }
 
-        // В expo-audio не нужно вызывать prepareToRecordAsync, вызываем сразу record()
-        // и проверяем isReleased перед каждым вызовом
-        if (recorder && !recorder.isReleased) {
-          await recorder.record();
+        if (recorder) {
+          // Prepare recorder explicitly as per expo-audio API
+          try {
+            await recorder.prepareToRecordAsync(recordingOptions);
+          } catch (prepErr) {
+            console.error('[ChatScreen] startRecording - prepareToRecordAsync failed:', prepErr);
+            throw prepErr;
+          }
+
+          // Wait a bit for canRecord to become true after audio mode change
+          let canRecordAttempts = 0;
+          let canRecord = false;
+          while (canRecordAttempts < 10) {
+            const s = recorder.getStatus();
+            canRecord = !!s?.canRecord;
+            if (canRecord) break;
+            await new Promise((resolve) => setTimeout(resolve, 50));
+            canRecordAttempts++;
+          }
+
+          const s0 = recorder.getStatus();
+          console.log('[ChatScreen] startRecording - recorder status before record:', {
+            isRecording: s0?.isRecording,
+            canRecord: s0?.canRecord,
+            durationMillis: s0?.durationMillis,
+            url: s0?.url,
+            uri: recorder.uri,
+            canRecordAttempts,
+          });
+
+          if (!canRecord) {
+            console.warn('[ChatScreen] startRecording - canRecord is still false, attempting record anyway');
+          }
+
+          console.log('[ChatScreen] startRecording - calling recorder.record()');
+
+          setRecordedUri(null);
+          setRecordingDuration(0);
+
+          try {
+            recorder.record();
+            console.log('[ChatScreen] startRecording - record() invoked');
+          } catch (recordErr) {
+            console.error('[ChatScreen] startRecording - record() call failed:', recordErr);
+            throw recordErr;
+          }
+
+          // Wait for isRecording to flip true
+          let attempts = 0;
+          let isRec = false;
+          while (attempts < 20) {
+            const s = recorder.getStatus();
+            if (s?.isRecording) {
+              isRec = true;
+              break;
+            }
+            await new Promise((resolve) => setTimeout(resolve, 100));
+            attempts++;
+          }
+
+          setIsRecording(isRec);
+          console.log('[ChatScreen] startRecording - sync complete. isRecording:', isRec, 'attempts:', attempts);
+
+          if (stopRequested.current) {
+            console.log('[ChatScreen] startRecording - stop requested during sync');
+            if (isRec) await recorder.stop();
+            setIsRecording(false);
+          }
         }
-        
-        if (!isMounted.current) return;
       } else {
-        setIsRecording(false);
-        Alert.alert('Доступ запрещен', 'Нам нужно разрешение на микрофон для записи голосовых сообщений');
+        Alert.alert('Permission Denied', 'Microphone permission is required');
       }
     } catch (err) {
-      console.error('Failed to start recording', err);
+      console.error('[ChatScreen] startRecording error:', err);
       setIsRecording(false);
     } finally {
       isStartingRecording.current = false;
@@ -793,24 +884,62 @@ export default function ChatScreen({ route, navigation }) {
   };
 
   const stopRecording = async () => {
-    // Помечаем, что запись должна быть остановлена
+    // Mark that stop is requested
     stopRequested.current = true;
-    
-    // Сразу сбрасываем визуальное состояние, чтобы кнопка «отжалась»
+
+    // Immediately update UI to release the button
+    const wasRecording = isRecording;
     setIsRecording(false);
 
-    if (recorder && !recorder.isReleased && recorder.isRecording) {
-      try {
-        await recorder.stop();
-        if (!isMounted.current || (recorder && recorder.isReleased)) return;
-        
-        const uri = recorder.uri;
-        if (uri) {
-          setRecordedUri(uri);
+    try {
+      if (recorder) {
+        // Capture status before stopping
+        let before = recorder.getStatus();
+        const durationAtStop = before?.durationMillis || 0;
+
+        console.log('[ChatScreen] stopRecording - status before stop:', before?.isRecording, 'duration:', durationAtStop, 'wasRecording:', wasRecording);
+
+        // Even if status is false, if it WAS recording visually, give it a moment
+        if (!before?.isRecording && wasRecording) {
+          console.log('[ChatScreen] stopRecording - waiting for status sync...');
+          await new Promise((resolve) => setTimeout(resolve, 200));
+          before = recorder.getStatus();
         }
-      } catch (err) {
-        console.error('Failed to stop recording', err);
+
+        if (before?.isRecording) {
+          await recorder.stop();
+        }
+
+        // Wait a bit for Android to finish writing the file
+        await new Promise((resolve) => setTimeout(resolve, 400));
+
+        const after = recorder.getStatus();
+        const uri = recorder.uri || after?.url || null;
+        const finalDuration = after?.durationMillis || durationAtStop;
+
+        console.log('[ChatScreen] Stop completed. URI:', uri, 'Final Duration:', finalDuration);
+
+        if (uri && finalDuration >= 500) {
+          setRecordingDuration(finalDuration);
+          setRecordedUri(uri);
+        } else if (uri && finalDuration < 500) {
+          console.log('[ChatScreen] Recording too short, deleting...');
+          setRecordedUri(null);
+        } else {
+          console.warn('[ChatScreen] Stop finished but URI is missing. Retrying...');
+          // One last attempt to get the URI
+          await new Promise((resolve) => setTimeout(resolve, 300));
+          const retry = recorder.getStatus();
+          const retryUri = recorder.uri || retry?.url || null;
+          if (retryUri) {
+            console.log('[ChatScreen] URI found on retry:', retryUri);
+            setRecordingDuration(finalDuration || 1000);
+            setRecordedUri(retryUri);
+          }
+        }
       }
+    } catch (err) {
+      console.error('[ChatScreen] stopRecording error:', err);
     }
   };
 
@@ -896,7 +1025,6 @@ export default function ChatScreen({ route, navigation }) {
     const isReceived = Number(item.sender_id) === Number(userId);
     const isOwner = Number(item.sender_id) === Number(currentUserId);
     const isSelected = selectedIds.includes(item.id);
-    const canDelete = isOwner || isReceived;
 
     // Группировка: если предыдущее сообщение от того же отправителя и разница во времени менее 2 минут
     const prevMsg = messages[index + 1]; // Помним, что FlatList inverted
@@ -919,10 +1047,6 @@ export default function ChatScreen({ route, navigation }) {
       setSelectedIds(prev => 
         prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
       );
-    };
-
-    const handleDelete = () => {
-      handleDeleteMessage(item.id);
     };
 
     const handleLongPress = () => {
@@ -949,23 +1073,6 @@ export default function ChatScreen({ route, navigation }) {
           isGrouped && { marginTop: -2 }
         ]}
       >
-        {isReceived && (
-          <View style={styles.avatarContainer}>
-            {!isGrouped ? (
-              <TouchableOpacity 
-                disabled={selectionMode}
-                onPress={() => navigation.navigate('UserProfile', { userId: userId })}
-              >
-                <Image 
-                  source={{ uri: getAvatarUrl(interlocutor?.avatar_preview_url || interlocutor?.avatar_url) }} 
-                  style={styles.messageAvatar} 
-                />
-              </TouchableOpacity>
-            ) : (
-              <View style={styles.messageAvatarPlaceholder} />
-            )}
-          </View>
-        )}
         <View 
           style={[
             styles.messageBubble, 
@@ -1039,7 +1146,11 @@ export default function ChatScreen({ route, navigation }) {
             </View>
           ) : (
             (isImage || isVideo) && (
-              <CachedMedia item={item} onFullScreen={handleFullScreen} />
+              <CachedMedia 
+                item={item} 
+                onFullScreen={handleFullScreen} 
+                style={{ borderRadius: 12, overflow: 'hidden' }}
+              />
             )
           )}
           {isVoice && (
@@ -1071,11 +1182,6 @@ export default function ChatScreen({ route, navigation }) {
                 color={item.is_read ? "#4CAF50" : "rgba(255,255,255,0.7)"} 
                 style={styles.statusIcon}
               />
-            )}
-            {canDelete && !selectionMode && (
-              <TouchableOpacity onPress={handleDelete} style={{ marginLeft: 5 }}>
-                <MaterialIcons name="delete-outline" size={14} color={isReceived ? colors.textSecondary : "rgba(255,255,255,0.7)"} />
-              </TouchableOpacity>
             )}
           </View>
         </View>
@@ -1167,12 +1273,11 @@ export default function ChatScreen({ route, navigation }) {
       ]
     );
   };
-
-  console.log('[ChatScreen] Rendering, messages count:', messages.length, 'userId:', userId);
+  
 
   return (
     <KeyboardAvoidingView 
-      behavior={Platform.OS === 'ios' ? 'padding' : (Platform.OS === 'android' ? 'height' : undefined)} 
+      behavior={Platform.OS === 'ios' ? 'padding' : 'padding'} 
       style={[styles.container, { backgroundColor: colors.background, flex: 1 }]}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
       enabled={Platform.OS !== 'web'}
@@ -1334,7 +1439,9 @@ export default function ChatScreen({ route, navigation }) {
             backgroundColor: colors.background, 
             borderTopColor: colors.border, 
             borderTopWidth: 1,
-            paddingBottom: Platform.OS === 'web' ? 20 : Math.max(insets.bottom, 12) + 5
+            paddingBottom: Platform.OS === 'web' 
+              ? 20 
+              : (isKeyboardVisible ? 5 : Math.max(insets.bottom, 12) + 5)
           }
         ]}>
           {recordedUri ? (
@@ -1420,7 +1527,6 @@ export default function ChatScreen({ route, navigation }) {
 const styles = StyleSheet.create({
   container: { 
     flex: 1, 
-    backgroundColor: '#f5f5f5',
     ...Platform.select({
       web: {
         height: '100vh',
@@ -1489,21 +1595,6 @@ const styles = StyleSheet.create({
   sentWrapper: {
     justifyContent: 'flex-end',
   },
-  messageAvatar: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    marginRight: 8,
-    marginBottom: 2,
-  },
-  messageAvatarPlaceholder: {
-    width: 30,
-    marginRight: 8,
-  },
-  avatarContainer: {
-    width: 38,
-    justifyContent: 'flex-end',
-  },
   mediaGridContainer: {
     width: 260,
     marginTop: 2,
@@ -1517,6 +1608,7 @@ const styles = StyleSheet.create({
     padding: 12, 
     borderRadius: 20, 
     maxWidth: '85%',
+    overflow: 'hidden',
     ...getShadow('#000', { width: 0, height: 1 }, 0.1, 2, 1),
   },
   sent: { alignSelf: 'flex-end', borderBottomRightRadius: 4 },
@@ -1536,7 +1628,7 @@ const styles = StyleSheet.create({
   statusIcon: {
     marginLeft: 2,
   },
-  inputContainer: { flexDirection: 'row', padding: 10, backgroundColor: '#fff', flexShrink: 0 },
+  inputContainer: { flexDirection: 'row', padding: 10, flexShrink: 0 },
   selectionHeader: {
     flex: 1,
     flexDirection: 'row',

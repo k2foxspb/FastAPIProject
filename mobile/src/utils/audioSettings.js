@@ -29,6 +29,7 @@ export const setRecordingAudioMode = async () => {
       interruptionMode: 'doNotMix',
       shouldPlayInBackground: false,
       shouldRouteThroughEarpiece: false,
+      allowsBackgroundRecording: false,
     });
   } catch (e) {
     console.log('[AudioSettings] Error setting recording mode:', e);
@@ -44,7 +45,8 @@ export const setNotificationAudioMode = async () => {
     await setAudioModeAsync({
       allowsRecording: false,
       playsInSilentMode: true,
-      interruptionMode: 'duckOthers',
+      // Important: don't lower other apps
+      interruptionMode: 'mixWithOthers',
       shouldPlayInBackground: false,
       shouldRouteThroughEarpiece: false,
     });

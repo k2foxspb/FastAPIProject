@@ -66,40 +66,36 @@ const CachedMedia = ({ item, onFullScreen, style, resizeMode = "cover", useNativ
 
   const isVideo = item.message_type === 'video' || item.type === 'video';
 
-  return (
-    <View style={style}>
-      {isVideo ? (
-        <View style={style || styles.thumbnail}>
-          <VideoPlayer 
-            uri={localUri} 
-            isMuted={isMuted} 
-            isLooping={!useNativeControls} 
-            shouldPlay={shouldPlay} 
-            style={StyleSheet.absoluteFill}
-            useNativeControls={useNativeControls}
-            resizeMode={resizeMode}
-          />
-          {onFullScreen && (
-            <TouchableOpacity 
-              style={StyleSheet.absoluteFill} 
-              onPress={() => onFullScreen(localUri, item.message_type || item.type)}
-            />
-          )}
-        </View>
-      ) : (
+  return isVideo ? (
+    <View style={[styles.thumbnail, style]}>
+      <VideoPlayer 
+        uri={localUri} 
+        isMuted={isMuted} 
+        isLooping={!useNativeControls} 
+        shouldPlay={shouldPlay} 
+        style={StyleSheet.absoluteFill}
+        useNativeControls={useNativeControls}
+        resizeMode={resizeMode}
+      />
+      {onFullScreen && (
         <TouchableOpacity 
-          disabled={!onFullScreen} 
-          onPress={() => onFullScreen && onFullScreen(localUri, item.message_type || item.type)}
-          style={style || styles.thumbnail}
-        >
-          <Image 
-            source={{ uri: localUri }} 
-            style={StyleSheet.absoluteFill} 
-            resizeMode={resizeMode}
-          />
-        </TouchableOpacity>
+          style={StyleSheet.absoluteFill} 
+          onPress={() => onFullScreen(localUri, item.message_type || item.type)}
+        />
       )}
     </View>
+  ) : (
+    <TouchableOpacity 
+      disabled={!onFullScreen} 
+      onPress={() => onFullScreen && onFullScreen(localUri, item.message_type || item.type)}
+      style={[styles.thumbnail, style]}
+    >
+      <Image 
+        source={{ uri: localUri }} 
+        style={StyleSheet.absoluteFill} 
+        resizeMode={resizeMode}
+      />
+    </TouchableOpacity>
   );
 };
 
@@ -116,6 +112,7 @@ const styles = StyleSheet.create({
     height: 150,
     borderRadius: 14,
     backgroundColor: '#000',
+    overflow: 'hidden',
   },
 });
 

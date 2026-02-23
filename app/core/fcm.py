@@ -107,11 +107,12 @@ async def send_fcm_notification(
                 # notification_priority='PRIORITY_MAX', # Увеличиваем приоритет на уровне Android - удалено так как вызывает TypeError
                 default_vibrate_timings=True,
                 default_sound=True,
-                tag="chat_message", # Группировка уведомлений, чтобы не спамить
+                tag=f"chat_{sender_id}" if sender_id else "chat_message", # Группировка уведомлений по отправителю
+                group_key="com.k2foxspb.fokinfun.MESSAGES", # Общий ключ группы для Android
                 visibility='public', # Чтобы уведомление было видно на заблокированном экране
                 sticky=False,
                 local_only=False,
-                priority='max' # Дополнительный приоритет для AndroidNotification
+                # priority='max' # Дополнительный приоритет для AndroidNotification - может конфликтовать с priority='high' в AndroidConfig
             )
         )
 

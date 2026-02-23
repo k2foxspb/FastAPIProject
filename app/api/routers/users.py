@@ -1576,7 +1576,8 @@ async def send_friend_request(
             token=target_user.fcm_token,
             title="Новая заявка в друзья",
             body=f"{msg['sender_name']} хочет добавить вас в друзья",
-            data=msg
+            data=msg,
+            sender_id=current_user.id
         ))
 
     return new_friendship
@@ -1625,7 +1626,8 @@ async def accept_friend_request(
             token=sender.fcm_token,
             title="Заявка принята",
             body=f"{msg['sender_name']} принял вашу заявку в друзья",
-            data=msg
+            data=msg,
+            sender_id=current_user.id
         ))
 
     return friendship

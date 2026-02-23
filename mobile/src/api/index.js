@@ -23,7 +23,7 @@ export const initAuth = async () => {
 };
 
 export const usersApi = {
-  getMe: () => api.get('/users/me'),
+  getMe: (appVersion = null) => api.get('/users/me', { params: { app_version: appVersion } }),
   login: (username, password, fcmToken = null) => {
     const params = new URLSearchParams();
     params.append('username', username);

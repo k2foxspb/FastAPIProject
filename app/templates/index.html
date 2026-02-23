@@ -1,57 +1,212 @@
 <!DOCTYPE html>
-<html>
+<html lang="ru">
 <head>
     <meta charset="utf-8" />
-    <title>FastAPI — Главная</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FokinShop — Мобильное приложение</title>
     <style>
-        body { font-family: Arial, sans-serif; margin: 0; background: #f7f7f8; }
-        .hero { background: linear-gradient(135deg,#0ea5e9,#2563eb); color: #fff; padding: 40px 20px; text-align:center; }
-        .hero h1 { margin: 0 0 10px; font-size: 28px; }
-        .hero p { margin: 0 0 20px; opacity: 0.95; }
-        .cta-btn { background: #fff; color:#2563eb; padding:12px 20px; border-radius:8px; text-decoration:none; font-weight:600; display:inline-block; }
-        .container { max-width: 900px; margin: 20px auto; padding: 0 16px; }
-        .promo { background:#fff; border-radius:12px; padding:20px; box-shadow:0 6px 20px rgba(0,0,0,0.06); }
-        .promo h2 { margin-top:0; }
-        .app-banner { display:flex; align-items:center; gap:16px; background:#f0f9ff; border:1px dashed #93c5fd; padding:14px; border-radius:10px; margin-top:12px; }
-        .app-banner strong { color:#0ea5e9; }
-        .hidden { display:none; }
+        :root {
+            --bg-color: #0a0a0c;
+            --surface-color: #16161a;
+            --accent-color: #3b82f6;
+            --accent-hover: #2563eb;
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --border-color: #2e2e36;
+        }
+
+        body {
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 500px;
+            width: 90%;
+            text-align: center;
+            padding: 40px 20px;
+            background: var(--surface-color);
+            border-radius: 24px;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+            border: 1px solid var(--border-color);
+        }
+
+        .logo-container {
+            margin-bottom: 24px;
+        }
+
+        .logo {
+            width: 120px;
+            height: 120px;
+            object-fit: contain;
+            border-radius: 20%;
+            /* Добавляем мягкое свечение логотипу */
+            filter: drop-shadow(0 0 15px rgba(59, 130, 246, 0.3));
+        }
+
+        h1 {
+            font-size: 28px;
+            font-weight: 700;
+            margin: 0 0 12px;
+            letter-spacing: -0.025em;
+        }
+
+        p {
+            color: var(--text-secondary);
+            font-size: 16px;
+            margin-bottom: 32px;
+            padding: 0 20px;
+        }
+
+        .app-info {
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 16px;
+            padding: 16px;
+            margin-bottom: 24px;
+            border: 1px solid var(--border-color);
+        }
+
+        .version-label {
+            display: block;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-secondary);
+            margin-bottom: 4px;
+        }
+
+        .version-number {
+            font-weight: 600;
+            font-size: 18px;
+            color: var(--accent-color);
+        }
+
+        .download-btn {
+            background-color: var(--accent-color);
+            color: white;
+            padding: 16px 32px;
+            border-radius: 14px;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 16px;
+            display: inline-block;
+            transition: all 0.2s ease;
+            width: 100%;
+            box-sizing: border-box;
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+        }
+
+        .download-btn:hover {
+            background-color: var(--accent-hover);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(59, 130, 246, 0.4);
+        }
+
+        .download-btn:active {
+            transform: translateY(0);
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .loading-spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: #fff;
+            animation: spin 1s ease-in-out infinite;
+            margin-right: 10px;
+            vertical-align: middle;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        @media (max-width: 480px) {
+            .container {
+                padding: 30px 15px;
+                border-radius: 0;
+                border: none;
+                background: transparent;
+                box-shadow: none;
+            }
+        }
     </style>
 </head>
 <body>
-    <div class="hero">
-        <h1>Добро пожаловать в API интернет‑магазина</h1>
-        <p>Свежее предложение и актуальная версия мобильного приложения — всегда здесь.</p>
-        <a id="downloadTop" class="cta-btn hidden" href="#" download>Скачать приложение</a>
-    </div>
-
     <div class="container">
-        <div class="promo">
-            <h2>Рекламный блок</h2>
-            <p>Скачайте наше мобильное приложение, чтобы получать персональные предложения, пуш‑уведомления и быстрый доступ к заказам.</p>
-            <div id="appBanner" class="app-banner hidden">
-                <span>Доступна новая версия: <strong id="latestVer">—</strong></span>
-                <a id="downloadBtn" class="cta-btn" href="#" download>Скачать APK</a>
+        <div class="logo-container">
+            <img src="/templates/logo.png" alt="Logo" class="logo" onerror="this.src='https://via.placeholder.com/120?text=App'">
+        </div>
+        
+        <h1>FokinShop</h1>
+        <p>Ваш любимый магазин теперь всегда под рукой. Скачайте наше официальное мобильное приложение.</p>
+
+        <div id="appStatus">
+            <div id="appBanner" class="hidden">
+                <div class="app-info">
+                    <span class="version-label">Последняя версия</span>
+                    <span class="version-number" id="latestVer">...</span>
+                </div>
+                <a id="downloadBtn" class="download-btn" href="#" download>
+                    Скачать APK
+                </a>
+            </div>
+            
+            <div id="loadingInfo">
+                <div class="loading-spinner"></div>
+                <span style="color: var(--text-secondary)">Проверка обновлений...</span>
+            </div>
+
+            <div id="noApp" class="hidden">
+                <p style="color: var(--text-secondary); font-size: 14px;">
+                    Приложение временно недоступно для загрузки.
+                </p>
             </div>
         </div>
     </div>
 
     <script>
         async function loadLatest() {
+            const banner = document.getElementById('appBanner');
+            const loader = document.getElementById('loadingInfo');
+            const noApp = document.getElementById('noApp');
+            const downloadBtn = document.getElementById('downloadBtn');
+            const versionText = document.getElementById('latestVer');
+
             try {
                 const res = await fetch('/news/app-version/latest');
-                if (!res.ok) return;
+                if (!res.ok) throw new Error('Not found');
+                
                 const data = await res.json();
-                const a1 = document.getElementById('downloadBtn');
-                const a2 = document.getElementById('downloadTop');
-                const ver = document.getElementById('latestVer');
+                
                 if (data && data.file_path) {
-                    a1.href = data.file_path; a1.classList.remove('hidden');
-                    a2.href = data.file_path; a2.classList.remove('hidden');
-                    ver.textContent = data.version || '—';
-                    document.getElementById('appBanner').classList.remove('hidden');
+                    downloadBtn.href = data.file_path;
+                    versionText.textContent = data.version || 'v1.0.0';
+                    
+                    loader.classList.add('hidden');
+                    banner.classList.remove('hidden');
+                } else {
+                    throw new Error('No file path');
                 }
-            } catch(e) { /* no-op */ }
+            } catch(e) {
+                console.error('Failed to load version:', e);
+                loader.classList.add('hidden');
+                noApp.classList.remove('hidden');
+            }
         }
+        
         loadLatest();
     </script>
 </body>

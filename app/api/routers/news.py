@@ -1,8 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update, func, case, delete, literal
+from sqlalchemy import select, update, func, case, delete, literal, or_, and_
 from sqlalchemy.orm import selectinload
 from typing import Annotated, Optional
+import asyncio
 import uuid
 import io
 from pathlib import Path
@@ -12,11 +13,63 @@ from app.utils import storage
 from app.api.dependencies import get_async_db
 from app.core.auth import get_current_user, get_current_admin, get_current_user_optional
 from app.models.news import News as NewsModel, NewsImage as NewsImageModel, NewsReaction as NewsReactionModel, NewsComment as NewsCommentModel, NewsCommentReaction as NewsCommentReactionModel
-from app.models.users import User as UserModel, AppVersion as AppVersionModel
+from app.api.routers.notifications import manager as notification_manager
+from app.core.fcm import send_fcm_notification
+from app.models.users import User as UserModel, AppVersion as AppVersionModel, Friendship as FriendshipModel
 from app.schemas.news import News as NewsSchema, NewsCreate, NewsUpdate, NewsComment as NewsCommentSchema, NewsCommentCreate
 from app.schemas.users import AppVersionResponse
 
 router = APIRouter(prefix="/news", tags=["news"])
+
+async def notify_friends_about_news(news_id: int, author_id: int, author_name: str, news_title: str, db: AsyncSession):
+    """Уведомляет друзей автора о новой новости."""
+    from loguru import logger
+    try:
+        # Находим всех подтвержденных друзей автора
+        res = await db.execute(
+            select(UserModel).join(
+                FriendshipModel,
+                or_(
+                    and_(FriendshipModel.user_id == author_id, FriendshipModel.friend_id == UserModel.id),
+                    and_(FriendshipModel.friend_id == author_id, FriendshipModel.user_id == UserModel.id)
+                )
+            ).where(
+                FriendshipModel.status == "accepted",
+                UserModel.id != author_id
+            )
+        )
+        friends = res.scalars().all()
+        
+        if not friends:
+            logger.debug(f"FCM: No friends found to notify for author {author_id}")
+            return
+
+        msg_type = "new_post" # Или "new_news"
+        notification_msg = {
+            "type": msg_type,
+            "news_id": news_id,
+            "author_id": author_id,
+            "author_name": author_name,
+            "title": news_title
+        }
+
+        for friend in friends:
+            # WebSocket уведомление
+            asyncio.create_task(notification_manager.send_personal_message(notification_msg, friend.id))
+            
+            # FCM уведомление
+            if friend.fcm_token:
+                asyncio.create_task(send_fcm_notification(
+                    token=friend.fcm_token,
+                    title=f"Новая запись: {author_name}",
+                    body=news_title if len(news_title) < 50 else f"{news_title[:47]}...",
+                    data=notification_msg,
+                    sender_id=author_id
+                ))
+        
+        logger.info(f"FCM: Notifications sent to {len(friends)} friends of {author_id} for news {news_id}")
+    except Exception as e:
+        logger.error(f"FCM: Error notifying friends about news: {e}")
 
 @router.get("/app-version/latest/", response_model=AppVersionResponse)
 async def get_latest_app_version(db: AsyncSession = Depends(get_async_db)):
@@ -304,6 +357,19 @@ async def create_news(
         )
         news_obj = result.scalar_one()
         logger.info(f"NEWS_CREATE_DEBUG: Returning created news ID={news_obj.id}")
+
+        # 5. Уведомляем друзей
+        if news_obj.moderation_status == "approved":
+            author_name = f"{current_user.first_name} {current_user.last_name}".strip() or current_user.email
+            # Мы используем новую сессию или текущую, но уведомление асинхронное
+            asyncio.create_task(notify_friends_about_news(
+                news_id=news_obj.id,
+                author_id=current_user.id,
+                author_name=author_name,
+                news_title=news_obj.title,
+                db=db
+            ))
+
         return news_obj
     except Exception as e:
         logger.exception(f"NEWS_CREATE_DEBUG: UNHANDLED ERROR in create_news: {e}")

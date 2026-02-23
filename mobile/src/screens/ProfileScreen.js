@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import { getShadow } from '../utils/shadowStyles';
-import { View, Text, StyleSheet, Image, FlatList, ScrollView, TouchableOpacity, Modal, TouchableWithoutFeedback, Switch, Alert, Platform } from 'react-native';
+import { View, Text, StyleSheet, Image, FlatList, ScrollView, TouchableOpacity, Modal, TouchableWithoutFeedback, Switch, Alert, Platform, Linking } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import api, { usersApi, newsApi, setAuthToken } from '../api';
 import { Ionicons as Icon } from '@expo/vector-icons';
@@ -261,6 +261,24 @@ export default function ProfileScreen({ navigation }) {
 
   return (
     <ScrollView style={[styles.container, { backgroundColor: colors.background }]}>
+      {user.update_available && (
+        <TouchableOpacity 
+          style={styles.updateBanner} 
+          onPress={() => {
+            const url = Platform.OS === 'ios' 
+              ? 'https://fokin.fun' // Замените на реальный ID
+              : 'https://fokin.fun'; // Замените на реальный ID
+            Linking.openURL(url).catch(err => console.error("Couldn't load page", err));
+          }}
+        >
+          <Icon name="cloud-download-outline" size={24} color="#fff" />
+          <View style={styles.updateBannerTextContainer}>
+            <Text style={styles.updateBannerTitle}>Доступна новая версия!</Text>
+            <Text style={styles.updateBannerSubtitle}>Нажмите, чтобы обновить приложение</Text>
+          </View>
+          <Icon name="chevron-forward" size={20} color="#fff" />
+        </TouchableOpacity>
+      )}
       <View style={[styles.header, { borderColor: colors.border }]}>
         <TouchableOpacity onPress={openAvatarAlbum}>
           <Image 
@@ -269,7 +287,9 @@ export default function ProfileScreen({ navigation }) {
           />
         </TouchableOpacity>
         <Text style={[styles.name, { color: colors.text }]}>{formatName(user)}</Text>
-        <Text style={[styles.role, { color: colors.textSecondary }]}>{user.role}</Text>
+        {user.role !== 'buyer' && (
+          <Text style={[styles.role, { color: colors.textSecondary }]}>{user.role}</Text>
+        )}
       </View>
 
       <Modal
@@ -516,6 +536,38 @@ const styles = StyleSheet.create({
   logoutButtonText: {
     color: '#fff',
     fontWeight: 'bold',
+  },
+  updateBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#34C759',
+    padding: 15,
+    margin: 10,
+    borderRadius: 12,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.2,
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 4,
+      },
+    }),
+  },
+  updateBannerTextContainer: {
+    flex: 1,
+    marginLeft: 15,
+  },
+  updateBannerTitle: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  updateBannerSubtitle: {
+    color: 'rgba(255,255,255,0.9)',
+    fontSize: 13,
   },
   modalOverlay: {
     flex: 1,
