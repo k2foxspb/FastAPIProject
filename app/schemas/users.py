@@ -38,9 +38,33 @@ class UserPhotoUpdate(BaseModel):
 class BulkDeletePhotosRequest(BaseModel):
     photo_ids: list[int]
 
+class UserPhotoCommentBase(BaseModel):
+    comment: str = Field(min_length=1)
+
+class UserPhotoCommentCreate(UserPhotoCommentBase):
+    pass
+
+class UserPhotoComment(UserPhotoCommentBase):
+    id: int
+    user_id: int
+    photo_id: int
+    created_at: datetime
+    first_name: str | None = None
+    last_name: str | None = None
+    avatar_url: str | None = None
+    likes_count: int = 0
+    dislikes_count: int = 0
+    my_reaction: int | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
 class UserPhoto(UserPhotoBase):
     id: int
     created_at: datetime | None = None
+    likes_count: int = 0
+    dislikes_count: int = 0
+    my_reaction: int | None = None
+    comments_count: int = 0
     model_config = ConfigDict(from_attributes=True)
 
     @classmethod
@@ -56,6 +80,10 @@ class UserPhoto(UserPhotoBase):
                     "privacy": obj.get("privacy", "public"),
                     "id": obj.get("id", 0),
                     "created_at": obj.get("created_at"),
+                    "likes_count": obj.get("likes_count", 0),
+                    "dislikes_count": obj.get("dislikes_count", 0),
+                    "my_reaction": obj.get("my_reaction"),
+                    "comments_count": obj.get("comments_count", 0),
                 }
                 return cls(**data)
             
@@ -68,6 +96,10 @@ class UserPhoto(UserPhotoBase):
                 "privacy": str(getattr(obj, "privacy", "public")),
                 "id": int(getattr(obj, "id", 0)),
                 "created_at": getattr(obj, "created_at", None),
+                "likes_count": int(getattr(obj, "likes_count", 0)),
+                "dislikes_count": int(getattr(obj, "dislikes_count", 0)),
+                "my_reaction": getattr(obj, "my_reaction", None),
+                "comments_count": int(getattr(obj, "comments_count", 0)),
             }
             return cls(**data)
         except Exception as e:
@@ -146,7 +178,6 @@ class PhotoAlbum(PhotoAlbumBase):
             
             return cls(**data)
         except Exception as e:
-            print(f"DEBUG: Error in PhotoAlbum.model_validate: {e}")
             return cls(
                 id=int(getattr(obj, "id", 0)),
                 user_id=int(getattr(obj, "user_id", 0)),
@@ -251,7 +282,6 @@ class User(BaseModel):
                 
             return cls(**data)
         except Exception as e:
-            print(f"DEBUG: Error in User.model_validate: {e}")
             return cls(
                 id=int(getattr(obj, "id", 0)),
                 email=str(getattr(obj, "email", "error@validate.err")),
@@ -266,6 +296,21 @@ class RefreshTokenRequest(BaseModel):
 
 class FCMTokenUpdate(BaseModel):
     fcm_token: str
+
+class TokenResponse(BaseModel):
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
+    fcm_token: str | None = None
+
+
+class FirebaseConfigResponse(BaseModel):
+    apiKey: str
+    appId: str
+    projectId: str
+    storageBucket: str
+    messagingSenderId: str
+    databaseURL: str | None = None
 
 
 class Friendship(BaseModel):

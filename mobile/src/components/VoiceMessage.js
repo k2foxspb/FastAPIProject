@@ -1,11 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
-import { Audio } from 'expo-av';
+import { getShadow } from '../utils/shadowStyles';
+import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Alert, Platform } from 'react-native';
+import { Audio, useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
-import * as FileSystem from 'expo-file-system';
+import { cacheDirectory, getInfoAsync, downloadAsync, readAsStringAsync, writeAsStringAsync, EncodingType, StorageAccessFramework } from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
 import { API_BASE_URL } from '../constants';
+import { setPlaybackAudioMode } from '../utils/audioSettings';
 
 const resolveRemoteUri = (path) => {
   if (!path) return '';
@@ -18,103 +21,184 @@ const resolveRemoteUri = (path) => {
 export default function VoiceMessage({ item, currentUserId }) {
   const { theme } = useTheme();
   const colors = themeConstants[theme];
-  const [sound, setSound] = useState(null);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [duration, setDuration] = useState(0);
-  const [position, setPosition] = useState(0);
   const [loading, setLoading] = useState(false);
   const [localUri, setLocalUri] = useState(null);
 
   const remoteUri = resolveRemoteUri(item.file_path);
   const fileName = item.file_path.split('/').pop();
-  const localFileUri = `${FileSystem.cacheDirectory}${fileName}`;
+  const localFileUri = `${cacheDirectory}${fileName}`;
+
+  const audioSource = localUri || remoteUri;
+  // We use useAudioPlayer without an initial source to keep the player instance stable.
+  // This prevents the "already released" crash when the source changes (e.g. after downloading the file)
+  // while an async function (like loadAndPlay) is still using the old player instance.
+  const player = useAudioPlayer();
+  const status = useAudioPlayerStatus(player);
 
   useEffect(() => {
-    return sound ? () => { sound.unloadAsync(); } : undefined;
-  }, [sound]);
+    if (audioSource) {
+      player.replace(audioSource);
+    }
+  }, [audioSource, player]);
+
+  useEffect(() => {
+    if (Platform.OS === 'web') {
+      setLoading(false);
+      return;
+    }
+    const checkLocal = async () => {
+      try {
+        const fileInfo = await getInfoAsync(localFileUri);
+        if (fileInfo.exists) {
+          setLocalUri(fileInfo.uri);
+        }
+      } catch (e) {
+        console.log('Error checking local audio file:', e);
+      }
+    };
+    checkLocal();
+  }, []);
 
   const loadAndPlay = async () => {
-    if (sound) {
-      if (isPlaying) {
-        await sound.pauseAsync();
-      } else {
-        await sound.playAsync();
-      }
+    await setPlaybackAudioMode();
+
+    if (player.playing) {
+      player.pause();
       return;
     }
 
+    if (!localUri && Platform.OS !== 'web') {
+      setLoading(true);
+      try {
+        const fileInfo = await getInfoAsync(localFileUri);
+        let uri = null;
+        if (fileInfo.exists) {
+          uri = fileInfo.uri;
+        } else {
+          const downloadRes = await downloadAsync(remoteUri, localFileUri);
+          uri = downloadRes.uri;
+        }
+        setLocalUri(uri);
+      } catch (error) {
+        console.error('Error loading voice message:', error);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    player.play();
+  };
+
+  const handleDownload = async () => {
+    if (Platform.OS === 'web') {
+      try {
+        // Simple download trigger for web
+        const link = document.createElement('a');
+        link.href = remoteUri;
+        link.setAttribute('download', fileName);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      } catch (e) {
+        console.log('Web download failed', e);
+        // Fallback
+        const win = window.open(remoteUri, '_blank');
+        if (win) win.focus();
+      }
+      return;
+    }
     setLoading(true);
     try {
       let uri = localUri;
       if (!uri) {
-        const fileInfo = await FileSystem.getInfoAsync(localFileUri);
+        const fileInfo = await getInfoAsync(localFileUri);
         if (fileInfo.exists) {
           uri = fileInfo.uri;
         } else {
-          const downloadRes = await FileSystem.downloadAsync(remoteUri, localFileUri);
+          const downloadRes = await downloadAsync(remoteUri, localFileUri);
           uri = downloadRes.uri;
         }
         setLocalUri(uri);
       }
 
-      const { sound: newSound } = await Audio.Sound.createAsync(
-        { uri },
-        { shouldPlay: true },
-        onPlaybackStatusUpdate
-      );
-      setSound(newSound);
+      if (Platform.OS === 'android') {
+        const permissions = await StorageAccessFramework.requestDirectoryPermissionsAsync();
+        if (permissions.granted) {
+          const base64 = await readAsStringAsync(uri, { encoding: EncodingType.Base64 });
+          const newFileUri = await StorageAccessFramework.createFileAsync(
+            permissions.directoryUri,
+            fileName,
+            'audio/m4a'
+          );
+          await writeAsStringAsync(newFileUri, base64, { encoding: EncodingType.Base64 });
+          Alert.alert('Успех', 'Голосовое сообщение сохранено');
+        }
+      } else {
+        if (await Sharing.isAvailableAsync()) {
+          await Sharing.shareAsync(uri);
+        } else {
+          Alert.alert('Ошибка', 'Функция "Поделиться" недоступна');
+        }
+      }
     } catch (error) {
-      console.error('Error playing voice message:', error);
+      console.error('Error sharing voice message:', error);
+      Alert.alert('Ошибка', 'Не удалось скачать файл');
     } finally {
       setLoading(false);
     }
   };
 
-  const onPlaybackStatusUpdate = (status) => {
-    if (status.isLoaded) {
-      setPosition(status.positionMillis);
-      setDuration(status.durationMillis);
-      setIsPlaying(status.isPlaying);
-      if (status.didJustFinish) {
-        setIsPlaying(false);
-        setPosition(0);
-      }
-    }
-  };
-
-  const formatTime = (millis) => {
-    const totalSeconds = millis / 1000;
+  const formatTime = (seconds) => {
+    const totalSeconds = Math.floor(seconds || 0);
     const minutes = Math.floor(totalSeconds / 60);
-    const seconds = Math.floor(totalSeconds % 60);
-    return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
+    const remainingSeconds = totalSeconds % 60;
+    return `${minutes}:${remainingSeconds < 10 ? '0' : ''}${remainingSeconds}`;
   };
 
+  const position = status.currentTime || 0;
+  const duration = status.duration || 0;
+  const isPlaying = status.playing;
   const progress = duration > 0 ? (position / duration) * 100 : 0;
   const isReceived = item.sender_id !== currentUserId;
 
   return (
-    <View style={styles.container}>
+    <View style={[
+      styles.container, 
+      { 
+        backgroundColor: isReceived ? colors.surface : colors.primary,
+        ...getShadow('#000', { width: 0, height: 1 }, 0.1, 2, 1),
+      }
+    ]}>
       <TouchableOpacity onPress={loadAndPlay} disabled={loading} style={styles.playButton}>
-        {loading ? (
-          <ActivityIndicator size="small" color={isReceived ? colors.primary : "#fff"} />
-        ) : (
-          <MaterialIcons 
-            name={isPlaying ? "pause" : "play-arrow"} 
-            size={32} 
-            color={isReceived ? colors.primary : "#fff"} 
-          />
-        )}
+        <View style={[styles.playIconContainer, { backgroundColor: isReceived ? colors.primary + '15' : 'rgba(255,255,255,0.2)' }]}>
+          {loading ? (
+            <ActivityIndicator size="small" color={isReceived ? colors.primary : "#fff"} />
+          ) : (
+            <MaterialIcons 
+              name={isPlaying ? "pause" : "play-arrow"} 
+              size={28} 
+              color={isReceived ? colors.primary : "#fff"} 
+            />
+          )}
+        </View>
       </TouchableOpacity>
       <View style={styles.progressContainer}>
         <View style={[styles.progressBar, { backgroundColor: isReceived ? colors.border : 'rgba(255,255,255,0.3)' }]}>
           <View style={[styles.progressFill, { width: `${progress}%`, backgroundColor: isReceived ? colors.primary : "#fff" }]} />
         </View>
         <View style={styles.timeContainer}>
-          <Text style={[styles.timeText, { color: isReceived ? colors.textSecondary : 'rgba(255,255,255,0.7)' }]}>
+          <Text style={[styles.timeText, { color: isReceived ? colors.textSecondary : 'rgba(255,255,255,0.8)' }]}>
             {formatTime(position)} / {formatTime(duration)}
           </Text>
         </View>
       </View>
+      <TouchableOpacity onPress={handleDownload} disabled={loading} style={styles.downloadButton}>
+        <MaterialIcons 
+          name="file-download" 
+          size={20} 
+          color={isReceived ? colors.textSecondary : 'rgba(255,255,255,0.8)'} 
+        />
+      </TouchableOpacity>
     </View>
   );
 }
@@ -123,11 +207,20 @@ const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 10,
-    minWidth: 200,
+    padding: 8,
+    borderRadius: 16,
+    minWidth: 220,
+    marginVertical: 2,
   },
   playButton: {
-    marginRight: 10,
+    marginRight: 12,
+  },
+  playIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   progressContainer: {
     flex: 1,
@@ -146,5 +239,9 @@ const styles = StyleSheet.create({
   },
   timeText: {
     fontSize: 10,
+  },
+  downloadButton: {
+    marginLeft: 10,
+    padding: 5,
   },
 });

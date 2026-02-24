@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image, TextInput, Alert, ActivityIndicator, Platform, Switch, ScrollView } from 'react-native';
+import { getShadow } from '../utils/shadowStyles';
 import * as ImagePicker from 'expo-image-picker';
 import { usersApi } from '../api';
 import { Ionicons as Icon } from '@expo/vector-icons';
@@ -12,7 +13,7 @@ export default function UploadPhotoScreen({ route, navigation }) {
   const { albumId } = route.params || {};
   const [images, setImages] = useState([]); // Изменено: теперь массив
   const [description, setDescription] = useState('');
-  const [isPrivate, setIsPrivate] = useState(false);
+  const [privacy, setPrivacy] = useState('public');
   const [uploading, setUploading] = useState(false);
 
   const pickImage = async () => {
@@ -24,8 +25,8 @@ export default function UploadPhotoScreen({ route, navigation }) {
       }
 
       let result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
-        allowsMultipleSelection: true, // Разрешаем выбор нескольких фото
+        mediaTypes: ['images', 'videos'],
+        allowsMultipleSelection: true, // Разрешаем выбор нескольких фото/видео
         quality: 0.8,
       });
 
@@ -49,9 +50,12 @@ export default function UploadPhotoScreen({ route, navigation }) {
     
     images.forEach((image, index) => {
       const uri = image.uri;
-      const name = uri.split('/').pop() || `photo_${index}.jpg`;
+      const isVideo = image.type === 'video';
+      const defaultExt = isVideo ? 'mp4' : 'jpg';
+      const name = uri.split('/').pop() || `media_${index}.${defaultExt}`;
       const match = /\.(\w+)$/.exec(name);
-      const type = match ? `image/${match[1]}` : `image/jpeg`;
+      const ext = match ? match[1] : defaultExt;
+      const type = isVideo ? `video/${ext}` : `image/${ext}`;
 
       formData.append('files', {
         uri: Platform.OS === 'ios' ? uri.replace('file://', '') : uri,
@@ -66,20 +70,12 @@ export default function UploadPhotoScreen({ route, navigation }) {
     if (albumId) {
       formData.append('album_id', albumId.toString());
     }
-    formData.append('is_private', isPrivate.toString());
+    formData.append('privacy', privacy);
 
     try {
-      if (images.length === 1) {
-        // Если выбрано одно фото, можно использовать старый метод или новый
-        // Для единообразия и тестирования нового метода используем bulkUploadPhotos
-        // Но старый метод принимает 'file' а не 'files', поэтому пересоздаем formData для одного файла
-        // Или просто всегда используем bulkUploadPhotos с 'files'
-        await usersApi.bulkUploadPhotos(formData);
-      } else {
-        await usersApi.bulkUploadPhotos(formData);
-      }
+      await usersApi.bulkUploadPhotos(formData);
       
-      Alert.alert('Успех', `${images.length} фото загружено`);
+      Alert.alert('Успех', `${images.length} медиа загружено`);
       navigation.goBack();
     } catch (err) {
       Alert.alert('Ошибка', 'Не удалось загрузить фотографии. ' + (err.message || 'Попробуйте еще раз.'));
@@ -103,6 +99,11 @@ export default function UploadPhotoScreen({ route, navigation }) {
               {images.map((img, index) => (
                 <View key={index} style={styles.previewWrapper}>
                   <Image source={{ uri: img.uri }} style={styles.previewThumbnail} />
+                  {img.type === 'video' && (
+                    <View style={styles.videoIndicator}>
+                      <Icon name="play" size={20} color="#fff" />
+                    </View>
+                  )}
                   <TouchableOpacity 
                     style={[styles.removeBadge, { backgroundColor: colors.error }]} 
                     onPress={() => removeImage(index)}
@@ -143,14 +144,31 @@ export default function UploadPhotoScreen({ route, navigation }) {
           multiline
         />
 
-        <View style={[styles.switchContainer, { borderBottomColor: colors.border }]}>
-          <Text style={[styles.label, { color: colors.text, marginBottom: 0 }]}>Приватные фотографии</Text>
-          <Switch
-            value={isPrivate}
-            onValueChange={setIsPrivate}
-            trackColor={{ false: colors.border, true: colors.primary + '80' }}
-            thumbColor={isPrivate ? colors.primary : '#f4f3f4'}
-          />
+        <Text style={[styles.label, { color: colors.text }]}>Кто может видеть фото?</Text>
+        <View style={styles.privacyContainer}>
+          {[
+            { label: 'Всем', value: 'public' },
+            { label: 'Друзьям', value: 'friends' },
+            { label: 'Только мне', value: 'private' },
+          ].map((item) => (
+            <TouchableOpacity
+              key={item.value}
+              style={[
+                styles.privacyOption,
+                { borderColor: colors.border },
+                privacy === item.value && { backgroundColor: colors.primary, borderColor: colors.primary }
+              ]}
+              onPress={() => setPrivacy(item.value)}
+            >
+              <Text style={[
+                styles.privacyText,
+                { color: colors.text },
+                privacy === item.value && { color: '#fff' }
+              ]}>
+                {item.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
         </View>
 
         <TouchableOpacity 
@@ -162,7 +180,7 @@ export default function UploadPhotoScreen({ route, navigation }) {
             <ActivityIndicator color="#fff" />
           ) : (
             <Text style={styles.uploadBtnText}>
-              {images.length > 1 ? `Загрузить ${images.length} фото` : 'Загрузить'}
+              {images.length > 1 ? `Загрузить (${images.length})` : 'Загрузить'}
             </Text>
           )}
         </TouchableOpacity>
@@ -194,6 +212,19 @@ const styles = StyleSheet.create({
     height: '100%',
     borderRadius: 8,
   },
+  videoIndicator: {
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    transform: [{ translateX: -15 }, { translateY: -15 }],
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1,
+  },
   removeBadge: {
     position: 'absolute',
     top: -5,
@@ -203,11 +234,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.2,
-    shadowRadius: 1,
+    ...getShadow('#000', { width: 0, height: 1 }, 0.2, 1, 2),
   },
   addMoreBtn: {
     width: 120,
@@ -257,5 +284,22 @@ const styles = StyleSheet.create({
     alignItems: 'center'
   },
   disabledBtn: { opacity: 0.5 },
-  uploadBtnText: { color: '#fff', fontSize: 18, fontWeight: 'bold' }
+  uploadBtnText: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
+  privacyContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 20,
+  },
+  privacyOption: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingVertical: 10,
+    alignItems: 'center',
+    marginHorizontal: 4,
+  },
+  privacyText: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
 });

@@ -14,8 +14,9 @@
       ],
       "expo-asset"
     ],
-    "name": "FastAPI Expo",
-    "slug": "fastapi-expo-app",
+    "name": "FastAPI",
+    "slug": "fastapi",
+    "scheme": "fokinfun",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/logo1024.png",
@@ -31,6 +32,9 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.k2foxspb.fokinfun",
+      "associatedDomains": [
+        "applinks:fokin.fun"
+      ],
       "infoPlist": {
         "NSCameraUsageDescription": "Приложение запрашивает доступ к камере, чтобы вы могли делать снимки.",
         "NSMicrophoneUsageDescription": "Приложение запрашивает доступ к микрофону.",
@@ -44,19 +48,37 @@
       },
       "package": "com.k2foxspb.fokinfun",
       "googleServicesFile": "./google-services.json",
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "fokin.fun",
+              "pathPrefix": "/verify-email"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
+      ],
       "permissions": [
-        "CAMERA",
-        "RECORD_AUDIO",
-        "READ_EXTERNAL_STORAGE",
-        "WRITE_EXTERNAL_STORAGE"
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.POST_NOTIFICATIONS"
       ]
     },
     "extra": {
       "apiUrl": "https://fokin.fun",
       "eas": {
-        "projectId": "9e4ed2de-5ab1-47d0-a0ca-24f4f580e862"
+        "projectId": "9a2c7446-03ef-4d52-9fd3-93faefdfb94c"
       }
     },
-    "owner": "k2foxspb"
+    "owner": "k2fox"
   }
 }

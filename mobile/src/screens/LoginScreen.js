@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { getShadow } from '../utils/shadowStyles';
 import { View, Text, TextInput, StyleSheet, TouchableOpacity, Alert, KeyboardAvoidingView, Platform } from 'react-native';
 import { usersApi, setAuthToken } from '../api';
 import { useNotifications } from '../context/NotificationContext';
@@ -13,7 +14,7 @@ export default function LoginScreen({ navigation }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const { connect } = useNotifications();
+  const { connect, loadUser } = useNotifications();
 
   const onLogin = async () => {
     if (!username || !password) {
@@ -22,7 +23,9 @@ export default function LoginScreen({ navigation }) {
     }
     try {
       setLoading(true);
-      const res = await usersApi.login(username, password);
+      // Получаем FCM токен перед логином, если он уже есть локально
+      const fcmToken = await storage.getItem('fcm_token');
+      const res = await usersApi.login(username, password, fcmToken);
       const token = res.data?.access_token;
       const refreshToken = res.data?.refresh_token;
       if (!token) {
@@ -33,6 +36,10 @@ export default function LoginScreen({ navigation }) {
       await storage.saveTokens(token, refreshToken);
       
       setAuthToken(token);
+      
+      // Загружаем данные пользователя ПЕРЕД переходом на другой экран
+      await loadUser();
+      
       // Подключаемся к WebSocket уведомлениям
       connect(token);
       // Обновляем FCM токен на сервере сразу после входа
@@ -94,7 +101,7 @@ const styles = StyleSheet.create({
   inner: { flex: 1, justifyContent: 'center', padding: 24 },
   title: { fontSize: 28, fontWeight: 'bold', marginBottom: 32, textAlign: 'center' },
   input: { height: 52, borderWidth: 1, borderRadius: 12, paddingHorizontal: 16, marginBottom: 16, fontSize: 16 },
-  button: { height: 52, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginTop: 8, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4 },
+  button: { height: 52, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginTop: 8, ...getShadow('#000', { width: 0, height: 2 }, 0.1, 4, 2) },
   buttonDisabled: { opacity: 0.7 },
   buttonText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
   linkButton: { marginTop: 20, alignItems: 'center' },

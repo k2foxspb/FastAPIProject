@@ -1,7 +1,8 @@
+import asyncio
 import jwt
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, delete, or_, and_
+from sqlalchemy import select, delete, or_, and_, literal
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.responses import RedirectResponse
 
@@ -10,14 +11,21 @@ from app.models.users import (
     User as UserModel, 
     PhotoAlbum as PhotoAlbumModel, 
     UserPhoto as UserPhotoModel,
-    Friendship as FriendshipModel
+    Friendship as FriendshipModel,
+    UserPhotoComment as UserPhotoCommentModel,
+    UserPhotoReaction as UserPhotoReactionModel,
+    UserPhotoCommentReaction as UserPhotoCommentReactionModel
 )
 from app.schemas.users import (
     UserCreate, UserUpdate, User as UserSchema, RefreshTokenRequest, 
     PhotoAlbumCreate, PhotoAlbumUpdate, PhotoAlbum as PhotoAlbumSchema, 
     UserPhotoCreate, UserPhotoUpdate, UserPhoto as UserPhotoSchema,
-    FCMTokenUpdate, BulkDeletePhotosRequest, Friendship as FriendshipSchema
+    FCMTokenUpdate, BulkDeletePhotosRequest, Friendship as FriendshipSchema,
+    UserPhotoComment as UserPhotoCommentSchema, UserPhotoCommentCreate,
+    TokenResponse, FirebaseConfigResponse
 )
+from app.schemas.news import News as NewsSchema, NewsComment as NewsCommentSchema
+from app.schemas.reviews import Review as ReviewSchema
 from app.api.dependencies import get_async_db, get_friendship_status, can_view_content
 from app.core.auth import (
     hash_password,
@@ -31,11 +39,13 @@ from app.core.auth import (
 from app.api.routers.notifications import manager as notification_manager
 from app.core.fcm import send_fcm_notification
 from app.utils.emails import send_verification_email
-from app.tasks.example_tasks import send_verification_email_task
+from app.tasks.example_tasks import send_verification_email_task, delete_inactive_user_task
 
 import os
 import uuid
 import io
+import tempfile
+import cv2
 from PIL import Image
 from fastapi import UploadFile, File, Form
 from datetime import datetime
@@ -44,6 +54,110 @@ from app.utils import storage
 from sqlalchemy.orm import selectinload
 
 router = APIRouter(prefix="/users", tags=["users"])
+
+
+@router.get("/firebase-config", response_model=FirebaseConfigResponse)
+async def get_firebase_config():
+    """
+    Возвращает публичные параметры Firebase для мобильного приложения.
+    Берет часть данных из google-services.json, если он доступен.
+    """
+    import json
+    import os
+    from loguru import logger
+    
+    # По умолчанию (fallback)
+    config = {
+        "apiKey": "AIzaSyAwKCJuxsxfnY6aloE5lnDn-triTVBswxE",
+        "appId": "1:176773891332:android:01174694c19132ed0ffc51",
+        "projectId": "fastapi-f628e",
+        "storageBucket": "fastapi-f628e.firebasestorage.app",
+        "messagingSenderId": "176773891332",
+        "databaseURL": "https://fastapi-f628e-default-rtdb.firebaseio.com"
+    }
+    
+    # Пытаемся взять из google-services.json если он есть в корне или в mobile
+    gs_paths = [
+        "mobile/google-services.json",
+        "google-services.json",
+        "app/google-services.json"
+    ]
+    
+    for path in gs_paths:
+        if os.path.exists(path):
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    gs = json.load(f)
+                    info = gs.get("project_info", {})
+                    client = gs.get("client", [{}])[0]
+                    client_info = client.get("client_info", {})
+                    api_key = client.get("api_key", [{}])[0].get("current_key")
+                    
+                    if info.get("project_id"): config["projectId"] = info["project_id"]
+                    if info.get("storage_bucket"): config["storageBucket"] = info["storage_bucket"]
+                    if info.get("project_number"): config["messagingSenderId"] = info["project_number"]
+                    if client_info.get("mobilesdk_app_id"): config["appId"] = client_info["mobilesdk_app_id"]
+                    if api_key: config["apiKey"] = api_key
+                    # Add databaseURL if present
+                    if gs.get("project_info", {}).get("firebase_url"):
+                        config["databaseURL"] = gs["project_info"]["firebase_url"]
+                logger.info(f"FCM Config: Loaded from {path}")
+                break
+            except Exception as e:
+                logger.error(f"FCM Config: Error reading {path}: {e}")
+                continue
+
+    # Пытаемся уточнить projectId из firebase-service-account.json если он есть
+    sa_path = "firebase-service-account.json"
+    if os.path.exists(sa_path):
+        try:
+            with open(sa_path, "r", encoding="utf-8") as f:
+                sa = json.load(f)
+                if sa.get("project_id"):
+                    config["projectId"] = sa["project_id"]
+        except Exception as e:
+            logger.error(f"FCM Config: Error reading {sa_path}: {e}")
+            
+    return config
+
+
+@router.get("/fcm-status")
+async def get_fcm_status():
+    """Проверка статуса инициализации Firebase Admin SDK."""
+    import firebase_admin
+    from app.core.config import FIREBASE_SERVICE_ACCOUNT_PATH
+    
+    status = {
+        "initialized": len(firebase_admin._apps) > 0,
+        "apps_count": len(firebase_admin._apps),
+        "service_account_path": os.path.abspath(FIREBASE_SERVICE_ACCOUNT_PATH),
+        "service_account_exists": os.path.exists(FIREBASE_SERVICE_ACCOUNT_PATH),
+        "env_google_application_credentials": os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+    }
+    return status
+
+
+@router.post("/test-fcm")
+async def test_fcm_notification(
+    current_user: UserModel = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """Отправка тестового уведомления текущему пользователю."""
+    if not current_user.fcm_token:
+        raise HTTPException(status_code=400, detail="FCM token not found for current user")
+    
+    from app.core.fcm import send_fcm_notification
+    success = await send_fcm_notification(
+        token=current_user.fcm_token,
+        title="Тестовое уведомление",
+        body="Это тестовое пуш-уведомление от сервера",
+        data={"type": "test", "time": str(datetime.now())}
+    )
+    
+    if success:
+        return {"status": "success", "message": "Notification sent"}
+    else:
+        return {"status": "error", "message": "Failed to send notification"}
 
 
 @router.get("", response_model=list[UserSchema])
@@ -63,63 +177,68 @@ async def get_users(
         selectinload(UserModel.received_friend_requests)
     )
     if search:
-        query = query.where(UserModel.email.ilike(f"%{search}%"))
+        query = query.where(or_(
+            UserModel.email.ilike(f"%{search}%"),
+            UserModel.first_name.ilike(f"%{search}%"),
+            UserModel.last_name.ilike(f"%{search}%")
+        ))
     
     result = await db.execute(query)
     users = result.scalars().all()
 
+    # Предварительно загружаем все статусы дружбы для текущего пользователя (оптимизация N+1)
+    friendships_map = {}
+    if current_user:
+        res_f = await db.execute(
+            select(FriendshipModel).where(
+                or_(
+                    FriendshipModel.user_id == current_user.id,
+                    FriendshipModel.friend_id == current_user.id
+                )
+            )
+        )
+        friendships = res_f.scalars().all()
+        for f in friendships:
+            other_id = f.friend_id if f.user_id == current_user.id else f.user_id
+            friendships_map[other_id] = f
+
     # Скрываем приватный контент для общего списка
     for user in users:
-        friendship_status = user.friendship_status
+        # Определяем статус дружбы
+        friendship_status = None
         user_id = current_user.id if current_user else None
+
+        if current_user:
+            if user.id == current_user.id:
+                friendship_status = "self"
+            else:
+                friendship = friendships_map.get(user.id)
+                if friendship:
+                    if friendship.status == "accepted":
+                        friendship_status = "accepted"
+                    elif hasattr(friendship, 'deleted_by_id') and friendship.deleted_by_id == current_user.id:
+                        # Если текущий пользователь удалил этого друга, 
+                        # то для него это либо requested_by_them (если тот все еще считает другом),
+                        # либо просто None. Но в текущей схеме deleted_by_id означает "удален из друзей мной".
+                        if friendship.user_id == user.id: # Тот был отправителем
+                            friendship_status = "requested_by_them"
+                        else:
+                            friendship_status = None
+                    elif friendship.user_id == current_user.id:
+                        friendship_status = "requested_by_me"
+                    else:
+                        friendship_status = "requested_by_them"
+                else:
+                    friendship_status = None
+        
+        # Присваиваем для схемы
+        user.friendship_status = friendship_status
         
         user.albums = [a for a in user.albums if can_view_content(user.id, user_id, a.privacy, friendship_status)]
         for album in user.albums:
             album.photos = [p for p in album.photos if can_view_content(user.id, user_id, p.privacy, friendship_status)]
         
         user.photos = [p for p in user.photos if can_view_content(user.id, user_id, p.privacy, friendship_status)]
-        
-        # Определяем статус дружбы
-        if current_user:
-            if user.id == current_user.id:
-                user.friendship_status = "self"
-            else:
-                # Ищем среди отправленных текущим пользователем
-                res_sent = await db.execute(
-                    select(FriendshipModel).where(
-                        FriendshipModel.user_id == current_user.id,
-                        FriendshipModel.friend_id == user.id
-                    )
-                )
-                friendship = res_sent.scalar_one_or_none()
-                if friendship:
-                    if friendship.status == "accepted":
-                        user.friendship_status = "accepted"
-                    elif hasattr(friendship, 'deleted_by_id') and friendship.deleted_by_id == current_user.id:
-                        # Если вдруг каким-то образом в этой записи есть deleted_by_id текущего юзера
-                        # (хотя по логике он должен быть во второй ветке)
-                        user.friendship_status = None
-                    else:
-                        user.friendship_status = "requested_by_me"
-                else:
-                    # Ищем среди полученных текущим пользователем
-                    res_received = await db.execute(
-                        select(FriendshipModel).where(
-                            FriendshipModel.user_id == user.id,
-                            FriendshipModel.friend_id == current_user.id
-                        )
-                    )
-                    friendship = res_received.scalar_one_or_none()
-                    if friendship:
-                        if friendship.status == "accepted":
-                            user.friendship_status = "accepted"
-                        elif hasattr(friendship, 'deleted_by_id') and friendship.deleted_by_id == current_user.id:
-                            # Текущий пользователь удалил этого друга, но заявка от того осталась
-                            user.friendship_status = "requested_by_them"
-                        else:
-                            user.friendship_status = "requested_by_them"
-                    else:
-                        user.friendship_status = None
 
     return [UserSchema.model_validate(u) for u in users]
 
@@ -180,32 +299,7 @@ async def get_me(
     except Exception as _e:
         pass
     
-    try:
-        # Пытаемся валидировать вручную для отладки, если возникнет ошибка
-        print(f"DEBUG: Manual validation for user {user.email}")
-        validated_user = UserSchema.model_validate(user)
-        print(f"DEBUG: Manual validation success for {user.email}")
-        return validated_user
-    except Exception as e:
-        print(f"Validation error in get_me for {user.email}: {e}")
-        # Если Pydantic бросает ValidationError, мы увидим детали
-        import traceback
-        traceback.print_exc()
-        # Возвращаем словарь напрямую, чтобы избежать повторной валидации response_model
-        data = {
-            "id": int(getattr(user, "id", 0)),
-            "email": str(getattr(user, "email", "")),
-            "first_name": getattr(user, "first_name", None),
-            "last_name": getattr(user, "last_name", None),
-            "is_active": bool(getattr(user, "is_active", True)),
-            "role": str(getattr(user, "role", "buyer")),
-            "status": str(getattr(user, "status", "offline")),
-            "avatar_url": getattr(user, "avatar_url", None),
-            "avatar_preview_url": getattr(user, "avatar_preview_url", None),
-            "photos": [],
-            "albums": []
-        }
-        return data
+    return user
 
 
 @router.patch("/me", response_model=UserSchema)
@@ -286,14 +380,24 @@ async def update_me(
 
 @router.post("/", response_model=UserSchema, status_code=status.HTTP_201_CREATED)
 @router.post("", response_model=UserSchema, status_code=status.HTTP_201_CREATED, include_in_schema=False)
-async def create_user(user: UserCreate, background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_async_db)):
+async def create_user(
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_async_db),
+    email: str = Form(...),
+    password: str = Form(...),
+    first_name: str = Form(...),
+    last_name: str = Form(...),
+    role: str = Form("buyer"),
+    avatar: UploadFile = File(None)
+):
     """
-    Регистрирует нового пользователя с ролью 'buyer' или 'seller'.
+    Регистрирует нового пользователя. 
     Если пользователь с таким email уже существует и не активен, повторно отправляет письмо для подтверждения.
+    Через 15 минут неактивный пользователь будет удален.
     """
-    print(f"DEBUG: create_user called for email: {user.email}")
+    print(f"DEBUG: create_user called for email: {email}")
     # Проверка существования пользователя
-    result = await db.execute(select(UserModel).where(UserModel.email == user.email))
+    result = await db.execute(select(UserModel).where(UserModel.email == email))
     existing_user = result.scalar_one_or_none()
 
     if existing_user:
@@ -306,13 +410,8 @@ async def create_user(user: UserCreate, background_tasks: BackgroundTasks, db: A
                 send_verification_email_task.delay(existing_user.email, verification_token)
             except Exception as e:
                 print(f"Error sending email task for existing user: {e}")
-                # Если Celery упал, отправим асинхронно через FastAPI как запасной вариант
                 background_tasks.add_task(send_verification_email, existing_user.email, verification_token)
             
-            # Возвращаем существующего пользователя с 200 OK
-            # Но так как у нас status_code=201_CREATED захардкожен в декораторе, 
-            # мы можем либо сменить декоратор, либо оставить как есть. 
-            # FastAPI позволяет вернуть Response для переопределения статуса.
             from fastapi.responses import JSONResponse
             from fastapi.encoders import jsonable_encoder
             return JSONResponse(
@@ -327,18 +426,28 @@ async def create_user(user: UserCreate, background_tasks: BackgroundTasks, db: A
                             detail="Email already registered")
 
     # Запрещаем регистрацию как owner или admin через обычный эндпоинт
-    if user.role in ["owner", "admin"]:
+    if role in ["owner", "admin"]:
          raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                             detail="Cannot register as owner or admin via this endpoint")
 
-    # Создание объекта пользователя с хешированным паролем
-    # is_active=False по умолчанию в модели
+    # Сохранение аватарки если она есть
+    avatar_url = None
+    avatar_preview_url = None
+    if avatar:
+        try:
+            avatar_url, avatar_preview_url = await save_user_photo(avatar)
+        except Exception as e:
+            print(f"Error saving registration avatar: {e}")
+
+    # Создание объекта пользователя
     db_user = UserModel(
-        email=user.email,
-        hashed_password=hash_password(user.password),
-        first_name=user.first_name,
-        last_name=user.last_name,
-        role=user.role
+        email=email,
+        hashed_password=hash_password(password),
+        first_name=first_name,
+        last_name=last_name,
+        role=role,
+        avatar_url=avatar_url,
+        avatar_preview_url=avatar_preview_url
     )
 
     # Добавление в сессию и сохранение в базе
@@ -346,20 +455,58 @@ async def create_user(user: UserCreate, background_tasks: BackgroundTasks, db: A
     await db.commit()
     await db.refresh(db_user)
 
+    # Если была загружена аватарка, создаем альбом "Аватарки" и добавляем фото туда
+    if avatar_url:
+        try:
+            # Ищем или создаем альбом "Аватарки"
+            album_stmt = select(PhotoAlbumModel).where(
+                PhotoAlbumModel.user_id == db_user.id,
+                PhotoAlbumModel.title == "Аватарки"
+            )
+            album_res = await db.execute(album_stmt)
+            avatar_album = album_res.scalar_one_or_none()
+            
+            if not avatar_album:
+                avatar_album = PhotoAlbumModel(
+                    user_id=db_user.id,
+                    title="Аватарки",
+                    description="Альбом для фотографий профиля",
+                    privacy="public"
+                )
+                db.add(avatar_album)
+                await db.flush()
+            
+            # Создаем запись UserPhoto
+            new_photo = UserPhotoModel(
+                user_id=db_user.id,
+                album_id=avatar_album.id,
+                image_url=avatar_url,
+                preview_url=avatar_preview_url or avatar_url,
+                description="Аватарка при регистрации",
+                privacy="public"
+            )
+            db.add(new_photo)
+            await db.commit()
+        except Exception as e:
+            print(f"Error creating avatar album/photo during registration: {e}")
+            await db.rollback()
+
     # Генерация токена подтверждения
     verification_token = create_access_token(data={"sub": db_user.email, "type": "verification"})
     
     # Отправка письма
-    print(f"DEBUG: Attempting to send verification email to {db_user.email} via Celery")
     try:
-        task = send_verification_email_task.delay(db_user.email, verification_token)
-        print(f"DEBUG: Celery task sent successfully. Task ID: {task.id}")
+        send_verification_email_task.delay(db_user.email, verification_token)
     except Exception as e:
         print(f"Failed to send verification email via Celery: {e}")
-        import traceback
-        traceback.print_exc()
-        # Запасной вариант - фоновая задача FastAPI
         background_tasks.add_task(send_verification_email, db_user.email, verification_token)
+
+    # Планируем удаление пользователя через 15 минут, если он не активируется
+    try:
+        delete_inactive_user_task.apply_async((db_user.id,), countdown=900)
+        print(f"DEBUG: Scheduled deletion task for user {db_user.id} in 15 minutes")
+    except Exception as e:
+        print(f"Error scheduling user deletion task: {e}")
 
     return UserSchema.model_validate(db_user)
 
@@ -445,12 +592,16 @@ async def verify_email(token: str, redirect: str | None = None, db: AsyncSession
     return {"message": "Email successfully verified"}
 
 
-@router.post("/token")
-@router.post("/token/", include_in_schema=False)
-async def login(form_data: OAuth2PasswordRequestForm = Depends(),
-                db: AsyncSession = Depends(get_async_db)):
+@router.post("/token", response_model=TokenResponse)
+@router.post("/token/", include_in_schema=False, response_model=TokenResponse)
+async def login(
+    fcm_token: str | None = Form(None),
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    db: AsyncSession = Depends(get_async_db)
+):
     """
     Аутентифицирует пользователя и возвращает JWT с email, role и id.
+    Опционально принимает fcm_token для привязки к пользователю.
     """
     result = await db.execute(select(UserModel).where(UserModel.email == form_data.username))
     user = result.scalar_one_or_none()
@@ -468,10 +619,23 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(),
             detail="Email not verified. Please check your email for verification link.",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+    # Обновляем FCM токен, если он передан
+    if fcm_token:
+        user.fcm_token = fcm_token
+        await db.commit()
+        from loguru import logger
+        logger.info(f"FCM: Token updated during login for user {user.id} ({user.email})")
+
     access_token = create_access_token(data={"sub": user.email, "role": user.role, "id": user.id})
     refresh_token = create_refresh_token(data={"sub": user.email, "role": user.role, "id": user.id})
     print(f"DEBUG: Created tokens for {user.email}: access={access_token[:20]}... refresh={refresh_token[:20]}...")
-    return {"access_token": access_token, "refresh_token": refresh_token, "token_type": "bearer"}
+    return {
+        "access_token": access_token, 
+        "refresh_token": refresh_token, 
+        "token_type": "bearer",
+        "fcm_token": user.fcm_token
+    }
 
 @router.post("/refresh-token")
 async def refresh_token(
@@ -693,8 +857,16 @@ async def update_fcm_token(
     """
     Обновляет FCM токен для текущего пользователя.
     """
+    from loguru import logger
+    old_token = current_user.fcm_token
     current_user.fcm_token = body.fcm_token
     await db.commit()
+    
+    if old_token != body.fcm_token:
+        logger.info(f"FCM: Token updated for user {current_user.id} ({current_user.email}). Token: {body.fcm_token[:15]}...")
+    else:
+        logger.debug(f"FCM: Token remains the same for user {current_user.id}")
+        
     return {"status": "ok"}
 
 
@@ -706,40 +878,75 @@ os.makedirs(USER_MEDIA_ROOT, exist_ok=True)
 
 async def save_user_photo(file: UploadFile) -> tuple[str, str]:
     file_extension = os.path.splitext(file.filename or "")[1] or ".jpg"
+    is_video = file_extension.lower() in [".mp4", ".mov", ".avi", ".mkv", ".webm"]
     original_name = f"{uuid.uuid4()}{file_extension}"
     content = await file.read()
 
     # Сохраняем оригинал через абстракцию хранилища
-    original_url, _ = storage.save_file(
+    original_url, original_fs_path = storage.save_file(
         category="users",
         filename_hint=original_name,
         fileobj=io.BytesIO(content),
-        content_type=file.content_type or "image/jpeg",
+        content_type=file.content_type or ("video/mp4" if is_video else "image/jpeg"),
         private=False,
     )
 
-    # Пытаемся создать миниатюру
-    thumb_name = f"{os.path.splitext(original_name)[0]}_thumb{file_extension}"
+    thumb_name = f"{os.path.splitext(original_name)[0]}_thumb.jpg"
     thumb_url = original_url
-    try:
-        with Image.open(io.BytesIO(content)) as img:
-            img.thumbnail((400, 400))
-            if file_extension.lower() in [".jpg", ".jpeg"] and img.mode in ("RGBA", "P"):
-                img = img.convert("RGB")
-            thumb_buffer = io.BytesIO()
-            # Определяем формат по расширению
-            fmt = "JPEG" if file_extension.lower() in [".jpg", ".jpeg"] else None
-            img.save(thumb_buffer, format=fmt)
-            thumb_buffer.seek(0)
-            thumb_url, _ = storage.save_file(
-                category="users",
-                filename_hint=thumb_name,
-                fileobj=thumb_buffer,
-                content_type=file.content_type or "image/jpeg",
-                private=False,
-            )
-    except Exception:
-        thumb_url = original_url
+
+    if is_video:
+        try:
+            # Для видео пытаемся достать первый кадр через OpenCV
+            # Нужно сохранить временный файл для OpenCV, если это не S3 и у нас нет локального пути (или всегда)
+            temp_video = tempfile.NamedTemporaryFile(delete=False, suffix=file_extension)
+            temp_video.write(content)
+            temp_video.close()
+            
+            cap = cv2.VideoCapture(temp_video.name)
+            success, frame = cap.read()
+            if success:
+                # Конвертируем BGR в RGB для Pillow
+                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                img = Image.fromarray(frame_rgb)
+                img.thumbnail((400, 400))
+                
+                thumb_buffer = io.BytesIO()
+                img.save(thumb_buffer, format="JPEG")
+                thumb_buffer.seek(0)
+                
+                thumb_url, _ = storage.save_file(
+                    category="users",
+                    filename_hint=thumb_name,
+                    fileobj=thumb_buffer,
+                    content_type="image/jpeg",
+                    private=False,
+                )
+            cap.release()
+            os.unlink(temp_video.name)
+        except Exception as e:
+            print(f"DEBUG: Error extracting video frame: {e}")
+            thumb_url = original_url
+    else:
+        # Пытаемся создать миниатюру для изображения
+        try:
+            with Image.open(io.BytesIO(content)) as img:
+                img.thumbnail((400, 400))
+                if file_extension.lower() in [".jpg", ".jpeg"] and img.mode in ("RGBA", "P"):
+                    img = img.convert("RGB")
+                thumb_buffer = io.BytesIO()
+                # Определяем формат по расширению
+                fmt = "JPEG" if file_extension.lower() in [".jpg", ".jpeg"] else "PNG"
+                img.save(thumb_buffer, format=fmt)
+                thumb_buffer.seek(0)
+                thumb_url, _ = storage.save_file(
+                    category="users",
+                    filename_hint=thumb_name,
+                    fileobj=thumb_buffer,
+                    content_type=file.content_type or "image/jpeg",
+                    private=False,
+                )
+        except Exception:
+            thumb_url = original_url
 
     return original_url, thumb_url
 
@@ -853,11 +1060,28 @@ async def get_photo(
     db: AsyncSession = Depends(get_async_db)
 ):
     """
-    Возвращает информацию о фотографии.
+    Возвращает информацию о конкретной фотографии с лайками и комментариями.
     """
-    result = await db.execute(
-        select(UserPhotoModel).where(UserPhotoModel.id == photo_id)
-    )
+    from sqlalchemy import func
+    
+    # Запросы для лайков и дизлайков
+    likes_sub = select(
+        func.count(UserPhotoReactionModel.id)
+    ).where(UserPhotoReactionModel.photo_id == photo_id, UserPhotoReactionModel.reaction_type == 1)
+
+    dislikes_sub = select(
+        func.count(UserPhotoReactionModel.id)
+    ).where(UserPhotoReactionModel.photo_id == photo_id, UserPhotoReactionModel.reaction_type == -1)
+
+    my_reaction_sub = select(
+        UserPhotoReactionModel.reaction_type
+    ).where(UserPhotoReactionModel.photo_id == photo_id, UserPhotoReactionModel.user_id == current_user.id)
+
+    comments_count_sub = select(
+        func.count(UserPhotoCommentModel.id)
+    ).where(UserPhotoCommentModel.photo_id == photo_id)
+
+    result = await db.execute(select(UserPhotoModel).where(UserPhotoModel.id == photo_id))
     photo = result.scalar_one_or_none()
     if not photo:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Photo not found")
@@ -866,8 +1090,225 @@ async def get_photo(
         friendship_status = await get_friendship_status(current_user.id, photo.user_id, db)
         if not can_view_content(photo.user_id, current_user.id, photo.privacy, friendship_status):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
-    
+
+    # Присваиваем дополнительные поля
+    photo.likes_count = await db.scalar(likes_sub)
+    photo.dislikes_count = await db.scalar(dislikes_sub)
+    photo.my_reaction = await db.scalar(my_reaction_sub)
+    photo.comments_count = await db.scalar(comments_count_sub)
+
     return photo
+
+
+@router.post("/photos/{photo_id}/react")
+async def react_to_photo(
+    photo_id: int,
+    reaction_type: int, # 1 for like, -1 for dislike, 0 to remove
+    current_user: UserModel = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """Поставить лайк или дизлайк фотографии."""
+    if reaction_type not in [1, -1, 0]:
+        raise HTTPException(status_code=400, detail="Invalid reaction type")
+
+    # Проверяем существование фото
+    photo_res = await db.execute(select(UserPhotoModel.id).where(UserPhotoModel.id == photo_id))
+    if not photo_res.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Photo not found")
+
+    # Ищем существующую реакцию
+    res = await db.execute(
+        select(UserPhotoReactionModel).where(
+            UserPhotoReactionModel.photo_id == photo_id,
+            UserPhotoReactionModel.user_id == current_user.id
+        )
+    )
+    existing_reaction = res.scalar_one_or_none()
+
+    if reaction_type == 0:
+        if existing_reaction:
+            await db.delete(existing_reaction)
+    else:
+        if existing_reaction:
+            existing_reaction.reaction_type = reaction_type
+        else:
+            new_reaction = UserPhotoReactionModel(
+                photo_id=photo_id,
+                user_id=current_user.id,
+                reaction_type=reaction_type
+            )
+            db.add(new_reaction)
+    
+    await db.commit()
+    return {"status": "ok"}
+
+
+@router.get("/photos/{photo_id}/comments", response_model=list[UserPhotoCommentSchema])
+async def get_photo_comments(
+    photo_id: int,
+    db: AsyncSession = Depends(get_async_db),
+    current_user: UserModel = Depends(get_current_user)
+):
+    """Получить список комментариев к фотографии с реакциями."""
+    from sqlalchemy import func
+    # Проверяем доступ к фото
+    photo_res = await db.execute(select(UserPhotoModel).where(UserPhotoModel.id == photo_id))
+    photo = photo_res.scalar_one_or_none()
+    if not photo:
+        raise HTTPException(status_code=404, detail="Photo not found")
+    
+    if photo.user_id != current_user.id:
+        friendship_status = await get_friendship_status(current_user.id, photo.user_id, db)
+        if not can_view_content(photo.user_id, current_user.id, photo.privacy, friendship_status):
+            raise HTTPException(status_code=403, detail="Access denied")
+
+    # Подзапросы для лайков и дизлайков комментария
+    likes_sub = select(
+        UserPhotoCommentReactionModel.comment_id,
+        func.count(UserPhotoCommentReactionModel.id).label("count")
+    ).where(UserPhotoCommentReactionModel.reaction_type == 1).group_by(UserPhotoCommentReactionModel.comment_id).subquery()
+
+    dislikes_sub = select(
+        UserPhotoCommentReactionModel.comment_id,
+        func.count(UserPhotoCommentReactionModel.id).label("count")
+    ).where(UserPhotoCommentReactionModel.reaction_type == -1).group_by(UserPhotoCommentReactionModel.comment_id).subquery()
+
+    my_reaction_sub = select(
+        UserPhotoCommentReactionModel.comment_id,
+        UserPhotoCommentReactionModel.reaction_type
+    ).where(UserPhotoCommentReactionModel.user_id == current_user.id).subquery()
+
+    query = select(
+        UserPhotoCommentModel,
+        func.coalesce(likes_sub.c.count, 0).label("likes_count"),
+        func.coalesce(dislikes_sub.c.count, 0).label("dislikes_count"),
+        func.coalesce(my_reaction_sub.c.reaction_type, None).label("my_reaction")
+    ).outerjoin(likes_sub, UserPhotoCommentModel.id == likes_sub.c.comment_id)\
+     .outerjoin(dislikes_sub, UserPhotoCommentModel.id == dislikes_sub.c.comment_id)\
+     .outerjoin(my_reaction_sub, UserPhotoCommentModel.id == my_reaction_sub.c.comment_id)\
+     .where(UserPhotoCommentModel.photo_id == photo_id)\
+     .options(selectinload(UserPhotoCommentModel.user))\
+     .order_by(UserPhotoCommentModel.created_at.asc())
+    
+    result = await db.execute(query)
+    
+    response = []
+    for row in result.all():
+        c = row[0]
+        comment_dict = UserPhotoCommentSchema.model_validate(c).model_dump()
+        comment_dict["first_name"] = c.user.first_name
+        comment_dict["last_name"] = c.user.last_name
+        comment_dict["avatar_url"] = c.user.avatar_url
+        comment_dict["likes_count"] = row[1]
+        comment_dict["dislikes_count"] = row[2]
+        comment_dict["my_reaction"] = row[3]
+        response.append(comment_dict)
+        
+    return response
+
+@router.post("/photos/comments/{comment_id}/react")
+async def react_to_photo_comment(
+    comment_id: int,
+    reaction_type: int, # 1 for like, -1 for dislike, 0 to remove
+    current_user: UserModel = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """Поставить лайк или дизлайк комментарию к фотографии."""
+    if reaction_type not in [1, -1, 0]:
+        raise HTTPException(status_code=400, detail="Invalid reaction type")
+
+    # Проверяем существование комментария
+    comment_res = await db.execute(select(UserPhotoCommentModel.id).where(UserPhotoCommentModel.id == comment_id))
+    if not comment_res.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Comment not found")
+
+    # Ищем существующую реакцию
+    reaction_res = await db.execute(
+        select(UserPhotoCommentReactionModel).where(
+            UserPhotoCommentReactionModel.comment_id == comment_id,
+            UserPhotoCommentReactionModel.user_id == current_user.id
+        )
+    )
+    db_reaction = reaction_res.scalar_one_or_none()
+
+    if reaction_type == 0:
+        if db_reaction:
+            await db.delete(db_reaction)
+            await db.commit()
+            return {"status": "removed"}
+        return {"status": "not_found"}
+    
+    if db_reaction:
+        db_reaction.reaction_type = reaction_type
+    else:
+        new_reaction = UserPhotoCommentReactionModel(
+            comment_id=comment_id,
+            user_id=current_user.id,
+            reaction_type=reaction_type
+        )
+        db.add(new_reaction)
+    
+    await db.commit()
+    return {"status": "ok", "reaction_type": reaction_type}
+
+
+@router.post("/photos/{photo_id}/comments", response_model=UserPhotoCommentSchema)
+async def add_photo_comment(
+    photo_id: int,
+    comment_data: UserPhotoCommentCreate,
+    current_user: UserModel = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """Добавить комментарий к фотографии."""
+    photo_res = await db.execute(select(UserPhotoModel).where(UserPhotoModel.id == photo_id))
+    photo = photo_res.scalar_one_or_none()
+    if not photo:
+        raise HTTPException(status_code=404, detail="Photo not found")
+    
+    # Проверка доступа к фото
+    if photo.user_id != current_user.id:
+        friendship_status = await get_friendship_status(current_user.id, photo.user_id, db)
+        if not can_view_content(photo.user_id, current_user.id, photo.privacy, friendship_status):
+            raise HTTPException(status_code=403, detail="Access denied")
+
+    new_comment = UserPhotoCommentModel(
+        photo_id=photo_id,
+        user_id=current_user.id,
+        comment=comment_data.comment
+    )
+    db.add(new_comment)
+    await db.commit()
+    await db.refresh(new_comment)
+    
+    res = UserPhotoCommentSchema.model_validate(new_comment).model_dump()
+    res["first_name"] = current_user.first_name
+    res["last_name"] = current_user.last_name
+    res["avatar_url"] = current_user.avatar_url
+    return res
+
+
+@router.delete("/photos/comments/{comment_id}", status_code=204)
+async def delete_photo_comment(
+    comment_id: int,
+    current_user: UserModel = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """Удалить свой комментарий или комментарий под своим фото."""
+    result = await db.execute(
+        select(UserPhotoCommentModel).where(UserPhotoCommentModel.id == comment_id).options(
+            selectinload(UserPhotoCommentModel.photo)
+        )
+    )
+    comment = result.scalar_one_or_none()
+    if not comment:
+        raise HTTPException(status_code=404, detail="Comment not found")
+    
+    if comment.user_id != current_user.id and comment.photo.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not allowed")
+    
+    await db.delete(comment)
+    await db.commit()
+    return None
 
 
 @router.patch("/photos/{photo_id}", response_model=UserPhotoSchema)
@@ -1031,14 +1472,16 @@ async def get_user_profile(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     
     # Если это не профиль текущего пользователя, фильтруем приватный контент
+    user_schema = UserSchema.model_validate(user)
     if user.id != current_user.id:
         friendship_status = await get_friendship_status(current_user.id, user.id, db)
         
-        user.albums = [a for a in user.albums if can_view_content(user.id, current_user.id, a.privacy, friendship_status)]
-        for album in user.albums:
+        # Фильтруем альбомы и фотографии в схеме Pydantic, а не в модели БД
+        user_schema.albums = [a for a in user_schema.albums if can_view_content(user.id, current_user.id, a.privacy, friendship_status)]
+        for album in user_schema.albums:
             album.photos = [p for p in album.photos if can_view_content(user.id, current_user.id, p.privacy, friendship_status)]
             
-        user.photos = [p for p in user.photos if can_view_content(user.id, current_user.id, p.privacy, friendship_status)]
+        user_schema.photos = [p for p in user_schema.photos if can_view_content(user.id, current_user.id, p.privacy, friendship_status)]
             
     # Определяем статус дружбы
     res_friend = await db.execute(
@@ -1063,7 +1506,6 @@ async def get_user_profile(
         else:
             friendship_status = "requested_by_them"
             
-    user_schema = UserSchema.model_validate(user)
     user_schema.friendship_status = friendship_status
     
     return user_schema
@@ -1127,15 +1569,16 @@ async def send_friend_request(
         "sender_name": f"{current_user.first_name} {current_user.last_name}" if current_user.first_name else current_user.email,
         "message": "sent you a friend request"
     }
-    await notification_manager.send_personal_message(msg, user_id)
+    asyncio.create_task(notification_manager.send_personal_message(msg, user_id))
     
     if target_user.fcm_token:
-        await send_fcm_notification(
+        asyncio.create_task(send_fcm_notification(
             token=target_user.fcm_token,
             title="Новая заявка в друзья",
             body=f"{msg['sender_name']} хочет добавить вас в друзья",
-            data=msg
-        )
+            data=msg,
+            sender_id=current_user.id
+        ))
 
     return new_friendship
 
@@ -1176,15 +1619,16 @@ async def accept_friend_request(
         "sender_name": f"{current_user.first_name} {current_user.last_name}" if current_user.first_name else current_user.email,
         "message": "accepted your friend request"
     }
-    await notification_manager.send_personal_message(msg, sender_id)
+    asyncio.create_task(notification_manager.send_personal_message(msg, sender_id))
     
     if sender and sender.fcm_token:
-        await send_fcm_notification(
+        asyncio.create_task(send_fcm_notification(
             token=sender.fcm_token,
             title="Заявка принята",
             body=f"{msg['sender_name']} принял вашу заявку в друзья",
-            data=msg
-        )
+            data=msg,
+            sender_id=current_user.id
+        ))
 
     return friendship
 
@@ -1314,5 +1758,159 @@ async def get_friend_requests(
     )
     senders = res.scalars().all()
     return [UserSchema.model_validate(s) for s in senders]
+
+@router.get("/me/likes", response_model=list[NewsSchema])
+@router.get("/me/likes/", response_model=list[NewsSchema], include_in_schema=False)
+async def get_my_liked_news(
+    current_user: UserModel = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """Возвращает новости, которые лайкнул текущий пользователь."""
+    from app.models.news import News as NewsModel, NewsReaction as NewsReactionModel
+    from sqlalchemy import func
+    
+    likes_sub = select(
+        NewsReactionModel.news_id,
+        func.count(NewsReactionModel.id).label("count")
+    ).where(NewsReactionModel.reaction_type == 1).group_by(NewsReactionModel.news_id).subquery()
+
+    dislikes_sub = select(
+        NewsReactionModel.news_id,
+        func.count(NewsReactionModel.id).label("count")
+    ).where(NewsReactionModel.reaction_type == -1).group_by(NewsReactionModel.news_id).subquery()
+
+    query = select(
+        NewsModel,
+        func.coalesce(likes_sub.c.count, 0).label("likes_count"),
+        func.coalesce(dislikes_sub.c.count, 0).label("dislikes_count"),
+        literal(1).label("my_reaction")
+    ).join(NewsReactionModel, NewsModel.id == NewsReactionModel.news_id)\
+     .outerjoin(likes_sub, NewsModel.id == likes_sub.c.news_id)\
+     .outerjoin(dislikes_sub, NewsModel.id == dislikes_sub.c.news_id)\
+     .where(
+         NewsReactionModel.user_id == current_user.id,
+         NewsReactionModel.reaction_type == 1,
+         NewsModel.moderation_status == "approved",
+         NewsModel.is_active == True
+     ).options(selectinload(NewsModel.images)).order_by(NewsModel.created_at.desc())
+
+    result = await db.execute(query)
+    news_list = []
+    for row in result.all():
+        news_obj = row[0]
+        news_obj.likes_count = row[1]
+        news_obj.dislikes_count = row[2]
+        news_obj.my_reaction = row[3]
+        news_list.append(news_obj)
+    return news_list
+
+@router.get("/me/liked-photos", response_model=list[UserPhotoSchema])
+@router.get("/me/liked-photos/", response_model=list[UserPhotoSchema], include_in_schema=False)
+async def get_my_liked_photos(
+    current_user: UserModel = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """Возвращает фотографии, которые лайкнул текущий пользователь."""
+    from sqlalchemy import func
+    
+    likes_sub = select(
+        UserPhotoReactionModel.photo_id,
+        func.count(UserPhotoReactionModel.id).label("count")
+    ).where(UserPhotoReactionModel.reaction_type == 1).group_by(UserPhotoReactionModel.photo_id).subquery()
+
+    dislikes_sub = select(
+        UserPhotoReactionModel.photo_id,
+        func.count(UserPhotoReactionModel.id).label("count")
+    ).where(UserPhotoReactionModel.reaction_type == -1).group_by(UserPhotoReactionModel.photo_id).subquery()
+
+    comments_count_sub = select(
+        UserPhotoCommentModel.photo_id,
+        func.count(UserPhotoCommentModel.id).label("count")
+    ).group_by(UserPhotoCommentModel.photo_id).subquery()
+
+    query = select(
+        UserPhotoModel,
+        func.coalesce(likes_sub.c.count, 0).label("likes_count"),
+        func.coalesce(dislikes_sub.c.count, 0).label("dislikes_count"),
+        func.coalesce(comments_count_sub.c.count, 0).label("comments_count"),
+        literal(1).label("my_reaction")
+    ).join(UserPhotoReactionModel, UserPhotoModel.id == UserPhotoReactionModel.photo_id)\
+     .outerjoin(likes_sub, UserPhotoModel.id == likes_sub.c.photo_id)\
+     .outerjoin(dislikes_sub, UserPhotoModel.id == dislikes_sub.c.photo_id)\
+     .outerjoin(comments_count_sub, UserPhotoModel.id == comments_count_sub.c.photo_id)\
+     .where(
+         UserPhotoReactionModel.user_id == current_user.id,
+         UserPhotoReactionModel.reaction_type == 1
+     ).order_by(UserPhotoModel.created_at.desc())
+
+    result = await db.execute(query)
+    photos_list = []
+    for row in result.all():
+        photo_obj = row[0]
+        photo_obj.likes_count = row[1]
+        photo_obj.dislikes_count = row[2]
+        photo_obj.comments_count = row[3]
+        photo_obj.my_reaction = row[4]
+        photos_list.append(UserPhotoSchema.model_validate(photo_obj))
+    return photos_list
+
+@router.get("/me/reviews", response_model=list[ReviewSchema])
+@router.get("/me/reviews/", response_model=list[ReviewSchema], include_in_schema=False)
+async def get_my_reviews(
+    current_user: UserModel = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """Возвращает отзывы текущего пользователя."""
+    from app.models.reviews import Reviews as ReviewsModel
+    
+    result = await db.execute(
+        select(ReviewsModel).where(ReviewsModel.user_id == current_user.id).order_by(ReviewsModel.comment_date.desc())
+    )
+    reviews = result.scalars().all()
+    
+    for r in reviews:
+        r.first_name = current_user.first_name
+        r.last_name = current_user.last_name
+        r.avatar_url = current_user.avatar_url
+        
+    return reviews
+
+@router.get("/me/news-comments", response_model=list[NewsCommentSchema])
+async def get_my_news_comments(
+    current_user: UserModel = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """Возвращает комментарии текущего пользователя к новостям."""
+    from app.models.news import NewsComment as NewsCommentModel
+    
+    result = await db.execute(
+        select(NewsCommentModel).where(NewsCommentModel.user_id == current_user.id).order_by(NewsCommentModel.created_at.desc())
+    )
+    comments = result.scalars().all()
+    
+    for c in comments:
+        c.first_name = current_user.first_name
+        c.last_name = current_user.last_name
+        c.avatar_url = current_user.avatar_url
+        
+    return comments
+
+@router.get("/me/photo-comments", response_model=list[UserPhotoCommentSchema])
+async def get_my_photo_comments(
+    current_user: UserModel = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """Возвращает комментарии текущего пользователя к фотографиям."""
+    result = await db.execute(
+        select(UserPhotoCommentModel).where(UserPhotoCommentModel.user_id == current_user.id).order_by(UserPhotoCommentModel.created_at.desc())
+    )
+    comments = result.scalars().all()
+    
+    for c in comments:
+        c.first_name = current_user.first_name
+        c.last_name = current_user.last_name
+        c.avatar_url = current_user.avatar_url
+        
+    return comments
 
 

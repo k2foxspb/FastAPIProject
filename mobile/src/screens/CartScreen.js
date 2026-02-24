@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
+import { getShadow } from '../utils/shadowStyles';
 import { useFocusEffect } from '@react-navigation/native';
 import { cartApi, ordersApi } from '../api';
 import { useTheme } from '../context/ThemeContext';
@@ -217,11 +218,7 @@ const styles = StyleSheet.create({
     padding: 10,
     marginBottom: 15,
     borderWidth: 1,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
+    ...getShadow('#000', { width: 0, height: 1 }, 0.1, 2, 2),
   },
   itemImage: { width: 80, height: 80, borderRadius: 8 },
   itemInfo: { flex: 1, marginLeft: 15, justifyContent: 'space-between' },
@@ -234,7 +231,7 @@ const styles = StyleSheet.create({
   emptyText: { fontSize: 18, marginTop: 20, textAlign: 'center' },
   shopButton: { marginTop: 20, paddingHorizontal: 20, paddingVertical: 12, borderRadius: 8 },
   shopButtonText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
-  footer: { padding: 20, borderTopWidth: 1, elevation: 10 },
+  footer: { padding: 20, borderTopWidth: 1, ...getShadow('#000', { width: 0, height: -3 }, 0.1, 5, 10) },
   totalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 },
   totalLabel: { fontSize: 16 },
   totalAmount: { fontSize: 20, fontWeight: 'bold' },

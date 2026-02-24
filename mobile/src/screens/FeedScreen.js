@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, FlatList, StyleSheet, TouchableOpacity, RefreshControl, ActivityIndicator, Alert } from 'react-native';
+import { getShadow } from '../utils/shadowStyles';
+import { View, Text, FlatList, StyleSheet, TouchableOpacity, RefreshControl, ActivityIndicator, Alert, Image, Platform } from 'react-native';
 import FadeInImage from '../components/FadeInImage';
 import FadeInView from '../components/FadeInView';
 import { productsApi, newsApi, usersApi, cartApi } from '../api';
@@ -8,10 +9,12 @@ import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
 import { Ionicons as Icon } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
+import { useNotifications } from '../context/NotificationContext';
 
 export default function FeedScreen({ navigation }) {
   const { theme } = useTheme();
   const colors = themeConstants[theme];
+  const { currentUser, loadingUser } = useNotifications();
   const [activeTab, setActiveTab] = useState('news'); // 'news' or 'products'
   const [products, setProducts] = useState([]);
   const [news, setNews] = useState([]);
@@ -22,13 +25,25 @@ export default function FeedScreen({ navigation }) {
   const [updatingProductId, setUpdatingProductId] = useState(null);
 
   const loadData = useCallback(async () => {
+    console.log('[FeedScreen] loadData starting... loadingUser:', loadingUser, 'currentUser:', !!currentUser);
+    // Ждем, пока NotificationContext загрузит пользователя, чтобы не дублировать запросы
+    if (loadingUser) {
+      console.log('[FeedScreen] loadData skipped: user still loading');
+      return;
+    }
+
     try {
-      const [productsRes, newsRes, userRes, cartRes] = await Promise.all([
+      const promises = [
         productsApi.getProducts().catch(() => ({ data: { items: [] } })),
         newsApi.getNews().catch(() => ({ data: [] })),
-        usersApi.getMe().catch(() => ({ data: null })),
         cartApi.getCart().catch(() => ({ data: { items: [] } }))
-      ]);
+      ];
+
+      // Используем currentUser из контекста
+      let userResData = currentUser;
+      const results = await Promise.all(promises);
+      
+      const [productsRes, newsRes, cartRes] = results;
       
       const cartItemsData = cartRes?.data?.items || [];
       setCartItems(cartItemsData);
@@ -53,12 +68,12 @@ export default function FeedScreen({ navigation }) {
       });
 
       let productsData = productsRes.data.items || productsRes.data;
-      if (userRes?.data) {
-        setUser(userRes.data);
+      if (userResData) {
+        setUser(userResData);
         // Если это продавец, админ или владелец, загружаем ИХ товары отдельно, чтобы увидеть pending
-        if (userRes.data.role !== 'buyer') {
+        if (userResData.role !== 'buyer') {
           try {
-            const sellerProductsRes = await productsApi.getProducts({ seller_id: userRes.data.id });
+            const sellerProductsRes = await productsApi.getProducts({ seller_id: userResData.id });
             const sellerProducts = sellerProductsRes.data.items || sellerProductsRes.data;
             
             // Объединяем общие одобренные товары с собственными (включая pending)
@@ -81,10 +96,11 @@ export default function FeedScreen({ navigation }) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [currentUser, loadingUser]);
 
   useFocusEffect(
     useCallback(() => {
+      console.log('[FeedScreen] Focused, loading data...');
       loadData();
     }, [loadData])
   );
@@ -104,13 +120,33 @@ export default function FeedScreen({ navigation }) {
       return html.replace(/<[^>]*>?/gm, '');
     };
     
+    const newsThumbnail = item.images && item.images.length > 0 
+      ? item.images[0].thumbnail_url 
+      : item.image_url;
+
     return (
       <TouchableOpacity 
-        style={[styles.newsCard, { backgroundColor: colors.card, borderColor: colors.border, borderWidth: theme === 'dark' ? 1 : 0 }]}
+        style={[styles.newsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
         onPress={() => navigation.navigate('NewsDetail', { newsId: item.id, newsItem: item })}
       >
-        <View style={styles.newsHeader}>
-          <Text style={[styles.newsTitle, { color: colors.text }]}>{item.title}</Text>
+        <View style={styles.newsAuthorHeader}>
+          <TouchableOpacity 
+            style={styles.authorInfo}
+            onPress={() => navigation.navigate('UserProfile', { userId: item.author_id })}
+          >
+            <Image 
+              source={{ uri: getFullUrl(item.author_avatar_url) || 'https://via.placeholder.com/40' }} 
+              style={styles.authorAvatar} 
+            />
+            <View>
+              <Text style={[styles.authorName, { color: colors.text }]}>
+                {item.author_first_name ? `${item.author_first_name} ${item.author_last_name || ''}` : 'Пользователь'}
+              </Text>
+              <Text style={[styles.newsDate, { color: colors.textSecondary }]}>
+                {new Date(item.created_at).toLocaleDateString()}
+              </Text>
+            </View>
+          </TouchableOpacity>
           {canManageNews && (
             <TouchableOpacity onPress={(e) => {
               e.stopPropagation();
@@ -120,10 +156,35 @@ export default function FeedScreen({ navigation }) {
             </TouchableOpacity>
           )}
         </View>
-        <Text style={[styles.newsContent, { color: colors.text }]} numberOfLines={3}>
-          {stripHtml(item.content)}
-        </Text>
-        <Text style={[styles.newsDate, { color: colors.textSecondary }]}>{new Date(item.created_at).toLocaleDateString()}</Text>
+
+        <View style={styles.newsContentRow}>
+          {newsThumbnail && (
+            <FadeInImage 
+              source={{ uri: getFullUrl(newsThumbnail) }} 
+              style={styles.newsThumbnail} 
+            />
+          )}
+          <View style={styles.newsTextContainer}>
+            <Text style={[styles.newsTitle, { color: colors.text }]} numberOfLines={2}>{item.title}</Text>
+            <Text style={[styles.newsContentText, { color: colors.textSecondary }]} numberOfLines={2}>
+              {stripHtml(item.content)}
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.newsFooter}>
+          <View style={styles.reactionsRow}>
+            <View style={styles.reactionItem}>
+              <Icon name={item.my_reaction === 1 ? "heart" : "heart-outline"} size={16} color={item.my_reaction === 1 ? colors.error : colors.textSecondary} />
+              <Text style={[styles.reactionCount, { color: colors.textSecondary }]}>{item.likes_count || 0}</Text>
+            </View>
+            <View style={[styles.reactionItem, { marginLeft: 15 }]}>
+              <Icon name="chatbubble-outline" size={16} color={colors.textSecondary} />
+              <Text style={[styles.reactionCount, { color: colors.textSecondary }]}>{item.comments_count || 0}</Text>
+            </View>
+          </View>
+          <Icon name="chevron-forward" size={16} color={colors.border} />
+        </View>
       </TouchableOpacity>
     );
   };
@@ -286,18 +347,28 @@ const styles = StyleSheet.create({
   tab: { flex: 1, paddingVertical: 15, alignItems: 'center' },
   tabText: { fontSize: 16, fontWeight: 'bold' },
   listContent: { padding: 10 },
-  newsCard: { padding: 15, borderRadius: 10, marginBottom: 10, elevation: 2 },
-  newsHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 },
-  newsTitle: { fontSize: 18, fontWeight: 'bold' },
-  newsContent: { fontSize: 14, marginBottom: 10 },
-  newsDate: { fontSize: 12, color: 'gray' },
-  productGridCard: { flex: 0.5, margin: 5, borderRadius: 10, elevation: 2, overflow: 'hidden' },
+  newsCard: { borderRadius: 12, marginBottom: 16, overflow: 'hidden', borderWidth: 1, ...getShadow('#000', { width: 0, height: 2 }, 0.1, 4, 4) },
+  newsAuthorHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 12, borderBottomWidth: 0.5, borderBottomColor: 'rgba(0,0,0,0.05)' },
+  authorInfo: { flexDirection: 'row', alignItems: 'center' },
+  authorAvatar: { width: 36, height: 36, borderRadius: 18, marginRight: 10 },
+  authorName: { fontSize: 14, fontWeight: 'bold' },
+  newsContentRow: { flexDirection: 'row', padding: 12 },
+  newsThumbnail: { width: 80, height: 80, borderRadius: 8 },
+  newsTextContainer: { flex: 1, paddingLeft: 12, justifyContent: 'center' },
+  newsTitle: { fontSize: 16, fontWeight: 'bold', marginBottom: 4 },
+  newsContentText: { fontSize: 13, lineHeight: 18 },
+  newsFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 12, paddingTop: 0 },
+  newsDate: { fontSize: 11 },
+  reactionsRow: { flexDirection: 'row', alignItems: 'center' },
+  reactionItem: { flexDirection: 'row', alignItems: 'center' },
+  reactionCount: { fontSize: 12, marginLeft: 4 },
+  productGridCard: { flex: 0.5, margin: 5, borderRadius: 10, overflow: 'hidden', ...getShadow('#000', { width: 0, height: 1 }, 0.1, 2, 2) },
   productGridImage: { width: '100%', height: 150 },
   productInfo: { padding: 10 },
   productName: { fontSize: 14, fontWeight: '500', marginBottom: 5, height: 40 },
   productFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   productPrice: { fontSize: 16, fontWeight: 'bold', flex: 1 },
-  miniEditButton: { padding: 5, borderRadius: 15, elevation: 2, marginLeft: 5, minWidth: 30, alignItems: 'center' },
+  miniEditButton: { padding: 5, borderRadius: 15, marginLeft: 5, minWidth: 30, alignItems: 'center', ...getShadow('#000', { width: 0, height: 1 }, 0.1, 2, 2) },
   cartActions: { flexDirection: 'row', alignItems: 'center' },
   quantityControls: { flexDirection: 'row', alignItems: 'center' },
   quantityText: { marginHorizontal: 8, fontSize: 14, fontWeight: 'bold' },
@@ -332,6 +403,6 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: 'bold',
   },
-  fab: { position: 'absolute', bottom: 20, right: 20, width: 60, height: 60, borderRadius: 30, justifyContent: 'center', alignItems: 'center', elevation: 8, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 4.65 },
+  fab: { position: 'absolute', bottom: 20, right: 20, width: 60, height: 60, borderRadius: 30, justifyContent: 'center', alignItems: 'center', ...getShadow('#000', { width: 0, height: 4 }, 0.3, 4.65, 8) },
   emptyText: { textAlign: 'center', marginTop: 50, fontSize: 16 },
 });

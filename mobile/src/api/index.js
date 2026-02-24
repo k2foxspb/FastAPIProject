@@ -23,11 +23,14 @@ export const initAuth = async () => {
 };
 
 export const usersApi = {
-  getMe: () => api.get('/users/me'),
-  login: (username, password) => {
+  getMe: (appVersion = null) => api.get('/users/me', { params: { app_version: appVersion } }),
+  login: (username, password, fcmToken = null) => {
     const params = new URLSearchParams();
     params.append('username', username);
     params.append('password', password);
+    if (fcmToken) {
+      params.append('fcm_token', fcmToken);
+    }
     return api.post('/users/token', params, {
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
@@ -38,7 +41,11 @@ export const usersApi = {
   // Пользователи
   getUsers: (search) => api.get('/users/', { params: { search } }),
   getUser: (id) => api.get(`/users/${id}`),
-  register: (userData) => api.post('/users/', userData),
+  register: (formData) => api.post('/users/', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  }),
 
   // Альбомы
   getAlbums: () => api.get('/users/albums'),
@@ -73,7 +80,13 @@ export const usersApi = {
   updatePhoto: (id, data) => api.patch(`/users/photos/${id}`, data),
   deletePhoto: (id) => api.delete(`/users/photos/${id}`),
   bulkDeletePhotos: (photoIds) => api.post('/users/photos/bulk-delete', { photo_ids: photoIds }),
+  reactToPhoto: (photoId, reactionType) => api.post(`/users/photos/${photoId}/react`, null, { params: { reaction_type: reactionType } }),
+  getPhotoComments: (photoId) => api.get(`/users/photos/${photoId}/comments`),
+  addPhotoComment: (photoId, comment) => api.post(`/users/photos/${photoId}/comments`, { comment }),
+  deletePhotoComment: (commentId) => api.delete(`/users/photos/comments/${commentId}`),
+  reactToPhotoComment: (commentId, reactionType) => api.post(`/users/photos/comments/${commentId}/react`, null, { params: { reaction_type: reactionType } }),
   updateFcmToken: (token) => api.post('/users/fcm-token', { fcm_token: token }),
+  getFirebaseConfig: () => api.get('/users/firebase-config'),
   updateMe: (formData) => api.patch('/users/me', formData, {
     headers: {
       'Content-Type': 'multipart/form-data',
@@ -86,6 +99,11 @@ export const usersApi = {
   deleteFriend: (userId) => api.delete(`/users/friends/${userId}`),
   getFriendsList: () => api.get('/users/friends/list'),
   getFriendRequests: () => api.get('/users/friends/requests'),
+  getLikedNews: () => api.get('/users/me/likes'),
+  getLikedPhotos: () => api.get('/users/me/liked-photos'),
+  getMyReviews: () => api.get('/users/me/reviews'),
+  getMyNewsComments: () => api.get('/users/me/news-comments'),
+  getMyPhotoComments: () => api.get('/users/me/photo-comments'),
 };
 
 export const productsApi = {
@@ -103,11 +121,13 @@ export const productsApi = {
   getReviews: (productId) => api.get(`/products/${productId}/review`),
   createReview: (data) => api.post('/reviews', data),
   deleteReview: (id) => api.delete(`/reviews/reviews/${id}`),
+  reactToReview: (reviewId, reactionType) => api.post(`/reviews/${reviewId}/react`, null, { params: { reaction_type: reactionType } }),
 };
 
 export const newsApi = {
   getNews: () => api.get('/news/'),
   getNewsDetail: (id) => api.get(`/news/${id}/`),
+  getUserNews: (userId) => api.get(`/news/user/${userId}`),
   createNews: (formData) => api.post('/news/', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
     timeout: 120000,
@@ -119,6 +139,11 @@ export const newsApi = {
   uploadMedia: (formData) => api.post('/news/upload-media/', formData, {
     headers: { 'Content-Type': 'multipart/form-data' }
   }),
+  reactToNews: (newsId, reactionType) => api.post(`/news/${newsId}/react`, null, { params: { reaction_type: reactionType } }),
+  getNewsComments: (newsId) => api.get(`/news/${newsId}/comments`),
+  addNewsComment: (newsId, comment) => api.post(`/news/${newsId}/comments`, { comment }),
+  deleteNewsComment: (commentId) => api.delete(`/news/comments/${commentId}`),
+  reactToNewsComment: (commentId, reactionType) => api.post(`/news/comments/${commentId}/react`, null, { params: { reaction_type: reactionType } }),
 };
 
 export const adminApi = {
@@ -148,6 +173,7 @@ export const chatApi = {
   initUpload: (data, token) => api.post('/chat/upload/init', data, { params: { token } }),
   getUploadStatus: (uploadId, token) => api.get(`/chat/upload/status/${uploadId}`, { params: { token } }),
   getActiveUploads: (token) => api.get('/chat/upload/active', { params: { token } }),
+  sendMessage: (data, token) => api.post('/chat/message', data, { params: { token } }),
 };
 
 export const cartApi = {
@@ -185,6 +211,20 @@ api.interceptors.request.use(
 );
 
 // Добавляем перехватчик для отладки сетевых ошибок
+let isRefreshing = false;
+let failedQueue = [];
+
+const processQueue = (error, token = null) => {
+  failedQueue.forEach(prom => {
+    if (error) {
+      prom.reject(error);
+    } else {
+      prom.resolve(token);
+    }
+  });
+  failedQueue = [];
+};
+
 api.interceptors.response.use(
   response => {
     console.log(`[API Success]: ${response.config.method?.toUpperCase()} ${response.config.url} - ${response.status}`);
@@ -194,28 +234,54 @@ api.interceptors.response.use(
     const originalRequest = error.config;
     console.log(`[API Error]: ${originalRequest?.method?.toUpperCase()} ${originalRequest?.url} - Status: ${error.response?.status}, Message: ${error.message}`);
 
-    // Если ошибка 401 и это не повторный запрос и у нас есть refresh_token
+    // Если ошибка 401 и это не повторный запрос
     if (error.response?.status === 401 && !originalRequest._retry) {
-      originalRequest._retry = true;
-      try {
-        const refreshToken = await storage.getRefreshToken();
-        if (refreshToken) {
-          const res = await usersApi.refreshAccessToken(refreshToken);
-          const newAccessToken = res.data.access_token;
-          
-          if (newAccessToken) {
-            await storage.saveTokens(newAccessToken, refreshToken);
-            setAuthToken(newAccessToken);
-            originalRequest.headers['Authorization'] = `Bearer ${newAccessToken}`;
+      if (isRefreshing) {
+        return new Promise(function(resolve, reject) {
+          failedQueue.push({ resolve, reject });
+        })
+          .then(token => {
+            originalRequest.headers['Authorization'] = 'Bearer ' + token;
             return api(originalRequest);
-          }
-        }
-      } catch (refreshError) {
-        console.error('Failed to refresh token:', refreshError);
-        // Если не удалось обновить токен, выходим из системы
-        await storage.clearTokens();
-        setAuthToken(null);
+          })
+          .catch(err => {
+            return Promise.reject(err);
+          });
       }
+
+      originalRequest._retry = true;
+      isRefreshing = true;
+
+      return new Promise(async (resolve, reject) => {
+        try {
+          const refreshToken = await storage.getRefreshToken();
+          if (refreshToken) {
+            console.log('[API] Attempting to refresh token...');
+            const res = await usersApi.refreshAccessToken(refreshToken);
+            const newAccessToken = res.data.access_token;
+            
+            if (newAccessToken) {
+              await storage.saveTokens(newAccessToken, refreshToken);
+              setAuthToken(newAccessToken);
+              processQueue(null, newAccessToken);
+              originalRequest.headers['Authorization'] = `Bearer ${newAccessToken}`;
+              resolve(api(originalRequest));
+            } else {
+              throw new Error('No access token in refresh response');
+            }
+          } else {
+            throw new Error('No refresh token available');
+          }
+        } catch (refreshError) {
+          console.error('[API] Failed to refresh token:', refreshError);
+          processQueue(refreshError, null);
+          await storage.clearTokens();
+          setAuthToken(null);
+          reject(refreshError);
+        } finally {
+          isRefreshing = false;
+        }
+      });
     }
 
     console.log('[API Error Detail]:', {

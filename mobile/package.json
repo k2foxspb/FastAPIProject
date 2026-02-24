@@ -1,69 +1,56 @@
 {
   "name": "fastapi-expo-app",
   "version": "1.0.0",
-  "private": true,
   "main": "node_modules/expo/AppEntry.js",
   "scripts": {
     "start": "expo start",
-    "android": "expo start --android",
-    "ios": "expo start --ios",
-    "web": "expo start --web",
-    "eas:build": "eas build --platform all"
+    "android": "expo run:android",
+    "ios": "expo run:ios",
+    "web": "expo start --web"
   },
   "dependencies": {
-    "@react-native-firebase/app": "^19.0.0",
-    "@react-native-firebase/messaging": "^19.0.0",
-    "@react-navigation/bottom-tabs": "^6.5.9",
-    "@react-navigation/native": "^6.1.8",
+    "@react-native-async-storage/async-storage": "2.2.0",
+    "@react-native-community/netinfo": "11.4.1",
+    "@react-native-firebase/app": "^18.7.3",
+    "@react-native-firebase/messaging": "^18.7.3",
+    "@react-native-picker/picker": "2.11.1",
+    "@react-navigation/bottom-tabs": "^6.5.11",
+    "@react-navigation/native": "^6.1.9",
     "@react-navigation/stack": "^6.3.20",
-    "axios": "^1.7.2",
-    "date-fns": "^3.6.0",
-    "expo": "^54.0.33",
+    "axios": "^1.13.5",
+    "babel-preset-expo": "~54.0.10",
+    "date-fns": "^4.1.0",
+    "expo": "^54.0.0",
     "expo-asset": "~12.0.12",
-    "expo-av": "~16.0.8",
+    "expo-audio": "~1.1.1",
     "expo-constants": "~18.0.13",
     "expo-dev-client": "~6.0.20",
+    "expo-document-picker": "~14.0.8",
     "expo-file-system": "~19.0.21",
     "expo-image-picker": "~17.0.10",
+    "expo-intent-launcher": "~13.0.8",
+    "expo-linking": "~8.0.11",
+    "expo-notifications": "~0.32.16",
+    "expo-sharing": "~14.0.8",
+    "expo-status-bar": "~3.0.9",
+    "expo-video": "^3.0.16",
     "react": "19.1.0",
+    "react-dom": "19.1.0",
     "react-native": "0.81.5",
     "react-native-gesture-handler": "~2.28.0",
     "react-native-pell-rich-editor": "^1.10.0",
+    "react-native-reanimated": "~4.1.1",
     "react-native-render-html": "^6.3.4",
     "react-native-safe-area-context": "~5.6.0",
     "react-native-screens": "~4.16.0",
-    "react-native-vector-icons": "^9.2.0",
-    "react-native-webview": "13.15.0"
+    "react-native-vector-icons": "^10.0.3",
+    "react-native-web": "^0.21.2",
+    "react-native-webview": "13.15.0",
+    "react-native-worklets": "0.5.1",
+    "@notifee/react-native": "^7.9.0"
   },
-  "devDependencies": {},
-  "overrides": {
-    "minimatch": "^10.2.1",
-    "glob": "^10.5.0"
+  "devDependencies": {
+    "@babel/core": "^7.26.0"
   },
-  "expo": {
-    "sdkVersion": "54.0.0",
-    "android": {
-      "targetSdkVersion": 34,
-      "compileSdkVersion": 34,
-      "versionCode": 2,
-      "permissions": [
-        "INTERNET",
-        "ACCESS_NETWORK_STATE"
-      ]
-    },
-    "plugins": [
-      "@react-native-firebase/app",
-      "@react-native-firebase/messaging",
-      "react-native-vector-icons",
-      [
-        "expo-build-properties",
-        {
-          "android": {
-            "targetSdkVersion": 34,
-            "compileSdkVersion": 34
-          }
-        }
-      ]
-    ]
-  }
+  "private": true
 }

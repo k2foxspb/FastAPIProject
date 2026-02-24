@@ -1,5 +1,6 @@
 services:
   web:
+    restart: always
     # Берем Dockerfile из каталога app
     build:
       context: .
@@ -22,11 +23,13 @@ services:
       - redis
 
   redis:
+    restart: always
     image: redis:7-alpine
     ports:
       - "6379:6379"
 
   celery_worker:
+    restart: always
     build:
       context: .
       dockerfile: ./app/Dockerfile
@@ -44,6 +47,7 @@ services:
       - redis
 
   db:
+    restart: always
     image: postgres:15
     volumes:
       - postgres_data:/var/lib/postgresql/data/

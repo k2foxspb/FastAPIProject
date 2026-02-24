@@ -33,6 +33,8 @@ class User(Base):
     cart_items: Mapped[list["CartItem"]] = relationship("CartItem", back_populates="user", cascade="all, delete-orphan")
     orders: Mapped[list["Order"]] = relationship("Order", back_populates="user", cascade="all, delete-orphan")
     photos: Mapped[list["UserPhoto"]] = relationship("UserPhoto", back_populates="user", cascade="all, delete-orphan")
+    photo_comments: Mapped[list["UserPhotoComment"]] = relationship("UserPhotoComment", back_populates="user", cascade="all, delete-orphan")
+    photo_reactions: Mapped[list["UserPhotoReaction"]] = relationship("UserPhotoReaction", back_populates="user", cascade="all, delete-orphan")
     albums: Mapped[list["PhotoAlbum"]] = relationship("PhotoAlbum", back_populates="user", cascade="all, delete-orphan")
     admin_permissions: Mapped[list["AdminPermission"]] = relationship("AdminPermission", back_populates="admin", cascade="all, delete-orphan")
 
@@ -89,6 +91,8 @@ class UserPhoto(Base):
 
     user: Mapped["User"] = relationship("User", back_populates="photos")
     album: Mapped["PhotoAlbum"] = relationship("PhotoAlbum", back_populates="photos")
+    comments: Mapped[list["UserPhotoComment"]] = relationship("UserPhotoComment", back_populates="photo", cascade="all, delete-orphan")
+    reactions: Mapped[list["UserPhotoReaction"]] = relationship("UserPhotoReaction", back_populates="photo", cascade="all, delete-orphan")
 
 
 class Friendship(Base):
@@ -104,6 +108,44 @@ class Friendship(Base):
     sender: Mapped["User"] = relationship("User", foreign_keys=[user_id], back_populates="sent_friend_requests")
     receiver: Mapped["User"] = relationship("User", foreign_keys=[friend_id], back_populates="received_friend_requests")
     deleted_by_user: Mapped["User | None"] = relationship("User", foreign_keys=[deleted_by_id])
+
+
+class UserPhotoComment(Base):
+    __tablename__ = "user_photo_comments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    photo_id: Mapped[int] = mapped_column(ForeignKey("user_photos.id"), nullable=False)
+    comment: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    user: Mapped["User"] = relationship("User", back_populates="photo_comments")
+    photo: Mapped["UserPhoto"] = relationship("UserPhoto", back_populates="comments")
+    reactions: Mapped[list["UserPhotoCommentReaction"]] = relationship("UserPhotoCommentReaction", back_populates="comment", cascade="all, delete-orphan")
+
+
+class UserPhotoCommentReaction(Base):
+    __tablename__ = "user_photo_comment_reactions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    comment_id: Mapped[int] = mapped_column(ForeignKey("user_photo_comments.id"), nullable=False)
+    reaction_type: Mapped[int] = mapped_column(Integer, nullable=False)  # 1 for like, -1 for dislike
+
+    user: Mapped["User"] = relationship("User")
+    comment: Mapped["UserPhotoComment"] = relationship("UserPhotoComment", back_populates="reactions")
+
+
+class UserPhotoReaction(Base):
+    __tablename__ = "user_photo_reactions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    photo_id: Mapped[int] = mapped_column(ForeignKey("user_photos.id"), nullable=False)
+    reaction_type: Mapped[int] = mapped_column(Integer, nullable=False)  # 1 for like, -1 for dislike
+
+    user: Mapped["User"] = relationship("User", back_populates="photo_reactions")
+    photo: Mapped["UserPhoto"] = relationship("UserPhoto", back_populates="reactions")
 
 
 class AppVersion(Base):

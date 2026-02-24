@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_buyer, get_current_user
 from app.api.dependencies import get_async_db
-from app.models.reviews import Reviews as ReviewModel
+from app.models.reviews import Reviews as ReviewModel, ReviewReaction as ReviewReactionModel
 from app.models.users import User as UserModel
 from app.models.products import Product as ProductModel
 from app.schemas.reviews import Review as ReviewSchema, Review, CreateReview
@@ -17,6 +17,51 @@ router = APIRouter(
     prefix="/reviews",
     tags=["reviews"],
 )
+
+@router.post("/{review_id}/react")
+async def react_to_review(
+    review_id: int,
+    reaction_type: int, # 1 for like, -1 for dislike, 0 to remove
+    current_user: UserModel = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """Поставить лайк или дизлайк отзыву к товару."""
+    if reaction_type not in [1, -1, 0]:
+        raise HTTPException(status_code=400, detail="Invalid reaction type")
+
+    # Проверяем существование отзыва
+    review_res = await db.execute(select(ReviewModel.id).where(ReviewModel.id == review_id))
+    if not review_res.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Review not found")
+
+    # Ищем существующую реакцию
+    reaction_res = await db.execute(
+        select(ReviewReactionModel).where(
+            ReviewReactionModel.review_id == review_id,
+            ReviewReactionModel.user_id == current_user.id
+        )
+    )
+    db_reaction = reaction_res.scalar_one_or_none()
+
+    if reaction_type == 0:
+        if db_reaction:
+            await db.delete(db_reaction)
+            await db.commit()
+            return {"status": "removed"}
+        return {"status": "not_found"}
+    
+    if db_reaction:
+        db_reaction.reaction_type = reaction_type
+    else:
+        new_reaction = ReviewReactionModel(
+            review_id=review_id,
+            user_id=current_user.id,
+            reaction_type=reaction_type
+        )
+        db.add(new_reaction)
+    
+    await db.commit()
+    return {"status": "ok", "reaction_type": reaction_type}
 
 @router.get("", response_model=list[ReviewSchema])
 async def get_review(db: AsyncSession = Depends(get_async_db)):

@@ -1,5 +1,6 @@
 from typing import Dict, List, Optional
 import json
+import asyncio
 import os
 import uuid
 import io
@@ -21,6 +22,7 @@ from app.schemas.chat import (
 )
 from app.api.routers.notifications import manager as notifications_manager
 from app.core.fcm import send_fcm_notification
+from loguru import logger
 from app.utils import storage
 
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -31,21 +33,41 @@ class ChatManager:
         self.active_connections: Dict[int, List[WebSocket]] = {}
 
     async def connect(self, websocket: WebSocket, user_id: int):
-        # Removal of await websocket.accept() as it is handled by the endpoint
         if user_id not in self.active_connections:
             self.active_connections[user_id] = []
         self.active_connections[user_id].append(websocket)
+        logger.debug(f"ChatManager: User {user_id} connected. Sockets: {len(self.active_connections[user_id])}")
 
     def disconnect(self, websocket: WebSocket, user_id: int):
         if user_id in self.active_connections:
-            self.active_connections[user_id].remove(websocket)
-            if not self.active_connections[user_id]:
-                del self.active_connections[user_id]
+            try:
+                self.active_connections[user_id].remove(websocket)
+                if not self.active_connections[user_id]:
+                    del self.active_connections[user_id]
+                logger.debug(f"ChatManager: User {user_id} disconnected. Sockets: {len(self.active_connections.get(user_id, []))}")
+            except ValueError:
+                pass
 
     async def send_personal_message(self, message: dict, user_id: int):
+        logger.debug(f"ChatManager trying to send message to user {user_id}. Connections: {len(self.active_connections.get(user_id, []))}")
         if user_id in self.active_connections:
-            for connection in self.active_connections[user_id]:
-                await connection.send_json(message)
+            tasks = [connection.send_json(message) for connection in self.active_connections[user_id]]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            for i, result in enumerate(results):
+                if isinstance(result, Exception):
+                    logger.error(f"ChatManager failed to send to user {user_id}: {result}")
+                    # Remove broken connection
+                    try:
+                        self.active_connections[user_id].pop(i)
+                    except:
+                        pass
+                else:
+                    logger.debug(f"ChatManager sent message to user {user_id}: {message.get('id')}")
+            
+            if user_id in self.active_connections and not self.active_connections[user_id]:
+                del self.active_connections[user_id]
+        else:
+            logger.debug(f"User {user_id} NOT connected to Chat WS")
 
 manager = ChatManager()
 
@@ -75,22 +97,90 @@ async def websocket_chat_endpoint(
 ):
     # Accept immediately to avoid handshake rejection issues
     await websocket.accept()
+    
+    # Clean token (remove potential quotes if passed incorrectly)
+    token = token.strip().strip('"').strip("'")
 
     user_id = await get_user_from_token(token, db)
     if user_id is None:
-        print(f"Chat WS rejected: invalid token {token[:10]}...")
+        logger.warning(f"Chat WS rejected: invalid token {token[:10]}...")
         await websocket.close(code=4003)
         return
 
     # Using our custom connect that doesn't call accept() again
     await manager.connect(websocket, user_id)
+
+    # Fetch sender name once for the session
+    sender_result = await db.execute(select(UserModel.first_name, UserModel.last_name).where(UserModel.id == user_id))
+    sender_row = sender_result.first()
+    sender_name = f"{sender_row.first_name} {sender_row.last_name}".strip() if sender_row and (sender_row.first_name or sender_row.last_name) else "Пользователь"
+    if not sender_name: sender_name = "Пользователь"
+
     try:
         while True:
             data = await websocket.receive_text()
-            message_data = json.loads(data)
+            try:
+                message_data = json.loads(data)
+            except json.JSONDecodeError as e:
+                logger.error(f"Chat WS JSON error: {e}, data={data[:100]}")
+                continue
             
             # Обработка разных типов сообщений через WebSocket
             msg_type = message_data.get("type", "message")
+            
+            if msg_type == "ping":
+                await websocket.send_json({"type": "pong"})
+                continue
+            
+            if msg_type == "get_dialogs":
+                from app.api.routers.chat import get_dialogs as fetch_dialogs_api
+                try:
+                    dialogs_list = await fetch_dialogs_api(token=token, db=db)
+                    # Конвертируем datetime в ISO формат для JSON
+                    processed_dialogs = []
+                    for d in dialogs_list:
+                        d_dict = dict(d) if not isinstance(d, dict) else d.copy()
+                        if isinstance(d_dict.get("last_message_time"), datetime):
+                            d_dict["last_message_time"] = d_dict["last_message_time"].isoformat()
+                        processed_dialogs.append(d_dict)
+
+                    logger.info(f"Sending WS dialogs to user {user_id}, count: {len(processed_dialogs)}")
+                    await websocket.send_json({
+                        "type": "dialogs_list",
+                        "data": processed_dialogs
+                    })
+                except Exception as e:
+                    logger.error(f"WS get_dialogs error: {e}")
+                continue
+            
+            if msg_type == "get_history":
+                other_user_id = message_data.get("other_user_id")
+                limit = message_data.get("limit", 15)
+                skip = message_data.get("skip", 0)
+                if other_user_id:
+                    from app.api.routers.chat import get_chat_history as fetch_history_api
+                    try:
+                        history = await fetch_history_api(other_user_id=int(other_user_id), token=token, limit=limit, skip=skip, db=db)
+                        # Конвертируем datetime в ISO формат для JSON
+                        processed_history = []
+                        for m in history:
+                            m_dict = dict(m) if not isinstance(m, dict) else m.copy()
+                            if isinstance(m_dict.get("timestamp"), datetime):
+                                m_dict["timestamp"] = m_dict["timestamp"].isoformat()
+                            processed_history.append(m_dict)
+                        
+                        logger.info(f"Sending WS history to user {user_id} for partner {other_user_id}, count: {len(processed_history)}")
+                        await websocket.send_json({
+                            "type": "chat_history",
+                            "other_user_id": int(other_user_id),
+                            "data": processed_history,
+                            "skip": skip
+                        })
+                    except Exception as e:
+                        logger.error(f"WS get_history error: {e}")
+                continue
+                
+            logger.debug(f"Chat WS received message type '{msg_type}' from user {user_id}")
 
             if msg_type == "mark_read":
                 other_id = message_data.get("other_id")
@@ -98,7 +188,7 @@ async def websocket_chat_endpoint(
                     await db.execute(
                         update(ChatMessage)
                         .where(
-                            ChatMessage.sender_id == other_id,
+                            ChatMessage.sender_id == int(other_id),
                             ChatMessage.receiver_id == user_id,
                             ChatMessage.is_read == 0
                         )
@@ -106,38 +196,167 @@ async def websocket_chat_endpoint(
                     )
                     await db.commit()
                     
-                    # Уведомляем отправителя
-                    await notifications_manager.send_personal_message({
-                        "type": "your_messages_read",
-                        "data": {"reader_id": user_id}
-                    }, int(other_id))
+                    # Уведомляем всех участников одновременно
+                    await asyncio.gather(
+                        notifications_manager.send_personal_message({
+                            "type": "your_messages_read",
+                            "data": {"reader_id": user_id}
+                        }, int(other_id)),
+                        manager.send_personal_message({
+                            "type": "messages_read",
+                            "reader_id": user_id
+                        }, int(other_id)),
+                        notifications_manager.send_personal_message({
+                            "type": "messages_read",
+                            "data": {"from_user_id": int(other_id)}
+                        }, user_id),
+                        return_exceptions=True
+                    )
+                continue
+
+            if msg_type == "delete_message":
+                message_id = message_data.get("message_id")
+                if message_id:
+                    result = await db.execute(select(ChatMessage).where(ChatMessage.id == message_id))
+                    message = result.scalar_one_or_none()
+
+                    if message:
+                        is_sender = message.sender_id == user_id
+                        is_receiver = message.receiver_id == user_id
+
+                        if is_sender or is_receiver:
+                            receiver_id = message.receiver_id
+                            sender_id = message.sender_id
+                            file_path = message.file_path
+
+                            if is_sender:
+                                await db.delete(message)
+                            else:
+                                message.deleted_by_receiver = True
+                            
+                            await db.commit()
+
+                            if is_sender and file_path:
+                                try:
+                                    root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                                    abs_path = os.path.join(root_dir, file_path.lstrip("/"))
+                                    if os.path.exists(abs_path):
+                                        os.remove(abs_path)
+                                except Exception as e:
+                                    logger.error(f"Error deleting chat file via WS: {e}")
+
+                            delete_event = {
+                                "type": "message_deleted",
+                                "message_id": message_id,
+                                "sender_id": sender_id,
+                                "receiver_id": receiver_id,
+                                "deleted_for_all": is_sender
+                            }
+                            
+                            if is_sender:
+                                await asyncio.gather(
+                                    manager.send_personal_message(delete_event, receiver_id),
+                                    manager.send_personal_message(delete_event, user_id),
+                                    notifications_manager.send_personal_message(delete_event, receiver_id),
+                                    notifications_manager.send_personal_message(delete_event, user_id),
+                                    return_exceptions=True
+                                )
+                            else:
+                                await asyncio.gather(
+                                    manager.send_personal_message(delete_event, user_id),
+                                    notifications_manager.send_personal_message(delete_event, user_id),
+                                    return_exceptions=True
+                                )
+                continue
+
+            if msg_type == "bulk_delete":
+                message_ids = message_data.get("message_ids", [])
+                if message_ids:
+                    result = await db.execute(
+                        select(ChatMessage).where(
+                            ChatMessage.id.in_(message_ids),
+                            or_(
+                                ChatMessage.sender_id == user_id,
+                                ChatMessage.receiver_id == user_id
+                            )
+                        )
+                    )
+                    messages = result.scalars().all()
                     
-                    await manager.send_personal_message({
-                        "type": "messages_read",
-                        "reader_id": user_id
-                    }, int(other_id))
+                    if messages:
+                        root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                        
+                        for msg in messages:
+                            m_receiver_id = msg.receiver_id
+                            m_sender_id = msg.sender_id
+                            m_file_path = msg.file_path
+                            m_id = msg.id
+                            
+                            m_is_sender = m_sender_id == user_id
+                            
+                            if m_is_sender:
+                                await db.delete(msg)
+                                if m_file_path:
+                                    try:
+                                        m_abs_path = os.path.join(root_dir, m_file_path.lstrip("/"))
+                                        if os.path.exists(m_abs_path):
+                                            os.remove(m_abs_path)
+                                    except Exception as e:
+                                        logger.error(f"Error bulk deleting chat file via WS: {e}")
+                            else:
+                                msg.deleted_by_receiver = True
+
+                            m_delete_event = {
+                                "type": "message_deleted",
+                                "message_id": m_id,
+                                "sender_id": m_sender_id,
+                                "receiver_id": m_receiver_id,
+                                "deleted_for_all": m_is_sender
+                            }
+                            
+                            if m_is_sender:
+                                await asyncio.gather(
+                                    manager.send_personal_message(m_delete_event, m_receiver_id),
+                                    manager.send_personal_message(m_delete_event, user_id),
+                                    notifications_manager.send_personal_message(m_delete_event, m_receiver_id),
+                                    notifications_manager.send_personal_message(m_delete_event, user_id),
+                                    return_exceptions=True
+                                )
+                            else:
+                                await asyncio.gather(
+                                    manager.send_personal_message(m_delete_event, user_id),
+                                    notifications_manager.send_personal_message(m_delete_event, user_id),
+                                    return_exceptions=True
+                                )
+                        await db.commit()
                 continue
 
             # Стандартная отправка сообщения
-            receiver_id = message_data.get("receiver_id")
+            receiver_id_raw = message_data.get("receiver_id")
             content = message_data.get("message")
             file_path = message_data.get("file_path")
             attachments = message_data.get("attachments")  # список объектов {file_path, type}
             message_type = message_data.get("message_type", "text")
             
-            if receiver_id and (content or file_path or (attachments and len(attachments) > 0)):
+            if receiver_id_raw and (content or file_path or (attachments and len(attachments) > 0)):
+                # Приводим к int для корректного поиска в менеджерах соединений
+                try:
+                    receiver_id = int(receiver_id_raw)
+                except (ValueError, TypeError):
+                    logger.warning(f"Invalid receiver_id format: {receiver_id_raw}")
+                    continue
+                
                 # Если пришли вложения списком — считаем это медиа-группой и сохраняем
                 if attachments and len(attachments) > 0:
                     message_type = "media_group"
                     # Сохраняем вложения как JSON-строку в file_path для совместимости БД
                     try:
                         file_path = json.dumps(attachments)
-                        print(f"DEBUG: Saved media_group with {len(attachments)} attachments to file_path")
                     except Exception as e:
-                        print(f"DEBUG: Failed to serialize attachments: {e}")
+                        logger.error(f"Failed to serialize attachments: {e}")
                         file_path = None
                 
-                print(f"DEBUG: Saving message: type={message_type}, receiver={receiver_id}, has_content={bool(content)}, file_path={file_path[:50] if file_path else None}")
+                logger.debug(f"Saving message: type={message_type}, sender={user_id}, receiver={receiver_id}")
                 
                 # Сохраняем в базу
                 new_msg = ChatMessage(
@@ -151,10 +370,13 @@ async def websocket_chat_endpoint(
                 await db.commit()
                 await db.refresh(new_msg)
 
+                # sender_name is already fetched once above the loop
+
                 # Готовим данные ответа
                 response_data = {
                     "id": new_msg.id,
                     "sender_id": user_id,
+                    "sender_name": sender_name,
                     "receiver_id": receiver_id,
                     "message": content,
                     "file_path": file_path,
@@ -169,30 +391,29 @@ async def websocket_chat_endpoint(
                     except Exception:
                         response_data["attachments"] = []
                 
-                await manager.send_personal_message(response_data, receiver_id)
-                # Отправляем подтверждение отправителю
-                await manager.send_personal_message(response_data, user_id)
-
-                # Уведомляем через глобальный WS уведомлений
-                await notifications_manager.send_personal_message({
+                # Рассылаем сообщения всем участникам параллельно для минимальной задержки
+                chat_event = {
                     "type": "new_message",
                     "data": response_data
-                }, receiver_id)
+                }
+                await asyncio.gather(
+                    manager.send_personal_message(chat_event, receiver_id),
+                    manager.send_personal_message(chat_event, user_id),
+                    notifications_manager.send_personal_message(chat_event, receiver_id),
+                    notifications_manager.send_personal_message(chat_event, user_id),
+                    return_exceptions=True
+                )
 
                 # Отправляем Пуш через FCM, если получатель не подключен к WebSocket
                 # Находим получателя, чтобы взять его fcm_token
                 receiver_result = await db.execute(select(UserModel).where(UserModel.id == receiver_id))
                 receiver = receiver_result.scalar_one_or_none()
                 if receiver and receiver.fcm_token:
-                    # Находим отправителя для имени
-                    sender_result = await db.execute(select(UserModel).where(UserModel.id == user_id))
-                    sender = sender_result.scalar_one_or_none()
-                    sender_name = f"{sender.first_name} {sender.last_name}" if sender and (sender.first_name or sender.last_name) else "Новое сообщение"
-                    
                     # Если сообщение пустое (только файл), пишем тип файла
                     body = content if content else f"Отправил {message_type}"
                     
-                    await send_fcm_notification(
+                    logger.info(f"FCM: Triggering notification for receiver {receiver_id} with token {receiver.fcm_token[:15]}...")
+                    asyncio.create_task(send_fcm_notification(
                         token=receiver.fcm_token,
                         title=sender_name,
                         body=body,
@@ -201,12 +422,112 @@ async def websocket_chat_endpoint(
                             "chat_id": str(user_id),
                             "message_id": str(new_msg.id)
                         }
-                    )
+                    ))
+                else:
+                    logger.debug(f"FCM: Skipping notification for receiver {receiver_id}. No token found.")
+            else:
+                logger.debug(f"Message skipped. receiver_id={receiver_id_raw}, content={bool(content)}, file_path={bool(file_path)}")
 
     except WebSocketDisconnect:
+        logger.info(f"Chat WS disconnected for user {user_id}")
         manager.disconnect(websocket, user_id)
-    except Exception:
+    except Exception as e:
+        logger.error(f"Error in chat WS for user {user_id}: {e}")
         manager.disconnect(websocket, user_id)
+
+@router.post("/message", response_model=ChatMessageResponse)
+async def send_message_api(
+    msg_in: ChatMessageCreate,
+    token: str,
+    db: AsyncSession = Depends(get_async_db)
+):
+    user_id = await get_user_from_token(token, db)
+    if user_id is None:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    
+    receiver_id = msg_in.receiver_id
+    content = msg_in.message
+    file_path = msg_in.file_path
+    attachments = msg_in.attachments
+    message_type = msg_in.message_type
+    
+    if attachments and len(attachments) > 0:
+        message_type = "media_group"
+        try:
+            file_path = json.dumps(attachments)
+        except Exception:
+            file_path = None
+    
+    # Сохраняем в базу
+    new_msg = ChatMessage(
+        sender_id=user_id,
+        receiver_id=receiver_id,
+        message=content,
+        file_path=file_path,
+        message_type=message_type
+    )
+    db.add(new_msg)
+    await db.commit()
+    await db.refresh(new_msg)
+
+    # Находим отправителя для имени
+    sender_result = await db.execute(select(UserModel.first_name, UserModel.last_name).where(UserModel.id == user_id))
+    sender_row = sender_result.first()
+    sender_name = f"{sender_row.first_name} {sender_row.last_name}".strip() if sender_row and (sender_row.first_name or sender_row.last_name) else "Пользователь"
+    if not sender_name: sender_name = "Пользователь"
+
+    # Готовим данные ответа
+    response_data = {
+        "id": new_msg.id,
+        "sender_id": user_id,
+        "sender_name": sender_name,
+        "receiver_id": receiver_id,
+        "message": content,
+        "file_path": file_path,
+        "message_type": message_type,
+        "timestamp": new_msg.timestamp.isoformat() if hasattr(new_msg.timestamp, 'isoformat') else new_msg.timestamp,
+        "is_read": 0
+    }
+    if message_type == "media_group":
+        try:
+            response_data["attachments"] = attachments or json.loads(file_path or "[]")
+        except Exception:
+            response_data["attachments"] = []
+
+    # Уведомляем всех параллельно
+    chat_event = {
+        "type": "new_message",
+        "data": response_data
+    }
+    await asyncio.gather(
+        manager.send_personal_message(chat_event, receiver_id),
+        manager.send_personal_message(chat_event, user_id),
+        notifications_manager.send_personal_message(chat_event, receiver_id),
+        notifications_manager.send_personal_message(chat_event, user_id),
+        return_exceptions=True
+    )
+
+    # FCM Notification
+    receiver_result = await db.execute(select(UserModel).where(UserModel.id == receiver_id))
+    receiver = receiver_result.scalar_one_or_none()
+    if receiver and receiver.fcm_token:
+        body = content if content else f"Отправил {message_type}"
+        
+        logger.info(f"FCM (API): Triggering notification for receiver {receiver_id} with token {receiver.fcm_token[:15]}...")
+        asyncio.create_task(send_fcm_notification(
+            token=receiver.fcm_token,
+            title=sender_name,
+            body=body,
+            sender_id=user_id,
+            data={
+                "chat_id": str(user_id),
+                "message_id": str(new_msg.id)
+            }
+        ))
+    else:
+        logger.debug(f"FCM (API): Skipping notification for receiver {receiver_id}. No token found.")
+
+    return response_data
 
 @router.get("/history/{other_user_id}", response_model=List[ChatMessageResponse])
 async def get_chat_history(
@@ -313,7 +634,7 @@ async def get_dialogs(
             "last_name": partner.last_name,
             "avatar_url": getattr(partner, 'avatar_url', None), # Используем getattr если поля нет в модели
             "last_message": last_msg.message if last_msg and last_msg.message else "[Файл]",
-            "last_message_time": last_msg.timestamp if last_msg else datetime.utcnow(),
+            "last_message_time": last_msg.timestamp.isoformat() if last_msg and last_msg.timestamp else datetime.utcnow().isoformat(),
             "unread_count": unread_count or 0,
             "status": partner.status,
             "last_seen": partner.last_seen
@@ -408,7 +729,7 @@ async def delete_message(
             if os.path.exists(abs_path):
                 os.remove(abs_path)
         except Exception as e:
-            print(f"Error deleting chat file: {e}")
+            logger.error(f"Error deleting chat file: {e}")
 
     # Уведомляем участников через WebSocket чата
     delete_event = {
@@ -476,7 +797,7 @@ async def bulk_delete_messages(
                     if os.path.exists(abs_path):
                         os.remove(abs_path)
                 except Exception as e:
-                    print(f"Error deleting chat file: {e}")
+                    logger.error(f"Error deleting chat file: {e}")
         else:
             msg.deleted_by_receiver = True
 
@@ -584,9 +905,7 @@ async def init_upload(
     except HTTPException:
         raise
     except Exception as e:
-        print(f"Error in init_upload: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.error(f"Error in init_upload: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/upload/active", response_model=List[dict])
@@ -647,26 +966,26 @@ async def upload_chunk(
     chunk: Optional[UploadFile] = File(None),
     db: AsyncSession = Depends(get_async_db)
 ):
-    print(f"DEBUG: upload_chunk called for {upload_id}")
-    print(f"DEBUG: Params: offset={offset}, q_offset={q_offset}, token={token[:10] if token else None}, q_token={q_token[:10] if q_token else None}")
+    logger.debug(f"upload_chunk called for {upload_id}")
+    logger.debug(f"Params: offset={offset}, q_offset={q_offset}, token={token[:10] if token else None}, q_token={q_token[:10] if q_token else None}")
     
     # Support token and offset from multiple sources for maximum resilience
     actual_token = token or q_token
     actual_offset = offset if offset is not None else q_offset
     
     if actual_token is None:
-        print("DEBUG: Missing token")
+        logger.debug("Missing token")
         raise HTTPException(status_code=401, detail="Missing token")
     
     # Clean token (remove potential quotes)
     actual_token = actual_token.strip().strip('"').strip("'")
 
     if actual_offset is None:
-        print("DEBUG: Missing offset")
+        logger.debug("Missing offset")
         raise HTTPException(status_code=422, detail="Missing offset")
         
     if chunk is None:
-        print("DEBUG: Missing chunk file")
+        logger.debug("Missing chunk file")
         # Log all fields for debugging
         return {"status": "error", "message": "Missing chunk", "debug_received_params": {
             "offset": offset, "q_offset": q_offset, "token_provided": bool(actual_token)

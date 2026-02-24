@@ -135,7 +135,7 @@ async def revoke_permission(
 @router.get("/models")
 async def get_manageable_models():
     """Возвращает список моделей, которыми можно управлять."""
-    return ["categories", "products", "orders", "reviews", "users", "chats"]
+    return ["categories", "products", "orders", "reviews", "users"]
 
 # --- Управление версиями приложения (Только для Owner) ---
 

@@ -7,4 +7,4 @@ __pycache__/
 app/app/
 app/media/
 .env
-
+*.db

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, FlatList, Image, ActivityIndicator, TouchableOpacity, Alert, Modal, Pressable, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, FlatList, Image, ActivityIndicator, TouchableOpacity, Alert, Modal, Pressable, Dimensions, Share, Platform } from 'react-native';
+import { getShadow } from '../utils/shadowStyles';
 import { Ionicons as Icon } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
@@ -9,7 +10,10 @@ import { formatName } from '../utils/formatters';
 import CachedMedia from '../components/CachedMedia';
 import VoiceMessage from '../components/VoiceMessage';
 import FileMessage from '../components/FileMessage';
-import { Video, ResizeMode } from 'expo-av';
+import VideoPlayer from '../components/VideoPlayer';
+import { documentDirectory, getInfoAsync, downloadAsync, readAsStringAsync, writeAsStringAsync, EncodingType, StorageAccessFramework } from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
+import { setPlaybackAudioMode } from '../utils/audioSettings';
 
 export default function AdminChatDetailScreen({ route, navigation }) {
   const { u1, u2 } = route.params;
@@ -62,11 +66,73 @@ export default function AdminChatDetailScreen({ route, navigation }) {
     );
   };
 
+  const handleDownloadMedia = async () => {
+    if (!fullScreenMedia) return;
+
+    if (Platform.OS === 'web') {
+      try {
+        const uri = fullScreenMedia.uri;
+        const fileName = uri.split('/').pop() || 'file';
+        const link = document.createElement('a');
+        link.href = uri;
+        link.setAttribute('download', fileName);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      } catch (e) {
+        window.open(fullScreenMedia.uri, '_blank');
+      }
+      return;
+    }
+
+    try {
+      const uri = fullScreenMedia.uri;
+      const fileName = uri.split('/').pop() || 'file';
+      const localFileUri = `${documentDirectory}${fileName}`;
+
+      const fileInfo = await getInfoAsync(localFileUri);
+      let finalUri = localFileUri;
+
+      if (!fileInfo.exists) {
+        Alert.alert('Загрузка', 'Файл скачивается...');
+        const downloadRes = await downloadAsync(uri, localFileUri);
+        finalUri = downloadRes.uri;
+      }
+
+      if (Platform.OS === 'android') {
+        const permissions = await StorageAccessFramework.requestDirectoryPermissionsAsync();
+        if (permissions.granted) {
+          const base64 = await readAsStringAsync(finalUri, { encoding: EncodingType.Base64 });
+          const mimeType = fullScreenMedia.type === 'video' ? 'video/mp4' : 'image/jpeg';
+          const newFileUri = await StorageAccessFramework.createFileAsync(
+            permissions.directoryUri,
+            fileName,
+            mimeType
+          );
+          await writeAsStringAsync(newFileUri, base64, { encoding: EncodingType.Base64 });
+          Alert.alert('Успех', 'Медиа-файл сохранен');
+        }
+      } else {
+        if (await Sharing.isAvailableAsync()) {
+          await Sharing.shareAsync(finalUri);
+        } else {
+          Alert.alert('Ошибка', 'Функция "Поделиться" недоступна на этом устройстве');
+        }
+      }
+    } catch (error) {
+      console.error('Error downloading media:', error);
+      Alert.alert('Ошибка', 'Не удалось скачать файл');
+    }
+  };
+
   const renderItem = ({ item }) => {
     const isU1 = item.sender_id === u1.id;
     const sender = isU1 ? u1 : u2;
 
     const handleFullScreen = (uri, type) => {
+      if (type === 'video') {
+        setPlaybackAudioMode();
+      }
       setFullScreenMedia({ uri, type });
     };
 
@@ -160,10 +226,10 @@ export default function AdminChatDetailScreen({ route, navigation }) {
           {fullScreenMedia && (
             <View style={[styles.fullScreenContent, { width: screen.width, height: screen.height }]}>
               {fullScreenMedia.type === 'video' ? (
-                <Video
-                  source={{ uri: fullScreenMedia.uri }}
+                <VideoPlayer
+                  uri={fullScreenMedia.uri}
                   style={styles.fullScreenVideo}
-                  resizeMode={ResizeMode.CONTAIN}
+                  resizeMode="contain"
                   useNativeControls
                   shouldPlay
                 />
@@ -176,6 +242,9 @@ export default function AdminChatDetailScreen({ route, navigation }) {
               )}
               <TouchableOpacity style={styles.fullScreenClose} onPress={() => setFullScreenMedia(null)}>
                 <Icon name="close" size={28} color="#fff" />
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.fullScreenDownload} onPress={handleDownloadMedia}>
+                <Icon name="download" size={28} color="#fff" />
               </TouchableOpacity>
             </View>
           )}
@@ -211,9 +280,10 @@ const styles = StyleSheet.create({
   },
   messageBubble: {
     padding: 10,
-    borderRadius: 15,
+    borderRadius: 18,
     borderWidth: 1,
-    minWidth: 60
+    minWidth: 60,
+    ...getShadow('#000', { width: 0, height: 1 }, 0.1, 2, 1),
   },
   u2Bubble: {
     borderBottomLeftRadius: 2
@@ -260,6 +330,12 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 40,
     right: 20,
+    padding: 8
+  },
+  fullScreenDownload: {
+    position: 'absolute',
+    top: 40,
+    left: 20,
     padding: 8
   }
 });

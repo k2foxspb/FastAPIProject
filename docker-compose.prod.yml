@@ -2,6 +2,7 @@ name: fastapi-ecommerce-prod
 services:
 
   web:
+
     # Берем Dockerfile из каталога app
     build:
       context: .
@@ -43,6 +44,7 @@ services:
       - redis
 
   redis:
+
     image: redis:7-alpine
     user: "0:0"
     expose:
@@ -51,6 +53,7 @@ services:
       - redis_data:/data
 
   celery_worker:
+
     build:
       context: .
       dockerfile: app/Dockerfile.prod.yml
@@ -86,6 +89,7 @@ services:
       - redis
 
   db:
+
     image: postgres:15
     user: "0:0"
     volumes:
@@ -96,6 +100,7 @@ services:
       - POSTGRES_DB=${POSTGRES_DB:-ecommerce_db}
 
   nginx:
+
     build: nginx
     user: "0:0"
     ports:

@@ -1,7 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, FlatList, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, Image, Modal, Pressable, Alert, StatusBar, Dimensions } from 'react-native';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { getShadow } from '../utils/shadowStyles';
+import { View, Text, FlatList, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, Image, Modal, Pressable, Alert, AppState, StatusBar, Dimensions, Share, Animated, Vibration, Keyboard } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
+import { documentDirectory, getInfoAsync, downloadAsync, deleteAsync, readAsStringAsync, writeAsStringAsync, EncodingType, StorageAccessFramework } from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
 import { chatApi, usersApi } from '../api';
 import { API_BASE_URL } from '../constants';
 import { storage } from '../utils/storage';
@@ -10,17 +13,20 @@ import { uploadManager } from '../utils/uploadManager';
 import CachedMedia from '../components/CachedMedia';
 import VoiceMessage from '../components/VoiceMessage';
 import FileMessage from '../components/FileMessage';
-import { Video, ResizeMode, Audio } from 'expo-av';
+import { Audio, useAudioRecorder, useAudioRecorderState, useAudioPlayer, RecordingPresets, AudioModule, requestRecordingPermissionsAsync, createAudioPlayer } from 'expo-audio';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
-import { formatStatus, formatName, formatFileSize } from '../utils/formatters';
+import { formatStatus, formatName, formatFileSize, parseISODate, formatMessageTime } from '../utils/formatters';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { setPlaybackAudioMode, setRecordingAudioMode, setNotificationAudioMode } from '../utils/audioSettings';
+import { isWithinQuietHours } from '../utils/quietHours';
 
 export default function ChatScreen({ route, navigation }) {
   const insets = useSafeAreaInsets();
   const { theme } = useTheme();
   const colors = themeConstants[theme];
+  const { setActiveChatId, fetchDialogs, currentUserId, notifications, connect, dialogs, clearUnread, currentUser, sendMessage: sendMessageWs, markAsReadWs, deleteMessageWs, bulkDeleteMessagesWs, getHistoryWs, onHistoryReceived } = useNotifications();
   const { userId, userName } = route.params;
   const [messages, setMessages] = useState([]);
   const [inputText, setInputText] = useState('');
@@ -40,74 +46,351 @@ export default function ChatScreen({ route, navigation }) {
   const [skip, setSkip] = useState(0);
   const [interlocutor, setInterlocutor] = useState(null);
   const [attachmentsLocalCount, setAttachmentsLocalCount] = useState(0);
-  const [currentUserIdLocal, setCurrentUserIdLocal] = useState(null);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState([]);
   const [isRecording, setIsRecording] = useState(false);
-  const [recording, setRecording] = useState(null);
-  const recordingRef = useRef(null);
+  const [recordedUri, setRecordedUri] = useState(null);
+  const [recordingDuration, setRecordingDuration] = useState(0);
+  const recordingInterval = useRef(null);
   const isStartingRecording = useRef(false);
+  const stopRequested = useRef(false);
+  const isMounted = useRef(true);
   const LIMIT = 15;
-  const ws = useRef(null);
+  const lastProcessedNotificationId = useRef(null);
   const videoPlayerRef = useRef(null);
-  const { fetchDialogs, currentUserId, setActiveChatId } = useNotifications();
+  const chatFlatListRef = useRef(null);
+  const recordingOptions = useMemo(() => RecordingPresets.HIGH_QUALITY, []);
+  const recorder = useAudioRecorder(recordingOptions);
+  const recorderStatus = useAudioRecorderState(recorder, 200);
+
+  useEffect(() => {
+    return () => {
+      try {
+        if (recorder?.isRecording) {
+          recorder.stop();
+        }
+      } catch (e) {
+        console.log('[ChatScreen] cleanup stop error:', e);
+      }
+    };
+  }, [recorder]);
+  const notificationPlayer = useAudioPlayer(require('../../assets/sounds/message.mp3'));
   const screenWidth = Dimensions.get('window').width;
   const [currentMediaIndex, setCurrentMediaIndex] = useState(0);
+  const recordingDotOpacity = useRef(new Animated.Value(1)).current;
+  const [isKeyboardVisible, setKeyboardVisible] = useState(false);
+
+  useEffect(() => {
+    const keyboardDidShowListener = Keyboard.addListener(
+      'keyboardDidShow',
+      () => setKeyboardVisible(true)
+    );
+    const keyboardDidHideListener = Keyboard.addListener(
+      'keyboardDidHide',
+      () => setKeyboardVisible(false)
+    );
+
+    return () => {
+      keyboardDidHideListener.remove();
+      keyboardDidShowListener.remove();
+    };
+  }, []);
+
+  // Обозначаем активный чат в контексте уведомлений и гарантируем восстановление WS уведомлений при выходе
+  useEffect(() => {
+    console.log('[ChatScreen] Active chat set to:', userId);
+    setActiveChatId(userId);
+
+    // Очищаем уведомления для этого пользователя при входе в чат
+    if (Platform.OS !== 'web') {
+      try {
+        const notifee = require('@notifee/react-native').default;
+        notifee.cancelNotification(`sender_${userId}`).catch(() => {});
+      } catch (e) {
+        console.log('[ChatScreen] Error canceling notification:', e);
+      }
+    }
+
+    return () => {
+      console.log('[ChatScreen] Active chat cleared (was', userId, ')');
+      setActiveChatId(null);
+    };
+  }, [userId, setActiveChatId]);
+
+  useEffect(() => {
+    if (isRecording) {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(recordingDotOpacity, {
+            toValue: 0.3,
+            duration: 500,
+            useNativeDriver: true,
+          }),
+          Animated.timing(recordingDotOpacity, {
+            toValue: 1,
+            duration: 500,
+            useNativeDriver: true,
+          }),
+        ])
+      ).start();
+    } else {
+      recordingDotOpacity.setValue(1);
+    }
+  }, [isRecording]);
+
+  useEffect(() => {
+    if (recorderStatus.isRecording) {
+      setRecordingDuration(recorderStatus.durationMillis);
+    } else if (recorderStatus.durationMillis > 0) {
+      // Если запись остановилась, сохраняем финальную длительность
+      setRecordingDuration(recorderStatus.durationMillis);
+    }
+    
+    // Добавим лог для отладки в реальном времени
+    if (recorderStatus.isRecording && recorderStatus.durationMillis % 1000 < 100) {
+      console.log('[ChatScreen] Recorder status:', recorderStatus.isRecording, 'duration:', recorderStatus.durationMillis);
+    }
+  }, [recorderStatus.durationMillis, recorderStatus.isRecording]);
 
   // Звук для нового сообщения в чате
   const playMessageSound = async () => {
     try {
-      const { sound } = await Audio.Sound.createAsync(
-        require('../../assets/sounds/message.mp3')
-      );
-      await sound.playAsync();
-      // Выгружаем звук из памяти после воспроизведения
-      sound.setOnPlaybackStatusUpdate((status) => {
-        if (status.didJustFinish) {
-          sound.unloadAsync();
-        }
-      });
+      if (await isWithinQuietHours()) {
+        console.log('[ChatScreen] Quiet hours active, skipping sound');
+        return;
+      }
+      await setNotificationAudioMode();
+      await notificationPlayer.play();
     } catch (error) {
       console.log('Error playing message sound', error);
     }
   };
 
+  // Основной механизм: слушаем уведомления из контекста
+  const lastProcessedNotificationRef = useRef(null);
+  const currentUserIdRef = useRef(currentUserId);
+
   useEffect(() => {
-    setActiveChatId(userId);
-    return () => setActiveChatId(null);
+    currentUserIdRef.current = currentUserId;
+  }, [currentUserId]);
+
+  useEffect(() => {
+    if (notifications.length > 0) {
+      // Находим индекс последнего обработанного уведомления
+      const lastIdx = lastProcessedNotificationRef.current 
+        ? notifications.findIndex(n => n === lastProcessedNotificationRef.current)
+        : -1;
+      
+      // Выделяем новые уведомления (те, что до последнего обработанного)
+      const newNotifications = lastIdx === -1 ? notifications : notifications.slice(0, lastIdx);
+      
+      // Обрабатываем в хронологическом порядке (с конца массива к началу)
+      [...newNotifications].reverse().forEach(lastNotify => {
+        const notifyType = lastNotify.type || lastNotify.msg_type;
+        
+        if (notifyType === 'new_message' && lastNotify.data) {
+          const message = lastNotify.data;
+          console.log('[ChatScreen] Processing new message notification:', message.id, 'from:', message.sender_id, 'text:', message.message);
+          const msgSenderId = Number(message.sender_id);
+          const msgReceiverId = Number(message.receiver_id);
+          const currentChatId = Number(userId);
+          const myIdNum = Number(currentUserIdRef.current || currentUserId);
+
+          console.log('[ChatScreen] Message check - from:', msgSenderId, 'to:', msgReceiverId, 'currentChat:', currentChatId, 'myId:', myIdNum);
+
+          const isRelated = (msgSenderId === currentChatId && msgReceiverId === myIdNum) || 
+                            (msgSenderId === myIdNum && msgReceiverId === currentChatId);
+          
+          if (isRelated) {
+            setMessages(prev => {
+              if (prev.find(m => Number(m.id) === Number(message.id))) {
+                console.log('[ChatScreen] Message already exists, skipping:', message.id);
+                return prev;
+              }
+              console.log('[ChatScreen] Adding message to list:', message.id);
+              return [message, ...prev];
+            });
+            setSkip(prev => prev + 1);
+            
+            if (msgSenderId === currentChatId) {
+              // Сообщение от собеседника
+              clearUnread(userId);
+              const isAppActive = AppState.currentState === 'active';
+              if (isAppActive) {
+                // playMessageSound(); // Дубликат удален: звук теперь проигрывается только в NotificationContext
+                markAsReadWs(userId);
+              }
+            } else {
+              // Сообщение от меня
+              console.log('[ChatScreen] My message added to list');
+            }
+          } else {
+            console.log('[ChatScreen] Message not related to this chat, ignoring');
+          }
+        } else if (notifyType === 'message_deleted') {
+          const msgId = lastNotify.message_id || lastNotify.data?.id;
+          if (msgId) {
+            setMessages(prev => {
+              if (prev.find(m => m.id === msgId)) {
+                return prev.filter(m => m.id !== msgId);
+              }
+              return prev;
+            });
+            fetchDialogs();
+          }
+        } else if (notifyType === 'messages_read' || notifyType === 'your_messages_read' || notifyType === 'mark_read') {
+          const readerId = lastNotify.reader_id || lastNotify.data?.reader_id || lastNotify.data?.from_user_id || lastNotify.other_id;
+          if (Number(readerId) === Number(userId) || Number(readerId) === Number(currentUserId)) {
+            setMessages(prev => prev.map(m => 
+              (m.sender_id && Number(m.sender_id) === Number(currentUserId)) ? { ...m, is_read: true } : m
+            ));
+          }
+        } else if (notifyType === 'user_status' && lastNotify.data) {
+          const { user_id, status, last_seen } = lastNotify.data;
+          if (Number(user_id) === Number(userId)) {
+            setInterlocutor(prev => prev ? { ...prev, status, last_seen } : null);
+          }
+        }
+      });
+      
+      // Запоминаем последнее уведомление из списка как обработанное
+      lastProcessedNotificationRef.current = notifications[0];
+    }
+  }, [notifications, userId, currentUserId]);
+
+  // Добавляем слушатель состояния приложения, чтобы помечать прочитанным при возврате в активный чат
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', nextAppState => {
+      if (nextAppState === 'active' && userId) {
+        console.log('[ChatScreen] App became active while in chat, check if we should mark as read');
+        // Помечаем как прочитанные только если экран действительно в фокусе (через Ref не совсем надежно, но в этом компоненте должно работать)
+        markAsReadWs(userId);
+        clearUnread(userId);
+      }
+    });
+    return () => {
+      subscription.remove();
+    };
+  }, [markAsReadWs, clearUnread, userId]);
+
+  useEffect(() => {
+    isMounted.current = true;
+    return () => {
+      isMounted.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    // setActiveChatId(userId); // Дубликат удален
+    setMessages([]); // Reset messages on mount
+    setHasMore(true);
+    setSkip(0);
+    return () => {
+      // setActiveChatId(null); // Дубликат удален
+      // We don't call recorder.stop() here because useAudioRecorder manages its own lifecycle.
+      // Calling it manually during unmount can race with the hook's internal cleanup.
+      if (recordingInterval.current) {
+        clearInterval(recordingInterval.current);
+        recordingInterval.current = null;
+      }
+    };
   }, [userId]);
 
   useEffect(() => {
+    const unsubscribe = onHistoryReceived((payload) => {
+      if (Number(payload.other_user_id) === Number(userId)) {
+        setMessages(prev => {
+          if (payload.skip === 0) {
+            return payload.data;
+          } else {
+            const newMsgs = payload.data.filter(m => !prev.find(pm => pm.id === m.id));
+            return [...prev, ...newMsgs];
+          }
+        });
+        
+        if (payload.skip === 0) {
+           setSkip(payload.data.length);
+        } else {
+           setSkip(prev => prev + payload.data.length);
+        }
+
+        if (payload.data.length < LIMIT) {
+          setHasMore(false);
+        }
+        setLoadingMore(false);
+      }
+    });
+    return () => {
+      unsubscribe();
+    };
+  }, [userId, onHistoryReceived]);
+
+  useEffect(() => {
+    let ignore = false;
+
     const initChat = async () => {
       const accessToken = await storage.getAccessToken();
       setToken(accessToken);
 
-      // Загрузка начальной истории
-      try {
-        const res = await chatApi.getHistory(userId, accessToken, LIMIT, 0);
-        console.log(`[ChatScreen] Loaded initial history: ${res.data.length} messages`);
-        setMessages(res.data);
-        setSkip(res.data.length);
-        if (res.data.length < LIMIT) {
-          setHasMore(false);
+      let myId = currentUser?.id;
+      if (!myId) {
+        // Загрузка данных текущего пользователя если их нет в контексте
+        try {
+          const userRes = await usersApi.getMe();
+          myId = userRes.data.id;
+        } catch (err) {
+          console.log('Failed to load current user', err);
         }
-      } catch (error) {
-        console.error('Failed to load history', error);
       }
 
-      // Помечаем как прочитанные
-      chatApi.markAsRead(userId, accessToken).then(() => fetchDialogs());
+      // Загрузка начальной истории через WebSocket
+      console.log(`[ChatScreen] Requesting initial history via WS for user: ${userId}`);
+      const requested = getHistoryWs(userId, LIMIT, 0);
+      if (!requested) {
+        // Fallback to API if WS not ready
+        try {
+          const res = await chatApi.getHistory(userId, accessToken, LIMIT, 0);
+          if (!ignore) {
+            console.log(`[ChatScreen] Loaded initial history via API fallback: ${res.data.length} messages`);
+            setMessages(res.data);
+            setSkip(res.data.length);
+            if (res.data.length < LIMIT) {
+              setHasMore(false);
+            }
+          }
+        } catch (error) {
+          console.error('Failed to load history via API', error);
+        }
+      }
 
-      // Загрузка данных собеседника
-      usersApi.getUser(userId).then(res => setInterlocutor(res.data)).catch(err => console.log(err));
+      // Помечаем как прочитанные через WebSocket только если приложение активно и экран в фокусе
+      const isAppActive = AppState.currentState === 'active';
+      console.log('[ChatScreen] initChat, app state:', AppState.currentState);
+      
+      if (isAppActive) {
+        console.log('[ChatScreen] Initializing chat, app is active, marking as read');
+        markAsReadWs(userId);
+        clearUnread(userId);
+      } else {
+        console.log('[ChatScreen] Initializing chat, app is in background, NOT marking as read');
+      }
 
-      // Загрузка данных текущего пользователя
-      usersApi.getMe().then(res => setCurrentUserIdLocal(res.data.id)).catch(err => console.log(err));
+      // Загрузка данных собеседника - сначала из диалогов
+      const existingDlg = dialogs.find(d => Number(d.user_id) === Number(userId));
+      if (existingDlg) {
+        setInterlocutor(existingDlg);
+      } else {
+        usersApi.getUser(userId).then(res => {
+          if (!ignore) setInterlocutor(res.data);
+        }).catch(err => console.log(err));
+      }
 
-      // WebSocket соединение
-      const protocol = API_BASE_URL.startsWith('https') ? 'wss://' : 'ws://';
-      const wsUrl = `${protocol}${API_BASE_URL.replace('http://', '').replace('https://', '')}/chat/ws/${accessToken}`;
-      ws.current = new WebSocket(wsUrl);
+      if (!myId) {
+        console.error('[ChatScreen] Cannot initialize chat: myId is null');
+        return;
+      }
+
+      if (ignore) return;
 
       // Проверка активных загрузок
       uploadManager.getActiveUploadsForReceiver(userId).then(activeUploads => {
@@ -122,63 +405,13 @@ export default function ChatScreen({ route, navigation }) {
             mimeType: mainUpload.mimeType
           });
         }
-      });
-
-      ws.current.onmessage = (e) => {
-        try {
-          const message = JSON.parse(e.data);
-          // Check if message is defined
-          if (!message) return;
-          
-          console.log('[Chat WS] Received message:', message.id, message.message_type);
-          
-          if (message.type === 'message_deleted') {
-            setMessages(prev => prev.filter(m => m.id !== message.message_id));
-            return;
-          }
-
-          if (message.type === 'messages_read') {
-            // Обновляем статус прочтения у наших сообщений
-            setMessages(prev => prev.map(m => 
-              (m.sender_id === currentUserId || m.sender_id === currentUserIdLocal) ? { ...m, is_read: true } : m
-            ));
-            return;
-          }
-          
-          if (message.sender_id === userId || (message.sender_id !== userId && message.receiver_id === userId)) {
-            // Если мы в этом чате, то сообщение от собеседника или наше подтверждение
-            setMessages(prev => {
-              if (prev.find(m => m.id === message.id)) return prev;
-              const newMessages = [message, ...prev];
-              console.log('[Chat WS] Updating messages state. New count:', newMessages.length);
-              return newMessages;
-            });
-            setSkip(prev => prev + 1);
-            
-            // Если сообщение от собеседника, помечаем как прочитанное и играем звук
-            if (message.sender_id === userId) {
-              playMessageSound();
-              // Отправляем через WS что прочитали для мгновенного обновления у отправителя
-              if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-                ws.current.send(JSON.stringify({
-                  type: 'mark_read',
-                  other_id: userId
-                }));
-              }
-              // Также вызываем API для обновления в БД и счетчиков
-              chatApi.markAsRead(userId, accessToken).then(() => fetchDialogs());
-            }
-          }
-        } catch (err) {
-          console.error('[Chat WS] Error processing message:', err);
-        }
-      };
+      }).catch(err => console.log('[ChatScreen] Failed to check active uploads', err));
     };
 
     initChat();
 
     return () => {
-      if (ws.current) ws.current.close();
+      ignore = true;
     };
   }, [userId]);
 
@@ -186,36 +419,42 @@ export default function ChatScreen({ route, navigation }) {
     if (loadingMore || !hasMore || !token) return;
 
     setLoadingMore(true);
-    try {
-      const res = await chatApi.getHistory(userId, token, LIMIT, skip);
-      console.log(`[ChatScreen] Loaded ${res.data.length} more messages. Skip was ${skip}`);
-      if (res.data.length > 0) {
-        setMessages(prev => {
-           const newMsgs = res.data.filter(m => !prev.find(pm => pm.id === m.id));
-           return [...prev, ...newMsgs];
-        });
-        setSkip(prev => prev + res.data.length);
+    console.log(`[ChatScreen] Requesting more history via WS. Skip: ${skip}`);
+    const requested = getHistoryWs(userId, LIMIT, skip);
+    if (!requested) {
+      // Fallback to API
+      try {
+        const res = await chatApi.getHistory(userId, token, LIMIT, skip);
+        console.log(`[ChatScreen] Loaded ${res.data.length} more messages via API. Skip was ${skip}`);
+        if (res.data.length > 0) {
+          setMessages(prev => {
+             const newMsgs = res.data.filter(m => !prev.find(pm => pm.id === m.id));
+             return [...prev, ...newMsgs];
+          });
+          setSkip(prev => prev + res.data.length);
+        }
+        if (res.data.length < LIMIT) {
+          setHasMore(false);
+        }
+      } catch (error) {
+        console.error('Failed to load more messages via API', error);
+      } finally {
+        setLoadingMore(false);
       }
-      if (res.data.length < LIMIT) {
-        setHasMore(false);
-      }
-    } catch (error) {
-      console.error('Failed to load more messages', error);
-    } finally {
-      setLoadingMore(false);
     }
   };
 
   useEffect(() => {
     // Собираем все медиафайлы из сообщений для полноэкранного просмотра
     const media = [];
-    // messages отсортированы от новых к старым (inverted).
-    // Пользователь хочет: свайп влево (следующий индекс) -> более ранние (старые).
-    // Это значит, что старые сообщения должны быть ДАЛЬШЕ в массиве media (индекс выше).
-    // А новые - в НАЧАЛЕ массива (индекс 0).
-    // Так как messages уже от новых к старым, просто идем по ним.
+    // Сообщения в messages идут от новых к старым (inverted FlatList).
+    // Пользователь хочет, чтобы скролл вправо (увеличение индекса в allMedia)
+    // вел к БОЛЕЕ ПОЗДНИМ (новым) видео.
+    // Значит allMedia должен быть от СТАРЫХ к НОВЫМ.
+    // Для этого итерируем messages с конца.
     
-    messages.forEach(msg => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const msg = messages[i];
       if (msg.message_type === 'media_group' && msg.attachments) {
         msg.attachments.forEach(att => {
           if (att.file_path) {
@@ -235,11 +474,11 @@ export default function ChatScreen({ route, navigation }) {
           messageId: msg.id
         });
       }
-    });
+    }
     setAllMedia(media);
   }, [messages]);
 
-  const openFullScreen = (uri) => {
+  const openFullScreen = (uri, type) => {
     // Для видео/фото из кэша uri может быть локальным путем (file://...)
     // Нам нужно сопоставить его с элементом в allMedia
     const index = allMedia.findIndex(m => {
@@ -247,20 +486,91 @@ export default function ChatScreen({ route, navigation }) {
       // Проверяем по имени файла, если uri локальный
       const fileName = uri.split('/').pop();
       const mFileName = m.uri.split('/').pop();
-      return fileName === mFileName;
+      return fileName && mFileName && fileName === mFileName;
     });
     
     if (index !== -1) {
       setCurrentMediaIndex(index);
       setFullScreenMedia({ index, list: allMedia });
+      
+      // Синхронизируем чат при открытии
+      const mediaItem = allMedia[index];
+      if (mediaItem && mediaItem.messageId) {
+        const msgIndex = messages.findIndex(m => m.id === mediaItem.messageId);
+        if (msgIndex !== -1) {
+          setTimeout(() => {
+            chatFlatListRef.current?.scrollToIndex({ index: msgIndex, animated: true, viewPosition: 0.5 });
+          }, 100);
+        }
+      }
     } else {
       // Fallback если вдруг не нашли в общем списке
       setCurrentMediaIndex(0);
-      setFullScreenMedia({ index: 0, list: [{ uri, type: 'image' }] });
+      setFullScreenMedia({ index: 0, list: [{ uri, type: type || 'image', file_path: uri }] });
     }
   };
 
-  const sendMessage = () => {
+  const handleDownloadMedia = async () => {
+    const currentMedia = fullScreenMedia?.list[currentMediaIndex];
+    if (!currentMedia) return;
+
+    if (Platform.OS === 'web') {
+      try {
+        const uri = currentMedia.uri;
+        const fileName = uri.split('/').pop();
+        const link = document.createElement('a');
+        link.href = uri;
+        link.setAttribute('download', fileName);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      } catch (e) {
+        window.open(currentMedia.uri, '_blank');
+      }
+      return;
+    }
+
+    try {
+      const uri = currentMedia.uri;
+      const fileName = uri.split('/').pop();
+      const localFileUri = `${documentDirectory}${fileName}`;
+
+      const fileInfo = await getInfoAsync(localFileUri);
+      let finalUri = localFileUri;
+
+      if (!fileInfo.exists) {
+        Alert.alert('Загрузка', 'Файл скачивается...');
+        const downloadRes = await downloadAsync(uri, localFileUri);
+        finalUri = downloadRes.uri;
+      }
+
+      if (Platform.OS === 'android') {
+        const permissions = await StorageAccessFramework.requestDirectoryPermissionsAsync();
+        if (permissions.granted) {
+          const base64 = await readAsStringAsync(finalUri, { encoding: EncodingType.Base64 });
+          const mimeType = currentMedia.type === 'video' ? 'video/mp4' : 'image/jpeg';
+          const newFileUri = await StorageAccessFramework.createFileAsync(
+            permissions.directoryUri,
+            fileName,
+            mimeType
+          );
+          await writeAsStringAsync(newFileUri, base64, { encoding: EncodingType.Base64 });
+          Alert.alert('Успех', 'Медиа-файл сохранен');
+        }
+      } else {
+        if (await Sharing.isAvailableAsync()) {
+          await Sharing.shareAsync(finalUri);
+        } else {
+          Alert.alert('Ошибка', 'Функция "Поделиться" недоступна на этом устройстве');
+        }
+      }
+    } catch (error) {
+      console.error('Error downloading media:', error);
+      Alert.alert('Ошибка', 'Не удалось скачать файл');
+    }
+  };
+
+  const sendMessage = async () => {
     if (selectionMode) return;
     if (inputText.trim()) {
       const msgData = {
@@ -268,8 +578,13 @@ export default function ChatScreen({ route, navigation }) {
         message: inputText.trim(),
         message_type: 'text'
       };
-      ws.current.send(JSON.stringify(msgData));
-      setInputText('');
+      
+      const sent = sendMessageWs(msgData);
+      if (sent) {
+        setInputText('');
+      } else {
+        Alert.alert('Ошибка', 'Не удалось отправить сообщение. Проверьте соединение.');
+      }
     }
   };
 
@@ -283,14 +598,12 @@ export default function ChatScreen({ route, navigation }) {
           // Для одиночных голосовых сообщений отправляем здесь
           // Для медиа и документов теперь отправляем вручную в функциях загрузки
           if (autoSendOnUpload && !batchMode) { 
-            if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-              const msgData = {
-                receiver_id: userId,
-                file_path: result.file_path,
-                message_type: result.message_type
-              };
-              ws.current.send(JSON.stringify(msgData));
-            }
+            const msgData = {
+              receiver_id: userId,
+              file_path: result.file_path,
+              message_type: result.message_type
+            };
+            sendMessageWs(msgData);
           } 
           setUploadingProgress(null);
           setActiveUploadId(null);
@@ -355,22 +668,19 @@ export default function ChatScreen({ route, navigation }) {
         }
 
         if (attachmentsLocal.length > 0) {
-          if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-            if (attachmentsLocal.length === 1) {
-              const msgData = {
+          const msgData = attachmentsLocal.length === 1 
+            ? {
                 receiver_id: userId,
                 file_path: attachmentsLocal[0].file_path,
                 message_type: attachmentsLocal[0].type
-              };
-              ws.current.send(JSON.stringify(msgData));
-            } else {
-              ws.current.send(JSON.stringify({
+              }
+            : {
                 receiver_id: userId,
                 attachments: attachmentsLocal,
                 message_type: 'media_group'
-              }));
-            }
-          }
+              };
+
+          sendMessageWs(msgData);
         }
       }
     } catch (error) {
@@ -443,22 +753,19 @@ export default function ChatScreen({ route, navigation }) {
         }
 
         if (attachmentsLocal.length > 0) {
-          if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-            if (attachmentsLocal.length === 1) {
-                const msgData = {
-                  receiver_id: userId,
-                  file_path: attachmentsLocal[0].file_path,
-                  message_type: attachmentsLocal[0].type
-                };
-                ws.current.send(JSON.stringify(msgData));
-            } else {
-                ws.current.send(JSON.stringify({
-                  receiver_id: userId,
-                  attachments: attachmentsLocal,
-                  message_type: 'media_group'
-                }));
-            }
-          }
+          const msgData = attachmentsLocal.length === 1 
+            ? {
+                receiver_id: userId,
+                file_path: attachmentsLocal[0].file_path,
+                message_type: attachmentsLocal[0].type
+              }
+            : {
+                receiver_id: userId,
+                attachments: attachmentsLocal,
+                message_type: 'media_group'
+              };
+
+          sendMessageWs(msgData);
         }
       }
     } catch (error) {
@@ -483,80 +790,191 @@ export default function ChatScreen({ route, navigation }) {
 
   const startRecording = async () => {
     if (isStartingRecording.current) return;
-    
+
     try {
       isStartingRecording.current = true;
-      // Clean up any existing recording first
-      if (recording) {
-        try {
-          await recording.stopAndUnloadAsync();
-        } catch (e) {}
-        setRecording(null);
-        recordingRef.current = null;
-      }
+      stopRequested.current = false;
 
-      const permission = await Audio.requestPermissionsAsync();
-      if (permission.status === "granted") {
-        await Audio.setAudioModeAsync({
-          allowsRecordingIOS: true,
-          playsInSilentModeIOS: true,
-        });
-        const { recording: newRecording } = await Audio.Recording.createAsync(
-          Audio.RecordingOptionsPresets.HIGH_QUALITY
-        );
-        recordingRef.current = newRecording;
-        setRecording(newRecording);
-        setIsRecording(true);
+      console.log('[ChatScreen] startRecording - permissions...');
+      const permission = await requestRecordingPermissionsAsync();
+      if (!isMounted.current) return;
+
+      if (permission.status === 'granted') {
+        if (stopRequested.current) {
+          isStartingRecording.current = false;
+          return;
+        }
+
+        console.log('[ChatScreen] startRecording - setting audio mode...');
+        await setRecordingAudioMode();
+        if (!isMounted.current) return;
+
+        if (stopRequested.current) {
+          isStartingRecording.current = false;
+          return;
+        }
+
+        if (recorder) {
+          // Prepare recorder explicitly as per expo-audio API
+          try {
+            await recorder.prepareToRecordAsync(recordingOptions);
+          } catch (prepErr) {
+            console.error('[ChatScreen] startRecording - prepareToRecordAsync failed:', prepErr);
+            throw prepErr;
+          }
+
+          // Wait a bit for canRecord to become true after audio mode change
+          let canRecordAttempts = 0;
+          let canRecord = false;
+          while (canRecordAttempts < 10) {
+            const s = recorder.getStatus();
+            canRecord = !!s?.canRecord;
+            if (canRecord) break;
+            await new Promise((resolve) => setTimeout(resolve, 50));
+            canRecordAttempts++;
+          }
+
+          const s0 = recorder.getStatus();
+          console.log('[ChatScreen] startRecording - recorder status before record:', {
+            isRecording: s0?.isRecording,
+            canRecord: s0?.canRecord,
+            durationMillis: s0?.durationMillis,
+            url: s0?.url,
+            uri: recorder.uri,
+            canRecordAttempts,
+          });
+
+          if (!canRecord) {
+            console.warn('[ChatScreen] startRecording - canRecord is still false, attempting record anyway');
+          }
+
+          console.log('[ChatScreen] startRecording - calling recorder.record()');
+
+          setRecordedUri(null);
+          setRecordingDuration(0);
+
+          try {
+            recorder.record();
+            console.log('[ChatScreen] startRecording - record() invoked');
+          } catch (recordErr) {
+            console.error('[ChatScreen] startRecording - record() call failed:', recordErr);
+            throw recordErr;
+          }
+
+          // Wait for isRecording to flip true
+          let attempts = 0;
+          let isRec = false;
+          while (attempts < 20) {
+            const s = recorder.getStatus();
+            if (s?.isRecording) {
+              isRec = true;
+              break;
+            }
+            await new Promise((resolve) => setTimeout(resolve, 100));
+            attempts++;
+          }
+
+          setIsRecording(isRec);
+          console.log('[ChatScreen] startRecording - sync complete. isRecording:', isRec, 'attempts:', attempts);
+
+          if (stopRequested.current) {
+            console.log('[ChatScreen] startRecording - stop requested during sync');
+            if (isRec) await recorder.stop();
+            setIsRecording(false);
+          }
+        }
       } else {
-        Alert.alert('Доступ запрещен', 'Нам нужно разрешение на микрофон для записи голосовых сообщений');
+        Alert.alert('Permission Denied', 'Microphone permission is required');
       }
     } catch (err) {
-      console.error('Failed to start recording', err);
+      console.error('[ChatScreen] startRecording error:', err);
       setIsRecording(false);
-      setRecording(null);
-      recordingRef.current = null;
     } finally {
       isStartingRecording.current = false;
     }
   };
 
   const stopRecording = async () => {
-    // If we are still starting, we should wait or handle it
-    if (isStartingRecording.current) {
-      // Small delay to allow start to finish, or just check recordingRef
-      let attempts = 0;
-      while (isStartingRecording.current && attempts < 10) {
-        await new Promise(resolve => setTimeout(resolve, 100));
-        attempts++;
-      }
-    }
+    // Mark that stop is requested
+    stopRequested.current = true;
 
-    const currentRecording = recordingRef.current || recording;
-
-    if (!currentRecording) {
-      setIsRecording(false);
-      return;
-    }
-    
+    // Immediately update UI to release the button
+    const wasRecording = isRecording;
     setIsRecording(false);
+
     try {
-      const status = await currentRecording.getStatusAsync();
-      if (status.canRecord) {
-        await currentRecording.stopAndUnloadAsync();
-        const uri = currentRecording.getURI();
-        if (uri) {
-          uploadVoiceMessage(uri);
+      if (recorder) {
+        // Capture status before stopping
+        let before = recorder.getStatus();
+        const durationAtStop = before?.durationMillis || 0;
+
+        console.log('[ChatScreen] stopRecording - status before stop:', before?.isRecording, 'duration:', durationAtStop, 'wasRecording:', wasRecording);
+
+        // Even if status is false, if it WAS recording visually, give it a moment
+        if (!before?.isRecording && wasRecording) {
+          console.log('[ChatScreen] stopRecording - waiting for status sync...');
+          await new Promise((resolve) => setTimeout(resolve, 200));
+          before = recorder.getStatus();
+        }
+
+        if (before?.isRecording) {
+          await recorder.stop();
+        }
+
+        // Wait a bit for Android to finish writing the file
+        await new Promise((resolve) => setTimeout(resolve, 400));
+
+        const after = recorder.getStatus();
+        const uri = recorder.uri || after?.url || null;
+        const finalDuration = after?.durationMillis || durationAtStop;
+
+        console.log('[ChatScreen] Stop completed. URI:', uri, 'Final Duration:', finalDuration);
+
+        if (uri && finalDuration >= 500) {
+          setRecordingDuration(finalDuration);
+          setRecordedUri(uri);
+        } else if (uri && finalDuration < 500) {
+          console.log('[ChatScreen] Recording too short, deleting...');
+          setRecordedUri(null);
+        } else {
+          console.warn('[ChatScreen] Stop finished but URI is missing. Retrying...');
+          // One last attempt to get the URI
+          await new Promise((resolve) => setTimeout(resolve, 300));
+          const retry = recorder.getStatus();
+          const retryUri = recorder.uri || retry?.url || null;
+          if (retryUri) {
+            console.log('[ChatScreen] URI found on retry:', retryUri);
+            setRecordingDuration(finalDuration || 1000);
+            setRecordedUri(retryUri);
+          }
         }
       }
     } catch (err) {
-      console.error('Failed to stop recording', err);
-    } finally {
-      setRecording(null);
-      recordingRef.current = null;
+      console.error('[ChatScreen] stopRecording error:', err);
     }
   };
 
+  const deleteRecording = async () => {
+    if (recordedUri) {
+      try {
+        await deleteAsync(recordedUri, { idempotent: true });
+      } catch (e) {
+        console.error('Failed to delete recording file', e);
+      }
+    }
+    setRecordedUri(null);
+    setRecordingDuration(0);
+  };
+
+  const formatRecordingTime = (millis) => {
+    const totalSeconds = Math.floor(millis / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
+  };
+
   const uploadVoiceMessage = async (uri) => {
+    if (!uri) return;
     try {
       const fileName = `voice_${Date.now()}.m4a`;
       const mimeType = 'audio/m4a';
@@ -569,6 +987,8 @@ export default function ChatScreen({ route, navigation }) {
         userId,
         (upload_id) => setActiveUploadId(upload_id)
       );
+      setRecordedUri(null);
+      setRecordingDuration(0);
     } catch (error) {
       console.error('Voice upload failed', error);
       Alert.alert('Ошибка', 'Не удалось загрузить голосовое сообщение');
@@ -607,26 +1027,31 @@ export default function ChatScreen({ route, navigation }) {
     );
   };
 
+
   const renderMessageItem = ({ item, index }) => {
     const isImage = item.message_type === 'image';
     const isVideo = item.message_type === 'video';
     const isVoice = item.message_type === 'voice';
     const isFile = item.message_type === 'file';
-    const isReceived = item.sender_id === userId;
-    const isOwner = item.sender_id === (currentUserId || currentUserIdLocal);
+    const isReceived = Number(item.sender_id) === Number(userId);
+    const isOwner = Number(item.sender_id) === Number(currentUserId);
     const isSelected = selectedIds.includes(item.id);
 
     // Группировка: если предыдущее сообщение от того же отправителя и разница во времени менее 2 минут
     const prevMsg = messages[index + 1]; // Помним, что FlatList inverted
-    const isGrouped = prevMsg && prevMsg.sender_id === item.sender_id && 
-                      (new Date(item.timestamp) - new Date(prevMsg.timestamp)) < 120000;
+    
+    const currentMsgDate = parseISODate(item.timestamp);
+    const prevMsgDate = prevMsg ? parseISODate(prevMsg.timestamp) : null;
+    
+    const isGrouped = prevMsg && Number(prevMsg.sender_id) === Number(item.sender_id) && 
+                      currentMsgDate && prevMsgDate && (currentMsgDate - prevMsgDate) < 120000;
 
     const handleFullScreen = (uri, type) => {
       if (selectionMode) {
         toggleSelection(item.id);
         return;
       }
-      openFullScreen(uri);
+      openFullScreen(uri, type);
     };
 
     const toggleSelection = (id) => {
@@ -659,23 +1084,6 @@ export default function ChatScreen({ route, navigation }) {
           isGrouped && { marginTop: -2 }
         ]}
       >
-        {isReceived && (
-          <View style={styles.avatarContainer}>
-            {!isGrouped ? (
-              <TouchableOpacity 
-                disabled={selectionMode}
-                onPress={() => navigation.navigate('UserProfile', { userId: userId })}
-              >
-                <Image 
-                  source={{ uri: getAvatarUrl(interlocutor?.avatar_preview_url || interlocutor?.avatar_url) }} 
-                  style={styles.messageAvatar} 
-                />
-              </TouchableOpacity>
-            ) : (
-              <View style={styles.messageAvatarPlaceholder} />
-            )}
-          </View>
-        )}
         <View 
           style={[
             styles.messageBubble, 
@@ -749,14 +1157,18 @@ export default function ChatScreen({ route, navigation }) {
             </View>
           ) : (
             (isImage || isVideo) && (
-              <CachedMedia item={item} onFullScreen={handleFullScreen} />
+              <CachedMedia 
+                item={item} 
+                onFullScreen={handleFullScreen} 
+                style={{ borderRadius: 12, overflow: 'hidden' }}
+              />
             )
           )}
           {isVoice && (
-            <VoiceMessage item={item} currentUserId={currentUserIdLocal} />
+            <VoiceMessage item={item} currentUserId={currentUserId} />
           )}
           {isFile && (
-            <FileMessage item={item} currentUserId={currentUserIdLocal} />
+            <FileMessage item={item} currentUserId={currentUserId} />
           )}
           {item.message && (
             <Text style={[
@@ -772,7 +1184,7 @@ export default function ChatScreen({ route, navigation }) {
               styles.messageTime, 
               isReceived ? {color: colors.textSecondary} : {color: 'rgba(255,255,255,0.7)'}
             ]}>
-              {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              {formatMessageTime(item.timestamp)}
             </Text>
             {!isReceived && (
               <MaterialIcons 
@@ -788,9 +1200,46 @@ export default function ChatScreen({ route, navigation }) {
     );
   };
 
+  const handleDeleteMessage = (messageId) => {
+    const message = messages.find(m => m.id === messageId);
+    if (!message) return;
+
+    const isOwner = Number(message.sender_id) === Number(currentUserId);
+    
+    Alert.alert(
+      'Удалить сообщение?',
+      isOwner 
+        ? 'Удалить это сообщение для всех участников?' 
+        : 'Удалить это сообщение для себя? У собеседника оно останется.',
+      [
+        { text: 'Отмена', style: 'cancel' },
+        { 
+          text: 'Удалить', 
+          style: 'destructive', 
+          onPress: async () => {
+            try {
+              const sent = deleteMessageWs(messageId);
+              if (!sent) {
+                Alert.alert('Ошибка', 'Не удалось отправить запрос на удаление. Проверьте соединение.');
+                return;
+              }
+
+              // Локально обновляем список сообщений
+              setMessages(prev => prev.filter(m => m.id !== messageId));
+              setSkip(prev => Math.max(0, prev - 1));
+            } catch (error) {
+              console.error('Failed to delete message', error);
+              Alert.alert('Ошибка', 'Не удалось удалить сообщение');
+            }
+          }
+        }
+      ]
+    );
+  };
+
   const handleBulkDelete = () => {
     if (selectedIds.length === 0) return;
-
+    
     const ownCount = messages.filter(m => selectedIds.includes(m.id) && m.sender_id !== userId).length;
     const othersCount = selectedIds.length - ownCount;
     
@@ -813,8 +1262,11 @@ export default function ChatScreen({ route, navigation }) {
           style: 'destructive', 
           onPress: async () => {
             try {
-              const accessToken = await storage.getAccessToken();
-              await chatApi.bulkDeleteMessages(selectedIds, accessToken);
+              const sent = bulkDeleteMessagesWs(selectedIds);
+              if (!sent) {
+                Alert.alert('Ошибка', 'Не удалось отправить запрос на удаление. Проверьте соединение.');
+                return;
+              }
 
               // Локально обновляем список сообщений, чтобы чат сразу отразил удаление
               const removedCount = selectedIds.length;
@@ -832,12 +1284,14 @@ export default function ChatScreen({ route, navigation }) {
       ]
     );
   };
+  
 
   return (
     <KeyboardAvoidingView 
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'} 
-      style={[styles.container, { backgroundColor: colors.background }]}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'padding'} 
+      style={[styles.container, { backgroundColor: colors.background, flex: 1 }]}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+      enabled={Platform.OS !== 'web'}
     >
       <View style={[styles.header, { 
         borderBottomColor: colors.border, 
@@ -851,7 +1305,7 @@ export default function ChatScreen({ route, navigation }) {
             </TouchableOpacity>
             <Text style={[styles.selectionTitle, { color: colors.text }]}>Выбрано: {selectedIds.length}</Text>
             <TouchableOpacity onPress={handleBulkDelete} disabled={selectedIds.length === 0}>
-              <MaterialIcons name="trash-can-outline" size={24} color={selectedIds.length > 0 ? colors.error : colors.textSecondary} />
+              <MaterialIcons name="delete" size={24} color={selectedIds.length > 0 ? colors.error : colors.textSecondary} />
             </TouchableOpacity>
           </View>
         ) : (
@@ -900,13 +1354,27 @@ export default function ChatScreen({ route, navigation }) {
         </View>
       )}
       <FlatList
+        ref={chatFlatListRef}
         data={messages}
+        extraData={[messages.length, currentUserId, selectedIds.length, theme, userId]}
         keyExtractor={(item) => (item.id || Math.random()).toString()}
         renderItem={renderMessageItem}
         onEndReached={loadMoreMessages}
         onEndReachedThreshold={0.1}
         inverted={true}
         ListHeaderComponent={renderUploadPlaceholder}
+        onScrollToIndexFailed={(info) => {
+          chatFlatListRef.current?.scrollToOffset({ 
+            offset: info.averageItemLength * info.index, 
+            animated: true 
+          });
+        }}
+        removeClippedSubviews={false}
+        initialNumToRender={15}
+        maxToRenderPerBatch={10}
+        windowSize={10}
+        style={{ flex: 1 }}
+        contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: 16 }}
       />
 
       <Modal
@@ -922,6 +1390,13 @@ export default function ChatScreen({ route, navigation }) {
           >
             <MaterialIcons name="close" size={30} color="white" />
           </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={styles.downloadButton} 
+            onPress={handleDownloadMedia}
+          >
+            <MaterialIcons name="file-download" size={30} color="white" />
+          </TouchableOpacity>
           
           <FlatList
             data={fullScreenMedia?.list || []}
@@ -936,6 +1411,19 @@ export default function ChatScreen({ route, navigation }) {
             onMomentumScrollEnd={(e) => {
               const index = Math.round(e.nativeEvent.contentOffset.x / screenWidth);
               setCurrentMediaIndex(index);
+              
+              // Синхронизация чата: прокручиваем к сообщению, из которого это медиа
+              const mediaItem = fullScreenMedia?.list[index];
+              if (mediaItem && mediaItem.messageId) {
+                const msgIndex = messages.findIndex(m => m.id === mediaItem.messageId);
+                if (msgIndex !== -1) {
+                  chatFlatListRef.current?.scrollToIndex({ 
+                    index: msgIndex, 
+                    animated: true, 
+                    viewPosition: 0.5 
+                  });
+                }
+              }
             }}
             keyExtractor={(_, i) => `fs_media_${i}`}
             showsHorizontalScrollIndicator={false}
@@ -944,7 +1432,7 @@ export default function ChatScreen({ route, navigation }) {
                 <CachedMedia 
                   item={mediaItem}
                   style={styles.fullScreenVideo}
-                  resizeMode={ResizeMode.CONTAIN}
+                  resizeMode="contain"
                   useNativeControls={true}
                   shouldPlay={currentMediaIndex === index}
                   isMuted={false}
@@ -955,59 +1443,116 @@ export default function ChatScreen({ route, navigation }) {
         </View>
       </Modal>
 
-      <View style={[styles.inputContainer, { backgroundColor: colors.background, borderTopColor: colors.border, borderTopWidth: 1 }]}>
-        <TouchableOpacity 
-          onPress={pickAndUploadDocument} 
-          style={styles.attachButton}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-        >
-          <MaterialIcons name="insert-drive-file" size={24} color={colors.primary} />
-        </TouchableOpacity>
-        <TouchableOpacity 
-          onPress={pickAndUploadFile} 
-          style={styles.attachButton}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-        >
-          <MaterialIcons name="image" size={24} color={colors.primary} />
-        </TouchableOpacity>
-        <TextInput
-          style={[styles.input, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]}
-          value={inputText}
-          onChangeText={setInputText}
-          placeholder="Сообщение..."
-          placeholderTextColor={colors.textSecondary}
-          multiline
-        />
-        {inputText.trim() ? (
-          <TouchableOpacity onPress={sendMessage} style={styles.sendButton}>
-            <MaterialIcons name="send" size={24} color={colors.primary} />
-          </TouchableOpacity>
-        ) : (
-          <TouchableOpacity 
-            onPressIn={startRecording} 
-            onPressOut={stopRecording} 
-            style={[styles.sendButton, isRecording && { backgroundColor: colors.primary + '20', borderRadius: 20 }]}
-          >
-            <MaterialIcons name={isRecording ? "mic" : "mic-none"} size={24} color={isRecording ? colors.error : colors.primary} />
-          </TouchableOpacity>
-        )}
-      </View>
+      {!selectionMode && (
+        <View style={[
+          styles.inputContainer, 
+          { 
+            backgroundColor: colors.background, 
+            borderTopColor: colors.border, 
+            borderTopWidth: 1,
+            paddingBottom: Platform.OS === 'web' 
+              ? 20 
+              : (isKeyboardVisible ? 5 : Math.max(insets.bottom, 12) + 5)
+          }
+        ]}>
+          {recordedUri ? (
+            <View style={styles.recordedContainer}>
+              <TouchableOpacity onPress={deleteRecording} style={styles.deleteRecordingButton}>
+                <MaterialIcons name="delete" size={24} color={colors.error} />
+              </TouchableOpacity>
+              <View style={styles.recordingWaveformPlaceholder}>
+                <MaterialIcons name="mic" size={20} color={colors.primary} />
+                <Text style={[styles.recordingTimeText, { color: colors.text }]}>Голосовое сообщение ({formatRecordingTime(recordingDuration)})</Text>
+              </View>
+              <TouchableOpacity onPress={() => uploadVoiceMessage(recordedUri)} style={[styles.sendButton, { marginRight: 10 }]}>
+                <MaterialIcons name="send" size={24} color={colors.primary} />
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <>
+              {!isRecording && (
+                <View style={{ flexDirection: 'row' }}>
+                  <TouchableOpacity 
+                    onPress={pickAndUploadDocument} 
+                    style={styles.attachButton}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  >
+                    <MaterialIcons name="insert-drive-file" size={24} color={colors.primary} />
+                  </TouchableOpacity>
+                  <TouchableOpacity 
+                    onPress={pickAndUploadFile} 
+                    style={styles.attachButton}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  >
+                    <MaterialIcons name="image" size={24} color={colors.primary} />
+                  </TouchableOpacity>
+                </View>
+              )}
+              
+              {isRecording ? (
+                <View style={styles.recordingContainer}>
+                  <View style={styles.recordingIndicator}>
+                    <Animated.View style={[styles.recordingDot, { opacity: recordingDotOpacity }]} />
+                    <Text style={[styles.recordingTimeText, { color: colors.error }]}>
+                      {formatRecordingTime(recorderStatus.durationMillis || recordingDuration)}
+                    </Text>
+                  </View>
+                  <Text style={[styles.recordingHint, { color: colors.textSecondary }]}>Отпустите для завершения</Text>
+                </View>
+              ) : (
+                <TextInput
+                  style={[styles.input, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]}
+                  value={inputText}
+                  onChangeText={setInputText}
+                  placeholder="Сообщение..."
+                  placeholderTextColor={colors.textSecondary}
+                  multiline
+                />
+              )}
+
+              {(inputText.trim() && !isRecording) ? (
+                <TouchableOpacity onPress={sendMessage} style={[styles.sendButton, { marginRight: 10 }]}>
+                  <MaterialIcons name="send" size={24} color={colors.primary} />
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity 
+                  onPressIn={startRecording} 
+                  onPressOut={stopRecording} 
+                  style={[
+                    styles.sendButton, 
+                    { marginRight: 10 },
+                    isRecording && { backgroundColor: colors.primary + '20', borderRadius: 20 }
+                  ]}
+                >
+                  <MaterialIcons name={isRecording ? "mic" : "mic-none"} size={24} color={isRecording ? colors.error : colors.primary} />
+                </TouchableOpacity>
+              )}
+            </>
+          )}
+        </View>
+      )}
     </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f5f5f5' },
+  container: { 
+    flex: 1, 
+    ...Platform.select({
+      web: {
+        height: '100vh',
+        maxHeight: '100vh',
+        overflow: 'hidden'
+      }
+    })
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     padding: 10,
     borderBottomWidth: 1,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 1,
+    flexShrink: 0,
+    ...getShadow('#000', { width: 0, height: 1 }, 0.1, 1, 2),
   },
   headerInfoContainer: {
     flex: 1,
@@ -1061,21 +1606,6 @@ const styles = StyleSheet.create({
   sentWrapper: {
     justifyContent: 'flex-end',
   },
-  messageAvatar: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    marginRight: 8,
-    marginBottom: 2,
-  },
-  messageAvatarPlaceholder: {
-    width: 30,
-    marginRight: 8,
-  },
-  avatarContainer: {
-    width: 38,
-    justifyContent: 'flex-end',
-  },
   mediaGridContainer: {
     width: 260,
     marginTop: 2,
@@ -1085,7 +1615,13 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     justifyContent: 'space-between',
   },
-  messageBubble: { padding: 12, borderRadius: 18, maxWidth: '80%' },
+  messageBubble: { 
+    padding: 12, 
+    borderRadius: 20, 
+    maxWidth: '85%',
+    overflow: 'hidden',
+    ...getShadow('#000', { width: 0, height: 1 }, 0.1, 2, 1),
+  },
   sent: { alignSelf: 'flex-end', borderBottomRightRadius: 4 },
   received: { alignSelf: 'flex-start', borderBottomLeftRadius: 4 },
   messageText: { fontSize: 16, lineHeight: 22 },
@@ -1103,7 +1639,7 @@ const styles = StyleSheet.create({
   statusIcon: {
     marginLeft: 2,
   },
-  inputContainer: { flexDirection: 'row', padding: 10, backgroundColor: '#fff' },
+  inputContainer: { flexDirection: 'row', padding: 10, flexShrink: 0 },
   selectionHeader: {
     flex: 1,
     flexDirection: 'row',
@@ -1123,11 +1659,68 @@ const styles = StyleSheet.create({
     right: 5,
     zIndex: 1,
   },
-  input: { flex: 1, borderWidth: 1, borderRadius: 20, paddingHorizontal: 15, height: 40, fontSize: 16 },
+  input: { 
+    flex: 1, 
+    borderWidth: 1, 
+    borderRadius: 24, 
+    paddingHorizontal: 16, 
+    paddingTop: 8,
+    paddingBottom: 8,
+    minHeight: 40,
+    maxHeight: 120,
+    fontSize: 16 
+  },
   sendButton: { justifyContent: 'center', marginLeft: 10 },
   sendButtonText: { color: '#007AFF', fontWeight: 'bold' },
   attachButton: { justifyContent: 'center', marginRight: 10, paddingHorizontal: 10 },
   attachButtonText: { fontSize: 24, color: '#007AFF' },
+  recordingContainer: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 10,
+    height: 40,
+  },
+  recordingIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  recordingDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#ff3b30',
+    marginRight: 8,
+  },
+  recordingTimeText: {
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  recordingHint: {
+    fontSize: 14,
+    fontStyle: 'italic',
+  },
+  recordedContainer: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 5,
+    height: 40,
+  },
+  deleteRecordingButton: {
+    padding: 5,
+  },
+  recordingWaveformPlaceholder: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.05)',
+    borderRadius: 20,
+    paddingHorizontal: 15,
+    height: 36,
+    marginHorizontal: 10,
+  },
   uploadProgressContainer: { 
     padding: 10, 
     backgroundColor: '#fff', 
@@ -1154,4 +1747,5 @@ const styles = StyleSheet.create({
   fullScreenImage: { width: '100%', height: '100%' },
   fullScreenVideo: { width: '100%', height: '100%' },
   closeButton: { position: 'absolute', top: 40, right: 20, zIndex: 10 },
+  downloadButton: { position: 'absolute', top: 40, left: 20, zIndex: 10 },
 });
