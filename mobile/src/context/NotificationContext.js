@@ -210,6 +210,15 @@ export const NotificationProvider = ({ children }) => {
               if (prev.some(n => n.type === 'new_message' && n.data?.id === message.id)) return prev;
               return [wrappedNotification, ...prev];
             });
+          } else if (msgType === 'messages_read') {
+            const otherId = payload.reader_id || payload.data?.reader_id;
+            if (otherId) {
+              setDialogs(prev => prev.map(d => 
+                Number(d.user_id) === Number(otherId) ? { ...d, unread_count: 0 } : d
+              ));
+              
+              setNotifications(prev => [payload, ...prev]);
+            }
           }
         } catch (err) {}
       };

@@ -99,6 +99,7 @@ export async function handleNotifeeEvent(type, detail) {
     if (pressId === 'reply') {
       const input = detail?.input || '';
       console.log(`[Notifee] Processing reply action for sender ${senderId}. Input length: ${input?.length}`);
+      
       if (senderId && input) {
         const token = await storage.getAccessToken();
         if (!token) {
@@ -135,18 +136,36 @@ export async function handleNotifeeEvent(type, detail) {
     }
 
     if (pressId === 'mark-as-read') {
+      console.log(`[Notifee] Processing mark-as-read action for sender ${senderId}`);
       if (senderId) {
         const token = await storage.getAccessToken();
+        if (!token) {
+          console.log('[Notifee] Mark-as-read error: No access token found in storage.');
+          return;
+        }
         try {
-          await chatApi.markAsRead(senderId, token);
+          console.log(`[Notifee] Calling markAsRead for ${senderId}...`);
+          const res = await chatApi.markAsRead(senderId, token);
+          console.log(`[Notifee] Mark-as-read result status: ${res?.status}`);
+          
           // Также очищаем локальную историю группировки
           await storage.removeItem(`notif_messages_${senderId}`);
+          console.log(`[Notifee] Local history for ${senderId} cleared.`);
         } catch (e) {
           console.log('[Notifee] markAsRead error:', e?.message || e);
+          if (e.response) {
+            console.log('[Notifee] Mark-as-read error response data:', JSON.stringify(e.response.data));
+            console.log('[Notifee] Mark-as-read error response status:', e.response.status);
+          }
         }
         try {
           await notifee.cancelNotification(`sender_${senderId}`);
-        } catch (_) {}
+          console.log(`[Notifee] Notification sender_${senderId} canceled.`);
+        } catch (e) {
+          console.log('[Notifee] Error canceling notification:', e?.message || e);
+        }
+      } else {
+        console.log('[Notifee] Mark-as-read skipped: No senderId found in notification data.');
       }
       return;
     }

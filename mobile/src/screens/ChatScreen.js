@@ -19,8 +19,7 @@ import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
 import { formatStatus, formatName, formatFileSize, parseISODate, formatMessageTime, getAvatarUrl } from '../utils/formatters';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { setPlaybackAudioMode, setRecordingAudioMode, setNotificationAudioMode } from '../utils/audioSettings';
-import { isWithinQuietHours } from '../utils/quietHours';
+import { setRecordingAudioMode } from '../utils/audioSettings';
 
 export default function ChatScreen({ route, navigation }) {
   const insets = useSafeAreaInsets();
@@ -51,7 +50,6 @@ export default function ChatScreen({ route, navigation }) {
   const [isRecording, setIsRecording] = useState(false);
   const [recordedUri, setRecordedUri] = useState(null);
   const [recordingDuration, setRecordingDuration] = useState(0);
-  const recordingInterval = useRef(null);
   const isStartingRecording = useRef(false);
   const stopRequested = useRef(false);
   const isMounted = useRef(true);
@@ -63,18 +61,6 @@ export default function ChatScreen({ route, navigation }) {
   const recorder = useAudioRecorder(recordingOptions);
   const recorderStatus = useAudioRecorderState(recorder, 200);
 
-  useEffect(() => {
-    return () => {
-      try {
-        if (recorder?.isRecording) {
-          recorder.stop();
-        }
-      } catch (e) {
-        console.log('[ChatScreen] cleanup stop error:', e);
-      }
-    };
-  }, [recorder]);
-  const notificationPlayer = useAudioPlayer(require('../../assets/sounds/message.mp3'));
   const screenWidth = Dimensions.get('window').width;
   const [currentMediaIndex, setCurrentMediaIndex] = useState(0);
   const recordingDotOpacity = useRef(new Animated.Value(1)).current;
@@ -153,19 +139,6 @@ export default function ChatScreen({ route, navigation }) {
     }
   }, [recorderStatus.durationMillis, recorderStatus.isRecording]);
 
-  // Звук для нового сообщения в чате
-  const playMessageSound = async () => {
-    try {
-      if (await isWithinQuietHours()) {
-        console.log('[ChatScreen] Quiet hours active, skipping sound');
-        return;
-      }
-      await setNotificationAudioMode();
-      await notificationPlayer.play();
-    } catch (error) {
-      console.log('Error playing message sound', error);
-    }
-  };
 
   // Основной механизм: слушаем уведомления из контекста
   const lastProcessedNotificationRef = useRef(null);
@@ -240,9 +213,14 @@ export default function ChatScreen({ route, navigation }) {
             fetchDialogs();
           }
         } else if (notifyType === 'messages_read' || notifyType === 'your_messages_read' || notifyType === 'mark_read') {
-          // messages_read приходит нам, когда МЫ прочитали чьи-то сообщения
-          // your_messages_read приходит нам, когда КТО-ТО прочитал наши сообщения
-          if (notifyType === 'your_messages_read' || notifyType === 'mark_read') {
+          // messages_read приходит нам, когда МЫ прочитали чьи-то сообщения (от Notifications WS)
+          // ИЛИ когда КТО-ТО прочитал наши сообщения (от Chat WS)
+          // your_messages_read приходит нам, когда КТО-ТО прочитал наши сообщения (от Notifications WS)
+          
+          const readerId = lastNotify.reader_id || lastNotify.data?.reader_id;
+          
+          // Если это подтверждение прочтения НАШИХ сообщений кем-то другим
+          if (notifyType === 'your_messages_read' || notifyType === 'mark_read' || (notifyType === 'messages_read' && readerId && Number(readerId) === Number(userId))) {
             setMessages(prev => prev.map(m => 
               (m.sender_id && Number(m.sender_id) === Number(currentUserId)) ? { ...m, is_read: true } : m
             ));
@@ -291,10 +269,6 @@ export default function ChatScreen({ route, navigation }) {
       // setActiveChatId(null); // Дубликат удален
       // We don't call recorder.stop() here because useAudioRecorder manages its own lifecycle.
       // Calling it manually during unmount can race with the hook's internal cleanup.
-      if (recordingInterval.current) {
-        clearInterval(recordingInterval.current);
-        recordingInterval.current = null;
-      }
     };
   }, [userId]);
 

@@ -1,7 +1,7 @@
 import firebase from '@react-native-firebase/app';
 import messaging from '@react-native-firebase/messaging';
 import { Alert, Platform, Vibration, Linking } from 'react-native';
-import notifee from '@notifee/react-native';
+import notifee, { AuthorizationStatus } from '@notifee/react-native';
 import { usersApi, chatApi, setAuthToken } from '../api';
 import { storage } from './storage';
 import { initializeFirebase } from './firebaseInit';
@@ -321,7 +321,7 @@ export async function checkAndRemindPermissions(options = {}) {
       return;
     }
     const status = settings?.authorizationStatus;
-    const enabled = status === notifee.AuthorizationStatus.AUTHORIZED || status === notifee.AuthorizationStatus.PROVISIONAL;
+    const enabled = status === AuthorizationStatus.AUTHORIZED || status === AuthorizationStatus.PROVISIONAL;
     if (enabled) return;
 
     // Cooldown to avoid being annoying
