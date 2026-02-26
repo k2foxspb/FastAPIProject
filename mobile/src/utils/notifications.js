@@ -1,11 +1,13 @@
 import firebase from '@react-native-firebase/app';
 import messaging from '@react-native-firebase/messaging';
 import { Alert, Platform, Vibration, Linking } from 'react-native';
-import notifee, { AndroidImportance, AndroidStyle, EventType } from '@notifee/react-native';
+import notifee from '@notifee/react-native';
 import { usersApi, chatApi, setAuthToken } from '../api';
 import { storage } from './storage';
 import { initializeFirebase } from './firebaseInit';
 import { navigationRef } from '../navigation/NavigationService';
+
+import { displayBundledMessage, handleNotifeeEvent } from './notificationUtils';
 
 // Ensure Firebase is initialized before accessing messaging()
 const getMessaging = async () => {
@@ -149,6 +151,8 @@ export async function setupCloudMessaging() {
           try {
             const notifee = require('@notifee/react-native').default;
             notifee.cancelNotification(`sender_${senderId}`).catch(() => {});
+            // Очищаем локальную историю группировки для Notifee
+            storage.removeItem(`notif_messages_${senderId}`).catch(() => {});
           } catch (_) {}
 
           navigationRef.navigate('Messages', {
@@ -292,149 +296,8 @@ export async function updateServerFcmToken(passedToken = null) {
   }
 }
 
-// --- Notifee helpers for Android grouping & actions ---
-async function ensureNotifeeChannel() {
-  if (Platform.OS !== 'android') return;
-  try {
-    await notifee.createChannel({
-      id: 'messages',
-      name: 'Сообщения',
-      importance: AndroidImportance.HIGH,
-      sound: 'default',
-      vibration: true,
-    });
-  } catch (e) {
-    console.log('[Notifee] createChannel error:', e?.message || e);
-  }
-}
-
-async function displayBundledMessage(remoteMessage) {
-  try {
-    const data = remoteMessage?.data || {};
-    const senderIdRaw = data.sender_id || data.senderId || data.user_id || data.userId || data.chat_id;
-    const senderId = senderIdRaw ? parseInt(senderIdRaw, 10) : null;
-    if (!senderId) return;
-
-    const senderName = data.sender_name || data.senderName || 'Сообщение';
-    const text = data.text || data.body || remoteMessage?.notification?.body || '';
-    const ts = Date.now();
-
-    await ensureNotifeeChannel();
-
-    // Храним последние N сообщений по отправителю, чтобы формировать MessagingStyle
-    const key = `notif_messages_${senderId}`;
-    let list = [];
-    try {
-      const saved = await storage.getItem(key);
-      list = saved ? JSON.parse(saved) : [];
-    } catch (_) {}
-    list.push({ text, ts, me: false });
-    if (list.length > 7) list = list.slice(-7);
-    try { await storage.saveItem(key, JSON.stringify(list)); } catch (_) {}
-
-    const messages = list.map(m => ({
-      text: m.text,
-      timestamp: m.ts || ts,
-      person: { name: m.me ? 'Вы' : senderName },
-    }));
-
-    await notifee.displayNotification({
-      id: `sender_${senderId}`,
-      title: senderName,
-      body: text,
-      android: {
-        channelId: 'messages',
-        groupId: `sender_${senderId}`,
-        smallIcon: 'ic_launcher',
-        showTimestamp: true,
-        style: {
-          type: AndroidStyle.MESSAGING,
-          person: { name: senderName },
-          messages,
-        },
-        pressAction: { id: 'open-chat', launchActivity: 'default' },
-        actions: [
-          { title: 'Ответить', pressAction: { id: 'reply' }, input: { allowFreeFormInput: true, placeholder: 'Ваш ответ…' } },
-          { title: 'Прочитано', pressAction: { id: 'mark-as-read' } },
-        ],
-      },
-      data: { senderId: String(senderId), senderName },
-    });
-  } catch (e) {
-    console.log('[Notifee] displayBundledMessage error:', e?.message || e);
-  }
-}
-
-async function handleNotifeeEvent(type, detail) {
-  try {
-    if (type !== EventType.ACTION_PRESS && type !== EventType.PRESS) return;
-    const pressId = detail?.pressAction?.id;
-    const notifData = detail?.notification?.data || {};
-    const senderId = notifData?.senderId ? parseInt(notifData.senderId, 10) : null;
-    const senderName = notifData?.senderName;
-
-    if (pressId === 'reply') {
-      const input = detail?.input || '';
-      if (senderId && input) {
-        const token = await storage.getAccessToken();
-        try {
-          await chatApi.sendMessage({ receiver_id: senderId, message: input, message_type: 'text' }, token);
-        } catch (e) {
-          console.log('[Notifee] reply sendMessage error:', e?.message || e);
-        }
-      }
-      return;
-    }
-
-    if (pressId === 'mark-as-read') {
-      if (senderId) {
-        const token = await storage.getAccessToken();
-        try {
-          await chatApi.markAsRead(senderId, token);
-        } catch (e) {
-          console.log('[Notifee] markAsRead error:', e?.message || e);
-        }
-        try {
-          await notifee.cancelNotification(`sender_${senderId}`);
-        } catch (_) {}
-      }
-      return;
-    }
-
-    if (pressId === 'open-chat' && navigationRef?.isReady?.() && senderId) {
-      navigationRef.navigate('Messages', { screen: 'Chat', params: { userId: senderId, userName: senderName } });
-      try { await notifee.cancelNotification(`sender_${senderId}`); } catch (_) {}
-      return;
-    }
-  } catch (e) {
-    console.log('[Notifee] handleNotifeeEvent error:', e?.message || e);
-  }
-}
 
 if (Platform.OS !== 'web') {
-  try {
-    // Фоновая обработка FCM: собираем локальные уведомления через Notifee (Android)
-    messaging().setBackgroundMessageHandler(async remoteMessage => {
-      if (Platform.OS === 'android') {
-        // Если сервер прислал системный блок notification, ОС сама покажет уведомление — избегаем дубликатов
-        const hasSystemNotification = !!(remoteMessage?.notification && (remoteMessage.notification.title || remoteMessage.notification.body));
-        if (!hasSystemNotification) {
-          await displayBundledMessage(remoteMessage);
-        }
-      }
-    });
-  } catch (e) {
-    console.log('[FCM] setBackgroundMessageHandler error:', e?.message || e);
-  }
-
-  try {
-    notifee.onBackgroundEvent(async ({ type, detail }) => {
-      await handleNotifeeEvent(type, detail);
-    });
-  } catch (e) {
-    console.log('[Notifee] onBackgroundEvent setup error:', e?.message || e);
-  }
-
   try {
     notifee.onForegroundEvent(async ({ type, detail }) => {
       await handleNotifeeEvent(type, detail);

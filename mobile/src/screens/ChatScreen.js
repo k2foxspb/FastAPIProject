@@ -101,13 +101,14 @@ export default function ChatScreen({ route, navigation }) {
     console.log('[ChatScreen] Active chat set to:', userId);
     setActiveChatId(userId);
 
-    // Очищаем уведомления для этого пользователя при входе в чат
+    // Очищаем уведомления и локальную историю для этого пользователя при входе в чат
     if (Platform.OS !== 'web') {
       try {
         const notifee = require('@notifee/react-native').default;
         notifee.cancelNotification(`sender_${userId}`).catch(() => {});
+        storage.removeItem(`notif_messages_${userId}`).catch(() => {});
       } catch (e) {
-        console.log('[ChatScreen] Error canceling notification:', e);
+        console.log('[ChatScreen] Error canceling notification/history:', e);
       }
     }
 

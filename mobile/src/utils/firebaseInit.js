@@ -1,5 +1,4 @@
 import firebase from '@react-native-firebase/app';
-import messaging from '@react-native-firebase/messaging';
 import { Platform, Alert } from 'react-native';
 import Constants from 'expo-constants';
 import { usersApi } from '../api';
@@ -109,27 +108,8 @@ const initializeFirebase = async () => {
   return initPromise;
 };
 
-// Background message handler
-if (Platform.OS !== 'web') {
-  const registerBackgroundHandler = (attempts = 0) => {
-    try {
-      if (firebase.apps.length > 0) {
-        messaging().setBackgroundMessageHandler(async remoteMessage => {
-          console.log('[FCM] Message handled in the background!', JSON.stringify(remoteMessage, null, 2));
-        });
-        console.log('Background message handler registered successfully');
-      } else {
-        if (attempts < 20) {
-          setTimeout(() => registerBackgroundHandler(attempts + 1), 1000);
-        }
-      }
-    } catch (error) {
-      console.error('Failed to register background message handler:', error);
-    }
-  };
-
-  registerBackgroundHandler();
-}
+// Background message and event handlers are registered in the true JS entrypoint (mobile/index.js)
+// to satisfy React Native Firebase background requirements and avoid race conditions.
 
 // Экспортируем функцию для явного вызова при старте приложения
 export { initializeFirebase };
