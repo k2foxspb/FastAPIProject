@@ -8,8 +8,7 @@ import { useNotifications } from '../context/NotificationContext';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
 import { storage } from '../utils/storage';
-import { getFullUrl } from '../utils/urlHelper';
-import { formatName } from '../utils/formatters';
+import { formatName, getFullUrl } from '../utils/formatters';
 
 export default function ProfileScreen({ navigation }) {
   const [user, setUser] = useState(null);

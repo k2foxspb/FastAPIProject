@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, Image, ScrollView, Dimensions, ActivityIndicator, Alert, FlatList, TouchableOpacity, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
 import RenderHTML from 'react-native-render-html';
 import { newsApi, usersApi } from '../api';
-import { getFullUrl } from '../utils/urlHelper';
+import { getFullUrl } from '../utils/formatters';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
 import { Ionicons as Icon } from '@expo/vector-icons';

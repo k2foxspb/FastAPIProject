@@ -7,7 +7,7 @@ import { storage } from './storage';
 import { initializeFirebase } from './firebaseInit';
 import { navigationRef } from '../navigation/NavigationService';
 
-import { displayBundledMessage, handleNotifeeEvent } from './notificationUtils';
+import { displayBundledMessage, handleNotifeeEvent, parseNotificationData } from './notificationUtils';
 
 // Ensure Firebase is initialized before accessing messaging()
 const getMessaging = async () => {
@@ -133,12 +133,7 @@ export async function setupCloudMessaging() {
       try {
         console.log('[FCM] Handling notification click with data:', JSON.stringify(remoteMessage?.data, null, 2));
         const data = remoteMessage?.data || {};
-        const type = data.type || data.msg_type || 'new_message';
-        const senderIdRaw = data.sender_id || data.senderId || data.user_id || data.userId || data.chat_id;
-        const senderId = senderIdRaw ? parseInt(senderIdRaw, 10) : null;
-        const senderName = data.sender_name || data.senderName || undefined;
-        const newsIdRaw = data.news_id || data.newsId;
-        const newsId = newsIdRaw ? parseInt(newsIdRaw, 10) : null;
+        const { type, senderId, senderName, newsId } = parseNotificationData(data);
 
         if (!navigationRef?.isReady?.()) {
           console.log('[FCM] Navigation not ready, skipping');
@@ -155,10 +150,7 @@ export async function setupCloudMessaging() {
             storage.removeItem(`notif_messages_${senderId}`).catch(() => {});
           } catch (_) {}
 
-          navigationRef.navigate('Messages', {
-            screen: 'Chat',
-            params: { userId: senderId, userName: senderName }
-          });
+          navigationRef.navigate('Chat', { userId: senderId, userName: senderName });
           return;
         }
 
@@ -183,7 +175,7 @@ export async function setupCloudMessaging() {
         // Fallbacks
         if (senderId) {
           console.log('[FCM] Fallback: navigating to Chat with userId:', senderId);
-          navigationRef.navigate('Messages', { screen: 'Chat', params: { userId: senderId, userName: senderName } });
+          navigationRef.navigate('Chat', { userId: senderId, userName: senderName });
         } else {
           console.log('[FCM] No known target in notification data, opening Feed');
           navigationRef.navigate('Feed');

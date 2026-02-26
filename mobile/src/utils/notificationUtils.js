@@ -4,6 +4,19 @@ import { chatApi } from '../api';
 import { storage } from './storage';
 import { navigationRef } from '../navigation/NavigationService';
 
+// --- Helpers to extract info from various notification data formats ---
+export function parseNotificationData(data) {
+  if (!data) return {};
+  const type = data.type || data.msg_type || 'new_message';
+  const senderIdRaw = data.sender_id || data.senderId || data.user_id || data.userId || data.chat_id || data.other_id;
+  const senderId = senderIdRaw ? parseInt(senderIdRaw, 10) : null;
+  const senderName = data.sender_name || data.senderName || undefined;
+  const newsIdRaw = data.news_id || data.newsId;
+  const newsId = newsIdRaw ? parseInt(newsIdRaw, 10) : null;
+  
+  return { type, senderId, senderName, newsId };
+}
+
 // --- Notifee helpers for Android grouping & actions ---
 export async function ensureNotifeeChannel() {
   if (Platform.OS !== 'android') return;
@@ -23,11 +36,10 @@ export async function ensureNotifeeChannel() {
 export async function displayBundledMessage(remoteMessage) {
   try {
     const data = remoteMessage?.data || {};
-    const senderIdRaw = data.sender_id || data.senderId || data.user_id || data.userId || data.chat_id;
-    const senderId = senderIdRaw ? parseInt(senderIdRaw, 10) : null;
+    const { senderId, senderName, type } = parseNotificationData(data);
     if (!senderId) return;
 
-    const senderName = data.sender_name || data.senderName || 'Сообщение';
+    const nameToDisplay = senderName || 'Сообщение';
     const text = data.text || data.message || data.body || remoteMessage?.notification?.body || '';
     const ts = Date.now();
 
@@ -82,8 +94,7 @@ export async function handleNotifeeEvent(type, detail) {
     if (type !== EventType.ACTION_PRESS && type !== EventType.PRESS) return;
     const pressId = detail?.pressAction?.id;
     const notifData = detail?.notification?.data || {};
-    const senderId = notifData?.senderId ? parseInt(notifData.senderId, 10) : null;
-    const senderName = notifData?.senderName;
+    const { senderId, senderName } = parseNotificationData(notifData);
 
     if (pressId === 'reply') {
       const input = detail?.input || '';
@@ -141,7 +152,7 @@ export async function handleNotifeeEvent(type, detail) {
     }
 
     if (pressId === 'open-chat' && navigationRef?.isReady?.() && senderId) {
-      navigationRef.navigate('Messages', { screen: 'Chat', params: { userId: senderId, userName: senderName } });
+      navigationRef.navigate('Chat', { userId: senderId, userName: senderName });
       try { 
         await notifee.cancelNotification(`sender_${senderId}`); 
         // Очищаем локальную историю уведомлений при переходе в чат

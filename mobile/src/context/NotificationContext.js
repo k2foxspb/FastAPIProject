@@ -469,11 +469,16 @@ export const NotificationProvider = ({ children }) => {
         }
 
         if (payload.type === 'messages_read' || payload.type === 'your_messages_read') {
-          const readerId = payload.reader_id || payload.data?.reader_id || payload.data?.from_user_id;
-          const isMe = Number(readerId) === Number(currentUserIdRef.current);
-          const otherId = isMe ? (payload.data?.from_user_id || payload.data?.user_id) : readerId;
+          // messages_read: я прочитал сообщения от from_user_id
+          // your_messages_read: мои сообщения прочитал reader_id
+          let otherId = null;
+          if (payload.type === 'messages_read') {
+            otherId = payload.data?.from_user_id || payload.data?.user_id || payload.other_id;
+          } else {
+            otherId = payload.reader_id || payload.data?.reader_id;
+          }
           
-          if (isMe && otherId) {
+          if (otherId) {
             setDialogs(prev => prev.map(d => 
               Number(d.user_id) === Number(otherId) ? { ...d, unread_count: 0 } : d
             ));

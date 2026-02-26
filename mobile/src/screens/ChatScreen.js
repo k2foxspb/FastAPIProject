@@ -17,7 +17,7 @@ import { Audio, useAudioRecorder, useAudioRecorderState, useAudioPlayer, Recordi
 import { MaterialIcons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
-import { formatStatus, formatName, formatFileSize, parseISODate, formatMessageTime } from '../utils/formatters';
+import { formatStatus, formatName, formatFileSize, parseISODate, formatMessageTime, getAvatarUrl } from '../utils/formatters';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { setPlaybackAudioMode, setRecordingAudioMode, setNotificationAudioMode } from '../utils/audioSettings';
 import { isWithinQuietHours } from '../utils/quietHours';
@@ -240,8 +240,9 @@ export default function ChatScreen({ route, navigation }) {
             fetchDialogs();
           }
         } else if (notifyType === 'messages_read' || notifyType === 'your_messages_read' || notifyType === 'mark_read') {
-          const readerId = lastNotify.reader_id || lastNotify.data?.reader_id || lastNotify.data?.from_user_id || lastNotify.other_id;
-          if (Number(readerId) === Number(userId) || Number(readerId) === Number(currentUserId)) {
+          // messages_read приходит нам, когда МЫ прочитали чьи-то сообщения
+          // your_messages_read приходит нам, когда КТО-ТО прочитал наши сообщения
+          if (notifyType === 'your_messages_read' || notifyType === 'mark_read') {
             setMessages(prev => prev.map(m => 
               (m.sender_id && Number(m.sender_id) === Number(currentUserId)) ? { ...m, is_read: true } : m
             ));
@@ -783,11 +784,6 @@ export default function ChatScreen({ route, navigation }) {
     }
   };
 
-  const getAvatarUrl = (url) => {
-    if (!url) return 'https://via.placeholder.com/150';
-    if (url.startsWith('http') || url.startsWith('file://') || url.startsWith('content://')) return url;
-    return `${API_BASE_URL}${url}`;
-  };
 
   const startRecording = async () => {
     if (isStartingRecording.current) return;

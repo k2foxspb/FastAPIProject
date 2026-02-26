@@ -1,3 +1,22 @@
+import { API_BASE_URL } from '../constants';
+
+export const getFullUrl = (path) => {
+  if (!path) return null;
+  if (path.startsWith('http')) return path;
+  // Убираем лишние слеши в начале пути
+  const cleanPath = path.startsWith('/') ? path.substring(1) : path;
+  return `${API_BASE_URL}/${cleanPath}`;
+};
+
+export const getAvatarUrl = (url) => {
+  return getFullUrl(url) || 'https://via.placeholder.com/150';
+};
+
+export const stripHtml = (html) => {
+  if (!html) return '';
+  return html.replace(/<[^>]*>?/gm, '');
+};
+
 export const formatName = (user) => {
   if (!user) return '';
   if (user.first_name && user.last_name) {

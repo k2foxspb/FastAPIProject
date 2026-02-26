@@ -5,7 +5,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
 import { API_BASE_URL } from '../constants';
-import { formatName, formatMessageTime, parseISODate } from '../utils/formatters';
+import { formatName, formatMessageTime, parseISODate, getAvatarUrl } from '../utils/formatters';
 
 export default function ChatListScreen({ navigation }) {
   const { dialogs, fetchDialogs, isConnected } = useNotifications();
@@ -22,11 +22,6 @@ export default function ChatListScreen({ navigation }) {
     }, [isConnected, fetchDialogs])
   );
 
-  const getAvatarUrl = (url) => {
-    if (!url) return 'https://via.placeholder.com/150';
-    if (url.startsWith('http')) return url;
-    return `${API_BASE_URL}${url}`;
-  };
 
   const formatTime = (timeStr) => {
     return formatMessageTime(timeStr);

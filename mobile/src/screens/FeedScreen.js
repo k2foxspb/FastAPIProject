@@ -4,7 +4,7 @@ import { View, Text, FlatList, StyleSheet, TouchableOpacity, RefreshControl, Act
 import FadeInImage from '../components/FadeInImage';
 import FadeInView from '../components/FadeInView';
 import { productsApi, newsApi, usersApi, cartApi } from '../api';
-import { getFullUrl } from '../utils/urlHelper';
+import { getFullUrl, stripHtml } from '../utils/formatters';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
 import { Ionicons as Icon } from '@expo/vector-icons';
@@ -115,11 +115,6 @@ export default function FeedScreen({ navigation }) {
   const canManageProducts = user?.role === 'seller' || user?.role === 'admin' || user?.role === 'owner';
 
   const renderNewsItem = ({ item }) => {
-    const stripHtml = (html) => {
-      if (!html) return '';
-      return html.replace(/<[^>]*>?/gm, '');
-    };
-    
     const newsThumbnail = item.images && item.images.length > 0 
       ? item.images[0].thumbnail_url 
       : item.image_url;

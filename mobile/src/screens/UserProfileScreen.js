@@ -8,7 +8,7 @@ import { Ionicons as Icon } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import { useNotifications } from '../context/NotificationContext';
 import { theme as themeConstants } from '../constants/theme';
-import { formatStatus, formatName } from '../utils/formatters';
+import { formatStatus, formatName, getAvatarUrl, stripHtml } from '../utils/formatters';
 
 export default function UserProfileScreen({ route, navigation }) {
   const { theme } = useTheme();
@@ -121,18 +121,8 @@ export default function UserProfileScreen({ route, navigation }) {
     }, [fetchUser])
   );
 
-  const getFullUrl = (path) => {
-    if (!path) return 'https://via.placeholder.com/150';
-    if (path.startsWith('http')) return path;
-    return `${API_BASE_URL}${path.startsWith('/') ? '' : '/'}${path}`;
-  };
 
   const renderPostItem = (item) => {
-    const stripHtml = (html) => {
-      if (!html) return '';
-      return html.replace(/<[^>]*>?/gm, '');
-    };
-    
     const postThumbnail = item.images && item.images.length > 0 
       ? item.images[0].thumbnail_url 
       : item.image_url;
@@ -146,7 +136,7 @@ export default function UserProfileScreen({ route, navigation }) {
         <View style={styles.postAuthorHeader}>
           <View style={styles.authorInfo}>
             <Image 
-              source={{ uri: getFullUrl(user.avatar_url) || 'https://via.placeholder.com/40' }} 
+              source={{ uri: getAvatarUrl(user.avatar_url) || 'https://via.placeholder.com/40' }} 
               style={styles.authorAvatar} 
             />
             <View>
@@ -161,7 +151,7 @@ export default function UserProfileScreen({ route, navigation }) {
         <View style={styles.postContentRow}>
           {postThumbnail && (
             <Image 
-              source={{ uri: getFullUrl(postThumbnail) }} 
+              source={{ uri: getAvatarUrl(postThumbnail) }} 
               style={styles.postThumbnail} 
             />
           )}
@@ -210,7 +200,7 @@ export default function UserProfileScreen({ route, navigation }) {
       <View style={[styles.header, { borderBottomColor: colors.border }]}>
         <TouchableOpacity style={styles.avatarContainer} onPress={openAvatarAlbum}>
           <Image 
-            source={{ uri: getFullUrl(user.avatar_url) }} 
+            source={{ uri: getAvatarUrl(user.avatar_url) }} 
             style={styles.avatar} 
           />
           {user.status === 'online' && (
@@ -240,10 +230,7 @@ export default function UserProfileScreen({ route, navigation }) {
 
           <TouchableOpacity 
             style={[styles.messageBtn, { backgroundColor: colors.primary }]}
-            onPress={() => navigation.navigate('Messages', { 
-              screen: 'Chat', 
-              params: { userId: user.id, userName: formatName(user) } 
-            })}
+            onPress={() => navigation.navigate('Chat', { userId: user.id, userName: formatName(user) })}
           >
             <Icon name="chatbubble-ellipses-outline" size={20} color="#fff" />
             <Text style={styles.messageBtnText}>Написать</Text>
@@ -275,7 +262,7 @@ export default function UserProfileScreen({ route, navigation }) {
                 })}
                 style={{ position: 'relative' }}
               >
-                <Image source={{ uri: getFullUrl(item.preview_url || item.image_url) }} style={styles.photo} />
+                <Image source={{ uri: getAvatarUrl(item.preview_url || item.image_url) }} style={styles.photo} />
                 {isVideo && (
                   <View style={[styles.privateBadge, { top: 5, right: 15, backgroundColor: 'rgba(0,0,0,0.5)' }]}>
                     <Icon name="play" size={12} color="#fff" />

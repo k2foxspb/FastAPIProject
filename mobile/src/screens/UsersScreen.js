@@ -5,7 +5,7 @@ import { useTheme } from '../context/ThemeContext';
 import { useNotifications } from '../context/NotificationContext';
 import { theme as themeConstants } from '../constants/theme';
 import { API_BASE_URL } from '../constants';
-import { formatStatus, formatName } from '../utils/formatters';
+import { formatStatus, formatName, getAvatarUrl } from '../utils/formatters';
 
 export default function UsersScreen({ navigation }) {
   const { theme } = useTheme();
@@ -132,11 +132,6 @@ export default function UsersScreen({ navigation }) {
     }
   };
 
-  const getAvatarUrl = (url) => {
-    if (!url) return 'https://via.placeholder.com/150';
-    if (url.startsWith('http')) return url;
-    return `${API_BASE_URL}${url}`;
-  };
 
   const renderUserItem = ({ item, isRequest = false }) => {
     const getFriendshipText = () => {

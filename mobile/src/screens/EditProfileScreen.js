@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, Image, Alert, ScrollView } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { usersApi } from '../api';
-import { getFullUrl } from '../utils/urlHelper';
+import { getFullUrl } from '../utils/formatters';
 import { Ionicons as Icon } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
