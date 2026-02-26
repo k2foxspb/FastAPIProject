@@ -80,53 +80,49 @@ async def send_fcm_notification(
         fcm_data = {}
         if data:
             for k, v in data.items():
-                fcm_data[k] = str(v)
+                if v is not None:
+                    fcm_data[k] = str(v)
         
         if sender_id:
             fcm_data["sender_id"] = str(sender_id)
         
         # Добавляем дополнительные данные для клиента (Android data-only)
-        if title:
+        # Эти поля критически важны для Notifee в режиме data-only
+        if title and "sender_name" not in fcm_data:
             fcm_data["sender_name"] = str(title)
-        if body:
+        if body and "text" not in fcm_data:
             fcm_data["text"] = str(body)
         
         if "type" not in fcm_data:
             fcm_data["type"] = "new_message"
 
-        logger.debug(f"FCM: Preparing message for token {token} | Data: {fcm_data}")
+        logger.debug(f"FCM: Preparing message. Token: {token[:15]}... | Data: {fcm_data}")
 
         # Настройки для Android: высокая приоритетность.
-        # Мы НЕ добавляем объект notification здесь, чтобы уведомление не отображалось автоматически Firebase SDK.
-        # Вместо этого мы передаем данные в fcm_data, и мобильное приложение (через Notifee)
-        # само отобразит кастомное сгруппированное уведомление.
         android_config = messaging.AndroidConfig(
             priority='high',
             ttl=3600 * 24,  # 24 часа
         )
 
-        # Настройки для iOS (APNS) с видимым алертом
+        # Настройки для iOS (APNS)
         apns_config = messaging.APNSConfig(
             headers={
-                "apns-priority": "10", # Немедленная доставка
+                "apns-priority": "10",
+                "apns-expiration": str(int(asyncio.get_event_loop().time() + 3600 * 24)) if not asyncio.get_event_loop().is_closed() else "0"
             },
             payload=messaging.APNSPayload(
                 aps=messaging.Aps(
                     alert=messaging.ApsAlert(title=title, body=body),
                     sound="default",
-                    thread_id=str(sender_id) if sender_id else None,
-                    content_available=True, # Позволяет приложению проснуться в фоне
+                    thread_id=str(sender_id) if sender_id else (fcm_data.get("chat_id") or fcm_data.get("news_id")),
+                    content_available=True,
                     mutable_content=True,
                     category="NEW_MESSAGE",
-                    badge=1 # Показываем бейдж на иконке
+                    badge=1
                 )
             )
         )
 
-        # Создание сообщения:
-        # Для Android используем только data-payload (через android_config приоритет high),
-        # чтобы Notifee мог обработать сообщение и показать сгруппированное уведомление.
-        # Для iOS уведомление (alert) сконфигурировано внутри apns_config выше.
         message = messaging.Message(
             data=fcm_data,
             token=token,
@@ -134,13 +130,17 @@ async def send_fcm_notification(
             apns=apns_config
         )
 
-        # Отправка сообщения (выполняем в отдельном потоке, так как Admin SDK синхронный)
-        loop = asyncio.get_event_loop()
-        logger.info(f"FCM: Attempting to send message to {token[:20]}... Title: {title}")
-        
+        # Отправка сообщения
         try:
+            # Получаем текущий цикл событий или создаем новый для run_in_executor
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                loop = asyncio.get_event_loop()
+                
+            logger.info(f"FCM: Sending to {token[:15]}... Title: '{title}'")
             response = await loop.run_in_executor(None, lambda: messaging.send(message))
-            logger.success(f"FCM: Successfully sent message to {token[:20]}... Response: {response}")
+            logger.success(f"FCM: Sent! Response: {response}")
             return True
         except (messaging.UnregisteredError, exceptions.NotFoundError) as e:
             # Токен больше не валиден (приложение удалено или токен протух)
