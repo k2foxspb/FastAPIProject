@@ -96,13 +96,17 @@ async def send_fcm_notification(
 
         logger.debug(f"FCM: Preparing message for token {token} | Data: {fcm_data}")
 
-        # Настройки для Android: высокая приоритетность.
-        # ВАЖНО: добавляем AndroidNotification (channel_id, sound), чтобы в фоне/килле ОС гарантированно показывала системное уведомление
-        # даже если клиентский обработчик не сработал (например, Doze/ограничения производителя).
+        # Настройки для Android: высокая приоритетность + видимое уведомление от системы.
+        # Это обеспечивает доставку в шторку даже когда приложение убито и JS-фоновые обработчики не запускаются.
         android_config = messaging.AndroidConfig(
             priority='high',
             ttl=3600 * 24,  # 24 часа
-            # Без notification в AndroidConfig: оставляем data-only на Android
+            notification=messaging.AndroidNotification(
+                title=title,
+                body=body,
+                sound='default'
+                # channel_id не указываем умышленно, чтобы не зависеть от предварительного создания канала
+            ),
         )
 
         # Настройки для iOS (APNS) с видимым алертом
@@ -124,16 +128,13 @@ async def send_fcm_notification(
         )
 
         # Создание сообщения:
-        # ВАЖНО: НЕ добавляем глобальное поле notification=..., чтобы Android-клиент
-        # получал data-only сообщение и мог показать кастомное уведомление с кнопками
-        # (через Notifee в background handler).
+        # Для Android теперь добавлен AndroidNotification (см. android_config), чтобы система показала уведомление в шторке.
         # Для iOS уведомление (alert) сконфигурировано внутри apns_config выше.
         message = messaging.Message(
             data=fcm_data,
             token=token,
             android=android_config,
             apns=apns_config
-            # notification=messaging.Notification(title=title, body=body) # Убираем для Android data-only
         )
 
         # Отправка сообщения (выполняем в отдельном потоке, так как Admin SDK синхронный)
