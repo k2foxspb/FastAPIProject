@@ -94,6 +94,10 @@ async def send_fcm_notification(
         if body and "text" not in fcm_data:
             fcm_data["text"] = str(body)
         
+        # Указываем ID канала для Notifee
+        if "android_channel_id" not in fcm_data:
+            fcm_data["android_channel_id"] = "messages"
+        
         if "type" not in fcm_data:
             fcm_data["type"] = "new_message"
 
@@ -103,6 +107,8 @@ async def send_fcm_notification(
         android_config = messaging.AndroidConfig(
             priority='high',
             ttl=3600 * 24,  # 24 часа
+            # direct_boot_ok=True позволяет получать сообщения даже до разблокировки устройства (Android 7+)
+            direct_boot_ok=True,
         )
 
         # Настройки для iOS (APNS)

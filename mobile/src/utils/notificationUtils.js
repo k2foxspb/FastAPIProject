@@ -55,18 +55,24 @@ export async function displayBundledMessage(remoteMessage) {
 
     await ensureNotifeeChannel();
 
+    // Base notification options
+    const notificationOptions = {
+      title: nameToDisplay,
+      body: text,
+      android: {
+        channelId: 'messages',
+        // ic_launcher is usually available, but we can also use ic_stat_name if configured.
+        // If it still fails, Notifee usually logs which resource is missing.
+        smallIcon: 'ic_launcher', 
+        pressAction: { id: 'default', launchActivity: 'default' },
+        importance: AndroidImportance.HIGH,
+      },
+      data: data,
+    };
+
     // Если нет ID отправителя, показываем как обычное одиночное уведомление
     if (!senderId) {
-      await notifee.displayNotification({
-        title: nameToDisplay,
-        body: text,
-        android: {
-          channelId: 'messages',
-          smallIcon: 'ic_launcher',
-          pressAction: { id: 'default', launchActivity: 'default' },
-        },
-        data: data,
-      });
+      await notifee.displayNotification(notificationOptions);
       return;
     }
 
@@ -96,6 +102,7 @@ export async function displayBundledMessage(remoteMessage) {
       android: {
         channelId: 'messages',
         groupId: `sender_${senderId}`,
+        groupAlertBehavior: 1, // ALL
         smallIcon: 'ic_launcher',
         showTimestamp: true,
         style: {
@@ -110,6 +117,18 @@ export async function displayBundledMessage(remoteMessage) {
         ],
       },
       data: { senderId: String(senderId), senderName: nameToDisplay },
+    });
+    
+    // Display a summary for the group (required for some devices/versions to group correctly)
+    await notifee.displayNotification({
+      id: `summary_${senderId}`,
+      android: {
+        channelId: 'messages',
+        groupId: `sender_${senderId}`,
+        groupSummary: true,
+        smallIcon: 'ic_launcher',
+        pressAction: { id: 'open-chat', launchActivity: 'default' },
+      },
     });
   } catch (e) {
     console.log('[Notifee] displayBundledMessage error:', e?.message || e);

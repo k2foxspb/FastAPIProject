@@ -4,6 +4,16 @@ import { Platform } from 'react-native';
 import messaging from '@react-native-firebase/messaging';
 import notifee from '@notifee/react-native';
 
+// Try to ensure Firebase is initialized as early as possible
+if (Platform.OS !== 'web') {
+  try {
+    const { initializeFirebase } = require('./src/utils/firebaseInit');
+    initializeFirebase().catch(e => console.log('[Init] Async initialization failed:', e));
+  } catch (e) {
+    console.log('[Init] Could not load firebaseInit in index.js:', e);
+  }
+}
+
 // Register background handlers at the true JS entrypoint for Headless mode
 if (Platform.OS !== 'web') {
   try {
