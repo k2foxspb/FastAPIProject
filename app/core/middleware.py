@@ -1,5 +1,6 @@
 
 import time
+from loguru import logger
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
@@ -15,10 +16,15 @@ class TimingMiddleware:
         self.app = app
 
     async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+            
         start_time = time.time()
         await self.app(scope, receive, send)
         duration = time.time() - start_time
-        print(f"Request duration: {duration:.10f} seconds")
+        method = scope.get("method", "UNKNOWN")
+        path = scope.get("path", "UNKNOWN")
+        logger.debug(f"Request: {method} {path} | Duration: {duration:.4f}s")
 
 
 def setup_middleware(app: FastAPI) -> None:

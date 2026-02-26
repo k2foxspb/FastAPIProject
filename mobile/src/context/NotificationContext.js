@@ -9,6 +9,7 @@ import { setNotificationAudioMode } from '../utils/audioSettings';
 import { isWithinQuietHours } from '../utils/quietHours';
 import { navigationRef } from '../navigation/NavigationService';
 import { updateServerFcmToken, checkAndRemindPermissions } from '../utils/notifications';
+import { displayBundledMessage } from '../utils/notificationUtils';
 
 const NotificationContext = createContext();
 
@@ -404,7 +405,6 @@ export const NotificationProvider = ({ children }) => {
         if (!payload.type && payload.msg_type) {
           payload.type = payload.msg_type;
         }
-        console.log('[NotificationContext] Notification received:', payload.type, payload.data?.id || payload.message_id || '');
         
         if (payload.type === 'friend_requests_count') {
           setFriendRequestsCount(payload.count);
@@ -537,11 +537,17 @@ export const NotificationProvider = ({ children }) => {
               Vibration.vibrate(100);
             }
           } else {
-            console.log('[NotificationContext] Sound/Vibration skipped:', {
-              appState: appState.current,
-              isMe,
-              myId
-            });
+            console.log('[NotificationContext] App in background, displaying local notification via Notifee');
+            // Если мы в фоне, показываем уведомление через Notifee
+            if (!isMe) {
+              displayBundledMessage({
+                data: {
+                  ...payload.data,
+                  sender_id: String(senderId),
+                  type: 'new_message'
+                }
+              }).catch(err => console.log('[NotificationContext] Background display error:', err));
+            }
           }
         }
 

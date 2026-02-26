@@ -1,0 +1,155 @@
+import { Platform } from 'react-native';
+import notifee, { AndroidImportance, AndroidStyle, EventType } from '@notifee/react-native';
+import { chatApi } from '../api';
+import { storage } from './storage';
+import { navigationRef } from '../navigation/NavigationService';
+
+// --- Notifee helpers for Android grouping & actions ---
+export async function ensureNotifeeChannel() {
+  if (Platform.OS !== 'android') return;
+  try {
+    await notifee.createChannel({
+      id: 'messages',
+      name: 'Сообщения',
+      importance: AndroidImportance.HIGH,
+      sound: 'default',
+      vibration: true,
+    });
+  } catch (e) {
+    console.log('[Notifee] createChannel error:', e?.message || e);
+  }
+}
+
+export async function displayBundledMessage(remoteMessage) {
+  try {
+    const data = remoteMessage?.data || {};
+    const senderIdRaw = data.sender_id || data.senderId || data.user_id || data.userId || data.chat_id;
+    const senderId = senderIdRaw ? parseInt(senderIdRaw, 10) : null;
+    if (!senderId) return;
+
+    const senderName = data.sender_name || data.senderName || 'Сообщение';
+    const text = data.text || data.message || data.body || remoteMessage?.notification?.body || '';
+    const ts = Date.now();
+
+    await ensureNotifeeChannel();
+
+    // Храним последние N сообщений по отправителю, чтобы формировать MessagingStyle
+    const key = `notif_messages_${senderId}`;
+    let list = [];
+    try {
+      const saved = await storage.getItem(key);
+      list = saved ? JSON.parse(saved) : [];
+    } catch (_) {}
+    list.push({ text, ts, me: false });
+    if (list.length > 7) list = list.slice(-7);
+    try { await storage.saveItem(key, JSON.stringify(list)); } catch (_) {}
+
+    const messages = list.map(m => ({
+      text: m.text,
+      timestamp: m.ts || ts,
+      person: { name: m.me ? 'Вы' : senderName },
+    }));
+
+    await notifee.displayNotification({
+      id: `sender_${senderId}`,
+      title: senderName,
+      body: text,
+      android: {
+        channelId: 'messages',
+        groupId: `sender_${senderId}`,
+        smallIcon: 'ic_launcher',
+        showTimestamp: true,
+        style: {
+          type: AndroidStyle.MESSAGING,
+          person: { name: senderName },
+          messages,
+        },
+        pressAction: { id: 'open-chat', launchActivity: 'default' },
+        actions: [
+          { title: 'Ответить', pressAction: { id: 'reply' }, input: { allowFreeFormInput: true, placeholder: 'Ваш ответ…' } },
+          { title: 'Прочитано', pressAction: { id: 'mark-as-read' } },
+        ],
+      },
+      data: { senderId: String(senderId), senderName },
+    });
+  } catch (e) {
+    console.log('[Notifee] displayBundledMessage error:', e?.message || e);
+  }
+}
+
+export async function handleNotifeeEvent(type, detail) {
+  try {
+    if (type !== EventType.ACTION_PRESS && type !== EventType.PRESS) return;
+    const pressId = detail?.pressAction?.id;
+    const notifData = detail?.notification?.data || {};
+    const senderId = notifData?.senderId ? parseInt(notifData.senderId, 10) : null;
+    const senderName = notifData?.senderName;
+
+    if (pressId === 'reply') {
+      const input = detail?.input || '';
+      console.log(`[Notifee] Processing reply action for sender ${senderId}. Input length: ${input?.length}`);
+      if (senderId && input) {
+        const token = await storage.getAccessToken();
+        if (!token) {
+          console.log('[Notifee] Reply error: No access token found in storage.');
+          return;
+        }
+        try {
+          // 1) Сначала отправляем ответ
+          console.log(`[Notifee] Sending reply to ${senderId}...`);
+          const sendRes = await chatApi.sendMessage({ receiver_id: senderId, message: input, message_type: 'text' }, token);
+          console.log(`[Notifee] Reply send result status: ${sendRes?.status}`);
+
+          // 2) После успешной отправки — помечаем сообщения как прочитанные (аналогично кнопке «Прочитано»)
+          console.log(`[Notifee] Marking messages from ${senderId} as read (after reply)...`);
+          const markRes = await chatApi.markAsRead(senderId, token);
+          console.log(`[Notifee] Mark as read result status: ${markRes?.status}`);
+
+          // 3) Очищаем локальную историю и скрываем уведомление
+          try { await storage.removeItem(`notif_messages_${senderId}`); } catch (_) {}
+          try { await notifee.cancelNotification(`sender_${senderId}`); } catch (_) {}
+
+          console.log(`[Notifee] Reply sent and messages marked as read, notification cleared.`);
+        } catch (e) {
+          console.log('[Notifee] reply handler error:', e?.message || e);
+          if (e.response) {
+            console.log('[Notifee] Error response data:', JSON.stringify(e.response.data));
+            console.log('[Notifee] Error response status:', e.response.status);
+          }
+        }
+      } else {
+        console.log(`[Notifee] Reply skipped: senderId=${senderId}, hasInput=${!!input}`);
+      }
+      return;
+    }
+
+    if (pressId === 'mark-as-read') {
+      if (senderId) {
+        const token = await storage.getAccessToken();
+        try {
+          await chatApi.markAsRead(senderId, token);
+          // Также очищаем локальную историю группировки
+          await storage.removeItem(`notif_messages_${senderId}`);
+        } catch (e) {
+          console.log('[Notifee] markAsRead error:', e?.message || e);
+        }
+        try {
+          await notifee.cancelNotification(`sender_${senderId}`);
+        } catch (_) {}
+      }
+      return;
+    }
+
+    if (pressId === 'open-chat' && navigationRef?.isReady?.() && senderId) {
+      navigationRef.navigate('Messages', { screen: 'Chat', params: { userId: senderId, userName: senderName } });
+      try { 
+        await notifee.cancelNotification(`sender_${senderId}`); 
+        // Очищаем локальную историю уведомлений при переходе в чат
+        await storage.removeItem(`notif_messages_${senderId}`);
+      } catch (_) {}
+      return;
+    }
+  } catch (e) {
+    console.log('[Notifee] handleNotifeeEvent error:', e?.message || e);
+  }
+}

@@ -144,21 +144,21 @@ async def send_fcm_notification(
             response = await loop.run_in_executor(None, lambda: messaging.send(message))
             logger.success(f"FCM: Successfully sent message to {token[:20]}... Response: {response}")
             return True
+        except (messaging.UnregisteredError, exceptions.NotFoundError) as e:
+            # Токен больше не валиден (приложение удалено или токен протух)
+            logger.warning(f"FCM: Token is unregistered (invalid): {e} | Token: {token}")
+            return False
+        except exceptions.InvalidArgumentError as e:
+            # Токен имеет неверный формат или другие аргументы неверны
+            logger.warning(f"FCM: Invalid arguments (bad token format?): {e} | Token: {token}")
+            return False
+        except exceptions.FirebaseError as e:
+            # Общая ошибка Firebase SDK
+            logger.error(f"FCM: Firebase error for token {token[:20]}...: {e}")
+            return False
         except Exception as e:
             logger.error(f"FCM: Internal error during messaging.send: {e}")
-            raise e
-    except (messaging.UnregisteredError, exceptions.NotFoundError):
-        # Токен больше не валиден (приложение удалено или токен протух)
-        logger.warning(f"FCM: Token is unregistered (invalid): {token}")
-        return False
-    except exceptions.InvalidArgumentError as e:
-        # Токен имеет неверный формат или другие аргументы неверны
-        logger.warning(f"FCM: Invalid arguments (bad token format?): {e} | Token: {token}")
-        return False
-    except exceptions.FirebaseError as e:
-        # Общая ошибка Firebase SDK
-        logger.error(f"FCM: Firebase error for token {token[:20]}...: {e}")
-        return False
+            return False
     except Exception as e:
         logger.error(f"FCM: Request failed for token {token[:20]}... | Error: {type(e).__name__}: {e}")
         return False
