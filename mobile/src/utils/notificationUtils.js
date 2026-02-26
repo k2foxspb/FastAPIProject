@@ -8,9 +8,21 @@ import { navigationRef } from '../navigation/NavigationService';
 export function parseNotificationData(data) {
   if (!data) return {};
   const type = data.type || data.msg_type || 'new_message';
-  const senderIdRaw = data.sender_id || data.senderId || data.user_id || data.userId || data.chat_id || data.other_id;
+  
+  // Расширенный поиск ID отправителя (чат, новости, заявки в друзья)
+  const senderIdRaw = data.sender_id || data.senderId || 
+                      data.author_id || data.authorId || 
+                      data.user_id || data.userId || 
+                      data.chat_id || data.other_id ||
+                      data.from_user_id || data.fromUserId;
+                      
   const senderId = senderIdRaw ? parseInt(senderIdRaw, 10) : null;
-  const senderName = data.sender_name || data.senderName || undefined;
+  
+  // Расширенный поиск имени отправителя
+  const senderName = data.sender_name || data.senderName || 
+                     data.author_name || data.authorName || 
+                     data.title || data.display_name || undefined;
+                     
   const newsIdRaw = data.news_id || data.newsId;
   const newsId = newsIdRaw ? parseInt(newsIdRaw, 10) : null;
   
@@ -37,13 +49,28 @@ export async function displayBundledMessage(remoteMessage) {
   try {
     const data = remoteMessage?.data || {};
     const { senderId, senderName, type } = parseNotificationData(data);
-    if (!senderId) return;
-
-    const nameToDisplay = senderName || 'Сообщение';
+    
     const text = data.text || data.message || data.body || remoteMessage?.notification?.body || '';
-    const ts = Date.now();
+    const nameToDisplay = senderName || data.title || remoteMessage?.notification?.title || 'Сообщение';
 
     await ensureNotifeeChannel();
+
+    // Если нет ID отправителя, показываем как обычное одиночное уведомление
+    if (!senderId) {
+      await notifee.displayNotification({
+        title: nameToDisplay,
+        body: text,
+        android: {
+          channelId: 'messages',
+          smallIcon: 'ic_launcher',
+          pressAction: { id: 'default', launchActivity: 'default' },
+        },
+        data: data,
+      });
+      return;
+    }
+
+    const ts = Date.now();
 
     // Храним последние N сообщений по отправителю, чтобы формировать MessagingStyle
     const key = `notif_messages_${senderId}`;
@@ -59,12 +86,12 @@ export async function displayBundledMessage(remoteMessage) {
     const messages = list.map(m => ({
       text: m.text,
       timestamp: m.ts || ts,
-      person: { name: m.me ? 'Вы' : senderName },
+      person: { name: m.me ? 'Вы' : nameToDisplay },
     }));
 
     await notifee.displayNotification({
       id: `sender_${senderId}`,
-      title: senderName,
+      title: nameToDisplay,
       body: text,
       android: {
         channelId: 'messages',
@@ -73,7 +100,7 @@ export async function displayBundledMessage(remoteMessage) {
         showTimestamp: true,
         style: {
           type: AndroidStyle.MESSAGING,
-          person: { name: senderName },
+          person: { name: nameToDisplay },
           messages,
         },
         pressAction: { id: 'open-chat', launchActivity: 'default' },
@@ -82,7 +109,7 @@ export async function displayBundledMessage(remoteMessage) {
           { title: 'Прочитано', pressAction: { id: 'mark-as-read' } },
         ],
       },
-      data: { senderId: String(senderId), senderName },
+      data: { senderId: String(senderId), senderName: nameToDisplay },
     });
   } catch (e) {
     console.log('[Notifee] displayBundledMessage error:', e?.message || e);

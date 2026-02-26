@@ -4,6 +4,7 @@ from loguru import logger
 from firebase_admin import credentials, messaging, exceptions
 from typing import Optional
 import os
+import time
 from app.core.config import FIREBASE_SERVICE_ACCOUNT_PATH
 
 # Инициализация Firebase Admin SDK
@@ -102,13 +103,19 @@ async def send_fcm_notification(
         android_config = messaging.AndroidConfig(
             priority='high',
             ttl=3600 * 24,  # 24 часа
+            notification=messaging.AndroidNotification(
+                channel_id='messages',
+                priority='high',
+                default_sound=True,
+                default_vibrate_timings=True,
+            )
         )
 
         # Настройки для iOS (APNS)
         apns_config = messaging.APNSConfig(
             headers={
                 "apns-priority": "10",
-                "apns-expiration": str(int(asyncio.get_event_loop().time() + 3600 * 24)) if not asyncio.get_event_loop().is_closed() else "0"
+                "apns-expiration": str(int(time.time() + 3600 * 24))
             },
             payload=messaging.APNSPayload(
                 aps=messaging.Aps(
@@ -124,6 +131,10 @@ async def send_fcm_notification(
         )
 
         message = messaging.Message(
+            notification=messaging.Notification(
+                title=title,
+                body=body,
+            ),
             data=fcm_data,
             token=token,
             android=android_config,

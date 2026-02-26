@@ -91,13 +91,11 @@ export async function setupCloudMessaging() {
     const unsubscribe = msg.onMessage(async remoteMessage => {
       console.log('[FCM] Foreground message received:', JSON.stringify(remoteMessage, null, 2));
 
-      // При открытом приложении: только короткий звук, без баннера и без вибрации
       if (Platform.OS === 'android') {
         try {
-          const Notifications = require('expo-notifications');
           const { navigationRef } = require('../navigation/NavigationService');
 
-          // Проверяем, не открыт ли сейчас чат с отправителем — если открыт, не проигрываем системный звук
+          // Проверяем, не открыт ли сейчас чат с отправителем
           const senderIdRaw = remoteMessage?.data?.sender_id || remoteMessage?.data?.senderId;
           const senderId = senderIdRaw ? parseInt(senderIdRaw, 10) : null;
           const currentRoute = navigationRef?.getCurrentRoute?.();
@@ -105,7 +103,8 @@ export async function setupCloudMessaging() {
           const currentChatUserId = currentRoute?.params?.userId ? parseInt(currentRoute.params.userId, 10) : null;
           const isActiveChatWithSender = isChatScreen && senderId && currentChatUserId && Number(currentChatUserId) === Number(senderId);
 
-          // В фореграунде не создаём локальные уведомления вовсе — логику звука/вибрации обрабатывает WS в NotificationContext
+          // Подавляем стандартное уведомление Expo
+          const Notifications = require('expo-notifications');
           Notifications.setNotificationHandler({
             handleNotification: async () => ({
               shouldShowBanner: false,
@@ -114,9 +113,15 @@ export async function setupCloudMessaging() {
               shouldSetBadge: false,
             }),
           });
-          console.log('[FCM] Foreground received, suppressed by handler (WS will handle sound/vibration)');
+
+          if (!isActiveChatWithSender) {
+            console.log('[FCM] Showing foreground notification via Notifee');
+            await displayBundledMessage(remoteMessage);
+          } else {
+            console.log('[FCM] In active chat, skipping foreground notification banner (WS will handle sound)');
+          }
         } catch (e) {
-          console.log('[FCM] Error handling foreground message (sound-only):', e);
+          console.log('[FCM] Error handling foreground message:', e);
         }
       }
     });
