@@ -96,17 +96,13 @@ async def send_fcm_notification(
 
         logger.debug(f"FCM: Preparing message for token {token} | Data: {fcm_data}")
 
-        # Настройки для Android: высокая приоритетность + видимое уведомление от системы.
-        # Это обеспечивает доставку в шторку даже когда приложение убито и JS-фоновые обработчики не запускаются.
+        # Настройки для Android: высокая приоритетность.
+        # Мы НЕ добавляем объект notification здесь, чтобы уведомление не отображалось автоматически Firebase SDK.
+        # Вместо этого мы передаем данные в fcm_data, и мобильное приложение (через Notifee)
+        # само отобразит кастомное сгруппированное уведомление.
         android_config = messaging.AndroidConfig(
             priority='high',
             ttl=3600 * 24,  # 24 часа
-            notification=messaging.AndroidNotification(
-                title=title,
-                body=body,
-                sound='default'
-                # channel_id не указываем умышленно, чтобы не зависеть от предварительного создания канала
-            ),
         )
 
         # Настройки для iOS (APNS) с видимым алертом
@@ -128,7 +124,8 @@ async def send_fcm_notification(
         )
 
         # Создание сообщения:
-        # Для Android теперь добавлен AndroidNotification (см. android_config), чтобы система показала уведомление в шторке.
+        # Для Android используем только data-payload (через android_config приоритет high),
+        # чтобы Notifee мог обработать сообщение и показать сгруппированное уведомление.
         # Для iOS уведомление (alert) сконфигурировано внутри apns_config выше.
         message = messaging.Message(
             data=fcm_data,

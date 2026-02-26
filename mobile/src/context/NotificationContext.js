@@ -546,9 +546,15 @@ export const NotificationProvider = ({ children }) => {
               console.log('[NotificationContext] Playing sound (isActiveChat: true)');
               playNotificationSound();
             } else {
-              // Приложение активно, но не на экране чата — только вибрация
+              // Приложение активно, но не на экране чата — даем ощутимую вибрацию
               console.log('[NotificationContext] Vibrating (isActiveChat: false)');
-              Vibration.vibrate(100);
+              try {
+                // Паттерн: пауза 0мс, 180мс вибро, 80мс пауза, 180мс вибро
+                Vibration.vibrate([0, 180, 80, 180]);
+              } catch (_) {
+                // Фоллбек на короткую вибрацию
+                Vibration.vibrate(200);
+              }
             }
           } else {
             console.log('[NotificationContext] App in background, displaying local notification via Notifee');
