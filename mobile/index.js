@@ -1,28 +1,30 @@
 import 'expo-dev-client';
-console.log('[Entry] Starting index.js (JS Entrypoint)');
 import { Platform } from 'react-native';
 import messaging from '@react-native-firebase/messaging';
 import notifee from '@notifee/react-native';
 
-// Try to ensure Firebase is initialized as early as possible
-if (Platform.OS !== 'web') {
-  try {
-    const { initializeFirebase } = require('./src/utils/firebaseInit');
-    initializeFirebase().catch(e => console.log('[Init] Async initialization failed:', e));
-  } catch (e) {
-    console.log('[Init] Could not load firebaseInit in index.js:', e);
+console.log('[Entry] Starting index.js (JS Entrypoint)');
+
+// Headless JS check for debugging
+if (Platform.OS === 'android') {
+  const isHeadless = !!require('react-native').NativeModules.DeviceEventManager?.isHeadless;
+  if (isHeadless) {
+    console.log('[Entry] Running in Headless JS Mode (Background/Quit state)');
   }
 }
 
-// Register background handlers at the true JS entrypoint for Headless mode
+// Register background handlers at the absolute top level for Headless mode
+// This must happen before any other async operations to ensure reliability.
 if (Platform.OS !== 'web') {
   try {
+    // FCM Background Handler
     messaging().setBackgroundMessageHandler(async remoteMessage => {
       try {
         console.log('[FCM] Background message received (index.js):', JSON.stringify(remoteMessage));
       } catch (_) {
         console.log('[FCM] Background message received (index.js)');
       }
+      
       if (Platform.OS === 'android') {
         const hasSystemNotification = !!(remoteMessage?.notification && (remoteMessage.notification.title || remoteMessage.notification.body));
         if (!hasSystemNotification) {
@@ -36,6 +38,7 @@ if (Platform.OS !== 'web') {
       }
     });
 
+    // Notifee Background Event Handler (for interactions like 'reply' or 'mark-as-read')
     notifee.onBackgroundEvent(async ({ type, detail }) => {
       try {
         const { handleNotifeeEvent } = require('./src/utils/notificationUtils');
@@ -45,9 +48,20 @@ if (Platform.OS !== 'web') {
       }
     });
 
-    console.log('[Init] Background handlers registered in index.js');
+    console.log('[Init] Background handlers registered synchronously in index.js');
   } catch (e) {
     console.log('[Init] Failed to register background handlers in index.js:', e?.message || e);
+  }
+}
+
+// Try to ensure Firebase is initialized
+if (Platform.OS !== 'web') {
+  try {
+    const { initializeFirebase } = require('./src/utils/firebaseInit');
+    // We don't await this to avoid blocking the main thread/Headless task
+    initializeFirebase().catch(e => console.log('[Init] Async initialization failed:', e));
+  } catch (e) {
+    console.log('[Init] Could not load firebaseInit in index.js:', e);
   }
 }
 

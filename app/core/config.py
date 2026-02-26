@@ -25,6 +25,7 @@ MOBILE_DEEPLINK = os.getenv("MOBILE_DEEPLINK", "https://fokin.fun/verify-email")
 
 CORS_ORIGINS = [
     "http://localhost:8081",
+    "http://10.0.2.2:8081",
     "http://79.133.183.129",
     "https://79.133.183.129",
     "http://fokin.fun",
@@ -35,6 +36,7 @@ CORS_ORIGINS = [
     "http://localhost:3000",
     "http://127.0.0.1",
     "http://127.0.0.1:3000",
+    "http://10.0.2.2:8000",
 ]
 ALLOWED_HOSTS = [
     "79.133.183.129",
@@ -42,6 +44,7 @@ ALLOWED_HOSTS = [
     "fokin.fan",
     "localhost",
     "127.0.0.1",
+    "10.0.2.2",
     "web",  # Для внутренних запросов Docker
     "*",    # Разрешаем все хосты временно для отладки, если TrustedHostMiddleware мешает
 ]

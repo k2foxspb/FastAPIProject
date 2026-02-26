@@ -327,6 +327,27 @@ export async function checkAndRemindPermissions(options = {}) {
     }
     const status = settings?.authorizationStatus;
     const enabled = status === AuthorizationStatus.AUTHORIZED || status === AuthorizationStatus.PROVISIONAL;
+
+    // Check battery optimization on Android
+    if (enabled && Platform.OS === 'android') {
+      try {
+        const batteryOptimizationEnabled = await notifee.isBatteryOptimizationEnabled();
+        if (batteryOptimizationEnabled) {
+          Alert.alert(
+            'Экономия заряда включена',
+            'Чтобы уведомления приходили вовремя, даже когда приложение закрыто, рекомендуем отключить ограничение фоновой активности для этого приложения.',
+            [
+              { text: 'Позже', style: 'cancel' },
+              { text: 'Настроить', onPress: () => notifee.openBatteryOptimizationSettings() },
+            ]
+          );
+          return; // Don't show the permission reminder if we're showing this
+        }
+      } catch (e) {
+        console.log('[Notifications] Battery check failed:', e?.message || e);
+      }
+    }
+
     if (enabled) return;
 
     // Cooldown to avoid being annoying

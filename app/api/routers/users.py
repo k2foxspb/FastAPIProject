@@ -2,7 +2,7 @@ import asyncio
 import jwt
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, delete, or_, and_, literal
+from sqlalchemy import select, delete, or_, and_, literal, update
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.responses import RedirectResponse
 
@@ -622,6 +622,13 @@ async def login(
 
     # Обновляем FCM токен, если он передан
     if fcm_token:
+        # Обеспечиваем уникальность токена (очищаем у других пользователей)
+        await db.execute(
+            update(UserModel)
+            .where(UserModel.fcm_token == fcm_token)
+            .where(UserModel.id != user.id)
+            .values(fcm_token=None)
+        )
         user.fcm_token = fcm_token
         await db.commit()
         from loguru import logger
@@ -859,11 +866,21 @@ async def update_fcm_token(
     """
     from loguru import logger
     old_token = current_user.fcm_token
+    
+    # Чтобы токен был уникален для одного пользователя (важно при смене аккаунтов на одном девайсе)
+    if body.fcm_token:
+        await db.execute(
+            update(UserModel)
+            .where(UserModel.fcm_token == body.fcm_token)
+            .where(UserModel.id != current_user.id)
+            .values(fcm_token=None)
+        )
+    
     current_user.fcm_token = body.fcm_token
     await db.commit()
     
     if old_token != body.fcm_token:
-        logger.info(f"FCM: Token updated for user {current_user.id} ({current_user.email}). Token: {body.fcm_token[:15]}...")
+        logger.info(f"FCM: Token updated for user {current_user.id} ({current_user.email}). Token: {body.fcm_token[:15] if body.fcm_token else 'None'}...")
     else:
         logger.debug(f"FCM: Token remains the same for user {current_user.id}")
         

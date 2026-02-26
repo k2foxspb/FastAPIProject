@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const ACCESS_TOKEN_KEY = 'access_token';
 const REFRESH_TOKEN_KEY = 'refresh_token';
+const USER_ID_KEY = 'user_id';
 
 export const storage = {
   saveTokens: async (accessToken, refreshToken) => {
@@ -12,6 +13,26 @@ export const storage = {
       ]);
     } catch (e) {
       console.error('Error saving tokens', e);
+    }
+  },
+
+  saveUserId: async (userId) => {
+    try {
+      if (userId) {
+        await AsyncStorage.setItem(USER_ID_KEY, String(userId));
+      }
+    } catch (e) {
+      console.error('Error saving userId', e);
+    }
+  },
+
+  getUserId: async () => {
+    try {
+      const id = await AsyncStorage.getItem(USER_ID_KEY);
+      return id ? parseInt(id, 10) : null;
+    } catch (e) {
+      console.error('Error getting userId', e);
+      return null;
     }
   },
 
@@ -35,7 +56,7 @@ export const storage = {
 
   clearTokens: async () => {
     try {
-      await AsyncStorage.multiRemove([ACCESS_TOKEN_KEY, REFRESH_TOKEN_KEY]);
+      await AsyncStorage.multiRemove([ACCESS_TOKEN_KEY, REFRESH_TOKEN_KEY, USER_ID_KEY]);
     } catch (e) {
       console.error('Error clearing tokens', e);
     }

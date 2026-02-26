@@ -1,5 +1,5 @@
 import { Platform } from 'react-native';
-import notifee, { AndroidImportance, AndroidStyle, EventType } from '@notifee/react-native';
+import notifee, { AndroidImportance, AndroidStyle, EventType, AndroidCategory, AndroidVisibility } from '@notifee/react-native';
 import { chatApi } from '../api';
 import { storage } from './storage';
 import { navigationRef } from '../navigation/NavigationService';
@@ -37,6 +37,7 @@ export async function ensureNotifeeChannel() {
       id: 'messages',
       name: 'Сообщения',
       importance: AndroidImportance.HIGH,
+      visibility: AndroidVisibility.PUBLIC,
       sound: 'default',
       vibration: true,
     });
@@ -50,6 +51,17 @@ export async function displayBundledMessage(remoteMessage) {
     const data = remoteMessage?.data || {};
     const { senderId, senderName, type } = parseNotificationData(data);
     
+    // Проверка на "самого себя"
+    try {
+      const myId = await storage.getUserId();
+      if (myId && senderId && Number(myId) === Number(senderId)) {
+        console.log('[Notifee] Skipping notification for self-sent message');
+        return;
+      }
+    } catch (err) {
+      console.log('[Notifee] Error checking isMe:', err);
+    }
+    
     const text = data.text || data.message || data.body || remoteMessage?.notification?.body || '';
     const nameToDisplay = senderName || data.title || remoteMessage?.notification?.title || 'Сообщение';
 
@@ -62,10 +74,11 @@ export async function displayBundledMessage(remoteMessage) {
       android: {
         channelId: 'messages',
         // ic_launcher is usually available, but we can also use ic_stat_name if configured.
-        // If it still fails, Notifee usually logs which resource is missing.
         smallIcon: 'ic_launcher', 
         pressAction: { id: 'default', launchActivity: 'default' },
         importance: AndroidImportance.HIGH,
+        visibility: AndroidVisibility.PUBLIC,
+        category: AndroidCategory.MESSAGE,
       },
       data: data,
     };
@@ -105,6 +118,9 @@ export async function displayBundledMessage(remoteMessage) {
         groupAlertBehavior: 1, // ALL
         smallIcon: 'ic_launcher',
         showTimestamp: true,
+        importance: AndroidImportance.HIGH,
+        visibility: AndroidVisibility.PUBLIC,
+        category: AndroidCategory.MESSAGE,
         style: {
           type: AndroidStyle.MESSAGING,
           person: { name: nameToDisplay },
@@ -128,6 +144,9 @@ export async function displayBundledMessage(remoteMessage) {
         groupSummary: true,
         smallIcon: 'ic_launcher',
         pressAction: { id: 'open-chat', launchActivity: 'default' },
+        importance: AndroidImportance.HIGH,
+        visibility: AndroidVisibility.PUBLIC,
+        category: AndroidCategory.MESSAGE,
       },
     });
   } catch (e) {

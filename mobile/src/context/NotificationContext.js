@@ -695,6 +695,7 @@ export const NotificationProvider = ({ children }) => {
         const userRes = await usersApi.getMe(appVersion);
         setCurrentUser(userRes.data);
         setCurrentUserId(userRes.data.id);
+        await storage.saveUserId(userRes.data.id);
         
         // After user is successfully loaded, make sure FCM token is on the server
         updateServerFcmToken();
