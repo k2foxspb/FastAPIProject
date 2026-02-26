@@ -2,7 +2,6 @@
   "expo": {
     "sdkVersion": "54.0.0",
     "plugins": [
-      "@notifee/react-native",
       "@react-native-firebase/app",
       "@react-native-firebase/messaging",
       [
