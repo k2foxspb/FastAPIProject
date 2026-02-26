@@ -103,12 +103,6 @@ async def send_fcm_notification(
         android_config = messaging.AndroidConfig(
             priority='high',
             ttl=3600 * 24,  # 24 часа
-            notification=messaging.AndroidNotification(
-                channel_id='messages',
-                priority='high',
-                default_sound=True,
-                default_vibrate_timings=True,
-            )
         )
 
         # Настройки для iOS (APNS)
@@ -131,10 +125,6 @@ async def send_fcm_notification(
         )
 
         message = messaging.Message(
-            notification=messaging.Notification(
-                title=title,
-                body=body,
-            ),
             data=fcm_data,
             token=token,
             android=android_config,
