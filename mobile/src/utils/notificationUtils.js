@@ -74,8 +74,9 @@ export async function ensureNotificationChannel() {
 
 export async function displayBundledMessage(remoteMessage) {
   try {
+    console.log('[Notifications] displayBundledMessage called with:', JSON.stringify(remoteMessage));
     const data = remoteMessage?.data || {};
-    const { type, senderId, senderName, notifTitle, notifBody } = parseNotificationData(data);
+    const { type, senderId, senderName, newsId, notifTitle, notifBody } = parseNotificationData(data);
     
     // Проверка на "самого себя" (важно для чата, так как бэкенд шлет всем)
     try {
@@ -113,8 +114,18 @@ export async function displayBundledMessage(remoteMessage) {
       }
     }
 
+    const identifier = (type === 'new_post' && newsId) 
+      ? `news_${newsId}` 
+      : (type === 'friend_request' && senderId ? `friend_request_${senderId}` : (senderId ? `sender_${senderId}` : undefined));
+    console.log(`[Notifications] Scheduling with identifier: ${identifier}, type: ${type}`);
+
+    if (!combinedBody && !nameToDisplay) {
+      console.log('[Notifications] Skipping scheduleNotificationAsync: empty content');
+      return;
+    }
+
     await Notifications.scheduleNotificationAsync({
-      identifier: senderId ? `sender_${senderId}` : (newsId ? `news_${newsId}` : undefined),
+      identifier: identifier,
       content: {
         title: nameToDisplay,
         body: combinedBody,

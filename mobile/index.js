@@ -25,18 +25,13 @@ if (Platform.OS !== 'web') {
       }
       
       if (Platform.OS === 'android') {
-        // Проверяем наличие системного уведомления (title/body).
-        // Если их нет, значит бэкенд прислал "тихое" системное уведомление специально 
-        // для пробуждения приложения (Doze Mode), чтобы мы могли показать 
-        // кастомное expo-notification с кнопками (reply/mark-as-read).
-        const hasSystemNotification = !!(remoteMessage?.notification && (remoteMessage.notification.title || remoteMessage.notification.body));
-        if (!hasSystemNotification) {
-          try {
-            const { displayBundledMessage } = require('./src/utils/notificationUtils');
-            await displayBundledMessage(remoteMessage);
-          } catch (err) {
-            console.log('[FCM] Error displaying bundled message in background:', err?.message || err);
-          }
+        // Мы используем data-only сообщения для Android, чтобы избежать пустых системных уведомлений.
+        // Поэтому всегда вызываем displayBundledMessage, если пришло сообщение с данными.
+        try {
+          const { displayBundledMessage } = require('./src/utils/notificationUtils');
+          await displayBundledMessage(remoteMessage);
+        } catch (err) {
+          console.log('[FCM] Error displaying bundled message in background:', err?.message || err);
         }
       }
     });
