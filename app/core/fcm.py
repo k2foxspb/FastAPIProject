@@ -140,13 +140,13 @@ async def send_fcm_notification(
         logger.debug(f"FCM: Preparing message. Token: {token[:15]}... | Data: {fcm_data}")
 
         # Настройки для Android: высокая приоритетность для пробуждения (Headless JS).
+        # priority='high' соответствует значению "high" в FCM, что необходимо для пробуждения
+        # устройства из Doze mode и вызова BackgroundMessageHandler.
         android_config = messaging.AndroidConfig(
             priority='high',
             ttl=3600 * 24,  # 24 часа
             # direct_boot_ok=True позволяет получать сообщения даже до разблокировки устройства (Android 7+)
             direct_boot_ok=True,
-            # Мы НЕ добавляем здесь notification для Android, чтобы клиент мог сам
-            # отрисовать уведомление с кнопками "Ответить" и "Прочитать" через expo-notifications.
         )
 
         # Настройки для iOS (APNS)
@@ -168,14 +168,10 @@ async def send_fcm_notification(
             )
         )
 
+        # Для iOS мы используем aps.alert в apns_config (выше), что делает сообщение "уведомлением".
+        # Для Android мы НЕ указываем глобальный notification, чтобы сообщение пришло как "data-only".
+        # Это гарантирует появление кнопок на Android и надежную доставку на iOS.
         message = messaging.Message(
-            # Для iOS используем стандартный блок notification для надежности,
-            # но на Android он заставит систему показать уведомление без наших кнопок.
-            # Поэтому на Android полагаемся на data-only сообщение.
-            notification=messaging.Notification(
-                title=title,
-                body=body,
-            ) if apns_config else None,
             data=fcm_data,
             token=token,
             android=android_config,
@@ -190,9 +186,12 @@ async def send_fcm_notification(
             except RuntimeError:
                 loop = asyncio.get_event_loop()
                 
-            logger.info(f"FCM: Sending to {token[:15]}... Title: '{title}'")
+            logger.info(f"FCM: Sending to {token[:15]}... Title: '{title}' (Data-only for Android)")
+            # Используем run_in_executor, так как Firebase Admin SDK блокирующий (синхронный)
+            start_time = time.time()
             response = await loop.run_in_executor(None, lambda: messaging.send(message))
-            logger.success(f"FCM: Sent! Response: {response}")
+            duration = (time.time() - start_time) * 1000
+            logger.success(f"FCM: Sent successfully to {token[:15]}... in {duration:.1f}ms. Response: {response}")
             return True
         except (messaging.UnregisteredError, exceptions.NotFoundError) as e:
             # Токен больше не валиден (приложение удалено или токен протух)

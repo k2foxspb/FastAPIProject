@@ -45,7 +45,7 @@ import os
 import uuid
 import io
 import tempfile
-import cv2
+# cv2 imported inside save_user_photo to avoid dependency issues if not installed
 from PIL import Image
 from fastapi import UploadFile, File, Form
 from datetime import datetime
@@ -623,16 +623,25 @@ async def login(
     # Обновляем FCM токен, если он передан
     if fcm_token:
         # Обеспечиваем уникальность токена (очищаем у других пользователей)
+        # Это важно, чтобы уведомления не приходили на чужие устройства при смене аккаунтов
         await db.execute(
             update(UserModel)
             .where(UserModel.fcm_token == fcm_token)
             .where(UserModel.id != user.id)
             .values(fcm_token=None)
         )
-        user.fcm_token = fcm_token
-        await db.commit()
+        
+        if user.fcm_token != fcm_token:
+            from loguru import logger
+            logger.info(f"FCM: Token updated during login for user {user.id} ({user.email}). New token: {fcm_token[:15]}...")
+            user.fcm_token = fcm_token
+            await db.commit()
+        else:
+            from loguru import logger
+            logger.debug(f"FCM: Token already matches for user {user.id} during login")
+    else:
         from loguru import logger
-        logger.info(f"FCM: Token updated during login for user {user.id} ({user.email})")
+        logger.debug(f"FCM: No token provided during login for user {user.id}")
 
     access_token = create_access_token(data={"sub": user.email, "role": user.role, "id": user.id})
     refresh_token = create_refresh_token(data={"sub": user.email, "role": user.role, "id": user.id})
@@ -865,26 +874,37 @@ async def update_fcm_token(
     Обновляет FCM токен для текущего пользователя.
     """
     from loguru import logger
-    old_token = current_user.fcm_token
     
     # Чтобы токен был уникален для одного пользователя (важно при смене аккаунтов на одном девайсе)
     if body.fcm_token:
+        # Сначала очищаем этот токен у всех остальных пользователей
         await db.execute(
             update(UserModel)
             .where(UserModel.fcm_token == body.fcm_token)
             .where(UserModel.id != current_user.id)
             .values(fcm_token=None)
         )
-    
-    current_user.fcm_token = body.fcm_token
-    await db.commit()
-    
-    if old_token != body.fcm_token:
-        logger.info(f"FCM: Token updated for user {current_user.id} ({current_user.email}). Token: {body.fcm_token[:15] if body.fcm_token else 'None'}...")
-    else:
-        logger.debug(f"FCM: Token remains the same for user {current_user.id}")
         
-    return {"status": "ok"}
+        # Если токен действительно новый для этого пользователя, обновляем
+        if current_user.fcm_token != body.fcm_token:
+            old_token_prefix = current_user.fcm_token[:15] if current_user.fcm_token else "None"
+            current_user.fcm_token = body.fcm_token
+            await db.commit()
+            await db.refresh(current_user)
+            logger.info(f"FCM: Token updated for user {current_user.id} ({current_user.email}). From {old_token_prefix}... to {body.fcm_token[:15]}...")
+        else:
+            logger.debug(f"FCM: Token remains the same for user {current_user.id}")
+    else:
+        # Если пришел пустой токен, сбрасываем его
+        if current_user.fcm_token:
+            logger.info(f"FCM: Token removed for user {current_user.id} ({current_user.email})")
+            current_user.fcm_token = None
+            await db.commit()
+            await db.refresh(current_user)
+        else:
+            logger.debug(f"FCM: Token was already empty for user {current_user.id}")
+        
+    return {"status": "ok", "fcm_token": current_user.fcm_token}
 
 
 # Локальные пути остаются для режима local, но основная логика сохранения вынесена в app.utils.storage
@@ -913,6 +933,7 @@ async def save_user_photo(file: UploadFile) -> tuple[str, str]:
 
     if is_video:
         try:
+            import cv2
             # Для видео пытаемся достать первый кадр через OpenCV
             # Нужно сохранить временный файл для OpenCV, если это не S3 и у нас нет локального пути (или всегда)
             temp_video = tempfile.NamedTemporaryFile(delete=False, suffix=file_extension)
