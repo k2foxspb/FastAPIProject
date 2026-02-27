@@ -4,6 +4,7 @@ import { storage } from '../utils/storage';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
+  timeout: 15000,
 });
 
 export const setAuthToken = (token) => {

@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { Vibration, AppState, Alert } from 'react-native';
+import NetInfo from '@react-native-community/netinfo';
 import Constants from 'expo-constants';
 import { useAudioPlayer } from 'expo-audio';
 import { API_BASE_URL } from '../constants';
@@ -98,6 +99,12 @@ export const NotificationProvider = ({ children }) => {
       }
       console.log('[NotificationContext] Token changed, closing existing Chat WS');
       chatWs.current.close();
+    }
+
+    // Clear any existing reconnect timer when manually connecting
+    if (chatWsReconnectTimer.current) {
+      clearTimeout(chatWsReconnectTimer.current);
+      chatWsReconnectTimer.current = null;
     }
 
     chatWsLastToken.current = token;
@@ -360,6 +367,12 @@ export const NotificationProvider = ({ children }) => {
       }
       console.log('Notifications WS connected with different token, closing old one');
       ws.current.close();
+    }
+
+    // Clear any existing reconnect timer when manually connecting
+    if (reconnectTimer.current) {
+      clearTimeout(reconnectTimer.current);
+      reconnectTimer.current = null;
     }
 
     lastToken.current = token;
@@ -662,6 +675,10 @@ export const NotificationProvider = ({ children }) => {
         const checkConnection = (socket, name, connectFn) => {
           if (!socket.current || (socket.current.readyState !== WebSocket.OPEN && socket.current.readyState !== WebSocket.CONNECTING)) {
             console.log(`[NotificationContext] App active, ${name} WS disconnected, reconnecting...`);
+            // Reset attempts on manual foreground reconnect to try immediately
+            if (name === 'Chat') chatWsReconnectAttempt.current = 0;
+            else reconnectAttempt.current = 0;
+            
             storage.getAccessToken().then(tok => { if (tok) connectFn(tok); });
           } else {
             console.log(`[NotificationContext] App active, ${name} WS is ${socket.current?.readyState === WebSocket.OPEN ? 'OPEN' : 'CONNECTING'}`);
@@ -680,8 +697,31 @@ export const NotificationProvider = ({ children }) => {
         }, 800);
       }
     });
+
+    // Добавляем слушатель изменения состояния сети
+    const netInfoUnsubscribe = NetInfo.addEventListener(state => {
+      if (state.isConnected && state.isInternetReachable !== false) {
+        console.log('[NotificationContext] Internet connection restored, checking WebSockets...');
+        
+        const tryReconnect = (socket, name, connectFn) => {
+          if (!socket.current || (socket.current.readyState !== WebSocket.OPEN && socket.current.readyState !== WebSocket.CONNECTING)) {
+            console.log(`[NotificationContext] Network restored, ${name} WS not connected, reconnecting now.`);
+            // Reset attempts to connect immediately after network return
+            if (name === 'Chat') chatWsReconnectAttempt.current = 0;
+            else reconnectAttempt.current = 0;
+            
+            storage.getAccessToken().then(tok => { if (tok) connectFn(tok); });
+          }
+        };
+
+        tryReconnect(ws, 'Notifications', connect);
+        tryReconnect(chatWs, 'Chat', connectChatWs);
+      }
+    });
+
     return () => {
       subscription.remove();
+      netInfoUnsubscribe();
     };
   }, [connect, connectChatWs]);
 

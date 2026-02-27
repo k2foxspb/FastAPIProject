@@ -1,7 +1,6 @@
 import 'expo-dev-client';
 import { Platform } from 'react-native';
 import messaging from '@react-native-firebase/messaging';
-import notifee from '@notifee/react-native';
 
 console.log('[Entry] Starting index.js (JS Entrypoint)');
 
@@ -35,16 +34,6 @@ if (Platform.OS !== 'web') {
             console.log('[FCM] Error displaying bundled message in background:', err?.message || err);
           }
         }
-      }
-    });
-
-    // Notifee Background Event Handler (for interactions like 'reply' or 'mark-as-read')
-    notifee.onBackgroundEvent(async ({ type, detail }) => {
-      try {
-        const { handleNotifeeEvent } = require('./src/utils/notificationUtils');
-        await handleNotifeeEvent(type, detail);
-      } catch (err) {
-        console.log('[Notifee] Background event handler error (index.js):', err?.message || err);
       }
     });
 

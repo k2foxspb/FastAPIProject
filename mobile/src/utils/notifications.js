@@ -1,7 +1,7 @@
 import firebase from '@react-native-firebase/app';
 import messaging from '@react-native-firebase/messaging';
 import { Alert, Platform, Vibration, Linking } from 'react-native';
-import notifee, { AuthorizationStatus } from '@notifee/react-native';
+import * as Notifications from 'expo-notifications';
 import { usersApi, chatApi, setAuthToken } from '../api';
 import { storage } from './storage';
 import { initializeFirebase } from './firebaseInit';
@@ -73,7 +73,6 @@ export async function setupCloudMessaging() {
     // Создаем канал уведомлений для Android
     if (Platform.OS === 'android') {
       try {
-        const Notifications = require('expo-notifications');
         // Канал Expo: включаем vibration по умолчанию
         Notifications.setNotificationChannelAsync('messages', {
           name: 'Сообщения',
@@ -104,7 +103,6 @@ export async function setupCloudMessaging() {
           const isActiveChatWithSender = isChatScreen && senderId && currentChatUserId && Number(currentChatUserId) === Number(senderId);
 
           // Подавляем стандартное уведомление Expo
-          const Notifications = require('expo-notifications');
           Notifications.setNotificationHandler({
             handleNotification: async () => ({
               shouldShowBanner: false,
@@ -149,9 +147,6 @@ export async function setupCloudMessaging() {
           console.log('[FCM] Navigating to Chat with userId:', senderId);
           // Сразу очищаем пачку уведомлений при переходе
           try {
-            const notifee = require('@notifee/react-native').default;
-            notifee.cancelNotification(`sender_${senderId}`).catch(() => {});
-            // Очищаем локальную историю группировки для Notifee
             storage.removeItem(`notif_messages_${senderId}`).catch(() => {});
           } catch (_) {}
 
@@ -207,7 +202,25 @@ export async function setupCloudMessaging() {
       })
       .catch(err => console.error('getInitialNotification failed:', err));
 
-    return unsubscribe;
+    // --- EXPO NOTIFICATIONS HANDLERS ---
+    // Обработка клика по уведомлению (передний план / фон)
+    const notificationSubscription = Notifications.addNotificationResponseReceivedListener(response => {
+      console.log('[Notifications] Response received');
+      handleNotifeeEvent(response);
+    });
+
+    // Обработка уведомления, которое открыло приложение из закрытого состояния (Expo)
+    Notifications.getLastNotificationResponseAsync().then(response => {
+      if (response) {
+        console.log('[Notifications] Initial response found');
+        handleNotifeeEvent(response);
+      }
+    });
+
+    return () => {
+      unsubscribe();
+      notificationSubscription.remove();
+    };
   } catch (error) {
     console.error('Firebase messaging setup failed:', error);
   }
