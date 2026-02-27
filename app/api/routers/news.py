@@ -36,7 +36,7 @@ async def notify_friends_about_news(news_id: int, author_id: int, author_name: s
             ).where(
                 FriendshipModel.status == "accepted",
                 UserModel.id != author_id
-            )
+            ).execution_options(populate_existing=True)
         )
         friends = res.scalars().all()
         

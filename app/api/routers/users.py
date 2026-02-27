@@ -1543,9 +1543,8 @@ async def send_friend_request(
     if user_id == current_user.id:
         raise HTTPException(status_code=400, detail="You cannot add yourself as a friend")
 
-    # Проверяем, существует ли пользователь
-    res = await db.execute(select(UserModel).where(UserModel.id == user_id))
-    target_user = res.scalar_one_or_none()
+    # Проверяем, существует ли пользователь (с обновлением данных из БД для FCM)
+    target_user = await db.get(UserModel, user_id, populate_existing=True)
     if not target_user:
         raise HTTPException(status_code=404, detail="User not found")
 
@@ -1626,9 +1625,8 @@ async def accept_friend_request(
     await db.commit()
     await db.refresh(friendship)
 
-    # Уведомление отправителю
-    res = await db.execute(select(UserModel).where(UserModel.id == sender_id))
-    sender = res.scalar_one_or_none()
+    # Уведомление отправителю (с актуальным токеном)
+    sender = await db.get(UserModel, sender_id, populate_existing=True)
     
     msg = {
         "type": "friend_accept",

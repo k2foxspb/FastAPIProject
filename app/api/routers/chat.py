@@ -406,8 +406,9 @@ async def websocket_chat_endpoint(
 
                 # Отправляем Пуш через FCM, если получатель не подключен к WebSocket
                 # Находим получателя, чтобы взять его fcm_token
-                receiver_result = await db.execute(select(UserModel).where(UserModel.id == receiver_id))
-                receiver = receiver_result.scalar_one_or_none()
+                # Используем populate_existing=True, чтобы избежать старых данных в долгоживущих сессиях (WebSocket)
+                receiver = await db.get(UserModel, receiver_id, populate_existing=True)
+                
                 if receiver and receiver.fcm_token:
                     # Если сообщение пустое (только файл), пишем тип файла
                     body = content if content else f"Отправил {message_type}"
@@ -508,8 +509,9 @@ async def send_message_api(
     )
 
     # FCM Notification
-    receiver_result = await db.execute(select(UserModel).where(UserModel.id == receiver_id))
-    receiver = receiver_result.scalar_one_or_none()
+    # Используем populate_existing=True, чтобы получить актуальный токен из БД
+    receiver = await db.get(UserModel, receiver_id, populate_existing=True)
+    
     if receiver and receiver.fcm_token:
         body = content if content else f"Отправил {message_type}"
         
