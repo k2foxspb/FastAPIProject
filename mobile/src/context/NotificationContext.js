@@ -555,32 +555,15 @@ export const NotificationProvider = ({ children }) => {
           
           if (appState.current === 'active' && !isMe) {
             if (isActiveChat) {
-              // В активном чате — только звук
+              // В активном чате — только звук (так как FCM баннер в этом случае подавляется в setupCloudMessaging)
               console.log('[NotificationContext] Playing sound (isActiveChat: true)');
               playNotificationSound();
             } else {
-              // Приложение активно, но не на экране чата — даем ощутимую вибрацию
-              console.log('[NotificationContext] Vibrating (isActiveChat: false)');
-              try {
-                // Паттерн: пауза 0мс, 180мс вибро, 80мс пауза, 180мс вибро
-                Vibration.vibrate([0, 180, 80, 180]);
-              } catch (_) {
-                // Фоллбек на короткую вибрацию
-                Vibration.vibrate(200);
-              }
+              // Приложение активно, но не на экране чата — полагаемся на FCM для баннера и звука
+              console.log('[NotificationContext] In-app non-active chat: relying on FCM for notification');
             }
           } else {
-            console.log('[NotificationContext] App in background, displaying local notification via Expo-Notifications');
-            // Если мы в фоне, показываем уведомление
-            if (!isMe) {
-              displayBundledMessage({
-                data: {
-                  ...payload.data,
-                  sender_id: String(senderId),
-                  type: 'new_message'
-                }
-              }).catch(err => console.log('[NotificationContext] Background display error:', err));
-            }
+            console.log('[NotificationContext] App in background or message from self: relying on FCM or skipping');
           }
         }
 

@@ -25,6 +25,10 @@ if (Platform.OS !== 'web') {
       }
       
       if (Platform.OS === 'android') {
+        // Проверяем наличие системного уведомления (title/body).
+        // Если их нет, значит бэкенд прислал "тихое" системное уведомление специально 
+        // для пробуждения приложения (Doze Mode), чтобы мы могли показать 
+        // кастомное expo-notification с кнопками (reply/mark-as-read).
         const hasSystemNotification = !!(remoteMessage?.notification && (remoteMessage.notification.title || remoteMessage.notification.body));
         if (!hasSystemNotification) {
           try {

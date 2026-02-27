@@ -114,6 +114,7 @@ export async function displayBundledMessage(remoteMessage) {
     }
 
     await Notifications.scheduleNotificationAsync({
+      identifier: senderId ? `sender_${senderId}` : (newsId ? `news_${newsId}` : undefined),
       content: {
         title: nameToDisplay,
         body: combinedBody,

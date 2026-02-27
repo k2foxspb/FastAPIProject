@@ -113,21 +113,15 @@ async def send_fcm_notification(
         if sender_id:
             fcm_data["sender_id"] = str(sender_id)
         
-        # Добавляем стандартные поля в data для обработки на клиенте (особенно важно для Android data-only)
+        # Добавляем поля для обработки на клиенте (особенно важно для Android data-only/custom)
         if title:
             fcm_data["notif_title"] = str(title)
-            if "title" not in fcm_data:
-                fcm_data["title"] = str(title)
             if "sender_name" not in fcm_data:
-                # sender_name используется как запасной вариант для имени отправителя
                 fcm_data["sender_name"] = str(title)
         
         if body:
             fcm_data["notif_body"] = str(body)
-            if "body" not in fcm_data:
-                fcm_data["body"] = str(body)
             if "text" not in fcm_data:
-                # text использовался Notifee, сохраняем для совместимости
                 fcm_data["text"] = str(body)
         
         # Указываем ID канала (соответствует каналу "Сообщения" в приложении)
@@ -147,6 +141,17 @@ async def send_fcm_notification(
             ttl=3600 * 24,  # 24 часа
             # direct_boot_ok=True позволяет получать сообщения даже до разблокировки устройства (Android 7+)
             direct_boot_ok=True,
+            # ❗ ВАЖНО: Для надежного пробуждения на Android добавляем пустую секцию notification.
+            # Мы НЕ передаем title и body здесь, чтобы системное уведомление было "невидимым"
+            # (не отображалось ОС автоматически), что позволяет нам отобразить кастомное 
+            # уведомление с кнопками через expo-notifications в setBackgroundMessageHandler.
+            notification=messaging.AndroidNotification(
+                channel_id=fcm_data.get("android_channel_id", "messages"),
+                # Приоритет уведомления (высокий для гарантированного показа)
+                priority='high',
+                # Мы НЕ включаем звук и вибрацию здесь, чтобы это сделало 
+                # кастомное уведомление в JS.
+            )
         )
 
         # Настройки для iOS (APNS)
@@ -169,8 +174,10 @@ async def send_fcm_notification(
         )
 
         # Для iOS мы используем aps.alert в apns_config (выше), что делает сообщение "уведомлением".
-        # Для Android мы НЕ указываем глобальный notification, чтобы сообщение пришло как "data-only".
-        # Это гарантирует появление кнопок на Android и надежную доставку на iOS.
+        # Для Android мы ТЕПЕРЬ указываем пустой notification в android_config, чтобы сообщение 
+        # гарантированно будило устройство (Doze Mode), но не отображалось системой автоматически.
+        # Это позволяет JS-коду (setBackgroundMessageHandler) отобразить кастомное уведомление с кнопками.
+        # Мы сохраняем data payload для передачи всех данных.
         message = messaging.Message(
             data=fcm_data,
             token=token,
@@ -186,7 +193,7 @@ async def send_fcm_notification(
             except RuntimeError:
                 loop = asyncio.get_event_loop()
                 
-            logger.info(f"FCM: Sending to {token[:15]}... Title: '{title}' (Data-only for Android)")
+            logger.info(f"FCM: Sending to {token[:15]}... Title: '{title}' (Data + Silent Notification for Android)")
             # Используем run_in_executor, так как Firebase Admin SDK блокирующий (синхронный)
             start_time = time.time()
             response = await loop.run_in_executor(None, lambda: messaging.send(message))

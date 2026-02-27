@@ -70,10 +70,21 @@ export async function setupCloudMessaging() {
       return;
     }
 
-    // Создаем канал уведомлений для Android
+    // Настраиваем глобальный хендлер уведомлений
     if (Platform.OS === 'android') {
       try {
-        // Канал Expo: включаем vibration по умолчанию
+        // Подавляем стандартные баннеры Expo-notifications на Android в Foreground, 
+        // так как мы сами вызываем displayBundledMessage через FCM onMessage.
+        Notifications.setNotificationHandler({
+          handleNotification: async () => ({
+            shouldShowBanner: false,
+            shouldShowList: false,
+            shouldPlaySound: false,
+            shouldSetBadge: false,
+          }),
+        });
+
+        // Создаем канал уведомлений
         Notifications.setNotificationChannelAsync('messages', {
           name: 'Сообщения',
           importance: Notifications.AndroidImportance.HIGH,
@@ -101,16 +112,6 @@ export async function setupCloudMessaging() {
           const isChatScreen = currentRoute?.name === 'Chat';
           const currentChatUserId = currentRoute?.params?.userId ? parseInt(currentRoute.params.userId, 10) : null;
           const isActiveChatWithSender = isChatScreen && senderId && currentChatUserId && Number(currentChatUserId) === Number(senderId);
-
-          // Подавляем стандартное уведомление Expo
-          Notifications.setNotificationHandler({
-            handleNotification: async () => ({
-              shouldShowBanner: false,
-              shouldShowList: false,
-              shouldPlaySound: false,
-              shouldSetBadge: false,
-            }),
-          });
 
           if (!isActiveChatWithSender) {
             console.log('[FCM] Showing foreground notification');
