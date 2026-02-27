@@ -147,7 +147,7 @@ async def send_fcm_notification(
                 body=body,
                 channel_id=fcm_data.get("android_channel_id", "messages"),
                 tag=fcm_data.get("notif_tag"),
-                priority=messaging.Priority.HIGH,
+                priority='high',
                 default_sound=True,
                 default_vibrate_timings=True,
             )
