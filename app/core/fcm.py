@@ -152,23 +152,17 @@ async def send_fcm_notification(
         logger.debug(f"FCM: Preparing message. Token: {token[:15]}... | Tag: {notif_tag} | Data: {fcm_data}")
 
         # Настройки для Android: высокая приоритетность для пробуждения (Headless JS).
-        # Мы возвращаем секцию 'notification' для Android, чтобы гарантировать пробуждение
-        # из Doze mode. Однако мы настраиваем Config Plugin, чтобы Expo-notifications
-        # мог перехватывать и кастомизировать это уведомление.
+        # Мы используем ТОЛЬКО 'data' для Android. Это "Data-only" сообщения.
+        # Это необходимо, чтобы гарантированно вызывался setBackgroundMessageHandler в JS,
+        # который отрисует уведомление через expo-notifications с кнопками (Ответить/Прочитано).
+        # Если добавить секцию notification, система Android покажет ее сама БЕЗ кнопок
+        # и может не запустить JS-код.
         
         android_config = messaging.AndroidConfig(
             priority='high',
             ttl=3600 * 24,  # 24 часа
             direct_boot_ok=True,
-            notification=messaging.AndroidNotification(
-                title=title,
-                body=body,
-                channel_id=fcm_data.get("android_channel_id", "messages"),
-                tag=fcm_data.get("notif_tag"),
-                priority='high',
-                default_sound=True,
-                default_vibrate_timings=True,
-            )
+            # ВАЖНО: Секция notification ОТСУТСТВУЕТ для Android
         )
 
         # Настройки для iOS (APNS)
@@ -207,7 +201,7 @@ async def send_fcm_notification(
             except RuntimeError:
                 loop = asyncio.get_event_loop()
                 
-            logger.info(f"FCM: Sending to {token[:15]}... Title: '{title}' (Notification + Data)")
+            logger.info(f"FCM: Sending to {token[:15]}... Title: '{title}' (Android: Data-only, iOS: Notification+Data)")
             # Используем run_in_executor, так как Firebase Admin SDK блокирующий (синхронный)
             start_time = time.time()
             response = await loop.run_in_executor(None, lambda: messaging.send(message))
