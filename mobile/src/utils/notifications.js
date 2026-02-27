@@ -1,4 +1,3 @@
-import firebase from '@react-native-firebase/app';
 import messaging from '@react-native-firebase/messaging';
 import { Alert, Platform, Vibration, Linking } from 'react-native';
 import * as Notifications from 'expo-notifications';
@@ -7,7 +6,7 @@ import { storage } from './storage';
 import { initializeFirebase } from './firebaseInit';
 import { navigationRef } from '../navigation/NavigationService';
 
-import { displayBundledMessage, handleNotifeeEvent, parseNotificationData } from './notificationUtils';
+import { displayBundledMessage, handleNotificationResponse, parseNotificationData } from './notificationUtils';
 
 // Ensure Firebase is initialized before accessing messaging()
 const getMessaging = async () => {
@@ -15,6 +14,7 @@ const getMessaging = async () => {
 
   try {
     // Check if we have any initialized apps
+    const firebase = require('@react-native-firebase/app').default;
     if (firebase.apps.length === 0) {
       await initializeFirebase();
     }
@@ -113,7 +113,7 @@ export async function setupCloudMessaging() {
           });
 
           if (!isActiveChatWithSender) {
-            console.log('[FCM] Showing foreground notification via Notifee');
+            console.log('[FCM] Showing foreground notification');
             await displayBundledMessage(remoteMessage);
           } else {
             console.log('[FCM] In active chat, skipping foreground notification banner (WS will handle sound)');
@@ -206,14 +206,14 @@ export async function setupCloudMessaging() {
     // Обработка клика по уведомлению (передний план / фон)
     const notificationSubscription = Notifications.addNotificationResponseReceivedListener(response => {
       console.log('[Notifications] Response received');
-      handleNotifeeEvent(response);
+      handleNotificationResponse(response);
     });
 
     // Обработка уведомления, которое открыло приложение из закрытого состояния (Expo)
     Notifications.getLastNotificationResponseAsync().then(response => {
       if (response) {
         console.log('[Notifications] Initial response found');
-        handleNotifeeEvent(response);
+        handleNotificationResponse(response);
       }
     });
 
@@ -307,15 +307,6 @@ export async function updateServerFcmToken(passedToken = null) {
 }
 
 
-if (Platform.OS !== 'web') {
-  try {
-    notifee.onForegroundEvent(async ({ type, detail }) => {
-      await handleNotifeeEvent(type, detail);
-    });
-  } catch (e) {
-    console.log('[Notifee] onForegroundEvent setup error:', e?.message || e);
-  }
-}
 
 
 // --- Soft reminder to enable notifications (non-intrusive) ---
@@ -330,38 +321,11 @@ export async function checkAndRemindPermissions(options = {}) {
       if (optOut === '1' || optOut === true) return;
     } catch (_) {}
 
-    // Cross-platform permission check via Notifee
-    let settings;
-    try {
-      settings = await notifee.getNotificationSettings();
-    } catch (e) {
-      console.log('[Notifications] getNotificationSettings failed:', e?.message || e);
-      return;
-    }
-    const status = settings?.authorizationStatus;
-    const enabled = status === AuthorizationStatus.AUTHORIZED || status === AuthorizationStatus.PROVISIONAL;
+    // Cross-platform permission check via Expo-Notifications
+    const settings = await Notifications.getPermissionsAsync();
+    const enabled = settings.status === 'granted' || settings.canAskAgain;
 
-    // Check battery optimization on Android
-    if (enabled && Platform.OS === 'android') {
-      try {
-        const batteryOptimizationEnabled = await notifee.isBatteryOptimizationEnabled();
-        if (batteryOptimizationEnabled) {
-          Alert.alert(
-            'Экономия заряда включена',
-            'Чтобы уведомления приходили вовремя, даже когда приложение закрыто, рекомендуем отключить ограничение фоновой активности для этого приложения.',
-            [
-              { text: 'Позже', style: 'cancel' },
-              { text: 'Настроить', onPress: () => notifee.openBatteryOptimizationSettings() },
-            ]
-          );
-          return; // Don't show the permission reminder if we're showing this
-        }
-      } catch (e) {
-        console.log('[Notifications] Battery check failed:', e?.message || e);
-      }
-    }
-
-    if (enabled) return;
+    if (enabled && settings.status === 'granted') return;
 
     // Cooldown to avoid being annoying
     try {

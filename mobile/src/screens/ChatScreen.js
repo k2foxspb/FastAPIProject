@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { getShadow } from '../utils/shadowStyles';
 import { View, Text, FlatList, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, Image, Modal, Pressable, Alert, AppState, StatusBar, Dimensions, Share, Animated, Vibration, Keyboard } from 'react-native';
+import * as Notifications from 'expo-notifications';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import { documentDirectory, getInfoAsync, downloadAsync, deleteAsync, readAsStringAsync, writeAsStringAsync, EncodingType, StorageAccessFramework } from 'expo-file-system/legacy';
@@ -90,8 +91,7 @@ export default function ChatScreen({ route, navigation }) {
     // Очищаем уведомления и локальную историю для этого пользователя при входе в чат
     if (Platform.OS !== 'web') {
       try {
-        const notifee = require('@notifee/react-native').default;
-        notifee.cancelNotification(`sender_${userId}`).catch(() => {});
+        Notifications.dismissNotificationAsync(`sender_${userId}`).catch(() => {});
         storage.removeItem(`notif_messages_${userId}`).catch(() => {});
       } catch (e) {
         console.log('[ChatScreen] Error canceling notification/history:', e);

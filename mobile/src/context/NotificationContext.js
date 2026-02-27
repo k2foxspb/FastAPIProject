@@ -570,8 +570,8 @@ export const NotificationProvider = ({ children }) => {
               }
             }
           } else {
-            console.log('[NotificationContext] App in background, displaying local notification via Notifee');
-            // Если мы в фоне, показываем уведомление через Notifee
+            console.log('[NotificationContext] App in background, displaying local notification via Expo-Notifications');
+            // Если мы в фоне, показываем уведомление
             if (!isMe) {
               displayBundledMessage({
                 data: {

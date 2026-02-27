@@ -29,8 +29,8 @@ export function parseNotificationData(data) {
   return { type, senderId, senderName, newsId };
 }
 
-// --- Notifee-like helpers for Expo-Notifications ---
-export async function ensureNotifeeChannel() {
+// --- Helpers for Expo-Notifications ---
+export async function ensureNotificationChannel() {
   if (Platform.OS !== 'android') return;
   try {
     await Notifications.setNotificationChannelAsync('messages', {
@@ -64,7 +64,7 @@ export async function ensureNotifeeChannel() {
       },
     ]);
   } catch (e) {
-    console.log('[Notifications] ensureNotifeeChannel error:', e?.message || e);
+    console.log('[Notifications] ensureNotificationChannel error:', e?.message || e);
   }
 }
 
@@ -87,7 +87,7 @@ export async function displayBundledMessage(remoteMessage) {
     const text = data.text || data.message || data.body || remoteMessage?.notification?.body || '';
     const nameToDisplay = senderName || data.title || remoteMessage?.notification?.title || 'Сообщение';
 
-    await ensureNotifeeChannel();
+    await ensureNotificationChannel();
 
     // Храним последние N сообщений по отправителю для формирования цепочки в теле уведомления
     // В expo-notifications нет прямого аналога MessagingStyle, поэтому формируем текст вручную
@@ -132,7 +132,7 @@ async function waitForNavigation() {
   return false;
 }
 
-export async function handleNotifeeEvent(event) {
+export async function handleNotificationResponse(event) {
   try {
     const actionId = event.actionIdentifier;
     const notifData = event.notification.request.content.data || {};
@@ -203,6 +203,6 @@ export async function handleNotifeeEvent(event) {
       }
     }
   } catch (e) {
-    console.log('[Notifications] handleNotifeeEvent error:', e?.message || e);
+    console.log('[Notifications] handleNotificationResponse error:', e?.message || e);
   }
 }

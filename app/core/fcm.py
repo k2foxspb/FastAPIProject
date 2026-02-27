@@ -117,6 +117,8 @@ async def send_fcm_notification(
             ttl=3600 * 24,  # 24 часа
             # direct_boot_ok=True позволяет получать сообщения даже до разблокировки устройства (Android 7+)
             direct_boot_ok=True,
+            # Мы НЕ добавляем здесь notification для Android, чтобы клиент мог сам
+            # отрисовать уведомление с кнопками "Ответить" и "Прочитать" через expo-notifications.
         )
 
         # Настройки для iOS (APNS)
@@ -139,6 +141,13 @@ async def send_fcm_notification(
         )
 
         message = messaging.Message(
+            # Для iOS используем стандартный блок notification для надежности,
+            # но на Android он заставит систему показать уведомление без наших кнопок.
+            # Поэтому на Android полагаемся на data-only сообщение.
+            notification=messaging.Notification(
+                title=title,
+                body=body,
+            ) if apns_config else None,
             data=fcm_data,
             token=token,
             android=android_config,
