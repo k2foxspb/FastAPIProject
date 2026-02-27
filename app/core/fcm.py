@@ -87,14 +87,22 @@ async def send_fcm_notification(
         if sender_id:
             fcm_data["sender_id"] = str(sender_id)
         
-        # Добавляем дополнительные данные для клиента (Android data-only)
-        # Эти поля критически важны для Notifee в режиме data-only
-        if title and "sender_name" not in fcm_data:
-            fcm_data["sender_name"] = str(title)
-        if body and "text" not in fcm_data:
-            fcm_data["text"] = str(body)
+        # Добавляем стандартные поля в data для обработки на клиенте (особенно важно для Android data-only)
+        if title:
+            if "title" not in fcm_data:
+                fcm_data["title"] = str(title)
+            if "sender_name" not in fcm_data:
+                # sender_name используется как запасной вариант для имени отправителя
+                fcm_data["sender_name"] = str(title)
         
-        # Указываем ID канала для Notifee
+        if body:
+            if "body" not in fcm_data:
+                fcm_data["body"] = str(body)
+            if "text" not in fcm_data:
+                # text использовался Notifee, сохраняем для совместимости
+                fcm_data["text"] = str(body)
+        
+        # Указываем ID канала (соответствует каналу "Сообщения" в приложении)
         if "android_channel_id" not in fcm_data:
             fcm_data["android_channel_id"] = "messages"
         
@@ -103,7 +111,7 @@ async def send_fcm_notification(
 
         logger.debug(f"FCM: Preparing message. Token: {token[:15]}... | Data: {fcm_data}")
 
-        # Настройки для Android: высокая приоритетность.
+        # Настройки для Android: высокая приоритетность для пробуждения (Headless JS).
         android_config = messaging.AndroidConfig(
             priority='high',
             ttl=3600 * 24,  # 24 часа
@@ -124,7 +132,7 @@ async def send_fcm_notification(
                     thread_id=str(sender_id) if sender_id else (fcm_data.get("chat_id") or fcm_data.get("news_id")),
                     content_available=True,
                     mutable_content=True,
-                    category="NEW_MESSAGE",
+                    category="message_actions",
                     badge=1
                 )
             )
