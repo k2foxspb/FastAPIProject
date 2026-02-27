@@ -25,8 +25,12 @@ export function parseNotificationData(data) {
                      
   const newsIdRaw = data.news_id || data.newsId;
   const newsId = newsIdRaw ? parseInt(newsIdRaw, 10) : null;
+
+  // Явные поля заголовка и тела (если заданы бэкендом)
+  const notifTitle = data.notif_title || data.notifTitle;
+  const notifBody = data.notif_body || data.notifBody;
   
-  return { type, senderId, senderName, newsId };
+  return { type, senderId, senderName, newsId, notifTitle, notifBody };
 }
 
 // --- Helpers for Expo-Notifications ---
@@ -71,9 +75,9 @@ export async function ensureNotificationChannel() {
 export async function displayBundledMessage(remoteMessage) {
   try {
     const data = remoteMessage?.data || {};
-    const { senderId, senderName } = parseNotificationData(data);
+    const { type, senderId, senderName, notifTitle, notifBody } = parseNotificationData(data);
     
-    // Проверка на "самого себя"
+    // Проверка на "самого себя" (важно для чата, так как бэкенд шлет всем)
     try {
       const myId = await storage.getUserId();
       if (myId && senderId && Number(myId) === Number(senderId)) {
@@ -84,33 +88,38 @@ export async function displayBundledMessage(remoteMessage) {
       console.log('[Notifications] Error checking isMe:', err);
     }
     
-    const text = data.text || data.message || data.body || remoteMessage?.notification?.body || '';
-    const nameToDisplay = senderName || data.title || remoteMessage?.notification?.title || 'Сообщение';
+    const text = notifBody || data.text || data.message || data.body || remoteMessage?.notification?.body || '';
+    const nameToDisplay = notifTitle || senderName || data.title || remoteMessage?.notification?.title || 'Сообщение';
 
     await ensureNotificationChannel();
 
-    // Храним последние N сообщений по отправителю для формирования цепочки в теле уведомления
-    // В expo-notifications нет прямого аналога MessagingStyle, поэтому формируем текст вручную
-    const key = `notif_messages_${senderId || 'generic'}`;
-    let list = [];
-    try {
-      const saved = await storage.getItem(key);
-      list = saved ? JSON.parse(saved) : [];
-    } catch (_) {}
-    list.push({ text, ts: Date.now() });
-    if (list.length > 5) list = list.slice(-5);
-    try { await storage.saveItem(key, JSON.stringify(list)); } catch (_) {}
+    // Храним последние N сообщений по отправителю для формирования цепочки (только для чатов)
+    let combinedBody = text;
+    if (type === 'new_message' && senderId) {
+      const key = `notif_messages_${senderId}`;
+      let list = [];
+      try {
+        const saved = await storage.getItem(key);
+        list = saved ? JSON.parse(saved) : [];
+      } catch (_) {}
+      
+      list.push({ text, ts: Date.now() });
+      if (list.length > 5) list = list.slice(-5);
+      
+      try { await storage.saveItem(key, JSON.stringify(list)); } catch (_) {}
 
-    const combinedBody = list.length > 1 
-      ? list.map(m => m.text).join('\n')
-      : text;
+      if (list.length > 1) {
+        combinedBody = list.map(m => m.text).join('\n');
+      }
+    }
 
     await Notifications.scheduleNotificationAsync({
       content: {
         title: nameToDisplay,
         body: combinedBody,
         data: data,
-        categoryIdentifier: senderId ? 'message_actions' : undefined,
+        // Показываем кнопки "Ответить"/"Прочитать" только для новых сообщений
+        categoryIdentifier: type === 'new_message' ? 'message_actions' : undefined,
         android: {
           channelId: 'messages',
         },

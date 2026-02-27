@@ -89,6 +89,7 @@ async def send_fcm_notification(
         
         # Добавляем стандартные поля в data для обработки на клиенте (особенно важно для Android data-only)
         if title:
+            fcm_data["notif_title"] = str(title)
             if "title" not in fcm_data:
                 fcm_data["title"] = str(title)
             if "sender_name" not in fcm_data:
@@ -96,6 +97,7 @@ async def send_fcm_notification(
                 fcm_data["sender_name"] = str(title)
         
         if body:
+            fcm_data["notif_body"] = str(body)
             if "body" not in fcm_data:
                 fcm_data["body"] = str(body)
             if "text" not in fcm_data:
@@ -134,7 +136,7 @@ async def send_fcm_notification(
                     thread_id=str(sender_id) if sender_id else (fcm_data.get("chat_id") or fcm_data.get("news_id")),
                     content_available=True,
                     mutable_content=True,
-                    category="message_actions",
+                    category="message_actions" if fcm_data.get("type") == "new_message" else None,
                     badge=1
                 )
             )
