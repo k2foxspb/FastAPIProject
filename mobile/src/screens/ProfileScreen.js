@@ -16,7 +16,7 @@ export default function ProfileScreen({ navigation }) {
   const [error, setError] = useState(null);
   const [isSettingsVisible, setSettingsVisible] = useState(false);
   const [syncing, setSyncing] = useState(false);
-  const [quietHours, setQuietHours] = useState({ enabled: false, start: '22:00', end: '08:00' });
+  const [quietHours, setQuietHours] = useState({ enabled: false, start: 'firebase-service-account.json:00', end: '08:00' });
   const { disconnect, currentUser, loadingUser } = useNotifications();
   const { theme, isDark, toggleTheme, isSystemTheme, useSystemThemeSetting } = useTheme();
   const colors = themeConstants[theme];
@@ -212,7 +212,7 @@ export default function ProfileScreen({ navigation }) {
           storage.getItem('quiet_hours_end').then(end => {
             setQuietHours({
               enabled: enabled === 'true',
-              start: start || '22:00',
+              start: start || 'firebase-service-account.json:00',
               end: end || '08:00'
             });
           }).catch(() => {});
@@ -229,7 +229,7 @@ export default function ProfileScreen({ navigation }) {
 
   const changeQuietTime = (type) => {
     const times = type === 'start' 
-      ? ['20:00', '21:00', '22:00', '23:00', '00:00']
+      ? ['20:00', '21:00', 'firebase-service-account.json:00', '23:00', '00:00']
       : ['06:00', '07:00', '08:00', '09:00', '10:00'];
       
     Alert.alert(

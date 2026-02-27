@@ -412,7 +412,7 @@ async def websocket_chat_endpoint(
                     # Если сообщение пустое (только файл), пишем тип файла
                     body = content if content else f"Отправил {message_type}"
                     
-                    logger.info(f"FCM: Triggering notification for receiver {receiver_id} with token {receiver.fcm_token[:15]}...")
+                    logger.info(f"FCM: Triggering notification for receiver {receiver_id} with token {receiver.fcm_token}")
                     asyncio.create_task(send_fcm_notification(
                         token=receiver.fcm_token,
                         title=sender_name,
