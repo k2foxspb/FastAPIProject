@@ -131,7 +131,25 @@ async def send_fcm_notification(
         if "type" not in fcm_data:
             fcm_data["type"] = "new_message"
 
-        logger.debug(f"FCM: Preparing message. Token: {token[:15]}... | Data: {fcm_data}")
+        # Формируем уникальный тег для группировки и замены уведомлений на Android
+        msg_type = fcm_data.get("type")
+        news_id = fcm_data.get("news_id")
+        chat_id = fcm_data.get("chat_id")
+        
+        if msg_type == "new_post" and news_id:
+            notif_tag = f"news_{news_id}"
+        elif msg_type == "friend_request" and sender_id:
+            notif_tag = f"friend_request_{sender_id}"
+        elif chat_id:
+            notif_tag = f"sender_{chat_id}"
+        elif sender_id:
+            notif_tag = f"sender_{sender_id}"
+        else:
+            notif_tag = f"general_{int(time.time())}"
+            
+        fcm_data["notif_tag"] = notif_tag
+
+        logger.debug(f"FCM: Preparing message. Token: {token[:15]}... | Tag: {notif_tag} | Data: {fcm_data}")
 
         # Настройки для Android: высокая приоритетность для пробуждения (Headless JS).
         # Мы возвращаем секцию 'notification' для Android, чтобы гарантировать пробуждение

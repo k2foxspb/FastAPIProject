@@ -114,9 +114,11 @@ export async function displayBundledMessage(remoteMessage) {
       }
     }
 
-    const identifier = (type === 'new_post' && newsId) 
-      ? `news_${newsId}` 
-      : (type === 'friend_request' && senderId ? `friend_request_${senderId}` : (senderId ? `sender_${senderId}` : undefined));
+    const identifier = data.notif_tag || (
+      (type === 'new_post' && newsId) 
+        ? `news_${newsId}` 
+        : (type === 'friend_request' && senderId ? `friend_request_${senderId}` : (senderId ? `sender_${senderId}` : undefined))
+    );
     console.log(`[Notifications] Scheduling with identifier: ${identifier}, type: ${type}`);
 
     if (!combinedBody && !nameToDisplay) {
