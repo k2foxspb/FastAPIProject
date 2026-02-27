@@ -134,34 +134,19 @@ async def send_fcm_notification(
         logger.debug(f"FCM: Preparing message. Token: {token[:15]}... | Data: {fcm_data}")
 
         # Настройки для Android: высокая приоритетность для пробуждения (Headless JS).
-        # priority='high' соответствует значению "high" в FCM, что необходимо для пробуждения
-        # устройства из Doze mode и вызова BackgroundMessageHandler.
+        # Мы возвращаем секцию 'notification' для Android, чтобы гарантировать пробуждение
+        # из Doze mode. Однако мы настраиваем Config Plugin, чтобы Expo-notifications
+        # мог перехватывать и кастомизировать это уведомление.
         
-        # Определяем уникальный тег для уведомления (чтобы JS мог заменить системное уведомление своим)
-        notif_tag = None
-        msg_type = fcm_data.get("type")
-        
-        if msg_type == "new_post" and fcm_data.get("news_id"):
-            notif_tag = f"news_{fcm_data.get('news_id')}"
-        elif msg_type == "friend_request":
-            notif_tag = f"friend_request_{sender_id}"
-        elif sender_id:
-            notif_tag = f"sender_{sender_id}"
-
         android_config = messaging.AndroidConfig(
             priority='high',
             ttl=3600 * 24,  # 24 часа
             direct_boot_ok=True,
-            # ❗ Мы ВОЗВРАЩАЕМ секцию notification для надежности доставки.
-            # На некоторых устройствах (Android 12+) только data-only сообщения могут блокироваться системой.
-            # Системное уведомление ГАРАНТИРОВАННО покажется и разбудит Headless JS.
-            # Используя тот же 'tag', что и 'identifier' в expo-notifications (JS),
-            # мы позволяем JS-коду "заменить" системное уведомление своим (с кнопками).
             notification=messaging.AndroidNotification(
                 title=title,
                 body=body,
-                tag=notif_tag,
                 channel_id=fcm_data.get("android_channel_id", "messages"),
+                tag=fcm_data.get("notif_tag"),
                 priority=messaging.Priority.HIGH,
                 default_sound=True,
                 default_vibrate_timings=True,
@@ -187,10 +172,8 @@ async def send_fcm_notification(
             )
         )
 
-        # Для iOS мы используем aps.alert в apns_config (выше), что делает сообщение "уведомлением".
-        # Для Android мы используем data-only сообщение (без секции notification), 
-        # чтобы оно не отображалось системой автоматически, но будило BackgroundMessageHandler.
-        # Это позволяет JS-коду отобразить кастомное уведомление через expo-notifications.
+        # Сборка сообщения.
+        # Комбинация Notification + Data гарантирует доставку и пробуждение.
         message = messaging.Message(
             data=fcm_data,
             token=token,
@@ -206,7 +189,7 @@ async def send_fcm_notification(
             except RuntimeError:
                 loop = asyncio.get_event_loop()
                 
-            logger.info(f"FCM: Sending to {token[:15]}... Title: '{title}' (Notification + Data for Android)")
+            logger.info(f"FCM: Sending to {token[:15]}... Title: '{title}' (Notification + Data)")
             # Используем run_in_executor, так как Firebase Admin SDK блокирующий (синхронный)
             start_time = time.time()
             response = await loop.run_in_executor(None, lambda: messaging.send(message))

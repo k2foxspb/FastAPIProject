@@ -36,10 +36,21 @@ export async function requestUserPermission() {
   try {
     const msg = await getMessaging();
     if (!msg) return false;
+
+    // IOS/FCM permission
     const authStatus = await msg.requestPermission();
     const enabled =
       authStatus === messaging.AuthorizationStatus.AUTHORIZED ||
       authStatus === messaging.AuthorizationStatus.PROVISIONAL;
+
+    // Android POST_NOTIFICATIONS permission (for Android 13+)
+    if (Platform.OS === 'android' && Platform.Version >= 33) {
+      const { PermissionsAndroid } = require('react-native');
+      const granted = await PermissionsAndroid.request(
+        PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS,
+      );
+      console.log('[FCM] Android POST_NOTIFICATIONS permission:', granted);
+    }
 
     if (enabled) {
       console.log('Authorization status:', authStatus);
@@ -97,14 +108,13 @@ export async function setupCloudMessaging() {
       }
     }
 
-    // Обработка уведомлений, когда приложение на переднем плане
+    // Обработка уведомлений, когда приложение на переднем плани (onMessage)
+    // Согласно руководству, мы используем Notifications.scheduleNotificationAsync для отображения в foreground
     const unsubscribe = msg.onMessage(async remoteMessage => {
       console.log('[FCM] Foreground message received:', JSON.stringify(remoteMessage, null, 2));
 
       if (Platform.OS === 'android') {
         try {
-          const { navigationRef } = require('../navigation/NavigationService');
-
           // Проверяем, не открыт ли сейчас чат с отправителем
           const senderIdRaw = remoteMessage?.data?.sender_id || remoteMessage?.data?.senderId;
           const senderId = senderIdRaw ? parseInt(senderIdRaw, 10) : null;
@@ -114,7 +124,8 @@ export async function setupCloudMessaging() {
           const isActiveChatWithSender = isChatScreen && senderId && currentChatUserId && Number(currentChatUserId) === Number(senderId);
 
           if (!isActiveChatWithSender) {
-            console.log('[FCM] Showing foreground notification');
+            console.log('[FCM] Showing foreground notification via Expo-Notifications');
+            // Передаем данные в displayBundledMessage, который вызывает scheduleNotificationAsync
             await displayBundledMessage(remoteMessage);
           } else {
             console.log('[FCM] In active chat, skipping foreground notification banner (WS will handle sound)');

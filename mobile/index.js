@@ -19,20 +19,16 @@ if (Platform.OS !== 'web') {
     // FCM Background Handler
     messaging().setBackgroundMessageHandler(async remoteMessage => {
       try {
-        console.log('[FCM] Background message received (index.js):', JSON.stringify(remoteMessage));
-      } catch (_) {
-        console.log('[FCM] Background message received (index.js)');
-      }
-      
-      if (Platform.OS === 'android') {
-        // Мы используем data-only сообщения для Android, чтобы избежать пустых системных уведомлений.
-        // Поэтому всегда вызываем displayBundledMessage, если пришло сообщение с данными.
-        try {
-          const { displayBundledMessage } = require('./src/utils/notificationUtils');
-          await displayBundledMessage(remoteMessage);
-        } catch (err) {
-          console.log('[FCM] Error displaying bundled message in background:', err?.message || err);
-        }
+        console.log('[FCM Background] New message:', remoteMessage?.data?.type || 'unknown');
+        
+        // ВАЖНО: В Headless JS (когда приложение закрыто) мы должны 
+        // немедленно вызвать отрисовку уведомления.
+        const { displayBundledMessage } = require('./src/utils/notificationUtils');
+        await displayBundledMessage(remoteMessage);
+        
+        console.log('[FCM Background] Notification scheduled successfully');
+      } catch (err) {
+        console.log('[FCM Background] Error:', err?.message || err);
       }
     });
 
