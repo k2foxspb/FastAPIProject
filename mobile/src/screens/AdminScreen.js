@@ -34,6 +34,7 @@ export default function AdminScreen({ navigation }) {
     { title: 'Отзывы', icon: 'star-outline', screen: 'AdminReviews' },
     { title: 'Чаты пользователей', icon: 'chatbubbles-outline', screen: 'AdminChats', ownerOnly: true },
     { title: 'Загрузить новую версию приложения', icon: 'cloud-upload-outline', screen: 'AdminAppUpload', ownerOnly: true },
+    { title: 'Логи', icon: 'document-text-outline', screen: 'AdminLogs', ownerOnly: true },
   ];
 
   const filteredMenu = adminMenu.filter(item => !item.ownerOnly || role === 'owner');

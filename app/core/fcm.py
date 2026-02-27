@@ -56,6 +56,32 @@ try:
 except Exception as e:
     logger.exception(f"FCM: Critical error during Firebase Admin SDK module loading: {e}")
 
+async def invalidate_fcm_token(token: str):
+    """
+    Удаляет FCM токен из базы данных у всех пользователей, которым он принадлежит.
+    Используется когда Firebase сообщает, что токен больше не валиден.
+    """
+    if not token:
+        return
+
+    try:
+        from app.database import async_session_maker
+        from app.models.users import User as UserModel
+        from sqlalchemy import update
+        
+        async with async_session_maker() as session:
+            # Сбрасываем fcm_token в null для всех пользователей с этим токеном
+            stmt = update(UserModel).where(UserModel.fcm_token == token).values(fcm_token=None)
+            result = await session.execute(stmt)
+            await session.commit()
+            
+            if result.rowcount > 0:
+                logger.info(f"FCM: Automatically invalidated and removed token {token[:15]}... from {result.rowcount} user(s)")
+            else:
+                logger.debug(f"FCM: Token {token[:15]}... not found in database for invalidation")
+    except Exception as e:
+        logger.error(f"FCM: Failed to invalidate token {token[:15]}... in database: {e}")
+
 async def send_fcm_notification(
     token: str, 
     title: str, 
@@ -171,10 +197,14 @@ async def send_fcm_notification(
         except (messaging.UnregisteredError, exceptions.NotFoundError) as e:
             # Токен больше не валиден (приложение удалено или токен протух)
             logger.warning(f"FCM: Token is unregistered (invalid): {e} | Token: {token}")
+            # Автоматически удаляем невалидный токен из базы данных
+            asyncio.create_task(invalidate_fcm_token(token))
             return False
         except exceptions.InvalidArgumentError as e:
             # Токен имеет неверный формат или другие аргументы неверны
             logger.warning(f"FCM: Invalid arguments (bad token format?): {e} | Token: {token}")
+            # Если токен имеет неверный формат, его тоже стоит удалить
+            asyncio.create_task(invalidate_fcm_token(token))
             return False
         except exceptions.FirebaseError as e:
             # Общая ошибка Firebase SDK

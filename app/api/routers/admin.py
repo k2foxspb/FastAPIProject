@@ -545,3 +545,27 @@ async def reject_object(
     obj.moderation_status = "rejected"
     await db.commit()
     return {"message": f"{model} {id} rejected"}
+
+@router.get("/logs")
+async def get_logs(
+    limit: int = Query(1000, description="Количество последних строк"),
+    owner: UserModel = Depends(get_current_owner)
+):
+    """Возвращает последние строки логов (только для владельца)."""
+    log_file = "info.log"
+    
+    # Пытаемся найти файл в корне проекта
+    if not os.path.exists(log_file):
+        root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        log_file = os.path.join(root_dir, "info.log")
+
+    if not os.path.exists(log_file):
+        return {"logs": [f"Log file not found at {log_file}"]}
+    
+    try:
+        with open(log_file, "r", encoding="utf-8", errors="replace") as f:
+            lines = f.readlines()
+            last_lines = [line.strip() for line in lines[-limit:]]
+            return {"logs": last_lines}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error reading logs: {str(e)}")
