@@ -10,25 +10,44 @@ from loguru import logger
 from urllib.parse import quote
 
 async def send_verification_email(email: str, token: str):
-    logger.info(f"Sending verification email to {email}")
-    verification_url = f"{DOMAIN}/verify-email?token={token}"
+    logger.info(f"Sending verification email with link to {email}")
 
-    subject = "Код подтверждения"
+    verification_link = f"{DOMAIN}/verify-email?token={token}"
+    
+    # Прямая ссылка на приложение (deeplink)
+    deeplink = f"{MOBILE_DEEPLINK}?token={token}"
+    
+    subject = "Подтверждение адреса"
     
     text = f"""Привет!
 
-Пожалуйста, подтверди свой адрес, перейдя по ссылке:
-{verification_url}
+Чтобы подтвердить свой адрес, пожалуйста, перейди по ссылке ниже:
+
+{verification_link}
+
+Или открой прямо в приложении:
+{deeplink}
 
 Это нужно, чтобы убедиться, что адрес принадлежит тебе.
-
-Если ты не регистрировался, просто удали это письмо.
 
 Команда {MAIL_FROM_NAME}
 """
     
-    # Временно убираем HTML полностью
-    await send_email(email, subject, text, None)
+    # Упрощенный HTML без сложных стилей
+    html = f"""
+    <html>
+    <body>
+        <p>Привет!</p>
+        <p>Чтобы подтвердить свой адрес, пожалуйста, перейди по ссылке ниже:</p>
+        <p><a href="{verification_link}" style="display: inline-block; padding: 10px 20px; background-color: #4CAF50; color: white; text-decoration: none; border-radius: 5px;">Подтвердить email</a></p>
+        <p>Или <a href="{deeplink}">открыть в приложении</a></p>
+        <br>
+        <p>Команда {MAIL_FROM_NAME}</p>
+    </body>
+    </html>
+    """
+    
+    await send_email(email, subject, text, html)
 
 async def send_welcome_email(email: str):
     logger.info(f"Sending welcome email to {email}")
@@ -36,7 +55,7 @@ async def send_welcome_email(email: str):
     
     text = f"""Привет!
 
-Рады, что ты с нами. Через несколько минут тебе придет ссылка для подтверждения адреса.
+Рады, что ты с нами. Через 10 секунд тебе придет ссылка для подтверждения адреса.
 
 Это письмо не требует ответа.
 

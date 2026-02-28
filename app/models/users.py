@@ -26,6 +26,7 @@ class User(Base):
 
     avatar_url: Mapped[str | None] = mapped_column(String, nullable=True)
     avatar_preview_url: Mapped[str | None] = mapped_column(String, nullable=True)
+    verification_code: Mapped[str | None] = mapped_column(String, nullable=True)
     fcm_token: Mapped[str | None] = mapped_column(String, nullable=True)
 
     products: Mapped[list["Product"]] = relationship("Product", back_populates="seller")

@@ -50,7 +50,7 @@ import tempfile
 # cv2 imported inside save_user_photo to avoid dependency issues if not installed
 from PIL import Image
 from fastapi import UploadFile, File, Form
-from datetime import datetime
+from datetime import datetime, timezone
 from app.utils import storage
 
 from sqlalchemy.orm import selectinload
@@ -414,15 +414,18 @@ async def create_user(
 
     if existing_user:
         if not existing_user.is_active:
-            # Если пользователь не активен, генерируем новый токен и отправляем письмо повторно
-            verification_token = create_access_token(data={"sub": existing_user.email, "type": "verification"})
+            # Если пользователь не активен, генерируем новый код и отправляем письмо повторно
+            import random
+            verification_code = "".join([str(random.randint(0, 9)) for _ in range(6)])
+            existing_user.verification_code = verification_code
+            await db.commit()
             
             # Отправка письма через Celery
             try:
-                send_verification_email_task.delay(existing_user.email, verification_token)
+                send_verification_email_task.delay(existing_user.email, verification_code)
             except Exception as e:
                 print(f"Error sending email task for existing user: {e}")
-                background_tasks.add_task(send_welcome_and_verification_email, existing_user.email, verification_token)
+                background_tasks.add_task(send_welcome_and_verification_email, existing_user.email, verification_code)
             
             from fastapi.responses import JSONResponse
             from fastapi.encoders import jsonable_encoder
@@ -463,9 +466,22 @@ async def create_user(
     )
 
     # Добавление в сессию и сохранение в базе
+    import random
+    from datetime import timedelta
+    verification_code = "".join([str(random.randint(0, 9)) for _ in range(6)])
+    db_user.verification_code = verification_code
+    
     db.add(db_user)
     await db.commit()
     await db.refresh(db_user)
+
+    # Генерация токена для ссылки (для обратной совместимости с фронтом)
+    expire = datetime.now(timezone.utc) + timedelta(hours=24)
+    verification_token = jwt.encode(
+        {"sub": db_user.email, "type": "verification", "exp": expire},
+        SECRET_KEY,
+        algorithm=ALGORITHM
+    )
 
     # Если была загружена аватарка, создаем альбом "Аватарки" и добавляем фото туда
     if avatar_url:
@@ -503,9 +519,6 @@ async def create_user(
             print(f"Error creating avatar album/photo during registration: {e}")
             await db.rollback()
 
-    # Генерация токена подтверждения
-    verification_token = create_access_token(data={"sub": db_user.email, "type": "verification"})
-    
     # Отправка письма
     try:
         send_verification_email_task.delay(db_user.email, verification_token)
@@ -574,6 +587,34 @@ async def debug_mail_settings(current_user: UserModel = Depends(get_current_user
         "REDIS_STATUS": redis_status,
         "CELERY_BROKER_URL": CELERY_BROKER_URL.replace(MAIL_PASSWORD or "pwd", "***") if MAIL_PASSWORD else CELERY_BROKER_URL
     }
+
+
+@router.post("/verify-code")
+async def verify_code(
+    email: str = Form(...),
+    code: str = Form(...),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """
+    Подтверждает email пользователя по 6-значному коду.
+    """
+    result = await db.execute(select(UserModel).where(UserModel.email == email))
+    user = result.scalar_one_or_none()
+
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Пользователь не найден")
+    
+    if user.is_active:
+        return {"message": "Email уже подтвержден"}
+
+    if user.verification_code != code:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Неверный код подтверждения")
+
+    user.is_active = True
+    user.verification_code = None
+    await db.commit()
+
+    return {"message": "Email успешно подтвержден"}
 
 
 @router.get("/verify-email")
