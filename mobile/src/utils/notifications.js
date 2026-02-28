@@ -228,18 +228,23 @@ export async function getFcmToken() {
     }
 
     const token = await msg.getToken();
-    console.log('[FCM] Token obtained:', token ? (token.substring(0, 15) + '...') : 'NULL');
+    console.log('[FCM] Token obtained successfully:', token ? (token.substring(0, 15) + '...') : 'NULL');
     if (token) {
-      await storage.saveItem('fcm_token', token);
+      const saved = await storage.getItem('fcm_token');
+      if (saved !== token) {
+        console.log('[FCM] Saving NEW token to storage');
+        await storage.saveItem('fcm_token', token);
+      }
     } else {
-      console.warn('[FCM] No token returned from getToken()');
+      console.warn('[FCM] No token returned from getToken() - check google-services.json and network');
     }
     return token;
   } catch (error) {
-    console.error('[FCM] Failed to get FCM token:', error);
+    console.error('[FCM] CRITICAL: Failed to get FCM token:', error);
     // Дополнительные детали ошибки
     if (error.code) console.log('[FCM] Error code:', error.code);
     if (error.message) console.log('[FCM] Error message:', error.message);
+    if (error.nativeStackAndroid) console.log('[FCM] Native Android Stack present');
     return null;
   }
 }

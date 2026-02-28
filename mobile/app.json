@@ -2,6 +2,7 @@
   "expo": {
     "sdkVersion": "54.0.0",
     "plugins": [
+      "./plugins/withPlugin",
       [
         "expo-build-properties",
         {

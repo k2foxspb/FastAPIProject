@@ -96,12 +96,12 @@ export async function displayBundledMessage(remoteMessage) {
     const notificationId = data.notif_tag || (
       (type === 'new_post' && newsId) 
         ? `news_${newsId}` 
-        : (type === 'friend_request' && senderId ? `friend_request_${senderId}` : (senderId ? `sender_${senderId}` : undefined))
+        : (type === 'friend_request' && senderId ? `friend_request_${senderId}` : (senderId ? `sender_${senderId}` : `gen_${Date.now()}`))
     );
     
     const groupId = senderId ? `group_sender_${senderId}` : (newsId ? `group_news_${newsId}` : 'group_general');
 
-    console.log(`[Notifee] Displaying with id: ${notificationId}, type: ${type}`);
+    console.log(`[Notifee] Displaying with id: ${notificationId}, type: ${type}, groupId: ${groupId}`);
 
     if (!combinedBody && !nameToDisplay) {
       console.log('[Notifee] Skipping display: empty content');
@@ -124,6 +124,7 @@ export async function displayBundledMessage(remoteMessage) {
       });
     }
 
+    // Display the main notification
     await notifee.displayNotification({
       id: notificationId,
       title: nameToDisplay,
@@ -132,7 +133,9 @@ export async function displayBundledMessage(remoteMessage) {
       android: {
         channelId: channelId,
         groupId: groupId,
-        groupAlertBehavior: AndroidGroupAlertBehavior.SUMMARY,
+        groupAlertBehavior: AndroidGroupAlertBehavior.ALL,
+        smallIcon: 'notification_icon', // Matches the name in withNotificationAndroidPlugin.js
+        color: '#023c69',
         pressAction: {
           id: 'default',
         },
@@ -144,6 +147,26 @@ export async function displayBundledMessage(remoteMessage) {
         threadId: groupId,
       }
     });
+
+    // On Android, we must also display a group summary for groups to work correctly
+    if (Platform.OS === 'android') {
+        await notifee.displayNotification({
+            id: `${groupId}_summary`,
+            title: nameToDisplay,
+            body: combinedBody,
+            android: {
+                channelId: channelId,
+                groupId: groupId,
+                groupSummary: true,
+                groupAlertBehavior: AndroidGroupAlertBehavior.SUMMARY,
+                smallIcon: 'notification_icon',
+                color: '#023c69',
+                pressAction: {
+                    id: 'default',
+                },
+            },
+        });
+    }
     
   } catch (e) {
     console.log('[Notifee] displayBundledMessage error:', e?.message || e);
