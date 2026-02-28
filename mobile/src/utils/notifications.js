@@ -46,10 +46,23 @@ export async function requestUserPermission() {
     // Android POST_NOTIFICATIONS permission (for Android 13+)
     if (Platform.OS === 'android' && Platform.Version >= 33) {
       const { PermissionsAndroid } = require('react-native');
-      const granted = await PermissionsAndroid.request(
+      const hasPermission = await PermissionsAndroid.check(
         PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS,
       );
-      console.log('[FCM] Android POST_NOTIFICATIONS permission:', granted);
+      
+      if (!hasPermission) {
+        const granted = await PermissionsAndroid.request(
+          PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS,
+        );
+        console.log('[FCM] Android POST_NOTIFICATIONS permission request result:', granted);
+        if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
+          console.warn('[FCM] Android POST_NOTIFICATIONS permission denied');
+          // Мы не выходим сразу, так как FCM permission может быть уже AUTHORIZED, 
+          // но на Android 13+ системные уведомления всё равно не покажутся без этого.
+        }
+      } else {
+        console.log('[FCM] Android POST_NOTIFICATIONS permission already granted');
+      }
     }
 
     if (enabled) {
@@ -84,15 +97,36 @@ export async function setupCloudMessaging() {
     // Настраиваем глобальный хендлер уведомлений
     if (Platform.OS === 'android') {
       try {
-        // Подавляем стандартные баннеры Expo-notifications на Android в Foreground, 
-        // так как мы сами вызываем displayBundledMessage через FCM onMessage.
+        // Подавляем стандартные баннеры Expo-notifications на Android в Foreground по умолчанию,
+        // но разрешаем, если мы сами их запланировали через scheduleNotificationAsync.
         Notifications.setNotificationHandler({
-          handleNotification: async () => ({
-            shouldShowBanner: false,
-            shouldShowList: false,
-            shouldPlaySound: false,
-            shouldSetBadge: false,
-          }),
+          handleNotification: async (notification) => {
+            // Проверяем, в чате ли мы с отправителем (чтобы не показывать баннер, если чат открыт)
+            const currentRoute = navigationRef?.getCurrentRoute?.();
+            const isChatScreen = currentRoute?.name === 'Chat';
+            const data = notification.request.content.data || {};
+            const senderIdRaw = data.sender_id || data.senderId;
+            const senderId = senderIdRaw ? parseInt(senderIdRaw, 10) : null;
+            const currentChatUserId = currentRoute?.params?.userId ? parseInt(currentRoute.params.userId, 10) : null;
+            const isActiveChatWithSender = isChatScreen && senderId && currentChatUserId && Number(currentChatUserId) === Number(senderId);
+
+            if (isActiveChatWithSender) {
+              return {
+                shouldShowBanner: false,
+                shouldShowList: false,
+                shouldPlaySound: false,
+                shouldSetBadge: false,
+              };
+            }
+
+            return {
+              shouldShowBanner: true,
+              shouldShowList: true,
+              shouldPlaySound: true,
+              shouldSetBadge: true,
+              priority: Notifications.AndroidNotificationPriority.MAX,
+            };
+          },
         });
 
         // Создаем канал уведомлений
@@ -109,7 +143,6 @@ export async function setupCloudMessaging() {
     }
 
     // Обработка уведомлений, когда приложение на переднем плани (onMessage)
-    // Согласно руководству, мы используем Notifications.scheduleNotificationAsync для отображения в foreground
     const unsubscribe = msg.onMessage(async remoteMessage => {
       console.log('[FCM] Foreground message received:', JSON.stringify(remoteMessage, null, 2));
 
@@ -125,10 +158,16 @@ export async function setupCloudMessaging() {
 
           if (!isActiveChatWithSender) {
             console.log('[FCM] Showing foreground notification via Expo-Notifications');
-            // Передаем данные в displayBundledMessage, который вызывает scheduleNotificationAsync
+            // ВАЖНО: Мы вызываем displayBundledMessage, который использует тот же identifier, что и tag в FCM.
+            // Это обновит/заменит системное уведомление на кастомное с кнопками.
             await displayBundledMessage(remoteMessage);
           } else {
             console.log('[FCM] In active chat, skipping foreground notification banner (WS will handle sound)');
+            // Если мы в чате, нам нужно убрать системное уведомление, которое Android показал автоматически
+            const tag = remoteMessage?.data?.notif_tag || remoteMessage?.notification?.android?.tag;
+            if (tag) {
+              Notifications.dismissNotificationAsync(tag).catch(() => {});
+            }
           }
         } catch (e) {
           console.log('[FCM] Error handling foreground message:', e);
@@ -215,9 +254,16 @@ export async function setupCloudMessaging() {
       .catch(err => console.error('getInitialNotification failed:', err));
 
     // --- EXPO NOTIFICATIONS HANDLERS ---
+    // Слушатель входящих уведомлений на переднем плане (для логики внутри приложения)
+    const notificationReceivedSubscription = Notifications.addNotificationReceivedListener(notification => {
+      console.log('[Notifications] Foreground notification received by Expo:', notification.request.identifier);
+      Vibration.vibrate(100); // Тактильная отдача как в руководстве
+    });
+
     // Обработка клика по уведомлению (передний план / фон)
     const notificationSubscription = Notifications.addNotificationResponseReceivedListener(response => {
       console.log('[Notifications] Response received');
+      Vibration.vibrate(70); // Небольшая вибрация при клике
       handleNotificationResponse(response);
     });
 
@@ -231,6 +277,7 @@ export async function setupCloudMessaging() {
 
     return () => {
       unsubscribe();
+      notificationReceivedSubscription.remove();
       notificationSubscription.remove();
     };
   } catch (error) {
@@ -250,6 +297,15 @@ export async function getFcmToken() {
     // Register for remote notifications on iOS
     if (Platform.OS === 'ios') {
       await msg.registerDeviceForRemoteMessages();
+      
+      // Дополнительная проверка APNs токена (согласно гайду)
+      const apnsToken = await msg.getAPNSToken();
+      if (!apnsToken) {
+        console.warn('[FCM] APNs token is null. Push notifications might not work on iOS simulator or if not configured.');
+        // На симуляторах iOS APNs токена обычно нет, и getToken() может зависнуть или вернуть ошибку.
+      } else {
+        console.log('[FCM] APNs Token obtained:', apnsToken.substring(0, 10) + '...');
+      }
     }
 
     const token = await msg.getToken();

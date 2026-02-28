@@ -152,17 +152,26 @@ async def send_fcm_notification(
         logger.debug(f"FCM: Preparing message. Token: {token[:15]}... | Tag: {notif_tag} | Data: {fcm_data}")
 
         # Настройки для Android: высокая приоритетность для пробуждения (Headless JS).
-        # Мы используем ТОЛЬКО 'data' для Android. Это "Data-only" сообщения.
-        # Это необходимо, чтобы гарантированно вызывался setBackgroundMessageHandler в JS,
-        # который отрисует уведомление через expo-notifications с кнопками (Ответить/Прочитано).
-        # Если добавить секцию notification, система Android покажет ее сама БЕЗ кнопок
-        # и может не запустить JS-код.
+        # Мы используем И 'notification' И 'data' для Android.
+        # 'notification' гарантирует, что ОС Android "разбудит" приложение и покажет баннер даже в Doze mode.
+        # 'data' содержит метаданные для JS, чтобы добавить кнопки (Ответить/Прочитано).
+        # Благодаря 'tag', наше локальное уведомление из JS заменит системное.
         
         android_config = messaging.AndroidConfig(
             priority='high',
             ttl=3600 * 24,  # 24 часа
             direct_boot_ok=True,
-            # ВАЖНО: Секция notification ОТСУТСТВУЕТ для Android
+            notification=messaging.AndroidNotification(
+                title=title,
+                body=body,
+                tag=notif_tag,
+                channel_id=fcm_data.get("android_channel_id", "messages"),
+                priority='high',
+                default_sound=True,
+                default_vibrate_timings=True,
+                sticky=False,
+                visibility='public'
+            )
         )
 
         # Настройки для iOS (APNS)
@@ -201,7 +210,7 @@ async def send_fcm_notification(
             except RuntimeError:
                 loop = asyncio.get_event_loop()
                 
-            logger.info(f"FCM: Sending to {token[:15]}... Title: '{title}' (Android: Data-only, iOS: Notification+Data)")
+            logger.info(f"FCM: Sending to {token[:15]}... Title: '{title}' (Android: Notification+Data, iOS: Notification+Data)")
             # Используем run_in_executor, так как Firebase Admin SDK блокирующий (синхронный)
             start_time = time.time()
             response = await loop.run_in_executor(None, lambda: messaging.send(message))

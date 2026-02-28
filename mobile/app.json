@@ -3,6 +3,19 @@
     "sdkVersion": "54.0.0",
     "plugins": [
       [
+        "expo-build-properties",
+        {
+          "ios": {
+            "useFrameworks": "static"
+          },
+          "android": {
+            "compileSdkVersion": 35,
+            "targetSdkVersion": 35,
+            "buildToolsVersion": "35.0.0"
+          }
+        }
+      ],
+      [
         "expo-notifications",
         {
           "icon": "./assets/logo1024.png",
@@ -41,10 +54,17 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.k2foxspb.fokinfun",
+      "entitlements": {
+        "aps-environment": "production"
+      },
       "associatedDomains": [
         "applinks:fokin.fun"
       ],
       "infoPlist": {
+        "UIBackgroundModes": [
+          "remote-notification",
+          "fetch"
+        ],
         "NSCameraUsageDescription": "Приложение запрашивает доступ к камере, чтобы вы могли делать снимки.",
         "NSMicrophoneUsageDescription": "Приложение запрашивает доступ к микрофону.",
         "NSPhotoLibraryUsageDescription": "Приложение запрашивает доступ к вашим фотографиям, чтобы вы могли делиться ими."
