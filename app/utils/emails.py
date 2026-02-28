@@ -9,45 +9,26 @@ from app.core.config import (
 from loguru import logger
 from urllib.parse import quote
 
-async def send_verification_email(email: str, token: str):
-    logger.info(f"Sending verification email with link to {email}")
+async def send_verification_email(email: str, code: str):
+    logger.info(f"Sending verification code email to {email}")
 
-    verification_link = f"{DOMAIN}/verify-email?token={token}"
-    
-    # Прямая ссылка на приложение (deeplink)
-    deeplink = f"{MOBILE_DEEPLINK}?token={token}"
-    
-    subject = "Подтверждение адреса"
+    subject = "Код подтверждения"
     
     text = f"""Привет!
 
-Чтобы подтвердить свой адрес, пожалуйста, перейди по ссылке ниже:
+Твой код для подтверждения: {code}
 
-{verification_link}
-
-Или открой прямо в приложении:
-{deeplink}
+Просто введи его в приложении.
 
 Это нужно, чтобы убедиться, что адрес принадлежит тебе.
+
+Если ты не регистрировался, просто удали это письмо.
 
 Команда {MAIL_FROM_NAME}
 """
     
-    # Упрощенный HTML без сложных стилей
-    html = f"""
-    <html>
-    <body>
-        <p>Привет!</p>
-        <p>Чтобы подтвердить свой адрес, пожалуйста, перейди по ссылке ниже:</p>
-        <p><a href="{verification_link}" style="display: inline-block; padding: 10px 20px; background-color: #4CAF50; color: white; text-decoration: none; border-radius: 5px;">Подтвердить email</a></p>
-        <p>Или <a href="{deeplink}">открыть в приложении</a></p>
-        <br>
-        <p>Команда {MAIL_FROM_NAME}</p>
-    </body>
-    </html>
-    """
-    
-    await send_email(email, subject, text, html)
+    # Временно убираем HTML полностью
+    await send_email(email, subject, text, None)
 
 async def send_welcome_email(email: str):
     logger.info(f"Sending welcome email to {email}")
@@ -55,7 +36,7 @@ async def send_welcome_email(email: str):
     
     text = f"""Привет!
 
-Рады, что ты с нами. Через 10 секунд тебе придет ссылка для подтверждения адреса.
+Рады, что ты с нами. Через несколько секунд тебе придет код для подтверждения адреса.
 
 Это письмо не требует ответа.
 
@@ -64,12 +45,12 @@ async def send_welcome_email(email: str):
     # Для приветственного письма используем только текст
     await send_email(email, subject, text, None)
 
-async def send_welcome_and_verification_email(email: str, token: str):
+async def send_welcome_and_verification_email(email: str, code: str):
     """Отправляет приветствие, а затем письмо верификации с паузой."""
     await send_welcome_email(email)
     import asyncio
     await asyncio.sleep(10)
-    await send_verification_email(email, token)
+    await send_verification_email(email, code)
 
 async def send_email(email: str, subject: str, text: str, html: str | None = None):
     logger.info(f"Preparing to send email to {email} (Subject: {subject})")

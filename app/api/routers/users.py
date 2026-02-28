@@ -1,11 +1,9 @@
 import asyncio
 import jwt
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Request
-from starlette.templating import Jinja2Templates
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete, or_, and_, literal, update
 from fastapi.security import OAuth2PasswordRequestForm
-from fastapi.responses import RedirectResponse
 
 from app.core.config import SECRET_KEY, ALGORITHM, MOBILE_DEEPLINK
 from app.models.users import (
@@ -50,12 +48,10 @@ import tempfile
 # cv2 imported inside save_user_photo to avoid dependency issues if not installed
 from PIL import Image
 from fastapi import UploadFile, File, Form
-from datetime import datetime, timezone
+from datetime import datetime
 from app.utils import storage
 
 from sqlalchemy.orm import selectinload
-
-templates = Jinja2Templates(directory="app/templates")
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -432,7 +428,7 @@ async def create_user(
             return JSONResponse(
                 status_code=status.HTTP_200_OK,
                 content={
-                    "message": "User already registered but not verified. Verification email resent.",
+                    "message": "User already registered but not verified. Verification code resent.",
                     "user": jsonable_encoder(UserSchema.model_validate(existing_user))
                 }
             )
@@ -467,21 +463,12 @@ async def create_user(
 
     # Добавление в сессию и сохранение в базе
     import random
-    from datetime import timedelta
     verification_code = "".join([str(random.randint(0, 9)) for _ in range(6)])
     db_user.verification_code = verification_code
     
     db.add(db_user)
     await db.commit()
     await db.refresh(db_user)
-
-    # Генерация токена для ссылки (для обратной совместимости с фронтом)
-    expire = datetime.now(timezone.utc) + timedelta(hours=24)
-    verification_token = jwt.encode(
-        {"sub": db_user.email, "type": "verification", "exp": expire},
-        SECRET_KEY,
-        algorithm=ALGORITHM
-    )
 
     # Если была загружена аватарка, создаем альбом "Аватарки" и добавляем фото туда
     if avatar_url:
@@ -521,10 +508,10 @@ async def create_user(
 
     # Отправка письма
     try:
-        send_verification_email_task.delay(db_user.email, verification_token)
+        send_verification_email_task.delay(db_user.email, db_user.verification_code)
     except Exception as e:
         print(f"Failed to send verification email via Celery: {e}")
-        background_tasks.add_task(send_welcome_and_verification_email, db_user.email, verification_token)
+        background_tasks.add_task(send_welcome_and_verification_email, db_user.email, db_user.verification_code)
 
     # Планируем удаление пользователя через 15 минут, если он не активируется
     try:
@@ -541,14 +528,14 @@ async def test_email_send(email: str, background_tasks: BackgroundTasks):
     """
     Эндпоинт для проверки отправки почты через Celery.
     """
-    token = "test-token-123"
+    code = "123456"
     try:
-        send_verification_email_task.delay(email, token)
+        send_verification_email_task.delay(email, code)
         message = f"Test email scheduled via Celery for {email}."
     except Exception as e:
         logger.error(f"Test email Celery failed: {e}")
         # Если Celery упал (например, нет соединения с Redis), пробуем отправить в фоне напрямую через FastAPI
-        background_tasks.add_task(send_welcome_and_verification_email, email, token)
+        background_tasks.add_task(send_welcome_and_verification_email, email, code)
         message = f"Test email scheduled via FastAPI BackgroundTasks for {email} (Celery failed: {str(e)})."
     
     return {"message": message}
@@ -617,57 +604,6 @@ async def verify_code(
     return {"message": "Email успешно подтвержден"}
 
 
-@router.get("/verify-email")
-async def verify_email(request: Request, token: str, redirect: str | None = None, db: AsyncSession = Depends(get_async_db)):
-    """
-    Подтверждает email пользователя по токену.
-    Возвращает HTML-страницу со статусом и кнопкой/редиректом в приложение.
-    """
-    deeplink_target = redirect or MOBILE_DEEPLINK
-
-    def render_status(status_str: str, message: str):
-        # Формируем deeplink для кнопки
-        dl = None
-        if deeplink_target:
-            dl = f"{deeplink_target}?status={status_str}"
-            if status_str == "error":
-                from urllib.parse import quote
-                dl += f"&reason={quote(message)}"
-        
-        return templates.TemplateResponse(
-            "verify_status.html", 
-            {
-                "request": request, 
-                "status": status_str, 
-                "message": message,
-                "deeplink": dl
-            }
-        )
-
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        email: str = payload.get("sub")
-        token_type: str = payload.get("type")
-        if email is None or token_type != "verification":
-            return render_status("error", "Неверный токен подтверждения.")
-    except jwt.ExpiredSignatureError:
-        return render_status("error", "Срок действия ссылки истек. Пожалуйста, запросите новое письмо.")
-    except jwt.PyJWTError:
-        return render_status("error", "Неверный или поврежденный токен.")
-
-    result = await db.scalars(select(UserModel).where(UserModel.email == email))
-    user = result.first()
-
-    if not user:
-        return render_status("error", "Пользователь не найден.")
-    
-    if user.is_active:
-        return render_status("success", "Ваш Email уже был подтвержден ранее. Вы можете войти в приложение.")
-
-    user.is_active = True
-    await db.commit()
-
-    return render_status("success", "Ваш Email успешно подтвержден! Теперь вы можете пользоваться всеми функциями приложения.")
 
 
 @router.post("/token", response_model=TokenResponse)
@@ -694,7 +630,7 @@ async def login(
     if not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Email not verified. Please check your email for verification link.",
+            detail="Email not verified. Please check your email for verification code.",
             headers={"WWW-Authenticate": "Bearer"},
         )
 

@@ -6,11 +6,11 @@ from app.utils.emails import send_email, send_verification_email, send_welcome_e
 from loguru import logger
 
 @celery_app.task(name="send_verification_email_task")
-def send_verification_email_task(email: str, token: str):
+def send_verification_email_task(email: str, code: str):
     """Задача Celery для последовательной отправки приветствия и подтверждения."""
     logger.info(f"Starting Celery task send_verification_email_task for {email}")
     try:
-        asyncio.run(send_welcome_and_verification_email(email, token))
+        asyncio.run(send_welcome_and_verification_email(email, code))
         logger.info(f"Celery task send_verification_email_task finished successfully for {email}")
         return {"status": "success", "to": email}
     except Exception as e:
