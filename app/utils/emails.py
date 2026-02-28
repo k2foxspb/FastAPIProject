@@ -34,7 +34,7 @@ async def send_verification_email(email: str, code: str):
           <p style="font-size: 16px;">Здравствуйте!</p>
           <p style="font-size: 16px;">Ваш код для подтверждения в приложении <strong>{MAIL_FROM_NAME}</strong>:</p>
           <div style="background-color: #fdfdfd; padding: 20px; border: 1px solid #e1e8ed; border-left: 5px solid #3498db; margin: 25px 0; border-radius: 4px; text-align: center;">
-            <span style="font-size: 32px; font-weight: bold; letter-spacing: 10px; color: #3498db;">{code}</span>
+            <span style="font-size: 32px; font-weight: bold; color: #3498db;">{code}</span>
           </div>
           <p style="font-size: 16px;">Введите этот код на экране подтверждения в приложении.</p>
           <p style="font-size: 14px; color: #7f8c8d; margin-top: 30px;">Если вы не регистрировались в нашем приложении, просто удалите это письмо.</p>
@@ -86,7 +86,7 @@ async def send_welcome_email(email: str):
 async def send_welcome_and_verification_email(email: str, code: str):
     """Отправляет одно комбинированное письмо с приветствием и кодом (более надежно для антиспам-фильтров)."""
     logger.info(f"Sending combined welcome and verification email to {email}")
-    subject = f"Добро пожаловать в {MAIL_FROM_NAME}! Ваш код подтверждения: {code}"
+    subject = f"Код подтверждения для {MAIL_FROM_NAME}"
     
     text = f"""Здравствуйте!
 
@@ -96,9 +96,12 @@ async def send_welcome_and_verification_email(email: str, code: str):
 
 Ваш код подтверждения: {code}
 
-Введите его в приложении для активации вашего аккаунта. Это необходимо для обеспечения безопасности и подтверждения того, что этот адрес принадлежит вам.
+Введите его в приложении на экране подтверждения для активации вашего аккаунта. Это необходимо для обеспечения безопасности вашего профиля и подтверждения владения данным адресом почты.
 
-Если вы не регистрировались в {MAIL_FROM_NAME}, просто проигнорируйте это письмо.
+Если вы не регистрировались в {MAIL_FROM_NAME} и получили это письмо по ошибке, просто проигнорируйте его. Код будет аннулирован автоматически через некоторое время.
+
+---
+Безопасность: Никогда не передавайте этот код третьим лицам. Сотрудники {MAIL_FROM_NAME} никогда не запрашивают подобные коды доступа.
 
 С уважением,
 Команда {MAIL_FROM_NAME}
@@ -118,14 +121,21 @@ async def send_welcome_and_verification_email(email: str, code: str):
           
           <div style="background-color: #fdfdfd; padding: 30px; border: 1px solid #e1e8ed; border-left: 5px solid #3498db; margin: 25px 0; border-radius: 4px; text-align: center;">
             <div style="font-size: 14px; color: #7f8c8d; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 1px;">Ваш код подтверждения</div>
-            <div style="font-size: 36px; font-weight: bold; letter-spacing: 10px; color: #3498db;">{code}</div>
+            <div style="font-size: 36px; font-weight: bold; color: #3498db;">{code}</div>
           </div>
           
-          <p style="font-size: 16px;">Введите этот код на экране подтверждения в приложении, чтобы начать пользоваться всеми функциями сервиса.</p>
+          <p style="font-size: 16px;">Введите этот код на экране подтверждения в приложении, чтобы начать пользоваться всеми функциями сервиса. Этот код действителен в течение ограниченного времени и предназначен только для вашей учетной записи.</p>
           
-          <div style="margin-top: 40px; padding: 20px; background-color: #fff9e6; border-radius: 4px; border: 1px solid #ffeeba;">
+          <div style="margin-top: 40px; padding: 20px; background-color: #f8f9fa; border-radius: 4px; border: 1px solid #e9ecef;">
+            <p style="margin: 0; font-size: 13px; color: #6c757d;">
+              <strong>Почему я получил это письмо?</strong><br>
+              Мы получили запрос на регистрацию нового аккаунта с использованием этого адреса электронной почты. Если вы не делали этого запроса, просто проигнорируйте это сообщение.
+            </p>
+          </div>
+          
+          <div style="margin-top: 20px; padding: 20px; background-color: #fff9e6; border-radius: 4px; border: 1px solid #ffeeba;">
             <p style="margin: 0; font-size: 13px; color: #856404;">
-              <strong>Безопасность:</strong> Никогда не передавайте этот код третьим лицам. Сотрудники {MAIL_FROM_NAME} никогда не запрашивают подобные коды.
+              <strong>Безопасность:</strong> Никогда не передавайте этот код третьим лицам. Сотрудники {MAIL_FROM_NAME} никогда не запрашивают подобные коды доступа.
             </p>
           </div>
           
@@ -158,7 +168,7 @@ async def send_email(email: str, subject: str, text: str, html: str | None = Non
     message["Subject"] = subject
     message["From"] = formataddr((MAIL_FROM_NAME, MAIL_FROM or MAIL_USERNAME))
     message["To"] = email
-    message["Reply-To"] = MAIL_FROM or MAIL_USERNAME
+    message["Reply-To"] = formataddr((MAIL_FROM_NAME, MAIL_FROM or MAIL_USERNAME))
     
     # Message-ID и другие служебные заголовки
     msg_id_domain = 'fokin.fun'
@@ -177,6 +187,10 @@ async def send_email(email: str, subject: str, text: str, html: str | None = Non
     message["Date"] = formatdate(localtime=True)
     message["Auto-Submitted"] = "auto-generated"
     message["X-Mailer"] = "Python smtplib"
+    message["X-Auto-Response-Suppress"] = "All"
+    message["X-Priority"] = "3 (Normal)"
+    message["Priority"] = "normal"
+    message["X-Entity-Ref-ID"] = make_msgid()
     
     # Рекомендация для Gmail/Yandex/Mail.ru: наличие Precedence: bulk может помочь при массовых рассылках, 
     # но для транзакционных писем лучше использовать list-unsubscribe если это уместно.
