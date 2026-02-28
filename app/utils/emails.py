@@ -19,19 +19,18 @@ async def send_verification_email(email: str, token: str):
         encoded_redirect = quote(MOBILE_DEEPLINK, safe=":/?&=#")
         verification_url += f"&redirect={encoded_redirect}"
 
-    subject = f"🔐 Подтвердите ваш email в {MAIL_FROM_NAME}"
+    subject = f"Подтверждение регистрации в {MAIL_FROM_NAME}"
     
-    text = f"""Приветствуем!
-    
-Рады, что вы присоединились к {MAIL_FROM_NAME}!
+    text = f"""Здравствуйте!
 
-Чтобы начать пользоваться всеми возможностями, пожалуйста, подтвердите ваш email, перейдя по ссылке:
+Рады, что вы с нами. Для завершения регистрации в {MAIL_FROM_NAME}, пожалуйста, подтвердите ваш адрес:
+
 {verification_url}
 
-Если у вас установлено наше мобильное приложение, нажмите здесь для быстрого входа:
+Если у вас установлено наше приложение, можно перейти сразу по этой ссылке:
 {MOBILE_DEEPLINK}?token={token}
 
-Если вы не регистрировались в {MAIL_FROM_NAME}, просто проигнорируйте это письмо.
+Если вы не регистрировались, просто проигнорируйте это сообщение.
 
 С уважением,
 Команда {MAIL_FROM_NAME}
@@ -39,33 +38,29 @@ async def send_verification_email(email: str, token: str):
     
     html = f"""
     <html>
-      <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-        <div style="max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
-          <h2 style="color: #4A90E2;">Добро пожаловать в {MAIL_FROM_NAME}!</h2>
+      <body style="font-family: Arial, sans-serif; line-height: 1.5; color: #000;">
+        <div style="max-width: 500px; margin: 0; padding: 10px;">
           <p>Здравствуйте!</p>
-          <p>Благодарим вас за регистрацию. Чтобы начать пользоваться всеми возможностями нашего сервиса, пожалуйста, подтвердите ваш адрес электронной почты.</p>
+          <p>Благодарим за регистрацию в <b>{MAIL_FROM_NAME}</b>. Для активации аккаунта, пожалуйста, нажмите на кнопку ниже:</p>
           
-          <div style="text-align: center; margin: 30px 0;">
+          <div style="margin: 20px 0;">
             <a href="{verification_url}" 
-               style="background-color: #4A90E2; color: white; padding: 12px 25px; text-decoration: none; border-radius: 5px; font-weight: bold; display: inline-block;">
+               style="background-color: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px; display: inline-block;">
                Подтвердить Email
             </a>
-            <p style="margin-top: 15px; font-size: 14px;">
-              <a href="{MOBILE_DEEPLINK}?token={token}" style="color: #4A90E2;">Открыть сразу в приложении</a>
-            </p>
           </div>
           
-          <p>Или перейдите по прямой ссылке:</p>
-          <p style="word-break: break-all;"><a href="{verification_url}" style="color: #4A90E2;">{verification_url}</a></p>
-          
-          <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
-          
-          <p style="font-size: 12px; color: #777;">
-            Вы получили это письмо, потому что указали данный адрес при регистрации в {MAIL_FROM_NAME}.<br>
-            Если вы этого не делали, просто проигнорируйте это письмо.
+          <p style="font-size: 14px; color: #555;">
+            Или скопируйте ссылку в браузер: {verification_url}
           </p>
-          <p style="font-size: 12px; color: #777;">
-            © {formatdate(localtime=True).split(' ')[3]} {MAIL_FROM_NAME}. Все права защищены.
+          
+          <p style="font-size: 14px; color: #555;">
+            Для открытия в мобильном приложении: <a href="{MOBILE_DEEPLINK}?token={token}">{MOBILE_DEEPLINK}?token={token}</a>
+          </p>
+          
+          <hr style="border: 0; border-top: 1px solid #ddd; margin: 20px 0;">
+          <p style="font-size: 12px; color: #999;">
+            Если вы не совершали данное действие, просто проигнорируйте это письмо.
           </p>
         </div>
       </body>
@@ -75,14 +70,13 @@ async def send_verification_email(email: str, token: str):
 
 async def send_welcome_email(email: str):
     logger.info(f"Sending welcome email to {email}")
-    subject = f"👋 Добро пожаловать в {MAIL_FROM_NAME}!"
+    subject = f"Добро пожаловать в {MAIL_FROM_NAME}"
     
-    text = f"""Приветствуем!
+    text = f"""Здравствуйте!
 
-Благодарим вас за интерес к {MAIL_FROM_NAME}. 
-Мы очень рады видеть вас среди наших пользователей!
+Мы рады приветствовать вас в {MAIL_FROM_NAME}.
 
-В следующем письме вы получите ссылку для подтверждения вашего аккаунта. Пожалуйста, обязательно перейдите по ней, чтобы активировать все возможности.
+В ближайшее время вам придет второе письмо со ссылкой для подтверждения вашего адреса электронной почты. Это необходимо для активации всех функций аккаунта.
 
 С уважением,
 Команда {MAIL_FROM_NAME}
@@ -90,19 +84,13 @@ async def send_welcome_email(email: str):
     
     html = f"""
     <html>
-      <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-        <div style="max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
-          <h2 style="color: #4A90E2;">Рады вашему присоединению!</h2>
+      <body style="font-family: Arial, sans-serif; line-height: 1.5; color: #000;">
+        <div style="max-width: 500px; margin: 0; padding: 10px;">
           <p>Здравствуйте!</p>
-          <p>Благодарим вас за регистрацию в <strong>{MAIL_FROM_NAME}</strong>. Мы создаем лучший продукт для наших пользователей и рады, что вы теперь с нами.</p>
-          <p>Для завершения настройки аккаунта нам необходимо подтвердить вашу почту. <strong>Письмо с ссылкой для подтверждения придет следом за этим сообщением.</strong></p>
+          <p>Мы рады, что вы присоединились к <b>{MAIL_FROM_NAME}</b>.</p>
+          <p>Письмо с подтверждением аккаунта будет отправлено вам следующим сообщением. Пожалуйста, проверьте почту через минуту.</p>
           
-          <p>Оставайтесь на связи!</p>
-          
-          <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
-          <p style="font-size: 12px; color: #777;">
-            © {formatdate(localtime=True).split(' ')[3]} {MAIL_FROM_NAME}. Все права защищены.
-          </p>
+          <p>С уважением,<br>Команда {MAIL_FROM_NAME}</p>
         </div>
       </body>
     </html>
@@ -132,17 +120,9 @@ async def send_email(email: str, subject: str, text: str, html: str | None = Non
     message["From"] = formataddr((MAIL_FROM_NAME, MAIL_FROM or MAIL_USERNAME))
     message["To"] = email
     message["Reply-To"] = MAIL_FROM or MAIL_USERNAME
-    message["X-Mailer"] = f"{MAIL_FROM_NAME} Notification System"
-    message["X-Priority"] = "1 (Highest)"
-    message["Importance"] = "High"
-    message["X-Auto-Response-Suppress"] = "All"
-    message["Auto-Submitted"] = "auto-generated"
+    message["X-Mailer"] = "Python SmtpLib"
     
-    # Добавление List-Unsubscribe для лучшей репутации (хотя это транзакционное письмо)
-    unsubscribe_url = f"{DOMAIN}/users/unsubscribe?email={email}"
-    message["List-Unsubscribe"] = f"<{unsubscribe_url}>"
-    
-    # Генерация Message-ID. Важно использовать домен отправителя, а не localhost
+    # Message-ID
     msg_id_domain = 'mail.ru'
     if MAIL_FROM and '@' in MAIL_FROM:
         msg_id_domain = MAIL_FROM.split('@')[-1]
