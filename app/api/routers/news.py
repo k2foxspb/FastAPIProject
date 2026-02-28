@@ -185,7 +185,7 @@ async def get_news(
         query = query.add_columns(literal(None).label("my_reaction"))
 
     query = query.options(selectinload(NewsModel.images)).where(
-        NewsModel.moderation_status == "approved",
+        NewsModel.moderation_status.in_(["approved", "pending", "rejected"]),
         NewsModel.is_active == True
     ).order_by(NewsModel.created_at.desc())
 
@@ -257,7 +257,7 @@ async def get_user_news(
     # Если свои - все (включая pending/rejected)
     if not current_user or current_user.id != user_id:
         if not current_user or current_user.role not in ["admin", "owner"]:
-            query = query.where(NewsModel.moderation_status == "approved")
+            query = query.where(NewsModel.moderation_status.in_(["approved", "pending", "rejected"]))
 
     query = query.options(selectinload(NewsModel.images)).order_by(NewsModel.created_at.desc())
 
@@ -359,7 +359,7 @@ async def create_news(
         logger.info(f"NEWS_CREATE_DEBUG: Returning created news ID={news_obj.id}")
 
         # 5. Уведомляем друзей
-        if news_obj.moderation_status == "approved":
+        if news_obj.moderation_status in ["approved", "pending"]:
             author_name = f"{current_user.first_name} {current_user.last_name}".strip() or current_user.email
             # Мы используем новую сессию или текущую, но уведомление асинхронное
             asyncio.create_task(notify_friends_about_news(

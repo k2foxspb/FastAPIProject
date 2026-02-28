@@ -277,22 +277,30 @@ async def get_me(
                 "created_at": latest.created_at
             }
             if app_version:
+                import re
                 def parse_ver(v: str) -> list[int]:
-                    parts = [p for p in v.split(".") if p.isdigit()]
-                    return [int(p) for p in parts]
+                    if not v:
+                        return [0]
+                    # Убираем возможные нецифровые символы в начале, например 'v'
+                    v_clean = re.sub(r'^[^0-9]+', '', v)
+                    parts = [p for p in v_clean.split(".") if p.strip().isdigit()]
+                    return [int(p) for p in parts] if parts else [0]
+
                 try:
                     cur_v = parse_ver(app_version)
                     last_v = parse_ver(latest.version)
                     # Сравнение версий по сегментам
-                    for a, b in zip(cur_v + [0]* (len(last_v)-len(cur_v)), last_v + [0]* (len(cur_v)-len(last_v))):
+                    # Используем zip_longest для корректного сравнения версий разной длины
+                    from itertools import zip_longest
+                    for a, b in zip_longest(cur_v, last_v, fillvalue=0):
                         if a < b:
                             update_available = True
                             break
                         if a > b:
                             break
                 except Exception:
-                    # Если версия в неверном формате, не падаем
-                    update_available = True
+                    # Если версия в неверном формате, не показываем баннер по умолчанию
+                    update_available = False
         # Присваиваем временные поля для схемы
         setattr(user, "update_available", update_available)
         setattr(user, "latest_app_version", latest_info)
@@ -1826,7 +1834,7 @@ async def get_my_liked_news(
      .where(
          NewsReactionModel.user_id == current_user.id,
          NewsReactionModel.reaction_type == 1,
-         NewsModel.moderation_status == "approved",
+         NewsModel.moderation_status.in_(["approved", "pending", "rejected"]),
          NewsModel.is_active == True
      ).options(selectinload(NewsModel.images)).order_by(NewsModel.created_at.desc())
 

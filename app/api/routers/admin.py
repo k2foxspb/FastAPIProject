@@ -543,6 +543,14 @@ async def reject_object(
         raise HTTPException(status_code=404, detail="Object not found")
     
     obj.moderation_status = "rejected"
+    if model == "news":
+        obj.title = "Пост отклонен"
+        obj.content = "запрет модераторова"
+        # Также очищаем картинки
+        obj.image_url = None
+        # Удаляем связанные изображения из БД
+        from app.models.news import NewsImage as NewsImageModel
+        await db.execute(delete(NewsImageModel).where(NewsImageModel.news_id == id))
     await db.commit()
     return {"message": f"{model} {id} rejected"}
 
