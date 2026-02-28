@@ -1,5 +1,5 @@
 import { Platform } from 'react-native';
-import notifee, { AndroidImportance, AndroidGroupAlertBehavior, EventType } from '@notifee/react-native';
+import notifee, { AndroidImportance, AndroidGroupAlertBehavior, EventType, AndroidStyle } from '@notifee/react-native';
 import { chatApi } from '../api';
 import { storage } from './storage';
 import { navigationRef } from '../navigation/NavigationService';
@@ -53,7 +53,7 @@ export async function ensureNotificationChannel() {
 
 export async function displayBundledMessage(remoteMessage) {
   try {
-    console.log('[Notifee] displayBundledMessage called with:', JSON.stringify(remoteMessage));
+    console.log(`[Notifee] displayBundledMessage called for messageId: ${remoteMessage?.messageId}`);
     const data = remoteMessage?.data || {};
     const { type, senderId, senderName, newsId, notifTitle, notifBody } = parseNotificationData(data);
     
@@ -71,52 +71,20 @@ export async function displayBundledMessage(remoteMessage) {
     const text = notifBody || data.text || data.message || data.body || remoteMessage?.notification?.body || '';
     const nameToDisplay = notifTitle || senderName || data.title || remoteMessage?.notification?.title || 'Сообщение';
 
-    const channelId = await ensureNotificationChannel();
-
-    // Храним последние N сообщений по отправителю для формирования цепочки (только для чатов)
-    let combinedBody = text;
-    if (type === 'new_message' && senderId) {
-      const key = `notif_messages_${senderId}`;
-      let list = [];
-      try {
-        const saved = await storage.getItem(key);
-        list = saved ? JSON.parse(saved) : [];
-      } catch (_) {}
-      
-      list.push({ text, ts: Date.now() });
-      if (list.length > 5) list = list.slice(-5);
-      
-      try { await storage.saveItem(key, JSON.stringify(list)); } catch (_) {}
-
-      if (list.length > 1) {
-        combinedBody = list.map(m => m.text).join('\n');
-      }
-    }
-
-    const notificationId = data.notif_tag || (
-      (type === 'new_post' && newsId) 
-        ? `news_${newsId}` 
-        : (type === 'friend_request' && senderId ? `friend_request_${senderId}` : (senderId ? `sender_${senderId}` : `gen_${Date.now()}`))
-    );
-    
-    const groupId = senderId ? `group_sender_${senderId}` : (newsId ? `group_news_${newsId}` : 'group_general');
-
-    console.log(`[Notifee] Displaying with id: ${notificationId}, type: ${type}, groupId: ${groupId}`);
-
-    if (!combinedBody && !nameToDisplay) {
+    if (!text && !nameToDisplay) {
       console.log('[Notifee] Skipping display: empty content');
       return;
     }
+
+    const channelId = await ensureNotificationChannel();
+    const groupId = senderId ? `group_sender_${senderId}` : (newsId ? `group_news_${newsId}` : 'group_general');
 
     const actions = [];
     if (type === 'new_message' && senderId) {
       actions.push({
         title: 'Ответить',
         pressAction: { id: 'reply' },
-        input: {
-            placeholder: 'Ваш ответ...',
-            buttonTitle: 'Отправить',
-        },
+        input: { placeholder: 'Ваш ответ...', buttonTitle: 'Отправить' },
       });
       actions.push({
         title: 'Прочитано',
@@ -124,52 +92,115 @@ export async function displayBundledMessage(remoteMessage) {
       });
     }
 
-    // Display the main notification
-    await notifee.displayNotification({
-      id: notificationId,
-      title: nameToDisplay,
-      body: combinedBody,
-      data: data,
-      android: {
-        channelId: channelId,
-        groupId: groupId,
-        groupAlertBehavior: AndroidGroupAlertBehavior.ALL,
-        smallIcon: 'notification_icon', // Matches the name in withNotificationAndroidPlugin.js
-        color: '#023c69',
-        pressAction: {
-          id: 'default',
-        },
-        actions: actions,
-        importance: AndroidImportance.HIGH,
-      },
-      ios: {
-        categoryId: type === 'new_message' ? 'message_actions' : undefined,
-        threadId: groupId,
-      }
-    });
+    // На Android для чата используем MessagingStyle - это гарантирует кнопки один раз и список сообщений
+    if (Platform.OS === 'android' && type === 'new_message' && senderId) {
+      const messagesKey = `notif_messages_${senderId}`;
+      let storedMsgs = [];
+      try {
+        const stored = await storage.getItem(messagesKey);
+        if (stored) storedMsgs = JSON.parse(stored);
+      } catch (e) {}
 
-    // On Android, we must also display a group summary for groups to work correctly
-    if (Platform.OS === 'android') {
+      const msgId = remoteMessage.messageId || `msg_${Date.now()}`;
+      if (!storedMsgs.find(m => m.id === msgId)) {
+        storedMsgs.push({ id: msgId, text: text, timestamp: Date.now() });
+      }
+      if (storedMsgs.length > 10) storedMsgs = storedMsgs.slice(-10);
+      await storage.saveItem(messagesKey, JSON.stringify(storedMsgs));
+
+      await notifee.displayNotification({
+        id: `sender_${senderId}`,
+        title: nameToDisplay,
+        body: text,
+        data: data,
+        android: {
+          channelId: channelId,
+          actions: actions,
+          groupId: groupId,
+          smallIcon: 'ic_launcher',
+          color: '#023c69',
+          importance: AndroidImportance.HIGH,
+          pressAction: { id: 'default', launchActivity: 'default' },
+          style: {
+            type: AndroidStyle.MESSAGING,
+            person: { name: nameToDisplay },
+            messages: storedMsgs.map(m => ({
+              text: m.text,
+              timestamp: m.timestamp,
+              person: { name: nameToDisplay },
+            })),
+          },
+        },
+      });
+    } else {
+      // Стандартная группировка для остальных случаев
+      const messageUniqueId = remoteMessage?.messageId || `msg_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+      const notificationId = senderId 
+        ? `sender_${senderId}_${messageUniqueId}` 
+        : (newsId ? `news_${newsId}_${messageUniqueId}` : `gen_${messageUniqueId}`);
+
+      await notifee.displayNotification({
+        id: notificationId,
+        title: nameToDisplay,
+        body: text,
+        data: data,
+        android: {
+          actions: actions,
+          channelId: channelId,
+          groupId: groupId,
+          groupAlertBehavior: AndroidGroupAlertBehavior.SUMMARY,
+          smallIcon: 'ic_launcher',
+          color: '#023c69',
+          pressAction: { id: 'default', launchActivity: 'default' },
+          importance: AndroidImportance.HIGH,
+        },
+        ios: {
+          categoryId: type === 'new_message' ? 'message_actions' : undefined,
+          threadId: groupId,
+        }
+      });
+
+      if (Platform.OS === 'android') {
         await notifee.displayNotification({
-            id: `${groupId}_summary`,
-            title: nameToDisplay,
-            body: combinedBody,
-            android: {
-                channelId: channelId,
-                groupId: groupId,
-                groupSummary: true,
-                groupAlertBehavior: AndroidGroupAlertBehavior.SUMMARY,
-                smallIcon: 'notification_icon',
-                color: '#023c69',
-                pressAction: {
-                    id: 'default',
-                },
-            },
+          id: `${groupId}_summary`,
+          title: nameToDisplay,
+          body: text || 'Новые сообщения',
+          data: data,
+          android: {
+            actions: actions,
+            channelId: channelId,
+            groupId: groupId,
+            groupSummary: true,
+            groupAlertBehavior: AndroidGroupAlertBehavior.SUMMARY,
+            smallIcon: 'ic_launcher',
+            color: '#023c69',
+            importance: AndroidImportance.HIGH,
+            subText: nameToDisplay,
+            pressAction: { id: 'default', launchActivity: 'default' },
+          },
         });
+      }
     }
-    
   } catch (e) {
     console.log('[Notifee] displayBundledMessage error:', e?.message || e);
+  }
+}
+
+// Вспомогательная функция для удаления всей группы уведомлений
+async function cancelGroup(groupId, senderId) {
+  if (!groupId && !senderId) return;
+  try {
+    const displayed = await notifee.getDisplayedNotifications();
+    for (const item of displayed) {
+      const android = item.notification.android;
+      if ((groupId && android?.groupId === groupId) || (senderId && item.notification.id === `sender_${senderId}`)) {
+        await notifee.cancelNotification(item.notification.id);
+      }
+    }
+    if (groupId) await notifee.cancelNotification(`${groupId}_summary`);
+    if (senderId) await notifee.cancelNotification(`sender_${senderId}`);
+  } catch (e) {
+    console.log('[Notifee] cancelGroup error:', e);
   }
 }
 
@@ -188,8 +219,14 @@ export async function handleNotificationResponse(event) {
     const notification = detail.notification;
     const actionId = detail.pressAction?.id;
     const notifData = notification?.data || {};
-    const { senderId, senderName } = parseNotificationData(notifData);
+    const { senderId, senderName, newsId } = parseNotificationData(notifData);
     const input = detail.input || '';
+    const groupId = senderId ? `group_sender_${senderId}` : (newsId ? `group_news_${newsId}` : 'group_general');
+
+    // Игнорируем события доставки, чтобы не спамить в логах
+    if (type === EventType.DELIVERED) {
+      return;
+    }
 
     console.log(`[Notifee] handleNotificationResponse: type=${type}, actionId=${actionId}`);
 
@@ -213,8 +250,11 @@ export async function handleNotificationResponse(event) {
         } catch (e) {
           console.log('[Notifee] reply handler error:', e?.message || e);
         } finally {
-          try { await storage.removeItem(`notif_messages_${senderId}`); } catch (_) {}
-          await notifee.cancelNotification(notification.id);
+          try { 
+            await storage.removeItem(`notif_messages_${senderId}`); 
+          } catch (_) {}
+          
+          await cancelGroup(groupId, senderId);
         }
       } else {
         if (notification?.id) {
@@ -237,7 +277,7 @@ export async function handleNotificationResponse(event) {
           }
         }
         await storage.removeItem(`notif_messages_${senderId}`);
-        await notifee.cancelNotification(notification.id);
+        await cancelGroup(groupId, senderId);
       }
       return;
     }
@@ -251,21 +291,19 @@ export async function handleNotificationResponse(event) {
         console.log(`[Notifee] Handling default click for type: ${msgType}`);
         
         if (msgType === 'new_message' && senderId) {
-          navigationRef.navigate('Chat', { userId: senderId, userName: senderName });
+          navigationRef.navigate('Messages', { screen: 'Chat', params: { userId: senderId, userName: senderName || 'Чат' } });
           try { await storage.removeItem(`notif_messages_${senderId}`); } catch (_) {}
         } else if (msgType === 'friend_request' || msgType === 'friend_accept') {
-          navigationRef.navigate('UsersMain', { initialTab: 'friends' });
+          navigationRef.navigate('Users', { screen: 'UsersMain', params: { initialTab: 'friends' } });
         } else if (msgType === 'new_post' && newsId) {
-          navigationRef.navigate('NewsDetail', { newsId });
+          navigationRef.navigate('Feed', { screen: 'NewsDetail', params: { newsId } });
         } else if (senderId) {
-          navigationRef.navigate('Chat', { userId: senderId, userName: senderName });
+          navigationRef.navigate('Messages', { screen: 'Chat', params: { userId: senderId, userName: senderName || 'Чат' } });
         } else {
           navigationRef.navigate('Feed');
         }
         
-        if (notification?.id) {
-            await notifee.cancelNotification(notification.id);
-        }
+        await cancelGroup(groupId, senderId);
       } else {
         console.log('[Notifee] Navigation not ready after timeout');
       }

@@ -1,30 +1,33 @@
-import messaging from '@react-native-firebase/messaging';
 import { Alert, Platform, Vibration, Linking } from 'react-native';
-import notifee, { AuthorizationStatus, EventType } from '@notifee/react-native';
+import messaging from '@react-native-firebase/messaging';
+import notifee from '@notifee/react-native';
+import firebase from '@react-native-firebase/app';
+
 import { usersApi, chatApi, setAuthToken } from '../api';
 import { storage } from './storage';
-import { initializeFirebase } from './firebaseInit';
 import { navigationRef } from '../navigation/NavigationService';
-
 import { displayBundledMessage, handleNotificationResponse, parseNotificationData } from './notificationUtils';
 
-// Ensure Firebase is initialized before accessing messaging()
+// Helper to get messaging instance safely
 const getMessaging = async () => {
   if (Platform.OS === 'web') return null;
 
   try {
-    // Check if we have any initialized apps
-    const firebase = require('@react-native-firebase/app').default;
-    if (firebase.apps.length === 0) {
+    const fb = firebase?.initializeApp ? firebase : (firebase?.default?.initializeApp ? firebase.default : firebase);
+    if (fb && (fb.apps?.length || 0) === 0) {
+      const { initializeFirebase } = require('./firebaseInit');
       await initializeFirebase();
     }
     
-    if (firebase.apps.length === 0) {
-      console.log('[FCM] Still no apps after initializeFirebase()');
+    // Support both direct import and firebase.messaging()
+    const msg = typeof messaging === 'function' ? messaging : (typeof fb?.messaging === 'function' ? fb.messaging : null);
+    
+    if (!msg) {
+      console.error('[FCM] Messaging module NOT available');
       return null;
     }
     
-    return messaging();
+    return msg();
   } catch (e) {
     console.error('[FCM] Error in getMessaging:', e);
     return null;
@@ -39,19 +42,19 @@ export async function requestUserPermission() {
 
     // IOS/FCM permission
     const authStatus = await msg.requestPermission();
-    const enabled =
-      authStatus === messaging.AuthorizationStatus.AUTHORIZED ||
-      authStatus === messaging.AuthorizationStatus.PROVISIONAL;
+    // 1 = AUTHORIZED, 2 = PROVISIONAL
+    const enabled = authStatus === 1 || authStatus === 2;
 
     // Notifee permission (especially for Android 13+ and iOS)
     const settings = await notifee.requestPermission();
-    const notifeeEnabled = settings.authorizationStatus >= AuthorizationStatus.AUTHORIZED;
+    // 1 = AUTHORIZED
+    const notifeeEnabled = settings.authorizationStatus >= 1; 
 
     if (enabled && notifeeEnabled) {
       console.log('Authorization status (FCM):', authStatus);
       console.log('Authorization status (Notifee):', settings.authorizationStatus);
       return true;
-    } else if (authStatus === messaging.AuthorizationStatus.DENIED || settings.authorizationStatus === AuthorizationStatus.DENIED) {
+    } else if (authStatus === 0 || settings.authorizationStatus === 0) {
       Alert.alert(
         'Уведомления отключены',
         'Чтобы не пропускать сообщения, разрешите приложению отправлять уведомления в настройках телефона.',
@@ -110,15 +113,16 @@ export async function setupCloudMessaging() {
       }
     }
 
-    // Обработка уведомлений, когда приложение на переднем плане (onMessage)
+    // Обработка уведомлений, когда приложение на переднем переднем плане (onMessage)
     const unsubscribeMessaging = msg.onMessage(async remoteMessage => {
-      console.log('[FCM] Foreground message received:', JSON.stringify(remoteMessage, null, 2));
+      console.log('[FCM] Foreground message received!');
+      console.log('[FCM] Data:', JSON.stringify(remoteMessage?.data, null, 2));
       
       // Добавляем алерт для отладки в режиме разработки
       if (__DEV__) {
         Alert.alert(
-          'FCM Message (Foreground)',
-          `Title: ${remoteMessage?.notification?.title || 'No Title'}\nBody: ${remoteMessage?.notification?.body || 'No Body'}\nType: ${remoteMessage?.data?.type || 'No Type'}`
+          'FCM Message Received',
+          `Title: ${remoteMessage?.data?.notif_title || remoteMessage?.notification?.title || 'No Title'}\nBody: ${remoteMessage?.data?.notif_body || remoteMessage?.notification?.body || 'No Body'}`
         );
       }
 
@@ -154,18 +158,18 @@ export async function setupCloudMessaging() {
         if (!navigationRef?.isReady?.()) return;
 
         if (type === 'new_message' && senderId) {
-          navigationRef.navigate('Chat', { userId: senderId, userName: senderName });
+          navigationRef.navigate('Messages', { screen: 'Chat', params: { userId: senderId, userName: senderName || 'Чат' } });
           return;
         }
 
         if ((type === 'friend_request' || type === 'friend_accept')) {
-          navigationRef.navigate('UsersMain', { initialTab: 'friends' });
+          navigationRef.navigate('Users', { screen: 'UsersMain', params: { initialTab: 'friends' } });
           return;
         }
 
         if (type === 'new_post') {
           if (newsId) {
-            navigationRef.navigate('NewsDetail', { newsId });
+            navigationRef.navigate('Feed', { screen: 'NewsDetail', params: { newsId } });
           } else {
             navigationRef.navigate('Feed');
           }
@@ -173,7 +177,7 @@ export async function setupCloudMessaging() {
         }
 
         if (senderId) {
-          navigationRef.navigate('Chat', { userId: senderId, userName: senderName });
+          navigationRef.navigate('Messages', { screen: 'Chat', params: { userId: senderId, userName: senderName || 'Чат' } });
         } else {
           navigationRef.navigate('Feed');
         }
@@ -183,17 +187,23 @@ export async function setupCloudMessaging() {
     };
 
     // FCM fallbacks (на случай если Notifee не перехватил)
-    msg.onNotificationOpenedApp(remoteMessage => {
-      console.log('Notification opened from background (FCM):', remoteMessage?.notification);
-      openFromNotification(remoteMessage);
-    });
+    if (msg && typeof msg.onNotificationOpenedApp === 'function') {
+      msg.onNotificationOpenedApp(remoteMessage => {
+        console.log('Notification opened from background (FCM):', remoteMessage?.notification);
+        openFromNotification(remoteMessage);
+      });
+    }
 
-    msg.getInitialNotification().then(remoteMessage => {
-      if (remoteMessage) {
-        console.log('Initial notification (FCM):', remoteMessage?.notification);
-        setTimeout(() => openFromNotification(remoteMessage), 500);
-      }
-    });
+    if (msg && typeof msg.getInitialNotification === 'function') {
+      msg.getInitialNotification().then(remoteMessage => {
+        if (remoteMessage) {
+          console.log('Initial notification (FCM):', remoteMessage?.notification);
+          setTimeout(() => openFromNotification(remoteMessage), 500);
+        }
+      }).catch(e => {
+        console.error('[FCM] getInitialNotification error:', e.message);
+      });
+    }
 
     // Обработка начального уведомления Notifee (если приложение было закрыто)
     notifee.getInitialNotification().then(initialNotification => {
@@ -235,7 +245,15 @@ export async function getFcmToken() {
       }
     }
 
-    const token = await msg.getToken();
+    let token = null;
+    try {
+      token = await msg.getToken();
+    } catch (e) {
+      if (e.message?.includes('native') || e.message?.includes('not a function')) {
+        console.error('[FCM] CRITICAL NATIVE ERROR: Native module is incomplete. REBUILD REQUIRED (npx expo run:android).');
+      }
+      throw e;
+    }
     console.log('[FCM] Full Token obtained:', token);
     
     // В режиме разработки выводим токен в алерте, чтобы его можно было скопировать для теста
@@ -247,6 +265,21 @@ export async function getFcmToken() {
     }
 
     if (token) {
+      console.log('[FCM] Token obtained successfully');
+      
+      // На Android нужно явно зарегистрировать устройство для уведомлений, 
+      // иначе setBackgroundMessageHandler может не срабатывать.
+      if (Platform.OS === 'android') {
+        try {
+          if (!msg.isDeviceRegisteredForRemoteMessages) {
+            await msg.registerDeviceForRemoteMessages();
+            console.log('[FCM] Device registered for remote messages');
+          }
+        } catch (e) {
+          console.log('[FCM] Registration failed:', e);
+        }
+      }
+
       const saved = await storage.getItem('fcm_token');
       if (saved !== token) {
         console.log('[FCM] Saving NEW token to storage');
@@ -331,8 +364,13 @@ export async function checkAndRemindPermissions(options = {}) {
     } catch (_) {}
 
     // Cross-platform permission check via Notifee
+    if (!notifee || typeof notifee.getSettings !== 'function') {
+      console.warn('[Notifications] Notifee or getSettings not available');
+      return;
+    }
+    
     const settings = await notifee.getSettings();
-    const enabled = settings.authorizationStatus >= AuthorizationStatus.AUTHORIZED;
+    const enabled = settings.authorizationStatus >= 1; // 1 = AUTHORIZED
 
     if (enabled) return;
 

@@ -1,63 +1,87 @@
 import 'expo-dev-client';
 import { Platform } from 'react-native';
+
+// Standard default imports for better compatibility
+import firebase from '@react-native-firebase/app';
 import messaging from '@react-native-firebase/messaging';
 import notifee from '@notifee/react-native';
 
-console.log('[Entry] Starting index.js (JS Entrypoint)');
+// 1. Firebase configuration (Fallback for when native auto-init is missing)
+const firebaseConfig = {
+  apiKey: "AIzaSyAwKCJuxsxfnY6aloE5lnDn-triTVBswxE",
+  appId: "1:176773891332:android:01174694c19132ed0ffc51",
+  projectId: "fastapi-f628e",
+  storageBucket: "fastapi-f628e.firebasestorage.app",
+  messagingSenderId: "176773891332",
+  databaseURL: "https://fastapi-f628e-default-rtdb.firebaseio.com",
+};
 
-// Notifee Background Event Handler
-if (Platform.OS !== 'web') {
-  notifee.onBackgroundEvent(async (event) => {
-    console.log('[Notifee Background] Event received:', event.type);
-    const { handleNotificationResponse } = require('./src/utils/notificationUtils');
-    await handleNotificationResponse(event);
-  });
-}
-
-// Headless JS check for debugging
-if (Platform.OS === 'android') {
-  const isHeadless = !!require('react-native').NativeModules.DeviceEventManager?.isHeadless;
-  if (isHeadless) {
-    console.log('[Entry] Running in Headless JS Mode (Background/Quit state)');
-  }
-}
-
-// Register background handlers at the absolute top level for Headless mode
-// This must happen before any other async operations to ensure reliability.
+// 2. Initialize and Register Handlers IMMEDIATELY
 if (Platform.OS !== 'web') {
   try {
-    // FCM Background Handler
-    messaging().setBackgroundMessageHandler(async remoteMessage => {
-      try {
-        console.log('[FCM Background] New message:', remoteMessage?.data?.type || 'unknown');
-        
-        // ВАЖНО: В Headless JS (когда приложение закрыто) мы должны 
-        // немедленно вызвать отрисовку уведомления.
-        const { displayBundledMessage } = require('./src/utils/notificationUtils');
-        await displayBundledMessage(remoteMessage);
-        
-        console.log('[FCM Background] Notification scheduled successfully');
-      } catch (err) {
-        console.log('[FCM Background] Error:', err?.message || err);
-      }
+    // Determine the correct firebase object
+    const fb = firebase?.initializeApp ? firebase : (firebase?.default?.initializeApp ? firebase.default : firebase);
+    
+    console.log('[Entry] Firebase resolution check (Junie v2):', {
+      fbType: typeof fb,
+      hasInitialize: typeof fb?.initializeApp === 'function',
+      appsLength: fb?.apps?.length || 0
     });
 
-    console.log('[Init] Background handlers registered synchronously in index.js');
-  } catch (e) {
-    console.log('[Init] Failed to register background handlers in index.js:', e?.message || e);
+    if (fb && typeof fb.initializeApp === 'function' && (fb?.apps?.length || 0) === 0) {
+      console.log('[Entry] No Firebase app detected, performing manual init');
+      try {
+        fb.initializeApp(firebaseConfig);
+      } catch (e) {
+        console.error('[Entry] Manual init call failed:', e.message);
+      }
+    }
+
+    // Register Background FCM Handler
+    // Note: Use fb.messaging if messaging import fails
+    const msg = typeof messaging === 'function' ? messaging : (typeof fb?.messaging === 'function' ? fb.messaging : null);
+    
+    if (msg) {
+      try {
+        msg().setBackgroundMessageHandler(async remoteMessage => {
+          console.log(`[Entry] FCM Background message: ${remoteMessage?.messageId}`);
+          try {
+            const { displayBundledMessage } = require('./src/utils/notificationUtils');
+            await displayBundledMessage(remoteMessage);
+          } catch (err) {
+            console.error('[Entry] Error in background handler:', err);
+          }
+        });
+        console.log('[Entry] FCM Background handler registered');
+      } catch (e) {
+        console.error('[Entry] Failed to register FCM background handler:', e.message);
+      }
+    } else {
+      console.error('[Entry] Messaging is NOT available, registration skipped');
+    }
+
+    // Notifee Background Event Handler
+    if (notifee && typeof notifee.onBackgroundEvent === 'function') {
+      notifee.onBackgroundEvent(async (event) => {
+        // Ignore type 3 (DELIVERED) events to reduce noise
+        if (event.type === 3) return;
+        
+        console.log(`[Entry] Notifee Background event: ${event.type}`);
+        try {
+          const { handleNotificationResponse } = require('./src/utils/notificationUtils');
+          await handleNotificationResponse(event);
+        } catch (err) {
+          console.error('[Entry] Error in Notifee background handler:', err);
+        }
+      });
+      console.log('[Entry] Background handlers registered');
+    } else {
+       console.error('[Entry] Notifee is NOT available, registration skipped');
+    }
+  } catch (err) {
+    console.error('[Entry] Critical failure in background registration:', err.message);
   }
 }
 
-// Try to ensure Firebase is initialized
-if (Platform.OS !== 'web') {
-  try {
-    const { initializeFirebase } = require('./src/utils/firebaseInit');
-    // We don't await this to avoid blocking the main thread/Headless task
-    initializeFirebase().catch(e => console.log('[Init] Async initialization failed:', e));
-  } catch (e) {
-    console.log('[Init] Could not load firebaseInit in index.js:', e);
-  }
-}
-
-// Preserve Expo entry behavior
+// 3. Main App Entry (loads App.js)
 import 'expo/AppEntry';
