@@ -17,11 +17,8 @@ MAIL_FROM = os.getenv("MAIL_FROM")
 MAIL_PORT = int(os.getenv("MAIL_PORT", "587"))
 MAIL_SERVER = os.getenv("MAIL_SERVER")
 MAIL_FROM_NAME = os.getenv("MAIL_FROM_NAME", "FastAPI Project")
-DOMAIN = os.getenv("DOMAIN", "http://79.133.183.129")
-
-# Базовый deeplink мобильного приложения, например: "myapp://verify-email"
-# Если не задан, бэкенд не будет выполнять редирект по умолчанию.
-MOBILE_DEEPLINK = os.getenv("MOBILE_DEEPLINK", "https://fokin.fun/verify-email")
+DOMAIN = os.getenv("DOMAIN", "https://fokin.fun")
+MOBILE_DEEPLINK = os.getenv("MOBILE_DEEPLINK", "fokinfun://verify-email")
 
 CORS_ORIGINS = [
     "http://localhost:8081",

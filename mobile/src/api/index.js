@@ -88,6 +88,7 @@ export const usersApi = {
   reactToPhotoComment: (commentId, reactionType) => api.post(`/users/photos/comments/${commentId}/react`, null, { params: { reaction_type: reactionType } }),
   updateFcmToken: (token) => api.post('/users/fcm-token', { fcm_token: token }),
   getFirebaseConfig: () => api.get('/users/firebase-config'),
+  verifyEmail: (token) => api.get('/verify-email', { params: { token } }),
   updateMe: (formData) => api.patch('/users/me', formData, {
     headers: {
       'Content-Type': 'multipart/form-data',

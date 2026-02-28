@@ -2,16 +2,15 @@ import asyncio
 import time
 import os
 from app.core.celery_app import celery_app
-from app.utils.emails import send_email, send_verification_email
+from app.utils.emails import send_email, send_verification_email, send_welcome_email, send_welcome_and_verification_email
 from loguru import logger
 
 @celery_app.task(name="send_verification_email_task")
 def send_verification_email_task(email: str, token: str):
-    """Задача Celery для отправки письма подтверждения регистрации."""
+    """Задача Celery для последовательной отправки приветствия и подтверждения."""
     logger.info(f"Starting Celery task send_verification_email_task for {email}")
     try:
-        # Выполняем асинхронную функцию в синхронном контексте Celery
-        asyncio.run(send_verification_email(email, token))
+        asyncio.run(send_welcome_and_verification_email(email, token))
         logger.info(f"Celery task send_verification_email_task finished successfully for {email}")
         return {"status": "success", "to": email}
     except Exception as e:

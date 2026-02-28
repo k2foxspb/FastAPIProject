@@ -10,7 +10,7 @@ import { requestUserPermission, setupCloudMessaging, updateServerFcmToken } from
 import { NotificationProvider, useNotifications } from './src/context/NotificationContext.js';
 import { ThemeProvider, useTheme } from './src/context/ThemeContext.js';
 import { storage } from './src/utils/storage';
-import { setAuthToken } from './src/api';
+import { setAuthToken, usersApi } from './src/api';
 import { setPlaybackAudioMode } from './src/utils/audioSettings';
 
 function AppContent() {
@@ -46,9 +46,24 @@ function AppContent() {
       },
     },
     subscribe(listener) {
-      const onReceiveURL = ({ url }) => {
+      const onReceiveURL = async ({ url }) => {
         console.log('[Linking] Received URL:', url);
         const { queryParams } = Linking.parse(url);
+        
+        // 1. Обработка прямого токена верификации (Universal Link)
+        if (queryParams?.token && !url.includes('status=')) {
+          try {
+            console.log('[Linking] Verifying email directly via app...');
+            await usersApi.verifyEmail(queryParams.token);
+            Alert.alert('Успех', 'Email успешно подтвержден! Теперь вы можете войти.');
+          } catch (e) {
+            console.error('[Linking] Email verification error:', e);
+            const reason = e.response?.data?.detail || 'unknown';
+            Alert.alert('Ошибка', `Не удалось подтвердить email: ${reason}`);
+          }
+        }
+        
+        // 2. Обработка редиректа с бэкенда (deeplink)
         if (url.includes('status=success')) {
           Alert.alert('Успех', 'Email успешно подтвержден! Теперь вы можете войти.');
         } else if (url.includes('status=error')) {

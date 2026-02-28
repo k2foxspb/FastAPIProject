@@ -1,6 +1,7 @@
 import asyncio
 import jwt
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Request
+from starlette.templating import Jinja2Templates
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete, or_, and_, literal, update
 from fastapi.security import OAuth2PasswordRequestForm
@@ -38,7 +39,7 @@ from app.core.auth import (
 )
 from app.api.routers.notifications import manager as notification_manager
 from app.core.fcm import send_fcm_notification
-from app.utils.emails import send_verification_email
+from app.utils.emails import send_verification_email, send_welcome_and_verification_email
 from app.tasks.example_tasks import send_verification_email_task, delete_inactive_user_task
 
 import os
@@ -52,6 +53,8 @@ from datetime import datetime
 from app.utils import storage
 
 from sqlalchemy.orm import selectinload
+
+templates = Jinja2Templates(directory="app/templates")
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -418,7 +421,7 @@ async def create_user(
                 send_verification_email_task.delay(existing_user.email, verification_token)
             except Exception as e:
                 print(f"Error sending email task for existing user: {e}")
-                background_tasks.add_task(send_verification_email, existing_user.email, verification_token)
+                background_tasks.add_task(send_welcome_and_verification_email, existing_user.email, verification_token)
             
             from fastapi.responses import JSONResponse
             from fastapi.encoders import jsonable_encoder
@@ -507,7 +510,7 @@ async def create_user(
         send_verification_email_task.delay(db_user.email, verification_token)
     except Exception as e:
         print(f"Failed to send verification email via Celery: {e}")
-        background_tasks.add_task(send_verification_email, db_user.email, verification_token)
+        background_tasks.add_task(send_welcome_and_verification_email, db_user.email, verification_token)
 
     # Планируем удаление пользователя через 15 минут, если он не активируется
     try:
@@ -530,74 +533,63 @@ async def test_email_send(email: str, background_tasks: BackgroundTasks):
         message = f"Test email scheduled via Celery for {email}."
     except Exception as e:
         print(f"Test email Celery failed: {e}")
-        background_tasks.add_task(send_verification_email, email, token)
+        background_tasks.add_task(send_welcome_and_verification_email, email, token)
         message = f"Test email scheduled via FastAPI BackgroundTasks for {email} (Celery failed)."
     
     return {"message": message}
 
 
 @router.get("/verify-email")
-async def verify_email(token: str, redirect: str | None = None, db: AsyncSession = Depends(get_async_db)):
+async def verify_email(request: Request, token: str, redirect: str | None = None, db: AsyncSession = Depends(get_async_db)):
     """
     Подтверждает email пользователя по токену.
-    При наличии redirect (или MOBILE_DEEPLINK в конфиге) делает 302 на deeplink:
-    - success: <deeplink>?status=success
-    - error:   <deeplink>?status=error&reason=<code>
+    Возвращает HTML-страницу со статусом и кнопкой/редиректом в приложение.
     """
     deeplink_target = redirect or MOBILE_DEEPLINK
 
-    def maybe_redirect(status_str: str, reason: str | None = None):
-        if not deeplink_target:
-            return None
-        url = f"{deeplink_target}?status={status_str}"
-        if reason:
-            url += f"&reason={reason}"
-        return RedirectResponse(url=url, status_code=status.HTTP_302_FOUND)
+    def render_status(status_str: str, message: str):
+        # Формируем deeplink для кнопки
+        dl = None
+        if deeplink_target:
+            dl = f"{deeplink_target}?status={status_str}"
+            if status_str == "error":
+                from urllib.parse import quote
+                dl += f"&reason={quote(message)}"
+        
+        return templates.TemplateResponse(
+            "verify_status.html", 
+            {
+                "request": request, 
+                "status": status_str, 
+                "message": message,
+                "deeplink": dl
+            }
+        )
 
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         email: str = payload.get("sub")
         token_type: str = payload.get("type")
         if email is None or token_type != "verification":
-            raise ValueError("invalid_token")
+            return render_status("error", "Неверный токен подтверждения.")
     except jwt.ExpiredSignatureError:
-        resp = maybe_redirect("error", "token_expired")
-        if resp:
-            return resp
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Token has expired")
+        return render_status("error", "Срок действия ссылки истек. Пожалуйста, запросите новое письмо.")
     except jwt.PyJWTError:
-        resp = maybe_redirect("error", "invalid_token")
-        if resp:
-            return resp
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid token")
-    except ValueError:
-        resp = maybe_redirect("error", "invalid_token")
-        if resp:
-            return resp
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid token")
+        return render_status("error", "Неверный или поврежденный токен.")
 
     result = await db.scalars(select(UserModel).where(UserModel.email == email))
     user = result.first()
 
     if not user:
-        resp = maybe_redirect("error", "user_not_found")
-        if resp:
-            return resp
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        return render_status("error", "Пользователь не найден.")
     
     if user.is_active:
-        resp = maybe_redirect("success")  # уже подтверждено — всё равно success
-        if resp:
-            return resp
-        return {"message": "Email already verified"}
+        return render_status("success", "Ваш Email уже был подтвержден ранее. Вы можете войти в приложение.")
 
     user.is_active = True
     await db.commit()
 
-    resp = maybe_redirect("success")
-    if resp:
-        return resp
-    return {"message": "Email successfully verified"}
+    return render_status("success", "Ваш Email успешно подтвержден! Теперь вы можете пользоваться всеми функциями приложения.")
 
 
 @router.post("/token", response_model=TokenResponse)
