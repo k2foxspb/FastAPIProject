@@ -1,5 +1,5 @@
 import { Platform } from 'react-native';
-import * as Notifications from 'expo-notifications';
+import notifee, { AndroidImportance, AndroidGroupAlertBehavior, EventType } from '@notifee/react-native';
 import { chatApi } from '../api';
 import { storage } from './storage';
 import { navigationRef } from '../navigation/NavigationService';
@@ -33,48 +33,27 @@ export function parseNotificationData(data) {
   return { type, senderId, senderName, newsId, notifTitle, notifBody };
 }
 
-// --- Helpers for Expo-Notifications ---
+// --- Helpers for Notifee ---
 export async function ensureNotificationChannel() {
-  if (Platform.OS !== 'android') return;
+  if (Platform.OS !== 'android') return 'default';
   try {
-    await Notifications.setNotificationChannelAsync('messages', {
+    const channelId = await notifee.createChannel({
+      id: 'messages',
       name: 'Сообщения',
-      importance: Notifications.AndroidImportance.HIGH,
-      vibrationPattern: [0, 250, 250, 250],
-      lightColor: '#FF231F7C',
-      sound: 'default',
-      showBadge: true,
+      importance: AndroidImportance.HIGH,
+      vibration: true,
+      vibrationPattern: [300, 500],
     });
-    
-    // Определяем категории для быстрых действий
-    await Notifications.setNotificationCategoryAsync('message_actions', [
-      {
-        identifier: 'reply',
-        buttonTitle: 'Ответить',
-        textInput: {
-          submitButtonTitle: 'Отправить',
-          placeholder: 'Ваш ответ…',
-        },
-        options: {
-          opensAppToForeground: true,
-        },
-      },
-      {
-        identifier: 'mark-as-read',
-        buttonTitle: 'Прочитано',
-        options: {
-          opensAppToForeground: true,
-        },
-      },
-    ]);
+    return channelId;
   } catch (e) {
-    console.log('[Notifications] ensureNotificationChannel error:', e?.message || e);
+    console.log('[Notifee] ensureNotificationChannel error:', e?.message || e);
+    return 'default';
   }
 }
 
 export async function displayBundledMessage(remoteMessage) {
   try {
-    console.log('[Notifications] displayBundledMessage called with:', JSON.stringify(remoteMessage));
+    console.log('[Notifee] displayBundledMessage called with:', JSON.stringify(remoteMessage));
     const data = remoteMessage?.data || {};
     const { type, senderId, senderName, newsId, notifTitle, notifBody } = parseNotificationData(data);
     
@@ -82,17 +61,17 @@ export async function displayBundledMessage(remoteMessage) {
     try {
       const myId = await storage.getUserId();
       if (myId && senderId && Number(myId) === Number(senderId)) {
-        console.log('[Notifications] Skipping notification for self-sent message');
+        console.log('[Notifee] Skipping notification for self-sent message');
         return;
       }
     } catch (err) {
-      console.log('[Notifications] Error checking isMe:', err);
+      console.log('[Notifee] Error checking isMe:', err);
     }
     
     const text = notifBody || data.text || data.message || data.body || remoteMessage?.notification?.body || '';
     const nameToDisplay = notifTitle || senderName || data.title || remoteMessage?.notification?.title || 'Сообщение';
 
-    await ensureNotificationChannel();
+    const channelId = await ensureNotificationChannel();
 
     // Храним последние N сообщений по отправителю для формирования цепочки (только для чатов)
     let combinedBody = text;
@@ -114,35 +93,60 @@ export async function displayBundledMessage(remoteMessage) {
       }
     }
 
-    const identifier = data.notif_tag || (
+    const notificationId = data.notif_tag || (
       (type === 'new_post' && newsId) 
         ? `news_${newsId}` 
         : (type === 'friend_request' && senderId ? `friend_request_${senderId}` : (senderId ? `sender_${senderId}` : undefined))
     );
-    console.log(`[Notifications] Scheduling with identifier: ${identifier}, type: ${type}`);
+    
+    const groupId = senderId ? `group_sender_${senderId}` : (newsId ? `group_news_${newsId}` : 'group_general');
+
+    console.log(`[Notifee] Displaying with id: ${notificationId}, type: ${type}`);
 
     if (!combinedBody && !nameToDisplay) {
-      console.log('[Notifications] Skipping scheduleNotificationAsync: empty content');
+      console.log('[Notifee] Skipping display: empty content');
       return;
     }
 
-    await Notifications.scheduleNotificationAsync({
-      identifier: identifier,
-      content: {
-        title: nameToDisplay,
-        body: combinedBody,
-        data: data,
-        // Показываем кнопки "Ответить"/"Прочитать" только для новых сообщений
-        categoryIdentifier: type === 'new_message' ? 'message_actions' : undefined,
-        android: {
-          channelId: 'messages',
+    const actions = [];
+    if (type === 'new_message' && senderId) {
+      actions.push({
+        title: 'Ответить',
+        pressAction: { id: 'reply' },
+        input: {
+            placeholder: 'Ваш ответ...',
+            buttonTitle: 'Отправить',
         },
+      });
+      actions.push({
+        title: 'Прочитано',
+        pressAction: { id: 'mark-as-read' },
+      });
+    }
+
+    await notifee.displayNotification({
+      id: notificationId,
+      title: nameToDisplay,
+      body: combinedBody,
+      data: data,
+      android: {
+        channelId: channelId,
+        groupId: groupId,
+        groupAlertBehavior: AndroidGroupAlertBehavior.SUMMARY,
+        pressAction: {
+          id: 'default',
+        },
+        actions: actions,
+        importance: AndroidImportance.HIGH,
       },
-      trigger: null, // немедленно
+      ios: {
+        categoryId: type === 'new_message' ? 'message_actions' : undefined,
+        threadId: groupId,
+      }
     });
     
   } catch (e) {
-    console.log('[Notifications] displayBundledMessage error:', e?.message || e);
+    console.log('[Notifee] displayBundledMessage error:', e?.message || e);
   }
 }
 
@@ -157,90 +161,93 @@ async function waitForNavigation() {
 
 export async function handleNotificationResponse(event) {
   try {
-    const actionId = event.actionIdentifier;
-    const notifData = event.notification.request.content.data || {};
+    const { type, detail } = event;
+    const notification = detail.notification;
+    const actionId = detail.pressAction?.id;
+    const notifData = notification?.data || {};
     const { senderId, senderName } = parseNotificationData(notifData);
-    const input = event.userText || '';
+    const input = detail.input || '';
 
-    // Если это просто нажатие на уведомление или кнопки действия при закрытом приложении
-    // Сначала убедимся, что навигация готова
-    const isNavReady = await waitForNavigation();
+    console.log(`[Notifee] handleNotificationResponse: type=${type}, actionId=${actionId}`);
 
+    // Если это нажатие на кнопку "Ответить"
     if (actionId === 'reply') {
-      console.log(`[Notifications] Processing reply action for sender ${senderId}. Input length: ${input?.length}`);
+      console.log(`[Notifee] Processing reply action for sender ${senderId}. Input length: ${input?.length}`);
       
       if (senderId && input) {
         const token = await storage.getAccessToken();
         if (!token) {
-          console.log('[Notifications] Reply error: No access token found in storage.');
-          await Notifications.dismissNotificationAsync(event.notification.request.identifier);
+          console.log('[Notifee] Reply error: No access token found in storage.');
+          await notifee.cancelNotification(notification.id);
           return;
         }
         try {
-          console.log(`[Notifications] Sending reply to ${senderId}...`);
+          console.log(`[Notifee] Sending reply to ${senderId}...`);
           await chatApi.sendMessage({ receiver_id: senderId, message: input, message_type: 'text' }, token);
-          console.log(`[Notifications] Calling markAsRead for ${senderId} (after reply)...`);
+          console.log(`[Notifee] Calling markAsRead for ${senderId} (after reply)...`);
           await chatApi.markAsRead(senderId, token);
-          console.log(`[Notifications] Reply sent and messages marked as read.`);
+          console.log(`[Notifee] Reply sent and messages marked as read.`);
         } catch (e) {
-          console.log('[Notifications] reply handler error:', e?.message || e);
+          console.log('[Notifee] reply handler error:', e?.message || e);
         } finally {
           try { await storage.removeItem(`notif_messages_${senderId}`); } catch (_) {}
-          await Notifications.dismissNotificationAsync(event.notification.request.identifier);
+          await notifee.cancelNotification(notification.id);
         }
       } else {
-        if (senderId) {
-          await Notifications.dismissNotificationAsync(event.notification.request.identifier);
+        if (notification?.id) {
+          await notifee.cancelNotification(notification.id);
         }
       }
       return;
     }
 
+    // Если это нажатие на кнопку "Прочитано"
     if (actionId === 'mark-as-read') {
-      console.log(`[Notifications] Processing mark-as-read action for sender ${senderId}`);
+      console.log(`[Notifee] Processing mark-as-read action for sender ${senderId}`);
       if (senderId) {
         const token = await storage.getAccessToken();
         if (token) {
           try {
             await chatApi.markAsRead(senderId, token);
           } catch (e) {
-            console.log('[Notifications] markAsRead error:', e?.message || e);
+            console.log('[Notifee] markAsRead error:', e?.message || e);
           }
         }
         await storage.removeItem(`notif_messages_${senderId}`);
-        await Notifications.dismissNotificationAsync(event.notification.request.identifier);
+        await notifee.cancelNotification(notification.id);
       }
       return;
     }
 
-    // Если это просто нажатие на уведомление (не на кнопку действия)
-    if (actionId === Notifications.DEFAULT_ACTION_IDENTIFIER) {
-      const { type, senderId, senderName, newsId } = parseNotificationData(notifData);
+    // Если это нажатие на само уведомление (или на кнопку без специальной логики выше)
+    if (type === EventType.PRESS || actionId === 'default') {
+      const { type: msgType, senderId, senderName, newsId } = parseNotificationData(notifData);
       
+      const isNavReady = await waitForNavigation();
       if (isNavReady) {
-        console.log(`[Notifications] Handling default click for type: ${type}`);
+        console.log(`[Notifee] Handling default click for type: ${msgType}`);
         
-        if (type === 'new_message' && senderId) {
+        if (msgType === 'new_message' && senderId) {
           navigationRef.navigate('Chat', { userId: senderId, userName: senderName });
           try { await storage.removeItem(`notif_messages_${senderId}`); } catch (_) {}
-        } else if (type === 'friend_request' || type === 'friend_accept') {
+        } else if (msgType === 'friend_request' || msgType === 'friend_accept') {
           navigationRef.navigate('UsersMain', { initialTab: 'friends' });
-        } else if (type === 'new_post' && newsId) {
+        } else if (msgType === 'new_post' && newsId) {
           navigationRef.navigate('NewsDetail', { newsId });
         } else if (senderId) {
-          // Fallback для неизвестных типов с ID отправителя
           navigationRef.navigate('Chat', { userId: senderId, userName: senderName });
         } else {
-          // Общий fallback
           navigationRef.navigate('Feed');
         }
         
-        await Notifications.dismissNotificationAsync(event.notification.request.identifier);
+        if (notification?.id) {
+            await notifee.cancelNotification(notification.id);
+        }
       } else {
-        console.log('[Notifications] Navigation not ready after timeout');
+        console.log('[Notifee] Navigation not ready after timeout');
       }
     }
   } catch (e) {
-    console.log('[Notifications] handleNotificationResponse error:', e?.message || e);
+    console.log('[Notifee] handleNotificationResponse error:', e?.message || e);
   }
 }

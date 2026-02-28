@@ -1,6 +1,6 @@
 import messaging from '@react-native-firebase/messaging';
 import { Alert, Platform, Vibration, Linking } from 'react-native';
-import * as Notifications from 'expo-notifications';
+import notifee, { AuthorizationStatus, EventType } from '@notifee/react-native';
 import { usersApi, chatApi, setAuthToken } from '../api';
 import { storage } from './storage';
 import { initializeFirebase } from './firebaseInit';
@@ -43,32 +43,15 @@ export async function requestUserPermission() {
       authStatus === messaging.AuthorizationStatus.AUTHORIZED ||
       authStatus === messaging.AuthorizationStatus.PROVISIONAL;
 
-    // Android POST_NOTIFICATIONS permission (for Android 13+)
-    if (Platform.OS === 'android' && Platform.Version >= 33) {
-      const { PermissionsAndroid } = require('react-native');
-      const hasPermission = await PermissionsAndroid.check(
-        PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS,
-      );
-      
-      if (!hasPermission) {
-        const granted = await PermissionsAndroid.request(
-          PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS,
-        );
-        console.log('[FCM] Android POST_NOTIFICATIONS permission request result:', granted);
-        if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
-          console.warn('[FCM] Android POST_NOTIFICATIONS permission denied');
-          // Мы не выходим сразу, так как FCM permission может быть уже AUTHORIZED, 
-          // но на Android 13+ системные уведомления всё равно не покажутся без этого.
-        }
-      } else {
-        console.log('[FCM] Android POST_NOTIFICATIONS permission already granted');
-      }
-    }
+    // Notifee permission (especially for Android 13+ and iOS)
+    const settings = await notifee.requestPermission();
+    const notifeeEnabled = settings.authorizationStatus >= AuthorizationStatus.AUTHORIZED;
 
-    if (enabled) {
-      console.log('Authorization status:', authStatus);
+    if (enabled && notifeeEnabled) {
+      console.log('Authorization status (FCM):', authStatus);
+      console.log('Authorization status (Notifee):', settings.authorizationStatus);
       return true;
-    } else if (authStatus === messaging.AuthorizationStatus.DENIED) {
+    } else if (authStatus === messaging.AuthorizationStatus.DENIED || settings.authorizationStatus === AuthorizationStatus.DENIED) {
       Alert.alert(
         'Уведомления отключены',
         'Чтобы не пропускать сообщения, разрешите приложению отправлять уведомления в настройках телефона.',
@@ -94,141 +77,96 @@ export async function setupCloudMessaging() {
       return;
     }
 
-    // Настраиваем глобальный хендлер уведомлений
-    if (Platform.OS === 'android') {
+    // Слушатель событий Notifee (передний план)
+    const unsubscribeForeground = notifee.onForegroundEvent((event) => {
+      handleNotificationResponse(event);
+    });
+
+    // Регистрация категорий для iOS (нужно для кнопок Ответить/Прочитано)
+    if (Platform.OS === 'ios') {
       try {
-        // Подавляем стандартные баннеры Expo-notifications на Android в Foreground по умолчанию,
-        // но разрешаем, если мы сами их запланировали через scheduleNotificationAsync.
-        Notifications.setNotificationHandler({
-          handleNotification: async (notification) => {
-            // Проверяем, в чате ли мы с отправителем (чтобы не показывать баннер, если чат открыт)
-            const currentRoute = navigationRef?.getCurrentRoute?.();
-            const isChatScreen = currentRoute?.name === 'Chat';
-            const data = notification.request.content.data || {};
-            const senderIdRaw = data.sender_id || data.senderId;
-            const senderId = senderIdRaw ? parseInt(senderIdRaw, 10) : null;
-            const currentChatUserId = currentRoute?.params?.userId ? parseInt(currentRoute.params.userId, 10) : null;
-            const isActiveChatWithSender = isChatScreen && senderId && currentChatUserId && Number(currentChatUserId) === Number(senderId);
-
-            if (isActiveChatWithSender) {
-              return {
-                shouldShowBanner: false,
-                shouldShowList: false,
-                shouldPlaySound: false,
-                shouldSetBadge: false,
-              };
-            }
-
-            return {
-              shouldShowBanner: true,
-              shouldShowList: true,
-              shouldPlaySound: true,
-              shouldSetBadge: true,
-              priority: Notifications.AndroidNotificationPriority.MAX,
-            };
+        await notifee.setNotificationCategories([
+          {
+            id: 'message_actions',
+            actions: [
+              {
+                id: 'reply',
+                title: 'Ответить',
+                input: {
+                  placeholderText: 'Ваш ответ...',
+                  buttonTitle: 'Отправить',
+                },
+              },
+              {
+                id: 'mark-as-read',
+                title: 'Прочитано',
+              },
+            ],
           },
-        });
-
-        // Создаем канал уведомлений
-        Notifications.setNotificationChannelAsync('messages', {
-          name: 'Сообщения',
-          importance: Notifications.AndroidImportance.HIGH,
-          vibrationPattern: [0, 250, 250, 250],
-          lightColor: '#FF231F7C',
-          sound: 'default',
-        }).catch(err => console.log('Error creating notification channel:', err));
+        ]);
+        console.log('[Notifee] iOS Categories registered');
       } catch (e) {
-        console.log('expo-notifications not available, skipping channel creation.');
+        console.log('[Notifee] iOS Categories registration failed:', e);
       }
     }
 
-    // Обработка уведомлений, когда приложение на переднем плани (onMessage)
-    const unsubscribe = msg.onMessage(async remoteMessage => {
+    // Обработка уведомлений, когда приложение на переднем плане (onMessage)
+    const unsubscribeMessaging = msg.onMessage(async remoteMessage => {
       console.log('[FCM] Foreground message received:', JSON.stringify(remoteMessage, null, 2));
 
-      if (Platform.OS === 'android') {
-        try {
-          // Проверяем, не открыт ли сейчас чат с отправителем
-          const senderIdRaw = remoteMessage?.data?.sender_id || remoteMessage?.data?.senderId;
-          const senderId = senderIdRaw ? parseInt(senderIdRaw, 10) : null;
-          const currentRoute = navigationRef?.getCurrentRoute?.();
-          const isChatScreen = currentRoute?.name === 'Chat';
-          const currentChatUserId = currentRoute?.params?.userId ? parseInt(currentRoute.params.userId, 10) : null;
-          const isActiveChatWithSender = isChatScreen && senderId && currentChatUserId && Number(currentChatUserId) === Number(senderId);
+      // Проверяем, не открыт ли сейчас чат с отправителем
+      const senderIdRaw = remoteMessage?.data?.sender_id || remoteMessage?.data?.senderId;
+      const senderId = senderIdRaw ? parseInt(senderIdRaw, 10) : null;
+      const currentRoute = navigationRef?.getCurrentRoute?.();
+      const isChatScreen = currentRoute?.name === 'Chat';
+      const currentChatUserId = currentRoute?.params?.userId ? parseInt(currentRoute.params.userId, 10) : null;
+      const isActiveChatWithSender = isChatScreen && senderId && currentChatUserId && Number(currentChatUserId) === Number(senderId);
 
-          if (!isActiveChatWithSender) {
-            console.log('[FCM] Showing foreground notification via Expo-Notifications');
-            // ВАЖНО: Мы вызываем displayBundledMessage, который использует тот же identifier, что и tag в FCM.
-            // Это обновит/заменит системное уведомление на кастомное с кнопками.
-            await displayBundledMessage(remoteMessage);
-          } else {
-            console.log('[FCM] In active chat, skipping foreground notification banner (WS will handle sound)');
-            // Если мы в чате, нам нужно убрать системное уведомление, которое Android показал автоматически
-            const tag = remoteMessage?.data?.notif_tag || remoteMessage?.notification?.android?.tag;
-            if (tag) {
-              Notifications.dismissNotificationAsync(tag).catch(() => {});
-            }
-          }
-        } catch (e) {
-          console.log('[FCM] Error handling foreground message:', e);
-        }
+      if (!isActiveChatWithSender) {
+        console.log('[FCM] Showing foreground notification via Notifee');
+        await displayBundledMessage(remoteMessage);
+      } else {
+        console.log('[FCM] In active chat, skipping foreground notification banner');
       }
     });
 
     // Обработка обновления токена
     msg.onTokenRefresh(token => {
       console.log('FCM Token refreshed:', token);
-      storage.saveItem('fcm_token', token); // Save locally as well
+      storage.saveItem('fcm_token', token);
       updateServerFcmToken(token);
     });
 
-    // Унифицированная функция перехода в нужный чат по уведомлению
+    // Унифицированная функция перехода (используется для FCM fallbacks)
     const openFromNotification = (remoteMessage) => {
       try {
-        console.log('[FCM] Handling notification click with data:', JSON.stringify(remoteMessage?.data, null, 2));
         const data = remoteMessage?.data || {};
         const { type, senderId, senderName, newsId } = parseNotificationData(data);
 
-        if (!navigationRef?.isReady?.()) {
-          console.log('[FCM] Navigation not ready, skipping');
-          return;
-        }
+        if (!navigationRef?.isReady?.()) return;
 
         if (type === 'new_message' && senderId) {
-          console.log('[FCM] Navigating to Chat with userId:', senderId);
-          // Сразу очищаем пачку уведомлений при переходе
-          try {
-            storage.removeItem(`notif_messages_${senderId}`).catch(() => {});
-          } catch (_) {}
-
           navigationRef.navigate('Chat', { userId: senderId, userName: senderName });
           return;
         }
 
         if ((type === 'friend_request' || type === 'friend_accept')) {
-          console.log('[FCM] Navigating to UsersMain (friends tab)');
-          // Users screen is registered as UsersMain in TabNavigator
           navigationRef.navigate('UsersMain', { initialTab: 'friends' });
           return;
         }
 
         if (type === 'new_post') {
           if (newsId) {
-            console.log('[FCM] Navigating to NewsDetail with newsId:', newsId);
             navigationRef.navigate('NewsDetail', { newsId });
           } else {
-            console.log('[FCM] Navigating to Feed (fallback, no newsId)');
             navigationRef.navigate('Feed');
           }
           return;
         }
 
-        // Fallbacks
         if (senderId) {
-          console.log('[FCM] Fallback: navigating to Chat with userId:', senderId);
           navigationRef.navigate('Chat', { userId: senderId, userName: senderName });
         } else {
-          console.log('[FCM] No known target in notification data, opening Feed');
           navigationRef.navigate('Feed');
         }
       } catch (e) {
@@ -236,49 +174,30 @@ export async function setupCloudMessaging() {
       }
     };
 
-    // Обработка клика по уведомлению (когда приложение было в фоне)
+    // FCM fallbacks (на случай если Notifee не перехватил)
     msg.onNotificationOpenedApp(remoteMessage => {
-      console.log('Notification opened from background:', remoteMessage?.notification);
+      console.log('Notification opened from background (FCM):', remoteMessage?.notification);
       openFromNotification(remoteMessage);
     });
 
-    // Обработка уведомления, которое открыло приложение из закрытого состояния
-    msg.getInitialNotification()
-      .then(remoteMessage => {
-        if (remoteMessage) {
-          console.log('Notification opened app from quit state:', remoteMessage?.notification);
-          // Небольшая задержка, чтобы навигация успела инициализироваться
-          setTimeout(() => openFromNotification(remoteMessage), 500);
-        }
-      })
-      .catch(err => console.error('getInitialNotification failed:', err));
-
-    // --- EXPO NOTIFICATIONS HANDLERS ---
-    // Слушатель входящих уведомлений на переднем плане (для логики внутри приложения)
-    const notificationReceivedSubscription = Notifications.addNotificationReceivedListener(notification => {
-      console.log('[Notifications] Foreground notification received by Expo:', notification.request.identifier);
-      Vibration.vibrate(100); // Тактильная отдача как в руководстве
+    msg.getInitialNotification().then(remoteMessage => {
+      if (remoteMessage) {
+        console.log('Initial notification (FCM):', remoteMessage?.notification);
+        setTimeout(() => openFromNotification(remoteMessage), 500);
+      }
     });
 
-    // Обработка клика по уведомлению (передний план / фон)
-    const notificationSubscription = Notifications.addNotificationResponseReceivedListener(response => {
-      console.log('[Notifications] Response received');
-      Vibration.vibrate(70); // Небольшая вибрация при клике
-      handleNotificationResponse(response);
-    });
-
-    // Обработка уведомления, которое открыло приложение из закрытого состояния (Expo)
-    Notifications.getLastNotificationResponseAsync().then(response => {
-      if (response) {
-        console.log('[Notifications] Initial response found');
-        handleNotificationResponse(response);
+    // Обработка начального уведомления Notifee (если приложение было закрыто)
+    notifee.getInitialNotification().then(initialNotification => {
+      if (initialNotification) {
+        console.log('Initial notification (Notifee):', initialNotification.notification.id);
+        handleNotificationResponse(initialNotification);
       }
     });
 
     return () => {
-      unsubscribe();
-      notificationReceivedSubscription.remove();
-      notificationSubscription.remove();
+      unsubscribeForeground();
+      unsubscribeMessaging();
     };
   } catch (error) {
     console.error('Firebase messaging setup failed:', error);
@@ -389,11 +308,11 @@ export async function checkAndRemindPermissions(options = {}) {
       if (optOut === '1' || optOut === true) return;
     } catch (_) {}
 
-    // Cross-platform permission check via Expo-Notifications
-    const settings = await Notifications.getPermissionsAsync();
-    const enabled = settings.status === 'granted' || settings.canAskAgain;
+    // Cross-platform permission check via Notifee
+    const settings = await notifee.getSettings();
+    const enabled = settings.authorizationStatus >= AuthorizationStatus.AUTHORIZED;
 
-    if (enabled && settings.status === 'granted') return;
+    if (enabled) return;
 
     // Cooldown to avoid being annoying
     try {

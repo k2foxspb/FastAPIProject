@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { getShadow } from '../utils/shadowStyles';
 import { View, Text, FlatList, StyleSheet, TouchableOpacity, RefreshControl, ActivityIndicator, Alert, Image, Platform } from 'react-native';
+import notifee from '@notifee/react-native';
 import FadeInImage from '../components/FadeInImage';
 import FadeInView from '../components/FadeInView';
 import { productsApi, newsApi, usersApi, cartApi } from '../api';
@@ -102,6 +103,9 @@ export default function FeedScreen({ navigation }) {
     useCallback(() => {
       console.log('[FeedScreen] Focused, loading data...');
       loadData();
+      if (Platform.OS !== 'web') {
+        notifee.cancelNotification('new_posts').catch(() => {});
+      }
     }, [loadData])
   );
 

@@ -1,8 +1,18 @@
 import 'expo-dev-client';
 import { Platform } from 'react-native';
 import messaging from '@react-native-firebase/messaging';
+import notifee from '@notifee/react-native';
 
 console.log('[Entry] Starting index.js (JS Entrypoint)');
+
+// Notifee Background Event Handler
+if (Platform.OS !== 'web') {
+  notifee.onBackgroundEvent(async (event) => {
+    console.log('[Notifee Background] Event received:', event.type);
+    const { handleNotificationResponse } = require('./src/utils/notificationUtils');
+    await handleNotificationResponse(event);
+  });
+}
 
 // Headless JS check for debugging
 if (Platform.OS === 'android') {

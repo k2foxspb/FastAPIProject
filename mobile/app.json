@@ -15,15 +15,6 @@
           }
         }
       ],
-      [
-        "expo-notifications",
-        {
-          "icon": "./assets/logo1024.png",
-          "color": "#3b82f6",
-          "defaultChannel": "messages",
-          "enableBackgroundRemoteNotifications": true
-        }
-      ],
       "@react-native-firebase/app",
       "@react-native-firebase/messaging",
       [

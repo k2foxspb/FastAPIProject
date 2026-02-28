@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, Image, ScrollView, Dimensions, ActivityIndicator, Alert, FlatList, TouchableOpacity, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
+import notifee from '@notifee/react-native';
 import RenderHTML from 'react-native-render-html';
 import { newsApi, usersApi } from '../api';
 import { getFullUrl } from '../utils/formatters';
@@ -32,7 +33,11 @@ export default function NewsDetailScreen({ route, navigation }) {
     } else {
       setUser(currentUser);
     }
-  }, [currentUser]);
+
+    if (Platform.OS !== 'web' && newsId) {
+      notifee.cancelNotification(`post_${newsId}`).catch(() => {});
+    }
+  }, [currentUser, newsId]);
 
   const fetchUser = async () => {
     try {

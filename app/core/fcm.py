@@ -156,7 +156,7 @@ async def send_fcm_notification(
         # так как это заставляет ОС Android показывать стандартное уведомление без кнопок
         # и НЕ вызывает наш JS-обработчик setBackgroundMessageHandler.
         # Вместо этого мы шлем только 'data', что пробуждает Headless JS,
-        # и уже в JS мы рисуем кастомное уведомление с кнопками через expo-notifications.
+        # и уже в JS мы рисуем кастомное уведомление с кнопками через Notifee.
         
         android_config = messaging.AndroidConfig(
             priority='high',

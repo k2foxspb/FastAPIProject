@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, FlatList, TextInput, StyleSheet, TouchableOpacity, Image } from 'react-native';
+import { View, Text, FlatList, TextInput, StyleSheet, TouchableOpacity, Image, Platform } from 'react-native';
+import notifee from '@notifee/react-native';
 import { usersApi } from '../api';
 import { useTheme } from '../context/ThemeContext';
 import { useNotifications } from '../context/NotificationContext';
@@ -111,6 +112,12 @@ export default function UsersScreen({ navigation }) {
   useEffect(() => {
     fetchData();
   }, [search, currentUserId, activeTab]);
+
+  useEffect(() => {
+    if (Platform.OS !== 'web' && activeTab === 'friends') {
+      notifee.cancelNotification('friend_requests').catch(() => {});
+    }
+  }, [activeTab]);
 
   const handleAccept = async (userId) => {
     try {
