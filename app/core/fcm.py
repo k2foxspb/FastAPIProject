@@ -156,23 +156,14 @@ async def send_fcm_notification(
         # так как это заставляет ОС Android показывать стандартное уведомление без кнопок
         # и НЕ вызывает наш JS-обработчик setBackgroundMessageHandler.
         # Вместо этого мы шлем только 'data', что пробуждает Headless JS,
-        # и уже в JS мы рисуем кастомное уведомление с кнопками через Notifee.
+        # и уже в JS мы рисуем кастомное уведомление с кнопками через Notifee (displayNotification).
         
         android_config = messaging.AndroidConfig(
             priority='high',
             ttl=3600 * 24,  # 24 часа
             direct_boot_ok=True,
-            # ВАЖНО: Мы включаем notification для гарантированного отображения баннера.
-            # На Android Notifee может поймать это через data-обработчик или система покажет сама.
-            notification=messaging.AndroidNotification(
-                title=title,
-                body=body,
-                icon='notification_icon',
-                color='#023c69',
-                channel_id='messages',
-                tag=notif_tag,
-                # default_notification_channel_id в AndroidManifest должен совпадать
-            )
+            # We must leave notification=None for Android to trigger JS background handler
+            notification=None
         )
 
         # Настройки для iOS (APNS)
@@ -195,7 +186,8 @@ async def send_fcm_notification(
         )
 
         # Сборка сообщения.
-        # Комбинация Notification + Data гарантирует доставку и пробуждение.
+        # Для Android это будет data-only сообщение (для Notifee).
+        # Для iOS это будет Notification + Data (для APNS).
         message = messaging.Message(
             data=fcm_data,
             token=token,
@@ -211,7 +203,7 @@ async def send_fcm_notification(
             except RuntimeError:
                 loop = asyncio.get_event_loop()
                 
-            logger.info(f"FCM: Sending to {token[:15]}... Title: '{title}' (Android: Notification+Data, iOS: Notification+Data)")
+            logger.info(f"FCM: Sending to {token[:15]}... Title: '{title}' (Android: DATA-ONLY, iOS: Notification+Data)")
             # Используем run_in_executor, так как Firebase Admin SDK блокирующий (синхронный)
             start_time = time.time()
             response = await loop.run_in_executor(None, lambda: messaging.send(message))
