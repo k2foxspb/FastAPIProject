@@ -14,23 +14,18 @@ async def send_verification_email(email: str, token: str):
     # Используем путь /verify-email (без /users/), чтобы он соответствовал intent filter в app.json
     verification_url = f"{DOMAIN}/verify-email?token={token}"
 
-    # Если указан базовый deeplink приложения — добавим его как redirect-параметр
-    if MOBILE_DEEPLINK:
-        encoded_redirect = quote(MOBILE_DEEPLINK, safe=":/?&=#")
-        verification_url += f"&redirect={encoded_redirect}"
-
-    subject = f"Подтверждение регистрации в {MAIL_FROM_NAME}"
+    subject = "Регистрация"
     
     text = f"""Здравствуйте!
 
-Рады, что вы с нами. Для завершения регистрации в {MAIL_FROM_NAME}, пожалуйста, подтвердите ваш адрес:
+Благодарим за регистрацию в {MAIL_FROM_NAME}.
 
+Для завершения регистрации, пожалуйста, подтвердите ваш адрес:
 {verification_url}
 
-Если у вас установлено наше приложение, можно перейти сразу по этой ссылке:
-{MOBILE_DEEPLINK}?token={token}
-
 Если вы не регистрировались, просто проигнорируйте это сообщение.
+
+Это письмо отправлено автоматически, на него не нужно отвечать.
 
 С уважением,
 Команда {MAIL_FROM_NAME}
@@ -38,31 +33,14 @@ async def send_verification_email(email: str, token: str):
     
     html = f"""
     <html>
-      <body style="font-family: Arial, sans-serif; line-height: 1.5; color: #000;">
-        <div style="max-width: 500px; margin: 0; padding: 10px;">
-          <p>Здравствуйте!</p>
-          <p>Благодарим за регистрацию в <b>{MAIL_FROM_NAME}</b>. Для активации аккаунта, пожалуйста, нажмите на кнопку ниже:</p>
-          
-          <div style="margin: 20px 0;">
-            <a href="{verification_url}" 
-               style="background-color: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px; display: inline-block;">
-               Подтвердить Email
-            </a>
-          </div>
-          
-          <p style="font-size: 14px; color: #555;">
-            Или скопируйте ссылку в браузер: {verification_url}
-          </p>
-          
-          <p style="font-size: 14px; color: #555;">
-            Для открытия в мобильном приложении: <a href="{MOBILE_DEEPLINK}?token={token}">{MOBILE_DEEPLINK}?token={token}</a>
-          </p>
-          
-          <hr style="border: 0; border-top: 1px solid #ddd; margin: 20px 0;">
-          <p style="font-size: 12px; color: #999;">
-            Если вы не совершали данное действие, просто проигнорируйте это письмо.
-          </p>
-        </div>
+      <body style="font-family: Arial, sans-serif; color: #000;">
+        <p>Здравствуйте!</p>
+        <p>Для завершения регистрации, пожалуйста, перейдите по ссылке:</p>
+        <p><a href="{verification_url}">{verification_url}</a></p>
+        <p>Если ссылка не открывается, скопируйте её в адресную строку браузера.</p>
+        <br>
+        <p style="font-size: 12px; color: #666;">Это письмо отправлено автоматически, на него не нужно отвечать.</p>
+        <p>С уважением,<br>Команда {MAIL_FROM_NAME}</p>
       </body>
     </html>
     """
@@ -70,38 +48,27 @@ async def send_verification_email(email: str, token: str):
 
 async def send_welcome_email(email: str):
     logger.info(f"Sending welcome email to {email}")
-    subject = f"Добро пожаловать в {MAIL_FROM_NAME}"
+    subject = "Добро пожаловать"
     
     text = f"""Здравствуйте!
 
-Мы рады приветствовать вас в {MAIL_FROM_NAME}.
+Мы рады приветствовать вас в нашем проекте.
 
-В ближайшее время вам придет второе письмо со ссылкой для подтверждения вашего адреса электронной почты. Это необходимо для активации всех функций аккаунта.
+В ближайшее время вам придет ссылка для подтверждения вашего адреса.
+
+Это письмо отправлено автоматически, на него не нужно отвечать.
 
 С уважением,
 Команда {MAIL_FROM_NAME}
 """
-    
-    html = f"""
-    <html>
-      <body style="font-family: Arial, sans-serif; line-height: 1.5; color: #000;">
-        <div style="max-width: 500px; margin: 0; padding: 10px;">
-          <p>Здравствуйте!</p>
-          <p>Мы рады, что вы присоединились к <b>{MAIL_FROM_NAME}</b>.</p>
-          <p>Письмо с подтверждением аккаунта будет отправлено вам следующим сообщением. Пожалуйста, проверьте почту через минуту.</p>
-          
-          <p>С уважением,<br>Команда {MAIL_FROM_NAME}</p>
-        </div>
-      </body>
-    </html>
-    """
-    await send_email(email, subject, text, html)
+    # Для приветственного письма используем только текст (меньше шансов попасть в спам)
+    await send_email(email, subject, text, None)
 
 async def send_welcome_and_verification_email(email: str, token: str):
     """Отправляет приветствие, а затем письмо верификации с паузой."""
     await send_welcome_email(email)
     import asyncio
-    await asyncio.sleep(5)
+    await asyncio.sleep(10)
     await send_verification_email(email, token)
 
 async def send_email(email: str, subject: str, text: str, html: str | None = None):
@@ -120,17 +87,19 @@ async def send_email(email: str, subject: str, text: str, html: str | None = Non
     message["From"] = formataddr((MAIL_FROM_NAME, MAIL_FROM or MAIL_USERNAME))
     message["To"] = email
     message["Reply-To"] = MAIL_FROM or MAIL_USERNAME
-    message["X-Mailer"] = "Python SmtpLib"
     
-    # Message-ID
-    msg_id_domain = 'mail.ru'
-    if MAIL_FROM and '@' in MAIL_FROM:
-        msg_id_domain = MAIL_FROM.split('@')[-1]
-    elif MAIL_USERNAME and '@' in MAIL_USERNAME:
-        msg_id_domain = MAIL_USERNAME.split('@')[-1]
+    # Message-ID и другие служебные заголовки
+    msg_id_domain = 'fokin.fun'
+    if DOMAIN:
+        # Пытаемся извлечь домен из DOMAIN
+        from urllib.parse import urlparse
+        parsed = urlparse(DOMAIN)
+        if parsed.netloc:
+            msg_id_domain = parsed.netloc
     
     message["Message-ID"] = make_msgid(domain=msg_id_domain)
     message["Date"] = formatdate(localtime=True)
+    message["Auto-Submitted"] = "auto-generated"
     
     part1 = MIMEText(text, "plain", "utf-8")
     message.attach(part1)
@@ -148,7 +117,7 @@ async def send_email(email: str, subject: str, text: str, html: str | None = Non
                 if MAIL_PASSWORD:
                     server.login(MAIL_USERNAME, MAIL_PASSWORD)
                     logger.debug("SMTP login successful")
-                server.sendmail(MAIL_FROM or MAIL_USERNAME, email, message.as_string())
+                server.send_message(message)
             finally:
                 server.quit()
         else:
@@ -160,7 +129,7 @@ async def send_email(email: str, subject: str, text: str, html: str | None = Non
                 if MAIL_PASSWORD:
                     server.login(MAIL_USERNAME, MAIL_PASSWORD)
                     logger.debug("SMTP login successful")
-                server.sendmail(MAIL_FROM or MAIL_USERNAME, email, message.as_string())
+                server.send_message(message)
             finally:
                 server.quit()
         logger.success(f"Email successfully sent to {email}")
