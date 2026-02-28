@@ -7,7 +7,7 @@ from loguru import logger
 
 @celery_app.task(name="send_verification_email_task")
 def send_verification_email_task(email: str, code: str):
-    """Задача Celery для последовательной отправки приветствия и подтверждения."""
+    """Задача Celery для отправки приветствия с кодом подтверждения."""
     logger.info(f"Starting Celery task send_verification_email_task for {email}")
     try:
         asyncio.run(send_welcome_and_verification_email(email, code))
