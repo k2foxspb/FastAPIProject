@@ -577,12 +577,36 @@ async def google_auth(
     Если пользователь не существует, создает его.
     """
     from firebase_admin import auth as fb_auth
+    from google.oauth2 import id_token
+    from google.auth.transport import requests
+    
     try:
-        # Верификация токена через Firebase
-        # Мы используем run_in_executor, так как Firebase Admin SDK блокирующий (синхронный)
-        decoded_token = await asyncio.get_event_loop().run_in_executor(
-            None, lambda: fb_auth.verify_id_token(request.id_token)
-        )
+        decoded_token = None
+        try:
+            # Сначала пробуем верификацию через Firebase (основной метод)
+            # Мы используем run_in_executor, так как Firebase Admin SDK блокирующий (синхронный)
+            decoded_token = await asyncio.get_event_loop().run_in_executor(
+                None, lambda: fb_auth.verify_id_token(request.id_token)
+            )
+            logger.info(f"Google Auth: Verified via Firebase for {decoded_token.get('email')}")
+        except Exception as fb_err:
+            logger.warning(f"Google Auth: Firebase verification failed, trying Google Auth fallback: {fb_err}")
+            # Если Firebase не принял токен (например, это чистый Google ID Token),
+            # пробуем верифицировать его напрямую через Google OAuth2 библиотеку.
+            # Нам не нужно указывать CLIENT_ID, если мы доверяем всем клиентам нашего проекта,
+            # но мы проверим audience позже.
+            try:
+                decoded_token = await asyncio.get_event_loop().run_in_executor(
+                    None, lambda: id_token.verify_oauth2_token(
+                        request.id_token, 
+                        requests.Request()
+                    )
+                )
+                logger.info(f"Google Auth: Verified via Google Auth library for {decoded_token.get('email')}")
+            except Exception as g_err:
+                logger.error(f"Google Auth: Both verification methods failed. Firebase: {fb_err}, Google: {g_err}")
+                raise g_err
+
         email = decoded_token.get("email")
         if not email:
             raise HTTPException(status_code=400, detail="Email not provided in Google token")

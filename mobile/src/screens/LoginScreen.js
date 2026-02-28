@@ -18,8 +18,9 @@ export default function LoginScreen({ navigation }) {
 
   useEffect(() => {
     GoogleSignin.configure({
-      // На Android clientID берется из google-services.json автоматически
+      webClientId: '176773891332-vl9om7pugk8voh0mtnkbk2crqd9gtk1m.apps.googleusercontent.com',
       offlineAccess: true,
+      forceCodeForRefreshToken: true,
     });
   }, []);
 
@@ -27,8 +28,16 @@ export default function LoginScreen({ navigation }) {
     try {
       setLoading(true);
       await GoogleSignin.hasPlayServices();
+      // Переконфигурируем прямо перед входом для надежности
+      GoogleSignin.configure({
+        webClientId: '176773891332-vl9om7pugk8voh0mtnkbk2crqd9gtk1m.apps.googleusercontent.com',
+        offlineAccess: true,
+        forceCodeForRefreshToken: true,
+      });
+      
       const userInfo = await GoogleSignin.signIn();
-      const idToken = userInfo.idToken;
+      console.log('Google UserInfo:', JSON.stringify(userInfo, null, 2));
+      const idToken = userInfo.idToken || userInfo.data?.idToken;
       
       if (!idToken) {
         throw new Error('Не удалось получить ID токен Google');
@@ -58,6 +67,12 @@ export default function LoginScreen({ navigation }) {
         console.log('Signin in progress');
       } else if (error.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
         Alert.alert('Ошибка', 'Google Play Services не доступны');
+      } else if (error.code === statusCodes.DEVELOPER_ERROR) {
+        console.error('Google Auth DEVELOPER_ERROR:', error);
+        Alert.alert(
+          'Ошибка конфигурации', 
+          'DEVELOPER_ERROR: Проверьте, что SHA-1 вашего ключа добавлен в Firebase Console, а webClientId указан верно.'
+        );
       } else {
         console.error('Google Auth Error:', error);
         Alert.alert('Ошибка входа', error.message || 'Не удалось войти через Google');
