@@ -72,6 +72,7 @@ function AppContent() {
     
     // Сначала инициализируем Firebase (теперь это async)
     initializeFirebase().then(() => {
+      console.log('[App] Firebase initialized successfully (Junie Debug v1)');
       requestUserPermission().then(granted => {
         if (granted) {
           // Если разрешение получено, пробуем получить и сохранить токен

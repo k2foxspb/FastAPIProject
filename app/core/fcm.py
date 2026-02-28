@@ -162,10 +162,17 @@ async def send_fcm_notification(
             priority='high',
             ttl=3600 * 24,  # 24 часа
             direct_boot_ok=True,
-            # Оставляем notification=None для data-only сообщений на Android в фоне
-            # Но если мы хотим гарантированный системный баннер, можно раскомментировать.
-            # Для кастомных уведомлений (с кнопками Reply/Read) лучше data-only.
-            notification=None 
+            # ВАЖНО: Мы включаем notification для гарантированного отображения баннера.
+            # На Android Notifee может поймать это через data-обработчик или система покажет сама.
+            notification=messaging.AndroidNotification(
+                title=title,
+                body=body,
+                icon='notification_icon',
+                color='#023c69',
+                channel_id='messages',
+                tag=notif_tag,
+                # default_notification_channel_id в AndroidManifest должен совпадать
+            )
         )
 
         # Настройки для iOS (APNS)

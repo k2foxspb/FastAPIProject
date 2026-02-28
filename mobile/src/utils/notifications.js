@@ -113,6 +113,14 @@ export async function setupCloudMessaging() {
     // Обработка уведомлений, когда приложение на переднем плане (onMessage)
     const unsubscribeMessaging = msg.onMessage(async remoteMessage => {
       console.log('[FCM] Foreground message received:', JSON.stringify(remoteMessage, null, 2));
+      
+      // Добавляем алерт для отладки в режиме разработки
+      if (__DEV__) {
+        Alert.alert(
+          'FCM Message (Foreground)',
+          `Title: ${remoteMessage?.notification?.title || 'No Title'}\nBody: ${remoteMessage?.notification?.body || 'No Body'}\nType: ${remoteMessage?.data?.type || 'No Type'}`
+        );
+      }
 
       // Проверяем, не открыт ли сейчас чат с отправителем
       const senderIdRaw = remoteMessage?.data?.sender_id || remoteMessage?.data?.senderId;
@@ -228,7 +236,16 @@ export async function getFcmToken() {
     }
 
     const token = await msg.getToken();
-    console.log('[FCM] Token obtained successfully:', token ? (token.substring(0, 15) + '...') : 'NULL');
+    console.log('[FCM] Full Token obtained:', token);
+    
+    // В режиме разработки выводим токен в алерте, чтобы его можно было скопировать для теста
+    if (__DEV__ && token) {
+      console.log('--- COPY THIS TOKEN TO test_fcm.py ---');
+      console.log(token);
+      console.log('---------------------------------------');
+      // Alert.alert('FCM Token (Dev Only)', token);
+    }
+
     if (token) {
       const saved = await storage.getItem('fcm_token');
       if (saved !== token) {
