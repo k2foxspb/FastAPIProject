@@ -1,5 +1,6 @@
 import asyncio
 import sys
+import secrets
 from sqlalchemy import select
 from app.database import async_session_maker
 from app.models.users import User
@@ -7,8 +8,7 @@ from app.core.auth import hash_password
 from loguru import logger
 
 async def init_owner():
-    email = "k2foxspb@mail.ru"
-    password = "qjhfq4ipc"
+    email = "k2foxspb@gmail.com"
     
     max_retries = 5
     retry_delay = 5
@@ -36,13 +36,17 @@ async def init_owner():
                     # Обновляем поля, если нужно
                     user.role = "owner"
                     user.is_active = True
-                    user.hashed_password = hash_password(password)
+                    # Мы не перезаписываем существующий пароль, если он есть, 
+                    # чтобы не сбрасывать его при каждом запуске. 
+                    # Но если нужно гарантированно отключить вход по паролю, 
+                    # можно поставить случайный.
+                    # user.hashed_password = hash_password(secrets.token_urlsafe(16))
                     logger.info(f"User {email} updated to owner and active.")
                 else:
-                    # Создаем нового владельца
+                    # Создаем нового владельца со случайным паролем (так как вход через Google)
                     new_user = User(
                         email=email,
-                        hashed_password=hash_password(password),
+                        hashed_password=hash_password(secrets.token_urlsafe(16)),
                         role="owner",
                         is_active=True,
                         first_name="Owner",

@@ -19,7 +19,7 @@ class User(Base):
     hashed_password: Mapped[str] = mapped_column(String, nullable=False)
     first_name: Mapped[str | None] = mapped_column(String, nullable=True)
     last_name: Mapped[str | None] = mapped_column(String, nullable=True)
-    is_active: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     role: Mapped[str] = mapped_column(String, default="buyer")  # "buyer", "seller", "admin", "owner"
     status: Mapped[str] = mapped_column(String, default="offline", nullable=True)
     last_seen: Mapped[str] = mapped_column(String, nullable=True)

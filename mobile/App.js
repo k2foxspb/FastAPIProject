@@ -40,7 +40,6 @@ function AppContent() {
         Profile: {
           screens: {
             Login: 'login',
-            Register: 'register',
           },
         },
       },
@@ -48,28 +47,6 @@ function AppContent() {
     subscribe(listener) {
       const onReceiveURL = async ({ url }) => {
         console.log('[Linking] Received URL:', url);
-        const { queryParams } = Linking.parse(url);
-        
-        // 1. Обработка прямого токена верификации (Universal Link)
-        if (queryParams?.token && !url.includes('status=')) {
-          try {
-            console.log('[Linking] Verifying email directly via app...');
-            await usersApi.verifyEmail(queryParams.token);
-            Alert.alert('Успех', 'Email успешно подтвержден! Теперь вы можете войти.');
-          } catch (e) {
-            console.error('[Linking] Email verification error:', e);
-            const reason = e.response?.data?.detail || 'unknown';
-            Alert.alert('Ошибка', `Не удалось подтвердить email: ${reason}`);
-          }
-        }
-        
-        // 2. Обработка редиректа с бэкенда (deeplink)
-        if (url.includes('status=success')) {
-          Alert.alert('Успех', 'Email успешно подтвержден! Теперь вы можете войти.');
-        } else if (url.includes('status=error')) {
-          const reason = queryParams?.reason || 'unknown';
-          Alert.alert('Ошибка', `Не удалось подтвердить email. Причина: ${reason}`);
-        }
         listener(url);
       };
 

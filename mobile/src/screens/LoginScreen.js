@@ -1,61 +1,66 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { getShadow } from '../utils/shadowStyles';
-import { View, Text, TextInput, StyleSheet, TouchableOpacity, Alert, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
+import { GoogleSignin, statusCodes } from '@react-native-google-signin/google-signin';
 import { usersApi, setAuthToken } from '../api';
 import { useNotifications } from '../context/NotificationContext';
 import { updateServerFcmToken } from '../utils/notifications';
 import { storage } from '../utils/storage';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
+import { Ionicons } from '@expo/vector-icons';
 
 export default function LoginScreen({ navigation }) {
   const { theme } = useTheme();
   const colors = themeConstants[theme];
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const { connect, loadUser } = useNotifications();
 
-  const onLogin = async () => {
-    if (!username || !password) {
-      Alert.alert('Ошибка', 'Введите логин и пароль');
-      return;
-    }
+  useEffect(() => {
+    GoogleSignin.configure({
+      // На Android clientID берется из google-services.json автоматически
+      offlineAccess: true,
+    });
+  }, []);
+
+  const onGoogleLogin = async () => {
     try {
       setLoading(true);
-      // Получаем FCM токен перед логином, если он уже есть локально
-      const fcmToken = await storage.getItem('fcm_token');
-      const res = await usersApi.login(username, password, fcmToken);
-      const token = res.data?.access_token;
-      const refreshToken = res.data?.refresh_token;
-      if (!token) {
-        throw new Error('Токен не получен');
+      await GoogleSignin.hasPlayServices();
+      const userInfo = await GoogleSignin.signIn();
+      const idToken = userInfo.idToken;
+      
+      if (!idToken) {
+        throw new Error('Не удалось получить ID токен Google');
       }
+
+      const fcmToken = await storage.getItem('fcm_token');
+      const res = await usersApi.googleAuth(idToken, fcmToken);
       
-      // Сохраняем токены для будущих сессий
-      await storage.saveTokens(token, refreshToken);
+      const { access_token, refresh_token } = res.data;
       
-      setAuthToken(token);
+      if (!access_token) {
+        throw new Error('Токен не получен от сервера');
+      }
+
+      await storage.saveTokens(access_token, refresh_token);
+      setAuthToken(access_token);
       
-      // Загружаем данные пользователя ПЕРЕД переходом на другой экран
       await loadUser();
-      
-      // Подключаемся к WebSocket уведомлениям
-      connect(token);
-      // Обновляем FCM токен на сервере сразу после входа
+      connect(access_token);
       updateServerFcmToken();
-      // После успешного входа заменяем экран на профиль
+      
       navigation.replace('ProfileMain');
-    } catch (e) {
-      const msg = e?.response?.data?.detail || e.message || 'Не удалось выполнить вход';
-      if (typeof msg === 'string' && (msg.includes('Email not verified') || msg.includes('not active'))) {
-        Alert.alert(
-          'Email не подтвержден',
-          'Пожалуйста, введите код подтверждения из письма.',
-          [{ text: 'Ввести код', onPress: () => navigation.navigate('Verification', { email: username.includes('@') ? username : '' }) }]
-        );
+    } catch (error) {
+      if (error.code === statusCodes.SIGN_IN_CANCELLED) {
+        console.log('User cancelled login');
+      } else if (error.code === statusCodes.IN_PROGRESS) {
+        console.log('Signin in progress');
+      } else if (error.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
+        Alert.alert('Ошибка', 'Google Play Services не доступны');
       } else {
-        Alert.alert('Ошибка входа', String(msg));
+        console.error('Google Auth Error:', error);
+        Alert.alert('Ошибка входа', error.message || 'Не удалось войти через Google');
       }
     } finally {
       setLoading(false);
@@ -63,55 +68,57 @@ export default function LoginScreen({ navigation }) {
   };
 
   return (
-    <KeyboardAvoidingView 
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'} 
-      style={[styles.container, { backgroundColor: colors.background }]}
-    >
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={styles.inner}>
-        <Text style={[styles.title, { color: colors.text }]}>Вход</Text>
-        <TextInput
-          style={[styles.input, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]}
-          placeholder="Логин или email"
-          placeholderTextColor={colors.textSecondary}
-          autoCapitalize="none"
-          value={username}
-          onChangeText={setUsername}
-        />
-        <TextInput
-          style={[styles.input, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]}
-          placeholder="Пароль"
-          placeholderTextColor={colors.textSecondary}
-          secureTextEntry
-          value={password}
-          onChangeText={setPassword}
-        />
-        <TouchableOpacity 
-          style={[styles.button, { backgroundColor: colors.primary }, loading && styles.buttonDisabled]} 
-          onPress={onLogin} 
-          disabled={loading}
-        >
-          <Text style={styles.buttonText}>{loading ? 'Входим…' : 'Войти'}</Text>
-        </TouchableOpacity>
+        <Ionicons name="logo-google" size={80} color={colors.primary} style={{ alignSelf: 'center', marginBottom: 24 }} />
+        <Text style={[styles.title, { color: colors.text }]}>Добро пожаловать</Text>
+        <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+          Для доступа к приложению используйте ваш аккаунт Google. Регистрация и вход стали проще!
+        </Text>
 
         <TouchableOpacity 
-          style={styles.linkButton} 
-          onPress={() => navigation.navigate('Register')}
+          style={[styles.button, loading && styles.buttonDisabled]} 
+          onPress={onGoogleLogin} 
+          disabled={loading}
         >
-          <Text style={[styles.linkText, { color: colors.primary }]}>Нет аккаунта? Зарегистрироваться</Text>
+          {loading ? (
+            <ActivityIndicator color={colors.primary} />
+          ) : (
+            <View style={styles.buttonContent}>
+              <Ionicons name="logo-google" size={24} color="#4285F4" style={{ marginRight: 12 }} />
+              <Text style={styles.buttonText}>Войти через Google</Text>
+            </View>
+          )}
         </TouchableOpacity>
+
+        <View style={styles.footer}>
+          <Text style={[styles.footerText, { color: colors.textSecondary }]}>
+            Верификация по email полностью удалена. Теперь всё работает через Google.
+          </Text>
+        </View>
       </View>
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
   inner: { flex: 1, justifyContent: 'center', padding: 24 },
-  title: { fontSize: 28, fontWeight: 'bold', marginBottom: 32, textAlign: 'center' },
-  input: { height: 52, borderWidth: 1, borderRadius: 12, paddingHorizontal: 16, marginBottom: 16, fontSize: 16 },
-  button: { height: 52, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginTop: 8, ...getShadow('#000', { width: 0, height: 2 }, 0.1, 4, 2) },
+  title: { fontSize: 28, fontWeight: 'bold', marginBottom: 12, textAlign: 'center' },
+  subtitle: { fontSize: 16, textAlign: 'center', marginBottom: 40, lineHeight: 22 },
+  button: { 
+    height: 56, 
+    borderRadius: 12, 
+    alignItems: 'center', 
+    justifyContent: 'center', 
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#dadce0',
+    ...getShadow('#000', { width: 0, height: 1 }, 0.1, 2, 2) 
+  },
+  buttonContent: { flexDirection: 'row', alignItems: 'center' },
   buttonDisabled: { opacity: 0.7 },
-  buttonText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
-  linkButton: { marginTop: 20, alignItems: 'center' },
-  linkText: { fontSize: 16, fontWeight: '600' },
+  buttonText: { color: '#3c4043', fontWeight: '500', fontSize: 16 },
+  footer: { marginTop: 40, paddingHorizontal: 20 },
+  footerText: { fontSize: 14, textAlign: 'center', opacity: 0.8, fontStyle: 'italic' },
 });

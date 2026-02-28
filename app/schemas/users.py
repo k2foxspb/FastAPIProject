@@ -288,6 +288,11 @@ class User(BaseModel):
             )
 
 
+class GoogleAuthRequest(BaseModel):
+    id_token: str
+    fcm_token: str | None = None
+
+
 class VerifyCodeRequest(BaseModel):
     email: str
     code: str

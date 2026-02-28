@@ -52,7 +52,7 @@ async def session_delete(request: Request):
 
 # Тестовый эндпоинт для Celery (удалите в продакшене)
 @router.get("/test-celery")
-async def test_celery_task(email: str = "k2foxspb@mail.ru"):
+async def test_celery_task(email: str = "k2foxspb@gmail.com"):
     """Тестовый эндпоинт для проверки Celery."""
     call_background_task.delay(email, 'Это тестовое сообщение из эндпоинта health-check')
     return {"message": f"Task sent to Celery for {email}"}

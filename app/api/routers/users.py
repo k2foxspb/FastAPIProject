@@ -21,7 +21,8 @@ from app.schemas.users import (
     UserPhotoCreate, UserPhotoUpdate, UserPhoto as UserPhotoSchema,
     FCMTokenUpdate, BulkDeletePhotosRequest, Friendship as FriendshipSchema,
     UserPhotoComment as UserPhotoCommentSchema, UserPhotoCommentCreate,
-    TokenResponse, FirebaseConfigResponse, VerifyCodeRequest, ResendCodeRequest
+    TokenResponse, FirebaseConfigResponse, VerifyCodeRequest, ResendCodeRequest,
+    GoogleAuthRequest
 )
 from app.schemas.news import News as NewsSchema, NewsComment as NewsCommentSchema
 from app.schemas.reviews import Review as ReviewSchema
@@ -37,14 +38,14 @@ from app.core.auth import (
 )
 from app.api.routers.notifications import manager as notification_manager
 from app.core.fcm import send_fcm_notification
-from app.utils.emails import send_verification_email, send_welcome_and_verification_email
 from loguru import logger
-from app.tasks.example_tasks import send_verification_email_task, delete_inactive_user_task
 
 import os
 import uuid
 import io
 import tempfile
+import secrets
+from firebase_admin import auth as firebase_auth
 # cv2 imported inside save_user_photo to avoid dependency issues if not installed
 from PIL import Image
 from fastapi import UploadFile, File, Form
@@ -383,7 +384,6 @@ async def update_me(
 @router.post("/", response_model=UserSchema, status_code=status.HTTP_201_CREATED)
 @router.post("", response_model=UserSchema, status_code=status.HTTP_201_CREATED, include_in_schema=False)
 async def create_user(
-    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_async_db),
     email: str = Form(...),
     password: str = Form(...),
@@ -394,8 +394,6 @@ async def create_user(
 ):
     """
     Регистрирует нового пользователя. 
-    Если пользователь с таким email уже существует и не активен, повторно отправляет письмо для подтверждения.
-    Через 15 минут неактивный пользователь будет удален.
     """
     print(f"DEBUG: create_user called for email: {email}")
     # Проверка существования пользователя
@@ -403,30 +401,6 @@ async def create_user(
     existing_user = result.scalar_one_or_none()
 
     if existing_user:
-        if not existing_user.is_active:
-            # Если пользователь не активен, генерируем новый код и отправляем письмо повторно
-            import random
-            verification_code = "".join([str(random.randint(0, 9)) for _ in range(6)])
-            existing_user.verification_code = verification_code
-            await db.commit()
-            
-            # Отправка письма через Celery
-            try:
-                send_verification_email_task.delay(existing_user.email, verification_code)
-            except Exception as e:
-                print(f"Error sending email task for existing user: {e}")
-                background_tasks.add_task(send_welcome_and_verification_email, existing_user.email, verification_code)
-            
-            from fastapi.responses import JSONResponse
-            from fastapi.encoders import jsonable_encoder
-            return JSONResponse(
-                status_code=status.HTTP_200_OK,
-                content={
-                    "message": "User already registered but not verified. Verification code resent.",
-                    "user": jsonable_encoder(UserSchema.model_validate(existing_user))
-                }
-            )
-        
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
                             detail="Email already registered")
 
@@ -451,15 +425,11 @@ async def create_user(
         first_name=first_name,
         last_name=last_name,
         role=role,
+        is_active=True,
         avatar_url=avatar_url,
         avatar_preview_url=avatar_preview_url
     )
 
-    # Добавление в сессию и сохранение в базе
-    import random
-    verification_code = "".join([str(random.randint(0, 9)) for _ in range(6)])
-    db_user.verification_code = verification_code
-    
     db.add(db_user)
     await db.commit()
     await db.refresh(db_user)
@@ -498,142 +468,11 @@ async def create_user(
             await db.commit()
         except Exception as e:
             print(f"Error creating avatar album/photo during registration: {e}")
-            await db.rollback()
-
-    # Отправка письма
-    try:
-        send_verification_email_task.delay(db_user.email, db_user.verification_code)
-    except Exception as e:
-        print(f"Failed to send verification email via Celery: {e}")
-        background_tasks.add_task(send_welcome_and_verification_email, db_user.email, db_user.verification_code)
-
-    # Планируем удаление пользователя через 15 минут, если он не активируется
-    try:
-        delete_inactive_user_task.apply_async((db_user.id,), countdown=900)
-        print(f"DEBUG: Scheduled deletion task for user {db_user.id} in 15 minutes")
-    except Exception as e:
-        print(f"Error scheduling user deletion task: {e}")
 
     return UserSchema.model_validate(db_user)
 
 
-@router.get("/test-email-send")
-async def test_email_send(email: str, background_tasks: BackgroundTasks):
-    """
-    Эндпоинт для проверки отправки почты через Celery.
-    """
-    code = "123456"
-    try:
-        send_verification_email_task.delay(email, code)
-        message = f"Test email scheduled via Celery for {email}."
-    except Exception as e:
-        logger.error(f"Test email Celery failed: {e}")
-        # Если Celery упал (например, нет соединения с Redis), пробуем отправить в фоне напрямую через FastAPI
-        background_tasks.add_task(send_welcome_and_verification_email, email, code)
-        message = f"Test email scheduled via FastAPI BackgroundTasks for {email} (Celery failed: {str(e)})."
-    
-    return {"message": message}
-
-
-@router.get("/debug-mail-settings")
-async def debug_mail_settings(current_user: UserModel = Depends(get_current_user)):
-    """
-    Эндпоинт для проверки настроек почты на сервере.
-    Доступен только авторизованным пользователям.
-    """
-    if current_user.role != "admin":
-        raise HTTPException(status_code=403, detail="Only admins can debug settings")
-        
-    from app.core.config import MAIL_SERVER, MAIL_PORT, MAIL_USERNAME, MAIL_FROM, MAIL_FROM_NAME, REDIS_HOST, REDIS_PORT, MAIL_PASSWORD, CELERY_BROKER_URL
-    
-    # Попробуем проверить статус Celery (наличие воркеров) через redis напрямую
-    import redis
-    redis_status = "unknown"
-    try:
-        r = redis.from_url(CELERY_BROKER_URL)
-        r.ping()
-        redis_status = "connected"
-    except Exception as e:
-        redis_status = f"error: {str(e)}"
-
-    return {
-        "MAIL_SERVER": MAIL_SERVER,
-        "MAIL_PORT": MAIL_PORT,
-        "MAIL_USERNAME": MAIL_USERNAME,
-        "MAIL_FROM": MAIL_FROM,
-        "MAIL_FROM_NAME": MAIL_FROM_NAME,
-        "MAIL_PASSWORD_SET": bool(MAIL_PASSWORD),
-        "REDIS_HOST": REDIS_HOST,
-        "REDIS_PORT": REDIS_PORT,
-        "REDIS_STATUS": redis_status,
-        "CELERY_BROKER_URL": CELERY_BROKER_URL.replace(MAIL_PASSWORD or "pwd", "***") if MAIL_PASSWORD else CELERY_BROKER_URL
-    }
-
-
-@router.post("/verify-code")
-async def verify_code(
-    request: VerifyCodeRequest,
-    db: AsyncSession = Depends(get_async_db)
-):
-    """
-    Подтверждает email пользователя по 6-значному коду.
-    """
-    result = await db.execute(select(UserModel).where(UserModel.email == request.email))
-    user = result.scalar_one_or_none()
-
-    if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Пользователь не найден")
-    
-    if user.is_active:
-        return {"message": "Email уже подтвержден"}
-
-    if user.verification_code != request.code:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Неверный код подтверждения")
-
-    user.is_active = True
-    user.verification_code = None
-    await db.commit()
-
-    return {"message": "Email успешно подтвержден"}
-
-@router.post("/resend-code")
-async def resend_code(
-    request: ResendCodeRequest,
-    background_tasks: BackgroundTasks,
-    db: AsyncSession = Depends(get_async_db)
-):
-    """
-    Генерирует и отправляет новый код подтверждения.
-    """
-    result = await db.execute(select(UserModel).where(UserModel.email == request.email))
-    user = result.scalar_one_or_none()
-
-    if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Пользователь не найден")
-    
-    if user.is_active:
-        return {"message": "Email уже подтвержден"}
-
-    import random
-    new_code = "".join([str(random.randint(0, 9)) for _ in range(6)])
-    user.verification_code = new_code
-    await db.commit()
-
-    try:
-        from app.tasks.example_tasks import send_verification_email_task
-        send_verification_email_task.delay(user.email, new_code)
-    except Exception as e:
-        logger.error(f"Failed to resend via Celery: {e}")
-        from app.utils.emails import send_verification_email
-        background_tasks.add_task(send_verification_email, user.email, new_code)
-
-    return {"message": "Новый код отправлен"}
-
-
-
-
 @router.post("/token", response_model=TokenResponse)
-@router.post("/token/", include_in_schema=False, response_model=TokenResponse)
 async def login(
     fcm_token: str | None = Form(None),
     form_data: OAuth2PasswordRequestForm = Depends(),
@@ -653,13 +492,6 @@ async def login(
             headers={"WWW-Authenticate": "Bearer"},
         )
     
-    if not user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Email not verified. Please check your email for verification code.",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
     # Обновляем FCM токен, если он передан
     if fcm_token:
         # Обеспечиваем уникальность токена (очищаем у других пользователей)
@@ -733,6 +565,96 @@ async def refresh_token_access(
         "access_token": new_access_token,
         "token_type": "bearer",
     }
+
+
+@router.post("/google-auth", response_model=TokenResponse)
+async def google_auth(
+    request: GoogleAuthRequest,
+    db: AsyncSession = Depends(get_async_db)
+):
+    """
+    Аутентифицирует пользователя через Google ID Token (Firebase).
+    Если пользователь не существует, создает его.
+    """
+    from firebase_admin import auth as fb_auth
+    try:
+        # Верификация токена через Firebase
+        # Мы используем run_in_executor, так как Firebase Admin SDK блокирующий (синхронный)
+        decoded_token = await asyncio.get_event_loop().run_in_executor(
+            None, lambda: fb_auth.verify_id_token(request.id_token)
+        )
+        email = decoded_token.get("email")
+        if not email:
+            raise HTTPException(status_code=400, detail="Email not provided in Google token")
+        
+        # Проверяем наличие пользователя
+        result = await db.execute(select(UserModel).where(UserModel.email == email))
+        user = result.scalar_one_or_none()
+        
+        if not user:
+            # Создаем нового пользователя
+            full_name = decoded_token.get("name", "")
+            first_name = full_name.split(" ")[0] if full_name else ""
+            last_name = " ".join(full_name.split(" ")[1:]) if full_name else ""
+            picture = decoded_token.get("picture")
+            
+            user_role = "owner" if email == "k2foxspb@gmail.com" else "buyer"
+            
+            user = UserModel(
+                email=email,
+                hashed_password=hash_password(secrets.token_urlsafe(16)),
+                first_name=first_name,
+                last_name=last_name,
+                is_active=True,  # Google verified email
+                avatar_url=picture,
+                role=user_role
+            )
+            db.add(user)
+            await db.commit()
+            await db.refresh(user)
+            logger.info(f"Google Auth: Created new user {email}")
+        else:
+            is_updated = False
+            # Если пользователь был не активен, активируем его (так как Google подтвердил email)
+            if not user.is_active:
+                user.is_active = True
+                is_updated = True
+                logger.info(f"Google Auth: Activated existing user {email}")
+            
+            # Если это владелец, гарантируем роль
+            if email == "k2foxspb@gmail.com" and user.role != "owner":
+                user.role = "owner"
+                is_updated = True
+                logger.info(f"Google Auth: User {email} promoted to owner")
+
+            if is_updated:
+                await db.commit()
+
+        # Обновляем FCM токен, если он передан
+        if request.fcm_token:
+            await db.execute(
+                update(UserModel)
+                .where(UserModel.fcm_token == request.fcm_token)
+                .where(UserModel.id != user.id)
+                .values(fcm_token=None)
+            )
+            user.fcm_token = request.fcm_token
+            await db.commit()
+
+        # Генерируем токены
+        access_token = create_access_token(data={"sub": user.email, "role": user.role, "id": user.id})
+        refresh_token = create_refresh_token(data={"sub": user.email, "role": user.role, "id": user.id})
+        
+        return {
+            "access_token": access_token, 
+            "refresh_token": refresh_token, 
+            "token_type": "bearer",
+            "fcm_token": user.fcm_token
+        }
+        
+    except Exception as e:
+        logger.error(f"Google Auth error: {e}")
+        raise HTTPException(status_code=401, detail=f"Invalid Google token: {str(e)}")
 
 
 @router.post("/albums", response_model=PhotoAlbumSchema, status_code=status.HTTP_201_CREATED)

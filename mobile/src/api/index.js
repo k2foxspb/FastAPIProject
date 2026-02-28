@@ -87,10 +87,7 @@ export const usersApi = {
   deletePhotoComment: (commentId) => api.delete(`/users/photos/comments/${commentId}`),
   reactToPhotoComment: (commentId, reactionType) => api.post(`/users/photos/comments/${commentId}/react`, null, { params: { reaction_type: reactionType } }),
   updateFcmToken: (token) => api.post('/users/fcm-token', { fcm_token: token }),
-  getFirebaseConfig: () => api.get('/users/firebase-config'),
-  verifyEmail: (token) => api.get('/verify-email', { params: { token } }),
-  verifyCode: (email, code) => api.post('/users/verify-code', { email, code }),
-  resendCode: (email) => api.post('/users/resend-code', { email }),
+  googleAuth: (idToken, fcmToken = null) => api.post('/users/google-auth', { id_token: idToken, fcm_token: fcmToken }),
   updateMe: (formData) => api.patch('/users/me', formData, {
     headers: {
       'Content-Type': 'multipart/form-data',
