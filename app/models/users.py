@@ -129,8 +129,8 @@ class UserPhotoCommentReaction(Base):
     __tablename__ = "user_photo_comment_reactions"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
-    comment_id: Mapped[int] = mapped_column(ForeignKey("user_photo_comments.id"), nullable=False)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    comment_id: Mapped[int] = mapped_column(ForeignKey("user_photo_comments.id", ondelete="CASCADE"), nullable=False)
     reaction_type: Mapped[int] = mapped_column(Integer, nullable=False)  # 1 for like, -1 for dislike
 
     user: Mapped["User"] = relationship("User")
@@ -141,8 +141,8 @@ class UserPhotoReaction(Base):
     __tablename__ = "user_photo_reactions"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
-    photo_id: Mapped[int] = mapped_column(ForeignKey("user_photos.id"), nullable=False)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    photo_id: Mapped[int] = mapped_column(ForeignKey("user_photos.id", ondelete="CASCADE"), nullable=False)
     reaction_type: Mapped[int] = mapped_column(Integer, nullable=False)  # 1 for like, -1 for dislike
 
     user: Mapped["User"] = relationship("User", back_populates="photo_reactions")
