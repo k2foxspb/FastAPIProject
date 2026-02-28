@@ -152,26 +152,20 @@ async def send_fcm_notification(
         logger.debug(f"FCM: Preparing message. Token: {token[:15]}... | Tag: {notif_tag} | Data: {fcm_data}")
 
         # Настройки для Android: высокая приоритетность для пробуждения (Headless JS).
-        # Мы используем И 'notification' И 'data' для Android.
-        # 'notification' гарантирует, что ОС Android "разбудит" приложение и покажет баннер даже в Doze mode.
-        # 'data' содержит метаданные для JS, чтобы добавить кнопки (Ответить/Прочитано).
-        # Благодаря 'tag', наше локальное уведомление из JS заменит системное.
+        # ВАЖНО: Мы НЕ используем 'notification' объект для Android в Background,
+        # так как это заставляет ОС Android показывать стандартное уведомление без кнопок
+        # и НЕ вызывает наш JS-обработчик setBackgroundMessageHandler.
+        # Вместо этого мы шлем только 'data', что пробуждает Headless JS,
+        # и уже в JS мы рисуем кастомное уведомление с кнопками через expo-notifications.
         
         android_config = messaging.AndroidConfig(
             priority='high',
             ttl=3600 * 24,  # 24 часа
             direct_boot_ok=True,
-            notification=messaging.AndroidNotification(
-                title=title,
-                body=body,
-                tag=notif_tag,
-                channel_id=fcm_data.get("android_channel_id", "messages"),
-                priority='high',
-                default_sound=True,
-                default_vibrate_timings=True,
-                sticky=False,
-                visibility='public'
-            )
+            # Оставляем notification=None для data-only сообщений на Android в фоне
+            # Но если мы хотим гарантированный системный баннер, можно раскомментировать.
+            # Для кастомных уведомлений (с кнопками Reply/Read) лучше data-only.
+            notification=None 
         )
 
         # Настройки для iOS (APNS)

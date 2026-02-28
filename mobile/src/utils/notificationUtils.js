@@ -215,14 +215,29 @@ export async function handleNotificationResponse(event) {
 
     // Если это просто нажатие на уведомление (не на кнопку действия)
     if (actionId === Notifications.DEFAULT_ACTION_IDENTIFIER) {
-      if (senderId) {
-        if (isNavReady) {
+      const { type, senderId, senderName, newsId } = parseNotificationData(notifData);
+      
+      if (isNavReady) {
+        console.log(`[Notifications] Handling default click for type: ${type}`);
+        
+        if (type === 'new_message' && senderId) {
           navigationRef.navigate('Chat', { userId: senderId, userName: senderName });
-          await storage.removeItem(`notif_messages_${senderId}`);
-          await Notifications.dismissNotificationAsync(event.notification.request.identifier);
+          try { await storage.removeItem(`notif_messages_${senderId}`); } catch (_) {}
+        } else if (type === 'friend_request' || type === 'friend_accept') {
+          navigationRef.navigate('UsersMain', { initialTab: 'friends' });
+        } else if (type === 'new_post' && newsId) {
+          navigationRef.navigate('NewsDetail', { newsId });
+        } else if (senderId) {
+          // Fallback для неизвестных типов с ID отправителя
+          navigationRef.navigate('Chat', { userId: senderId, userName: senderName });
         } else {
-          console.log('[Notifications] Navigation not ready after timeout');
+          // Общий fallback
+          navigationRef.navigate('Feed');
         }
+        
+        await Notifications.dismissNotificationAsync(event.notification.request.identifier);
+      } else {
+        console.log('[Notifications] Navigation not ready after timeout');
       }
     }
   } catch (e) {
