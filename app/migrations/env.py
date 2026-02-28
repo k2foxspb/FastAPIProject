@@ -70,10 +70,22 @@ async def run_migrations_online() -> None:
         poolclass=pool.NullPool,
     )
 
-    async with connectable.connect() as connection:
-        await connection.run_sync(do_run_migrations)
-
-    await connectable.dispose()
+    max_retries = 5
+    retry_delay = 5
+    
+    for attempt in range(1, max_retries + 1):
+        try:
+            async with connectable.connect() as connection:
+                await connection.run_sync(do_run_migrations)
+            await connectable.dispose()
+            return
+        except Exception as e:
+            if attempt < max_retries:
+                print(f"Migration attempt {attempt} failed: {e}. Retrying in {retry_delay}s...")
+                await asyncio.sleep(retry_delay)
+            else:
+                await connectable.dispose()
+                raise e
 
 
 if context.is_offline_mode():

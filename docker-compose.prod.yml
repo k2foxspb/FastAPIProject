@@ -41,9 +41,10 @@ services:
       - YC_S3_DEFAULT_ACL=${YC_S3_DEFAULT_ACL:-public-read}
       - YC_S3_PUBLIC_BASE_URL=${YC_S3_PUBLIC_BASE_URL}
     depends_on:
-
-      - db
-      - redis
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
   redis:
 
@@ -53,6 +54,11 @@ services:
       - "6379"
     volumes:
       - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
   celery_worker:
 
@@ -89,8 +95,10 @@ services:
       - YC_S3_DEFAULT_ACL=${YC_S3_DEFAULT_ACL:-public-read}
       - YC_S3_PUBLIC_BASE_URL=${YC_S3_PUBLIC_BASE_URL}
     depends_on:
-      - db
-      - redis
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
   db:
 
@@ -102,6 +110,11 @@ services:
       - POSTGRES_USER=${POSTGRES_USER:-ecommerce_user}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-xxxxxxxx}
       - POSTGRES_DB=${POSTGRES_DB:-ecommerce_db}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ecommerce_user} -d ${POSTGRES_DB:-ecommerce_db}"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
   nginx:
 
