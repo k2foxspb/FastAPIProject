@@ -40,6 +40,7 @@ from app.core.auth import (
 from app.api.routers.notifications import manager as notification_manager
 from app.core.fcm import send_fcm_notification
 from app.utils.emails import send_verification_email, send_welcome_and_verification_email
+from loguru import logger
 from app.tasks.example_tasks import send_verification_email_task, delete_inactive_user_task
 
 import os
@@ -532,9 +533,10 @@ async def test_email_send(email: str, background_tasks: BackgroundTasks):
         send_verification_email_task.delay(email, token)
         message = f"Test email scheduled via Celery for {email}."
     except Exception as e:
-        print(f"Test email Celery failed: {e}")
+        logger.error(f"Test email Celery failed: {e}")
+        # Если Celery упал (например, нет соединения с Redis), пробуем отправить в фоне напрямую через FastAPI
         background_tasks.add_task(send_welcome_and_verification_email, email, token)
-        message = f"Test email scheduled via FastAPI BackgroundTasks for {email} (Celery failed)."
+        message = f"Test email scheduled via FastAPI BackgroundTasks for {email} (Celery failed: {str(e)})."
     
     return {"message": message}
 
@@ -548,8 +550,18 @@ async def debug_mail_settings(current_user: UserModel = Depends(get_current_user
     if current_user.role != "admin":
         raise HTTPException(status_code=403, detail="Only admins can debug settings")
         
-    from app.core.config import MAIL_SERVER, MAIL_PORT, MAIL_USERNAME, MAIL_FROM, MAIL_FROM_NAME, REDIS_HOST, REDIS_PORT, MAIL_PASSWORD
+    from app.core.config import MAIL_SERVER, MAIL_PORT, MAIL_USERNAME, MAIL_FROM, MAIL_FROM_NAME, REDIS_HOST, REDIS_PORT, MAIL_PASSWORD, CELERY_BROKER_URL
     
+    # Попробуем проверить статус Celery (наличие воркеров) через redis напрямую
+    import redis
+    redis_status = "unknown"
+    try:
+        r = redis.from_url(CELERY_BROKER_URL)
+        r.ping()
+        redis_status = "connected"
+    except Exception as e:
+        redis_status = f"error: {str(e)}"
+
     return {
         "MAIL_SERVER": MAIL_SERVER,
         "MAIL_PORT": MAIL_PORT,
@@ -559,6 +571,8 @@ async def debug_mail_settings(current_user: UserModel = Depends(get_current_user
         "MAIL_PASSWORD_SET": bool(MAIL_PASSWORD),
         "REDIS_HOST": REDIS_HOST,
         "REDIS_PORT": REDIS_PORT,
+        "REDIS_STATUS": redis_status,
+        "CELERY_BROKER_URL": CELERY_BROKER_URL.replace(MAIL_PASSWORD or "pwd", "***") if MAIL_PASSWORD else CELERY_BROKER_URL
     }
 
 
