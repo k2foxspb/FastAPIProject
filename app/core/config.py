@@ -16,7 +16,7 @@ MAIL_PASSWORD = os.getenv("MAIL_PASSWORD")
 MAIL_FROM = os.getenv("MAIL_FROM")
 MAIL_PORT = int(os.getenv("MAIL_PORT", "587"))
 MAIL_SERVER = os.getenv("MAIL_SERVER")
-MAIL_FROM_NAME = os.getenv("MAIL_FROM_NAME", "FastAPI Project")
+MAIL_FROM_NAME = os.getenv("MAIL_FROM_NAME", "FokinFun")
 DOMAIN = os.getenv("DOMAIN", "https://fokin.fun")
 MOBILE_DEEPLINK = os.getenv("MOBILE_DEEPLINK", "fokinfun://verify-email")
 
