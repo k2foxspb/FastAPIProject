@@ -11,57 +11,38 @@ from urllib.parse import quote
 
 async def send_verification_email(email: str, token: str):
     logger.info(f"Sending verification email to {email}")
-    # Используем путь /verify-email (без /users/), чтобы он соответствовал intent filter в app.json
     verification_url = f"{DOMAIN}/verify-email?token={token}"
 
-    subject = "Регистрация"
+    subject = "Код подтверждения"
     
-    text = f"""Здравствуйте!
+    text = f"""Привет!
 
-Благодарим за регистрацию в {MAIL_FROM_NAME}.
-
-Для завершения регистрации, пожалуйста, подтвердите ваш адрес:
+Пожалуйста, подтверди свой адрес, перейдя по ссылке:
 {verification_url}
 
-Если вы не регистрировались, просто проигнорируйте это сообщение.
+Это нужно, чтобы убедиться, что адрес принадлежит тебе.
 
-Это письмо отправлено автоматически, на него не нужно отвечать.
+Если ты не регистрировался, просто удали это письмо.
 
-С уважением,
 Команда {MAIL_FROM_NAME}
 """
     
-    html = f"""
-    <html>
-      <body style="font-family: Arial, sans-serif; color: #000;">
-        <p>Здравствуйте!</p>
-        <p>Для завершения регистрации, пожалуйста, перейдите по ссылке:</p>
-        <p><a href="{verification_url}">{verification_url}</a></p>
-        <p>Если ссылка не открывается, скопируйте её в адресную строку браузера.</p>
-        <br>
-        <p style="font-size: 12px; color: #666;">Это письмо отправлено автоматически, на него не нужно отвечать.</p>
-        <p>С уважением,<br>Команда {MAIL_FROM_NAME}</p>
-      </body>
-    </html>
-    """
-    await send_email(email, subject, text, html)
+    # Временно убираем HTML полностью
+    await send_email(email, subject, text, None)
 
 async def send_welcome_email(email: str):
     logger.info(f"Sending welcome email to {email}")
-    subject = "Добро пожаловать"
+    subject = "Привет!"
     
-    text = f"""Здравствуйте!
+    text = f"""Привет!
 
-Мы рады приветствовать вас в нашем проекте.
+Рады, что ты с нами. Через несколько минут тебе придет ссылка для подтверждения адреса.
 
-В ближайшее время вам придет ссылка для подтверждения вашего адреса.
+Это письмо не требует ответа.
 
-Это письмо отправлено автоматически, на него не нужно отвечать.
-
-С уважением,
 Команда {MAIL_FROM_NAME}
 """
-    # Для приветственного письма используем только текст (меньше шансов попасть в спам)
+    # Для приветственного письма используем только текст
     await send_email(email, subject, text, None)
 
 async def send_welcome_and_verification_email(email: str, token: str):
@@ -90,8 +71,12 @@ async def send_email(email: str, subject: str, text: str, html: str | None = Non
     
     # Message-ID и другие служебные заголовки
     msg_id_domain = 'fokin.fun'
-    if DOMAIN:
-        # Пытаемся извлечь домен из DOMAIN
+    # Пытаемся извлечь домен из MAIL_USERNAME или MAIL_FROM
+    if MAIL_USERNAME and '@' in MAIL_USERNAME:
+        msg_id_domain = MAIL_USERNAME.split('@')[-1]
+    elif MAIL_FROM and '@' in MAIL_FROM:
+        msg_id_domain = MAIL_FROM.split('@')[-1]
+    elif DOMAIN:
         from urllib.parse import urlparse
         parsed = urlparse(DOMAIN)
         if parsed.netloc:
