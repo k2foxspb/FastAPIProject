@@ -15,6 +15,10 @@ if TYPE_CHECKING:
     from app.models.orders import OrderItem
 
 
+from app.core.config import DATABASE_URL
+
+is_postgres = "postgresql" in DATABASE_URL
+
 class Product(Base):
     __tablename__ = "products"
 
@@ -33,21 +37,26 @@ class Product(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(),onupdate=func.now(), nullable=False)
 
-    tsv: Mapped[TSVECTOR] = mapped_column(
-        TSVECTOR,
-        Computed(
-            """
-            setweight(to_tsvector('english', coalesce(name, '')), 'A')
-            || 
-            setweight(to_tsvector('english', coalesce(description, '')), 'B')
-            """,
-            persisted=True,
-        ),
-        nullable=False,
-    )
-    __table_args__ = (
-        Index("ix_products_tsv_gin", "tsv", postgresql_using="gin"),
-    )
+    if is_postgres:
+        tsv: Mapped[TSVECTOR] = mapped_column(
+            TSVECTOR,
+            Computed(
+                """
+                setweight(to_tsvector('english', coalesce(name, '')), 'A')
+                || 
+                setweight(to_tsvector('english', coalesce(description, '')), 'B')
+                """,
+                persisted=True,
+            ),
+            nullable=False,
+        )
+        __table_args__ = (
+            Index("ix_products_tsv_gin", "tsv", postgresql_using="gin"),
+        )
+    else:
+        # Для SQLite или других БД создаем заглушку, которая не мешает
+        tsv: Mapped[str | None] = mapped_column(String, nullable=True)
+        __table_args__ = ()
 
     cart_items: Mapped[list["CartItem"]] = relationship("CartItem", back_populates="product",
                                                         cascade="all, delete-orphan")

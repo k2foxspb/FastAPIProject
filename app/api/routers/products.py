@@ -13,7 +13,7 @@ from app.core.auth import get_current_seller, get_current_user_optional
 from app.api.dependencies import get_async_db
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional
-from app.models.products import Product as ProductModel, ProductImage as ProductImageModel
+from app.models.products import Product as ProductModel, ProductImage as ProductImageModel, is_postgres
 from app.models.categories import Category as CategoryModel
 from app.models.users import User as UserModel
 from app.schemas.products import Product as ProductShema, ProductCreate, ProductList
@@ -144,10 +144,18 @@ async def get_all_products(
     if search:
         search_value = search.strip()
         if search_value:
-            ts_query = func.websearch_to_tsquery('english', search_value)
-            filters.append(ProductModel.tsv.op('@@')(ts_query))
-            rank_col = func.ts_rank_cd(ProductModel.tsv, ts_query).label("rank")
-            # total с учётом полнотекстового фильтра
+            if is_postgres:
+                ts_query = func.websearch_to_tsquery('english', search_value)
+                filters.append(ProductModel.tsv.op('@@')(ts_query))
+                rank_col = func.ts_rank_cd(ProductModel.tsv, ts_query).label("rank")
+            else:
+                # Фоллбэк для SQLite (поиск по LIKE)
+                search_pattern = f"%{search_value}%"
+                filters.append(
+                    (ProductModel.name.ilike(search_pattern)) | 
+                    (ProductModel.description.ilike(search_pattern))
+                )
+            # total с учётом фильтра
             total_stmt = select(func.count()).select_from(ProductModel).where(*filters)
 
     total = await db.scalar(total_stmt) or 0

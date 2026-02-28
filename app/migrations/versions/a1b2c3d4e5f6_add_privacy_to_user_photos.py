@@ -19,46 +19,19 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Add missing column `privacy` to `user_photos` if it does not exist."""
-    # Use a safe conditional DDL for PostgreSQL to avoid failures if the column already exists
-    op.execute(
-        sa.text(
-            """
-            DO $$
-            BEGIN
-                IF NOT EXISTS (
-                    SELECT 1
-                    FROM information_schema.columns
-                    WHERE table_name = 'user_photos'
-                      AND column_name = 'privacy'
-                ) THEN
-                    ALTER TABLE user_photos
-                    ADD COLUMN privacy VARCHAR NOT NULL DEFAULT 'public';
-                END IF;
-            END;
-            $$;
-            """
-        )
-    )
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    columns = [c['name'] for c in inspector.get_columns('user_photos')]
+    
+    if 'privacy' not in columns:
+        op.add_column('user_photos', sa.Column('privacy', sa.String(), nullable=False, server_default='public'))
 
 
 def downgrade() -> None:
     """Remove column `privacy` from `user_photos` if it exists."""
-    op.execute(
-        sa.text(
-            """
-            DO $$
-            BEGIN
-                IF EXISTS (
-                    SELECT 1
-                    FROM information_schema.columns
-                    WHERE table_name = 'user_photos'
-                      AND column_name = 'privacy'
-                ) THEN
-                    ALTER TABLE user_photos
-                    DROP COLUMN privacy;
-                END IF;
-            END;
-            $$;
-            """
-        )
-    )
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    columns = [c['name'] for c in inspector.get_columns('user_photos')]
+    
+    if 'privacy' in columns:
+        op.drop_column('user_photos', 'privacy')
