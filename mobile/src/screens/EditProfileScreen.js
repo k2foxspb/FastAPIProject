@@ -14,8 +14,6 @@ export default function EditProfileScreen({ route, navigation }) {
   const [email, setEmail] = useState(user.email);
   const [firstName, setFirstName] = useState(user.first_name || '');
   const [lastName, setLastName] = useState(user.last_name || '');
-  const [role, setRole] = useState(user.role);
-  const [status, setStatus] = useState(user.status || '');
   const [avatar, setAvatar] = useState(null);
   const [loading, setLoading] = useState(false);
 
@@ -39,8 +37,6 @@ export default function EditProfileScreen({ route, navigation }) {
       if (email !== user.email) formData.append('email', email);
       if (firstName !== (user.first_name || '')) formData.append('first_name', firstName);
       if (lastName !== (user.last_name || '')) formData.append('last_name', lastName);
-      if (role !== user.role) formData.append('role', role);
-      if (status !== user.status) formData.append('status', status);
       
       // Если данных для обновления нет, просто выходим
       if (formData._parts && formData._parts.length === 0 && !avatar) {
@@ -113,38 +109,6 @@ export default function EditProfileScreen({ route, navigation }) {
           placeholderTextColor={colors.textSecondary}
         />
 
-        <Text style={[styles.label, { color: colors.textSecondary }]}>Статус</Text>
-        <TextInput 
-          style={[styles.input, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]}
-          value={status}
-          onChangeText={setStatus}
-          placeholder="Статус"
-          placeholderTextColor={colors.textSecondary}
-        />
-
-        <Text style={[styles.label, { color: colors.textSecondary }]}>Роль</Text>
-        <View style={styles.roleContainer}>
-          {['buyer', 'seller'].map(r => (
-            <TouchableOpacity 
-              key={r} 
-              style={[
-                styles.roleButton, 
-                { borderColor: colors.border },
-                role === r && { backgroundColor: colors.primary, borderColor: colors.primary }
-              ]}
-              onPress={() => setRole(r)}
-            >
-              <Text style={[
-                styles.roleText, 
-                { color: colors.textSecondary },
-                role === r && { color: '#fff' }
-              ]}>
-                {r === 'buyer' ? 'Покупатель' : 'Продавец'}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-
         <TouchableOpacity 
           style={[styles.saveButton, { backgroundColor: colors.primary }, loading && styles.disabled]} 
           onPress={handleSave}
@@ -181,16 +145,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     marginBottom: 20
   },
-  roleContainer: { flexDirection: 'row', marginBottom: 30 },
-  roleButton: {
-    flex: 1,
-    padding: 12,
-    borderWidth: 1,
-    borderRadius: 10,
-    marginRight: 10,
-    alignItems: 'center'
-  },
-  roleText: { fontWeight: '500' },
   saveButton: {
     padding: 15,
     borderRadius: 10,

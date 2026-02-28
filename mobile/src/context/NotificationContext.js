@@ -340,6 +340,7 @@ export const NotificationProvider = ({ children }) => {
       }
       await setNotificationAudioMode();
       if (notificationPlayerRef.current) {
+        await notificationPlayerRef.current.seekTo(0);
         await notificationPlayerRef.current.play();
       }
     } catch (error) {

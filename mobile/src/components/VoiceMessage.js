@@ -67,6 +67,11 @@ export default function VoiceMessage({ item, currentUserId }) {
       return;
     }
 
+    // Если аудио уже проиграно до конца, сбрасываем в начало перед повторным запуском
+    if (status.currentTime >= (status.duration || 0) && (status.duration || 0) > 0) {
+      await player.seekTo(0);
+    }
+
     if (!localUri && Platform.OS !== 'web') {
       setLoading(true);
       try {
@@ -86,7 +91,7 @@ export default function VoiceMessage({ item, currentUserId }) {
       }
     }
 
-    player.play();
+    await player.play();
   };
 
   const handleDownload = async () => {

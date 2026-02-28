@@ -48,7 +48,15 @@ export default function LoginScreen({ navigation }) {
       navigation.replace('ProfileMain');
     } catch (e) {
       const msg = e?.response?.data?.detail || e.message || 'Не удалось выполнить вход';
-      Alert.alert('Ошибка входа', String(msg));
+      if (typeof msg === 'string' && (msg.includes('Email not verified') || msg.includes('not active'))) {
+        Alert.alert(
+          'Email не подтвержден',
+          'Пожалуйста, введите код подтверждения из письма.',
+          [{ text: 'Ввести код', onPress: () => navigation.navigate('Verification', { email: username.includes('@') ? username : '' }) }]
+        );
+      } else {
+        Alert.alert('Ошибка входа', String(msg));
+      }
     } finally {
       setLoading(false);
     }

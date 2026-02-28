@@ -16,8 +16,6 @@ class UserUpdate(BaseModel):
     email: EmailStr | None = None
     first_name: str | None = None
     last_name: str | None = None
-    role: str | None = None
-    status: str | None = None
 
 
 class UserPhotoBase(BaseModel):
@@ -289,6 +287,13 @@ class User(BaseModel):
                 last_name="Validation"
             )
 
+
+class VerifyCodeRequest(BaseModel):
+    email: str
+    code: str
+
+class ResendCodeRequest(BaseModel):
+    email: str
 
 class RefreshTokenRequest(BaseModel):
     refresh_token: str

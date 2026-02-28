@@ -69,8 +69,8 @@ export default function RegisterScreen({ navigation }) {
       
       Alert.alert(
         'Успех',
-        'Регистрация прошла успешно! Пожалуйста, проверьте свою электронную почту для подтверждения аккаунта.',
-        [{ text: 'OK', onPress: () => navigation.navigate('Login') }]
+        'Регистрация прошла успешно! Пожалуйста, проверьте свою электронную почту и введите код подтверждения.',
+        [{ text: 'OK', onPress: () => navigation.navigate('Verification', { email }) }]
       );
     } catch (e) {
       const msg = e?.response?.data?.detail || e.message || 'Не удалось зарегистрироваться';

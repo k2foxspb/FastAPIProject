@@ -21,7 +21,7 @@ from app.schemas.users import (
     UserPhotoCreate, UserPhotoUpdate, UserPhoto as UserPhotoSchema,
     FCMTokenUpdate, BulkDeletePhotosRequest, Friendship as FriendshipSchema,
     UserPhotoComment as UserPhotoCommentSchema, UserPhotoCommentCreate,
-    TokenResponse, FirebaseConfigResponse
+    TokenResponse, FirebaseConfigResponse, VerifyCodeRequest, ResendCodeRequest
 )
 from app.schemas.news import News as NewsSchema, NewsComment as NewsCommentSchema
 from app.schemas.reviews import Review as ReviewSchema
@@ -315,8 +315,6 @@ async def update_me(
     email: str | None = Form(None),
     first_name: str | None = Form(None),
     last_name: str | None = Form(None),
-    role: str | None = Form(None),
-    status: str | None = Form(None),
     avatar: UploadFile = File(None),
     current_user: UserModel = Depends(get_current_user),
     db: AsyncSession = Depends(get_async_db)
@@ -330,10 +328,6 @@ async def update_me(
         current_user.first_name = first_name
     if last_name is not None:
         current_user.last_name = last_name
-    if role:
-        current_user.role = role
-    if status:
-        current_user.status = status
     
     if avatar:
         # Сохраняем аватарку (используем существующую функцию сохранения фото)
@@ -578,14 +572,13 @@ async def debug_mail_settings(current_user: UserModel = Depends(get_current_user
 
 @router.post("/verify-code")
 async def verify_code(
-    email: str = Form(...),
-    code: str = Form(...),
+    request: VerifyCodeRequest,
     db: AsyncSession = Depends(get_async_db)
 ):
     """
     Подтверждает email пользователя по 6-значному коду.
     """
-    result = await db.execute(select(UserModel).where(UserModel.email == email))
+    result = await db.execute(select(UserModel).where(UserModel.email == request.email))
     user = result.scalar_one_or_none()
 
     if not user:
@@ -594,7 +587,7 @@ async def verify_code(
     if user.is_active:
         return {"message": "Email уже подтвержден"}
 
-    if user.verification_code != code:
+    if user.verification_code != request.code:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Неверный код подтверждения")
 
     user.is_active = True
@@ -602,6 +595,39 @@ async def verify_code(
     await db.commit()
 
     return {"message": "Email успешно подтвержден"}
+
+@router.post("/resend-code")
+async def resend_code(
+    request: ResendCodeRequest,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_async_db)
+):
+    """
+    Генерирует и отправляет новый код подтверждения.
+    """
+    result = await db.execute(select(UserModel).where(UserModel.email == request.email))
+    user = result.scalar_one_or_none()
+
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Пользователь не найден")
+    
+    if user.is_active:
+        return {"message": "Email уже подтвержден"}
+
+    import random
+    new_code = "".join([str(random.randint(0, 9)) for _ in range(6)])
+    user.verification_code = new_code
+    await db.commit()
+
+    try:
+        from app.tasks.example_tasks import send_verification_email_task
+        send_verification_email_task.delay(user.email, new_code)
+    except Exception as e:
+        logger.error(f"Failed to resend via Celery: {e}")
+        from app.utils.emails import send_verification_email
+        background_tasks.add_task(send_verification_email, user.email, new_code)
+
+    return {"message": "Новый код отправлен"}
 
 
 

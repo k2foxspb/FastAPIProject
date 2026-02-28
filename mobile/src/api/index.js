@@ -89,6 +89,8 @@ export const usersApi = {
   updateFcmToken: (token) => api.post('/users/fcm-token', { fcm_token: token }),
   getFirebaseConfig: () => api.get('/users/firebase-config'),
   verifyEmail: (token) => api.get('/verify-email', { params: { token } }),
+  verifyCode: (email, code) => api.post('/users/verify-code', { email, code }),
+  resendCode: (email) => api.post('/users/resend-code', { email }),
   updateMe: (formData) => api.patch('/users/me', formData, {
     headers: {
       'Content-Type': 'multipart/form-data',

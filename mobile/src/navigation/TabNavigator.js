@@ -25,6 +25,7 @@ import EditProductScreen from '../screens/EditProductScreen';
 import ProductDetailScreen from '../screens/ProductDetailScreen';
 import LoginScreen from '../screens/LoginScreen';
 import RegisterScreen from '../screens/RegisterScreen';
+import VerificationScreen from '../screens/VerificationScreen';
 import AdminScreen from '../screens/AdminScreen';
 import AdminUsersScreen from '../screens/AdminUsersScreen';
 import AdminModerationScreen from '../screens/AdminModerationScreen';
@@ -127,6 +128,15 @@ function ProfileStack() {
         component={RegisterScreen} 
         options={{ 
           title: 'Регистрация',
+          headerLeft: () => null,
+          gestureEnabled: false,
+        }} 
+      />
+      <Stack.Screen 
+        name="Verification" 
+        component={VerificationScreen} 
+        options={{ 
+          title: 'Подтверждение',
           headerLeft: () => null,
           gestureEnabled: false,
         }} 
