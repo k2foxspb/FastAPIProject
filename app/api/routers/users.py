@@ -539,6 +539,29 @@ async def test_email_send(email: str, background_tasks: BackgroundTasks):
     return {"message": message}
 
 
+@router.get("/debug-mail-settings")
+async def debug_mail_settings(current_user: UserModel = Depends(get_current_user)):
+    """
+    Эндпоинт для проверки настроек почты на сервере.
+    Доступен только авторизованным пользователям.
+    """
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Only admins can debug settings")
+        
+    from app.core.config import MAIL_SERVER, MAIL_PORT, MAIL_USERNAME, MAIL_FROM, MAIL_FROM_NAME, REDIS_HOST, REDIS_PORT, MAIL_PASSWORD
+    
+    return {
+        "MAIL_SERVER": MAIL_SERVER,
+        "MAIL_PORT": MAIL_PORT,
+        "MAIL_USERNAME": MAIL_USERNAME,
+        "MAIL_FROM": MAIL_FROM,
+        "MAIL_FROM_NAME": MAIL_FROM_NAME,
+        "MAIL_PASSWORD_SET": bool(MAIL_PASSWORD),
+        "REDIS_HOST": REDIS_HOST,
+        "REDIS_PORT": REDIS_PORT,
+    }
+
+
 @router.get("/verify-email")
 async def verify_email(request: Request, token: str, redirect: str | None = None, db: AsyncSession = Depends(get_async_db)):
     """

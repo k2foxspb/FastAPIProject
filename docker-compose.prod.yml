@@ -27,6 +27,8 @@ services:
       - MAIL_PORT=${MAIL_PORT}
       - MAIL_SERVER=${MAIL_SERVER}
       - MAIL_FROM_NAME=${MAIL_FROM_NAME}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - POSTGRES_PORT=${POSTGRES_PORT:-5432}
       - DOMAIN=${DOMAIN}
       - MEDIA_ROOT=/home/fast/app/media
       # S3 media storage
@@ -73,6 +75,8 @@ services:
       - MAIL_PORT=${MAIL_PORT}
       - MAIL_SERVER=${MAIL_SERVER}
       - MAIL_FROM_NAME=${MAIL_FROM_NAME}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - POSTGRES_PORT=${POSTGRES_PORT:-5432}
       - DOMAIN=${DOMAIN}
       - MEDIA_ROOT=/home/fast/app/media
       # S3 media storage

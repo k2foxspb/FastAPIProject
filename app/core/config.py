@@ -13,9 +13,9 @@ YOOKASSA_RETURN_URL = os.getenv("YOOKASSA_RETURN_URL", "http://79.133.183.129/")
 
 MAIL_USERNAME = os.getenv("MAIL_USERNAME")
 MAIL_PASSWORD = os.getenv("MAIL_PASSWORD")
-MAIL_FROM = os.getenv("MAIL_FROM")
-MAIL_PORT = int(os.getenv("MAIL_PORT", "587"))
-MAIL_SERVER = os.getenv("MAIL_SERVER")
+MAIL_FROM = os.getenv("MAIL_FROM") or MAIL_USERNAME
+MAIL_PORT = int(os.getenv("MAIL_PORT", "465"))
+MAIL_SERVER = os.getenv("MAIL_SERVER", "smtp.mail.ru")
 MAIL_FROM_NAME = os.getenv("MAIL_FROM_NAME", "FokinFun")
 DOMAIN = os.getenv("DOMAIN", "https://fokin.fun")
 MOBILE_DEEPLINK = os.getenv("MOBILE_DEEPLINK", "fokinfun://verify-email")
@@ -43,14 +43,14 @@ ALLOWED_HOSTS = [
     "web",  # Для внутренних запросов Docker
     "*",    # Разрешаем все хосты временно для отладки, если TrustedHostMiddleware мешает
 ]
-REDIS_HOST = os.getenv("REDIS_HOST")
-REDIS_PORT = os.getenv("REDIS_PORT")
+REDIS_HOST = os.getenv("REDIS_HOST", "redis")
+REDIS_PORT = os.getenv("REDIS_PORT", "6379")
 
-POSTGRES_USER = os.getenv("POSTGRES_USER")
-POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD")
-POSTGRES_DB = os.getenv("POSTGRES_DB")
-POSTGRES_HOST = os.getenv("POSTGRES_HOST")
-POSTGRES_PORT = os.getenv("POSTGRES_PORT")
+POSTGRES_USER = os.getenv("POSTGRES_USER", "ecommerce_user")
+POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "xxxxxxxx")
+POSTGRES_DB = os.getenv("POSTGRES_DB", "ecommerce_db")
+POSTGRES_HOST = os.getenv("POSTGRES_HOST", "db")
+POSTGRES_PORT = os.getenv("POSTGRES_PORT", "5432")
 
 # Формируем DATABASE_URL по умолчанию (Postgres)
 DEFAULT_DB_URL = f"postgresql+asyncpg://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
