@@ -19,7 +19,7 @@ export default function ProfileScreen({ navigation }) {
   const [isUpdateBannerHidden, setIsUpdateBannerHidden] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [quietHours, setQuietHours] = useState({ enabled: false, start: '22:00', end: '08:00' });
-  const { disconnect, currentUser, loadingUser } = useNotifications();
+  const { disconnect, currentUser, loadingUser, loadUser } = useNotifications();
   const { theme, isDark, toggleTheme, isSystemTheme, useSystemThemeSetting } = useTheme();
   const colors = themeConstants[theme];
 
@@ -173,25 +173,20 @@ export default function ProfileScreen({ navigation }) {
       });
 
       const fetchProfile = async () => {
-        // Если идет загрузка данных пользователя в контексте, ждем
-        if (loadingUser) return;
-        
-        // Проверяем токен. Если его нет ни в axios, ни в хранилище - выходим
-        const token = await storage.getAccessToken();
-        if (!api.defaults.headers.common['Authorization'] && !token) {
-          console.log('[ProfileScreen] No token found, redirecting to Login');
-          handleLogout();
-          return;
-        }
-
         try {
-          let userData = currentUser;
-          if (!userData) {
-            // Если пользователя всё еще нет и загрузка завершена, значит он не авторизован
-            console.log('[ProfileScreen] No currentUser after loading, redirecting to Login');
+          // Проверяем токен
+          const token = await storage.getAccessToken();
+          if (!token) {
+            console.log('[ProfileScreen] No token found, redirecting to Login');
             handleLogout();
             return;
           }
+
+          // Обновляем данные текущего пользователя из API
+          const appVersion = Constants.expoConfig?.version || '1.0.5';
+          const userRes = await usersApi.getMe(appVersion);
+          const userData = userRes.data;
+          
           setUser(userData);
           const postsRes = await newsApi.getUserNews(userData.id);
           setPosts(postsRes.data);
@@ -227,7 +222,7 @@ export default function ProfileScreen({ navigation }) {
           }).catch(() => {});
         }).catch(() => {});
       }).catch(() => {});
-    }, [navigation, colors.text, currentUser, loadingUser])
+    }, [navigation, colors.text, loadUser])
   );
 
   const toggleQuietHours = async () => {

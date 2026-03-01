@@ -18,33 +18,23 @@ import {
 import { useVideoPlayer, VideoView } from 'expo-video';
 import * as Haptics from 'expo-haptics';
 import { usersApi } from '../api';
-import { Ionicons as Icon } from '@expo/vector-icons';
+import { Ionicons as Icon, MaterialIcons } from '@expo/vector-icons';
 import { getFullUrl } from '../utils/urlHelper';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
+import VideoPlayer from '../components/VideoPlayer';
 
 const { width, height } = Dimensions.get('window');
 
 const VideoItem = ({ uri, style, useNativeControls, shouldPlay }) => {
-  const player = useVideoPlayer(uri, (p) => {
-    p.loop = true;
-    if (shouldPlay) p.play();
-  });
-
-  useEffect(() => {
-    if (shouldPlay) {
-      player.play();
-    } else {
-      player.pause();
-    }
-  }, [shouldPlay, player]);
-
   return (
-    <VideoView
-      player={player}
-      style={style}
-      contentFit="contain"
-      nativeControls={useNativeControls}
+    <VideoPlayer 
+      uri={uri} 
+      style={style} 
+      useNativeControls={useNativeControls} 
+      shouldPlay={shouldPlay} 
+      isLooping={true}
+      resizeMode="contain"
     />
   );
 };

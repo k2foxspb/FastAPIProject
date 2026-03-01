@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { getShadow } from '../utils/shadowStyles';
-import { View, Text, FlatList, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, Image, Modal, Pressable, Alert, AppState, StatusBar, Dimensions, Share, Animated, Vibration, Keyboard } from 'react-native';
+import { View, Text, FlatList, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, Image, Modal, Pressable, Alert, AppState, StatusBar, Dimensions, Share, Animated, Keyboard, LayoutAnimation, UIManager } from 'react-native';
 import notifee from '@notifee/react-native';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
@@ -18,12 +18,45 @@ import FileMessage from '../components/FileMessage';
 import VideoNoteMessage from '../components/VideoNoteMessage';
 import { Audio, useAudioRecorder, useAudioRecorderState, useAudioPlayer, RecordingPresets, AudioModule, requestRecordingPermissionsAsync, createAudioPlayer } from 'expo-audio';
 import { CameraView, useCameraPermissions } from 'expo-camera';
-import { MaterialIcons } from '@expo/vector-icons';
+import { MaterialIcons, Ionicons as Icon } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
 import { formatStatus, formatName, formatFileSize, parseISODate, formatMessageTime, getAvatarUrl } from '../utils/formatters';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { setRecordingAudioMode } from '../utils/audioSettings';
+
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
+
+const EntryAnimatedView = ({ children, isNew }) => {
+  const animatedValue = useRef(new Animated.Value(isNew ? 0 : 1)).current;
+
+  useEffect(() => {
+    if (isNew) {
+      Animated.spring(animatedValue, {
+        toValue: 1,
+        useNativeDriver: true,
+        tension: 40,
+        friction: 8
+      }).start();
+    }
+  }, []);
+
+  const animatedStyle = {
+    opacity: animatedValue,
+    transform: [
+      { scale: animatedValue.interpolate({ inputRange: [0, 1], outputRange: [0.7, 1] }) },
+      { translateY: animatedValue.interpolate({ inputRange: [0, 1], outputRange: [40, 0] }) }
+    ]
+  };
+
+  return (
+    <Animated.View style={animatedStyle}>
+      {children}
+    </Animated.View>
+  );
+};
 
 export default function ChatScreen({ route, navigation }) {
   const insets = useSafeAreaInsets();
@@ -35,6 +68,8 @@ export default function ChatScreen({ route, navigation }) {
   const [inputText, setInputText] = useState('');
   const [token, setToken] = useState(null);
   const [uploadingProgress, setUploadingProgress] = useState(null);
+  const [messageUploadProgress, setMessageUploadProgress] = useState({});
+  const [uploadingClientId, setUploadingClientId] = useState(null);
   const [uploadingData, setUploadingData] = useState({ loaded: 0, total: 0, uri: null, mimeType: null });
   const [activeUploadId, setActiveUploadId] = useState(null);
   const [fullScreenMedia, setFullScreenMedia] = useState(null); // { index, list }
@@ -67,6 +102,7 @@ export default function ChatScreen({ route, navigation }) {
   const recordingOptions = useMemo(() => RecordingPresets.HIGH_QUALITY, []);
   const recorder = useAudioRecorder(recordingOptions);
   const recorderStatus = useAudioRecorderState(recorder, 200);
+  const [cameraPermission, requestCameraPermission] = useCameraPermissions();
 
   const screenWidth = Dimensions.get('window').width;
   const [currentMediaIndex, setCurrentMediaIndex] = useState(0);
@@ -207,7 +243,8 @@ export default function ChatScreen({ route, navigation }) {
               }
               
               console.log('[ChatScreen] Adding new message from notification:', message.id);
-              return [{ ...message, status: 'sent' }, ...prev];
+              LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+              return [{ ...message, status: 'sent', isNew: true }, ...prev];
             });
             setSkip(prev => prev + 1);
             
@@ -598,9 +635,11 @@ export default function ChatScreen({ route, navigation }) {
         sender_id: currentUserId,
         timestamp: new Date().toISOString(),
         is_read: false,
-        status: 'pending' // Статус для визуализации
+        status: 'pending',
+        isNew: true
       };
       
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
       setMessages(prev => [optimisticMsg, ...prev]);
       setInputText('');
 
@@ -618,50 +657,93 @@ export default function ChatScreen({ route, navigation }) {
     if (activeUploadId) {
       const unsubscribe = uploadManager.subscribe(activeUploadId, ({ progress, status, result, loaded, total }) => {
         setUploadingProgress(progress);
+        if (uploadingClientId) {
+          setMessageUploadProgress(prev => ({ ...prev, [uploadingClientId]: progress }));
+        }
         if (loaded !== undefined) setUploadingData(prev => ({ ...prev, loaded, total }));
         
         if (status === 'completed') {
-          // Для одиночных голосовых сообщений отправляем здесь
-          // Для медиа и документов теперь отправляем вручную в функциях загрузки
-          if (autoSendOnUpload && !batchMode) { 
-            const clientId = `c_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-            const msgData = {
-              receiver_id: userId,
-              file_path: result.file_path,
-              message_type: result.message_type,
-              client_id: clientId
-            };
+          // Если мы уже отправили оптимистичное сообщение, нам нужно только обновить его статус и очистить прогресс
+          if (uploadingClientId) {
+            setMessages(prev => prev.map(m => {
+              if (m.client_id === uploadingClientId) {
+                return { 
+                  ...m, 
+                  status: 'sent', 
+                  file_path: result.file_path, // заменяем локальный URI на серверный
+                  id: result.id || m.id // если сервер вернул id
+                };
+              }
+              return m;
+            }));
+            setMessageUploadProgress(prev => {
+              const next = { ...prev };
+              delete next[uploadingClientId];
+              return next;
+            });
             
-            // Оптимистичное добавление
-            const optimisticMsg = {
-              ...msgData,
-              id: clientId,
-              sender_id: currentUserId,
-              timestamp: new Date().toISOString(),
-              is_read: false,
-              status: 'pending'
-            };
-            setMessages(prev => [optimisticMsg, ...prev]);
+            // Если мы еще не отправили WS (например, для голосовых сообщений, которые создаются ПОСЛЕ загрузки сейчас)
+            // Но мы хотим создавать их ДО.
+            if (autoSendOnUpload && !batchMode) {
+              const msgData = {
+                receiver_id: userId,
+                file_path: result.file_path,
+                message_type: result.message_type,
+                client_id: uploadingClientId
+              };
+              sendMessageWs(msgData);
+            }
+          } else {
+            // Старая логика (на случай если clientId не был установлен)
+            if (autoSendOnUpload && !batchMode) { 
+              const clientId = `c_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+              const msgData = {
+                receiver_id: userId,
+                file_path: result.file_path,
+                message_type: result.message_type,
+                client_id: clientId
+              };
+              
+              // Оптимистичное добавление
+              const optimisticMsg = {
+                ...msgData,
+                id: clientId,
+                sender_id: currentUserId,
+                timestamp: new Date().toISOString(),
+                is_read: false,
+                status: 'pending',
+                isNew: true
+              };
+              LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+              setMessages(prev => [optimisticMsg, ...prev]);
 
-            sendMessageWs(msgData);
-          } 
+              sendMessageWs(msgData);
+            }
+          }
           setUploadingProgress(null);
           setActiveUploadId(null);
+          setUploadingClientId(null);
           setUploadingData({ loaded: 0, total: 0, uri: null, mimeType: null });
-        } else if (status === 'error') {
+        } else if (status === 'error' || status === 'cancelled') {
+          if (uploadingClientId) {
+             setMessageUploadProgress(prev => {
+              const next = { ...prev };
+              delete next[uploadingClientId];
+              return next;
+            });
+            // Можно пометить сообщение как "ошибка отправки"
+            setMessages(prev => prev.map(m => m.client_id === uploadingClientId ? { ...m, status: 'error' } : m));
+          }
           setUploadingProgress(null);
           setActiveUploadId(null);
+          setUploadingClientId(null);
           setUploadingData({ loaded: 0, total: 0, uri: null, mimeType: null });
-          Alert.alert('Ошибка', 'Не удалось завершить загрузку файла');
-        } else if (status === 'cancelled') {
-          setUploadingProgress(null);
-          setActiveUploadId(null);
-          setUploadingData({ loaded: 0, total: 0, uri: null, mimeType: null });
+          if (status === 'error') Alert.alert('Ошибка', 'Не удалось завершить загрузку файла');
         }
       });
       return () => unsubscribe();
     }
-  }, [activeUploadId, userId, autoSendOnUpload]);
+  }, [activeUploadId, userId, autoSendOnUpload, uploadingClientId]);
 
   const pickAndUploadDocument = async () => {
     if (selectionMode) return;
@@ -674,6 +756,34 @@ export default function ChatScreen({ route, navigation }) {
 
       if (!result.canceled) {
         const assets = result.assets || [];
+        const clientId = `c_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        
+        // Оптимистичное добавление ДО загрузки
+        const localAttachments = assets.map(asset => ({ 
+          file_path: asset.uri, 
+          type: 'file',
+          name: asset.name 
+        }));
+
+        const optimisticMsg = {
+          id: clientId,
+          client_id: clientId,
+          sender_id: currentUserId,
+          receiver_id: userId,
+          timestamp: new Date().toISOString(),
+          is_read: false,
+          status: 'pending',
+          message_type: assets.length === 1 ? 'file' : 'media_group',
+          attachments: assets.length > 1 ? localAttachments : null,
+          file_path: assets.length === 1 ? localAttachments[0].file_path : null,
+          name: assets.length === 1 ? localAttachments[0].name : null,
+          isNew: true
+        };
+        
+        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+        setMessages(prev => [optimisticMsg, ...prev]);
+        setUploadingClientId(clientId);
+
         setBatchMode(true);
         setAutoSendOnUpload(false);
         setBatchTotal(assets.length);
@@ -708,7 +818,6 @@ export default function ChatScreen({ route, navigation }) {
         }
 
         if (attachmentsLocal.length > 0) {
-          const clientId = `c_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
           const msgData = attachmentsLocal.length === 1 
             ? {
                 receiver_id: userId,
@@ -723,18 +832,17 @@ export default function ChatScreen({ route, navigation }) {
                 client_id: clientId
               };
 
-          // Оптимистичное добавление
-          const optimisticMsg = {
+          // Обновляем сообщение серверными данными
+          setMessages(prev => prev.map(m => m.client_id === clientId ? { 
+            ...m, 
             ...msgData,
-            id: clientId,
-            sender_id: currentUserId,
-            timestamp: new Date().toISOString(),
-            is_read: false,
-            status: 'pending'
-          };
-          setMessages(prev => [optimisticMsg, ...prev]);
+            status: 'sent' 
+          } : m));
 
           sendMessageWs(msgData);
+        } else {
+          // Если ничего не загрузилось, удаляем оптимистичное сообщение или помечаем ошибкой
+          setMessages(prev => prev.map(m => m.client_id === clientId ? { ...m, status: 'error' } : m));
         }
       }
     } catch (error) {
@@ -745,6 +853,7 @@ export default function ChatScreen({ route, navigation }) {
       setAutoSendOnUpload(true);
       setUploadingProgress(null);
       setActiveUploadId(null);
+      setUploadingClientId(null);
       setBatchTotal(0);
       setAttachmentsLocalCount(0);
     }
@@ -771,6 +880,32 @@ export default function ChatScreen({ route, navigation }) {
           Alert.alert('Ограничение', 'Можно отправить не более 10 файлов за раз. Лишние будут проигнорированы.');
           assets = assets.slice(0, 10);
         }
+
+        const clientId = `c_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        
+        // Оптимистичное добавление ДО загрузки
+        const localAttachments = assets.map(asset => ({ 
+          file_path: asset.uri, 
+          type: asset.mimeType?.startsWith('video') ? 'video' : 'image'
+        }));
+
+        const optimisticMsg = {
+          id: clientId,
+          client_id: clientId,
+          sender_id: currentUserId,
+          receiver_id: userId,
+          timestamp: new Date().toISOString(),
+          is_read: false,
+          status: 'pending',
+          message_type: assets.length === 1 ? localAttachments[0].type : 'media_group',
+          attachments: assets.length > 1 ? localAttachments : null,
+          file_path: assets.length === 1 ? localAttachments[0].file_path : null,
+          isNew: true
+        };
+        
+        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+        setMessages(prev => [optimisticMsg, ...prev]);
+        setUploadingClientId(clientId);
 
         setBatchMode(true);
         setAutoSendOnUpload(false);
@@ -807,7 +942,6 @@ export default function ChatScreen({ route, navigation }) {
         }
 
         if (attachmentsLocal.length > 0) {
-          const clientId = `c_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
           const msgData = attachmentsLocal.length === 1 
             ? {
                 receiver_id: userId,
@@ -822,18 +956,16 @@ export default function ChatScreen({ route, navigation }) {
                 client_id: clientId
               };
 
-          // Оптимистичное добавление
-          const optimisticMsg = {
+          // Обновляем сообщение серверными данными
+          setMessages(prev => prev.map(m => m.client_id === clientId ? { 
+            ...m, 
             ...msgData,
-            id: clientId,
-            sender_id: currentUserId,
-            timestamp: new Date().toISOString(),
-            is_read: false,
-            status: 'pending'
-          };
-          setMessages(prev => [optimisticMsg, ...prev]);
+            status: 'sent' 
+          } : m));
 
           sendMessageWs(msgData);
+        } else {
+           setMessages(prev => prev.map(m => m.client_id === clientId ? { ...m, status: 'error' } : m));
         }
       }
     } catch (error) {
@@ -847,6 +979,7 @@ export default function ChatScreen({ route, navigation }) {
       setAttachmentsLocalCount(0);
       setUploadingProgress(null);
       setActiveUploadId(null);
+      setUploadingClientId(null);
     }
   };
 
@@ -854,21 +987,51 @@ export default function ChatScreen({ route, navigation }) {
   const handleSendVideoNote = async (uri) => {
     if (!uri) return;
     try {
+      const clientId = `c_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      
+      // Оптимистичное добавление
+      const optimisticMsg = {
+        id: clientId,
+        client_id: clientId,
+        sender_id: currentUserId,
+        receiver_id: userId,
+        timestamp: new Date().toISOString(),
+        is_read: false,
+        status: 'pending',
+        message_type: 'video_note',
+        file_path: uri, // Используем локальный URI для предпросмотра
+        isNew: true
+      };
+      
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      setMessages(prev => [optimisticMsg, ...prev]);
+      setUploadingClientId(clientId);
+
       // Имя файла
       const filename = `video_note_${Date.now()}.mp4`;
       
       // Запускаем загрузку через uploadManager
       const uploadResult = await uploadManager.uploadFile(uri, filename, 'video/mp4', (progress) => {
         setUploadingProgress(progress);
+        setMessageUploadProgress(prev => ({ ...prev, [clientId]: progress }));
       });
 
       if (uploadResult && uploadResult.file_path) {
+        // Очищаем прогресс и обновляем сообщение
+        setMessageUploadProgress(prev => {
+          const next = { ...prev };
+          delete next[clientId];
+          return next;
+        });
+        setUploadingClientId(null);
+        
         // Отправляем сообщение через WebSocket
         sendMessageWs({
           receiver_id: userId,
           message: null,
           file_path: uploadResult.file_path,
-          message_type: 'video_note'
+          message_type: 'video_note',
+          client_id: clientId
         });
       }
     } catch (err) {
@@ -881,8 +1044,8 @@ export default function ChatScreen({ route, navigation }) {
 
   const startVideoRecording = async () => {
     try {
-      const { status: cameraStatus } = await CameraView.requestCameraPermissionsAsync();
-      const { status: audioStatus } = await Audio.requestPermissionsAsync();
+      const { status: cameraStatus } = await requestCameraPermission();
+      const { status: audioStatus } = await requestRecordingPermissionsAsync();
       
       if (cameraStatus !== 'granted' || audioStatus !== 'granted') {
         Alert.alert('Доступ запрещен', 'Нам нужны разрешения на камеру и микрофон для записи видеосообщений.');
@@ -974,8 +1137,8 @@ export default function ChatScreen({ route, navigation }) {
             isRecording: s0?.isRecording,
             canRecord: s0?.canRecord,
             durationMillis: s0?.durationMillis,
-            url: s0?.url,
-            uri: recorder.uri,
+            uri: s0?.uri,
+            recorderUri: recorder.uri,
             canRecordAttempts,
           });
 
@@ -1060,7 +1223,7 @@ export default function ChatScreen({ route, navigation }) {
         await new Promise((resolve) => setTimeout(resolve, 400));
 
         const after = recorder.getStatus();
-        const uri = recorder.uri || after?.url || null;
+        const uri = recorder.uri || after?.uri || null;
         const finalDuration = after?.durationMillis || durationAtStop;
 
         console.log('[ChatScreen] Stop completed. URI:', uri, 'Final Duration:', finalDuration);
@@ -1076,7 +1239,7 @@ export default function ChatScreen({ route, navigation }) {
           // One last attempt to get the URI
           await new Promise((resolve) => setTimeout(resolve, 300));
           const retry = recorder.getStatus();
-          const retryUri = recorder.uri || retry?.url || null;
+          const retryUri = recorder.uri || retry?.uri || null;
           if (retryUri) {
             console.log('[ChatScreen] URI found on retry:', retryUri);
             setRecordingDuration(finalDuration || 1000);
@@ -1111,8 +1274,28 @@ export default function ChatScreen({ route, navigation }) {
   const uploadVoiceMessage = async (uri) => {
     if (!uri) return;
     try {
+      const clientId = `c_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       const fileName = `voice_${Date.now()}.m4a`;
       const mimeType = 'audio/m4a';
+      
+      // Оптимистичное добавление
+      const optimisticMsg = {
+        id: clientId,
+        client_id: clientId,
+        sender_id: currentUserId,
+        receiver_id: userId,
+        timestamp: new Date().toISOString(),
+        is_read: false,
+        status: 'pending',
+        message_type: 'voice',
+        file_path: uri, // Локальный URI
+        isNew: true
+      };
+      
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      setMessages(prev => [optimisticMsg, ...prev]);
+      setUploadingClientId(clientId);
+
       setUploadingData({ loaded: 0, total: 0, uri: uri, mimeType: mimeType });
       
       await uploadManager.uploadFileResumable(
@@ -1132,35 +1315,7 @@ export default function ChatScreen({ route, navigation }) {
     }
   };
 
-  const renderUploadPlaceholder = () => {
-    if (uploadingProgress === null || !uploadingData.uri) return null;
-
-    return (
-      <View style={[
-        styles.messageWrapper, 
-        styles.sentWrapper,
-        { opacity: 0.7, marginBottom: 10 }
-      ]}>
-        <View style={[styles.messageBubble, styles.sent, { backgroundColor: colors.primary }]}>
-          {uploadingData.mimeType?.startsWith('image/') ? (
-            <Image 
-              source={{ uri: uploadingData.uri }} 
-              style={{ width: 200, height: 150, borderRadius: 10 }} 
-              resizeMode="cover" 
-            />
-          ) : (
-            <View style={{ flexDirection: 'row', alignItems: 'center', padding: 10 }}>
-              <MaterialIcons name="insert-drive-file" size={24} color="#fff" />
-              <Text style={{ color: '#fff', marginLeft: 10 }}>Загрузка файла...</Text>
-            </View>
-          )}
-          <View style={styles.messageFooter}>
-            <Text style={[styles.messageTime, { color: 'rgba(255,255,255,0.7)' }]}>Отправка...</Text>
-          </View>
-        </View>
-      </View>
-    );
-  };
+  // Удален renderUploadPlaceholder
 
 
   const renderMessageItem = ({ item, index }) => {
@@ -1172,6 +1327,7 @@ export default function ChatScreen({ route, navigation }) {
     const isReceived = Number(item.sender_id) === Number(userId);
     const isOwner = Number(item.sender_id) === Number(currentUserId);
     const isSelected = selectedIds.includes(item.id);
+    const uploadProgress = messageUploadProgress[item.client_id];
 
     // Группировка: если предыдущее сообщение от того же отправителя и разница во времени менее 2 минут
     const prevMsg = messages[index + 1]; // Помним, что FlatList inverted
@@ -1211,16 +1367,17 @@ export default function ChatScreen({ route, navigation }) {
     };
 
     return (
-      <Pressable 
-        onPress={handlePress}
-        onLongPress={handleLongPress}
-        style={[
-          styles.messageWrapper,
-          isReceived ? styles.receivedWrapper : styles.sentWrapper,
-          isSelected && { backgroundColor: colors.primary + '20' },
-          isGrouped && { marginTop: -2 }
-        ]}
-      >
+      <EntryAnimatedView isNew={item.isNew}>
+        <Pressable 
+          onPress={handlePress}
+          onLongPress={handleLongPress}
+          style={[
+            styles.messageWrapper,
+            isReceived ? styles.receivedWrapper : styles.sentWrapper,
+            isSelected && { backgroundColor: colors.primary + '20' },
+            isGrouped && { marginTop: -2 }
+          ]}
+        >
         <View 
           style={[
             styles.messageBubble, 
@@ -1242,73 +1399,89 @@ export default function ChatScreen({ route, navigation }) {
             </View>
           )}
           {/* Медиа-группа */}
-          {item.attachments && item.attachments.length > 0 ? (
-            <View style={styles.mediaGridContainer}>
-              <View style={styles.mediaGrid}>
-                {item.attachments.map((att, idx) => {
-                  if (!att.file_path) return null;
-                  const attUri = att.file_path.startsWith('http') ? att.file_path : `${API_BASE_URL}${att.file_path}`;
-                  
-                  // Расчет размеров для сетки
-                  const count = item.attachments.length;
-                  let itemWidth = '100%';
-                  let itemHeight = 200;
-                  
-                  if (count === 2) {
-                    itemWidth = '49%';
-                    itemHeight = 150;
-                  } else if (count === 3) {
-                    if (idx === 0) {
-                      itemWidth = '100%';
+          {(isImage || isVideo) && (
+            item.attachments && item.attachments.length > 0 ? (
+              <View style={styles.mediaGridContainer}>
+                <View style={styles.mediaGrid}>
+                  {item.attachments.map((att, idx) => {
+                    if (!att.file_path) return null;
+                    const attUri = att.file_path.startsWith('http') || att.file_path.startsWith('file://') || att.file_path.startsWith('/') 
+                      ? att.file_path 
+                      : `${API_BASE_URL}${att.file_path}`;
+                    
+                    // Расчет размеров для сетки
+                    const count = item.attachments.length;
+                    let itemWidth = '100%';
+                    let itemHeight = 200;
+                    
+                    if (count === 2) {
+                      itemWidth = '49%';
                       itemHeight = 150;
-                    } else {
+                    } else if (count === 3) {
+                      if (idx === 0) {
+                        itemWidth = '100%';
+                        itemHeight = 150;
+                      } else {
+                        itemWidth = '49%';
+                        itemHeight = 100;
+                      }
+                    } else if (count >= 4) {
                       itemWidth = '49%';
                       itemHeight = 100;
                     }
-                  } else if (count >= 4) {
-                    itemWidth = '49%';
-                    itemHeight = 100;
-                  }
 
-                  return (
-                    <Pressable 
-                      key={`${item.id}_att_${idx}`}
-                      onPress={() => handleFullScreen(attUri, att.type)}
-                      style={{ 
-                        width: itemWidth, 
-                        height: itemHeight, 
-                        borderRadius: 8, 
-                        marginBottom: 4,
-                        overflow: 'hidden'
-                      }}
-                    >
-                      <CachedMedia 
-                        item={{ ...att, message_type: att.type }} 
-                        style={{ width: '100%', height: '100%' }}
-                        onFullScreen={() => handleFullScreen(attUri, att.type)}
-                      />
-                    </Pressable>
-                  );
-                })}
+                    return (
+                      <Pressable 
+                        key={`${item.id}_att_${idx}`}
+                        onPress={() => handleFullScreen(attUri, att.type)}
+                        style={{ 
+                          width: itemWidth, 
+                          height: itemHeight, 
+                          borderRadius: 8, 
+                          marginBottom: 4,
+                          overflow: 'hidden'
+                        }}
+                      >
+                        <CachedMedia 
+                          item={{ ...att, message_type: att.type }} 
+                          style={{ width: '100%', height: '100%' }}
+                          onFullScreen={() => handleFullScreen(attUri, att.type)}
+                        />
+                      </Pressable>
+                    );
+                  })}
+                </View>
+                {uploadProgress !== undefined && uploadProgress !== null && (
+                  <View style={styles.uploadOverlay}>
+                    <ActivityIndicator color="#fff" size="small" />
+                    <Text style={styles.uploadProgressText}>{Math.round(uploadProgress * 100)}%</Text>
+                  </View>
+                )}
               </View>
-            </View>
-          ) : (
-            (isImage || isVideo) && (
-              <CachedMedia 
-                item={item} 
-                onFullScreen={handleFullScreen} 
-                style={{ borderRadius: 12, overflow: 'hidden' }}
-              />
+            ) : (
+              <View style={{ position: 'relative' }}>
+                <CachedMedia 
+                  item={item} 
+                  onFullScreen={handleFullScreen} 
+                  style={{ borderRadius: 12, overflow: 'hidden' }}
+                />
+                {uploadProgress !== undefined && uploadProgress !== null && (
+                  <View style={styles.uploadOverlay}>
+                    <ActivityIndicator color="#fff" size="small" />
+                    <Text style={styles.uploadProgressText}>{Math.round(uploadProgress * 100)}%</Text>
+                  </View>
+                )}
+              </View>
             )
           )}
           {isVoice && (
-            <VoiceMessage item={item} currentUserId={currentUserId} />
+            <VoiceMessage item={item} currentUserId={currentUserId} uploadProgress={uploadProgress} />
           )}
           {isVideoNote && (
-            <VideoNoteMessage item={item} isReceived={isReceived} />
+            <VideoNoteMessage item={item} isReceived={isReceived} uploadProgress={uploadProgress} />
           )}
           {isFile && (
-            <FileMessage item={item} currentUserId={currentUserId} />
+            <FileMessage item={item} currentUserId={currentUserId} uploadProgress={uploadProgress} />
           )}
           {item.message && (
             <Text style={[
@@ -1343,6 +1516,7 @@ export default function ChatScreen({ route, navigation }) {
           </View>
         </View>
       </Pressable>
+      </EntryAnimatedView>
     );
   };
 
@@ -1371,6 +1545,7 @@ export default function ChatScreen({ route, navigation }) {
               }
 
               // Локально обновляем список сообщений
+              LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
               setMessages(prev => prev.filter(m => m.id !== messageId));
               setSkip(prev => Math.max(0, prev - 1));
             } catch (error) {
@@ -1416,6 +1591,7 @@ export default function ChatScreen({ route, navigation }) {
 
               // Локально обновляем список сообщений, чтобы чат сразу отразил удаление
               const removedCount = selectedIds.length;
+              LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
               setMessages(prev => prev.filter(m => !selectedIds.includes(m.id)));
               setSkip(prev => Math.max(0, prev - removedCount));
 
@@ -1484,31 +1660,16 @@ export default function ChatScreen({ route, navigation }) {
           </View>
         )}
       </View>
-      {uploadingProgress !== null && (
-        <View style={[styles.uploadProgressContainer, { backgroundColor: colors.background, borderColor: colors.border }]}>
-          <View style={styles.uploadProgressInfo}>
-            <Text style={{ color: colors.text }}>
-              {batchMode ? `Загрузка медиа (${attachmentsLocalCount + 1}/${batchTotal || 1}) - ${Math.round(uploadingProgress * 100)}%` : `Загрузка: ${formatFileSize(uploadingData.loaded)} / ${formatFileSize(uploadingData.total)} (${Math.round(uploadingProgress * 100)}%)`}
-            </Text>
-            <TouchableOpacity onPress={() => uploadManager.cancelUpload(activeUploadId)}>
-              <MaterialIcons name="cancel" size={24} color={colors.error} />
-            </TouchableOpacity>
-          </View>
-          <View style={styles.progressBarBackground}>
-            <View style={[styles.progressBar, { width: `${uploadingProgress * 100}%`, backgroundColor: colors.primary }]} />
-          </View>
-        </View>
-      )}
+      {/* Удалено: верхняя панель индикации загрузки */}
       <FlatList
         ref={chatFlatListRef}
         data={messages}
-        extraData={[messages.length, currentUserId, selectedIds.length, theme, userId]}
-        keyExtractor={(item) => (item.id || Math.random()).toString()}
+        extraData={[messages.length, currentUserId, selectedIds.length, theme, userId, messageUploadProgress]}
+        keyExtractor={(item) => (item.client_id || item.id || Math.random()).toString()}
         renderItem={renderMessageItem}
         onEndReached={loadMoreMessages}
         onEndReachedThreshold={0.1}
         inverted={true}
-        ListHeaderComponent={renderUploadPlaceholder}
         onScrollToIndexFailed={(info) => {
           chatFlatListRef.current?.scrollToOffset({ 
             offset: info.averageItemLength * info.index, 
@@ -1665,7 +1826,7 @@ export default function ChatScreen({ route, navigation }) {
                   onLongPress={inputMode === 'audio' ? startRecording : startVideoRecording} 
                   onPressOut={inputMode === 'audio' ? stopRecording : stopVideoRecording}
                   onPress={() => {
-                    Vibration.vibrate(50);
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                     setInputMode(prev => prev === 'audio' ? 'video' : 'audio');
                   }}
                   delayLongPress={200}
@@ -1675,8 +1836,8 @@ export default function ChatScreen({ route, navigation }) {
                     (isRecording || isVideoRecording) && { backgroundColor: colors.primary + '20', borderRadius: 20 }
                   ]}
                 >
-                  <MaterialIcons 
-                    name={inputMode === 'audio' ? (isRecording ? "mic" : "mic-none") : (isVideoRecording ? "videocam" : "videocam-outline")} 
+                  <Icon 
+                    name={inputMode === 'audio' ? (isRecording ? "mic" : "mic-outline") : (isVideoRecording ? "videocam" : "videocam-outline")} 
                     size={24} 
                     color={(isRecording || isVideoRecording) ? colors.error : colors.primary} 
                   />
@@ -1776,6 +1937,20 @@ const styles = StyleSheet.create({
   mediaGridContainer: {
     width: 260,
     marginTop: 2,
+    position: 'relative',
+  },
+  uploadOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 12,
+  },
+  uploadProgressText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: 'bold',
+    marginTop: 4,
   },
   mediaGrid: {
     flexDirection: 'row',

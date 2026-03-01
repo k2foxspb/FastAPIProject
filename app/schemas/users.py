@@ -1,6 +1,6 @@
 from datetime import datetime
 from pydantic import BaseModel, EmailStr, Field, ConfigDict, field_validator
-from typing import Any
+from typing import Any, Optional
 
 
 class UserCreate(BaseModel):
@@ -343,6 +343,11 @@ class AppVersionResponse(BaseModel):
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+class AppLogRequest(BaseModel):
+    message: str
+    level: Optional[str] = "info"
+    device_info: Optional[str] = None
 
 
 

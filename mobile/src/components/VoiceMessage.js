@@ -18,15 +18,17 @@ const resolveRemoteUri = (path) => {
   return `${base}${rel}`;
 };
 
-export default function VoiceMessage({ item, currentUserId }) {
+export default function VoiceMessage({ item, currentUserId, uploadProgress }) {
   const { theme } = useTheme();
   const colors = themeConstants[theme];
   const [loading, setLoading] = useState(false);
   const [localUri, setLocalUri] = useState(null);
+  const [playbackSpeed, setPlaybackSpeed] = useState(1);
 
-  const remoteUri = resolveRemoteUri(item.file_path);
-  const fileName = item.file_path.split('/').pop();
-  const localFileUri = `${cacheDirectory}${fileName}`;
+  const isUploading = uploadProgress !== undefined && uploadProgress !== null;
+  const remoteUri = !isUploading ? resolveRemoteUri(item.file_path) : null;
+  const fileName = item.file_path ? item.file_path.split('/').pop() : 'voice.m4a';
+  const localFileUri = !isUploading ? `${cacheDirectory}${fileName}` : item.file_path;
 
   const audioSource = localUri || remoteUri;
   // We use useAudioPlayer without an initial source to keep the player instance stable.
@@ -40,6 +42,10 @@ export default function VoiceMessage({ item, currentUserId }) {
       player.replace(audioSource);
     }
   }, [audioSource, player]);
+
+  useEffect(() => {
+    player.playbackSpeed = playbackSpeed;
+  }, [playbackSpeed, player]);
 
   useEffect(() => {
     if (Platform.OS === 'web') {
@@ -92,6 +98,13 @@ export default function VoiceMessage({ item, currentUserId }) {
     }
 
     await player.play();
+  };
+
+  const cyclePlaybackSpeed = () => {
+    const speeds = [1, 1.25, 1.5, 2];
+    const nextSpeed = speeds[(speeds.indexOf(playbackSpeed) + 1) % speeds.length];
+    setPlaybackSpeed(nextSpeed);
+    player.playbackSpeed = nextSpeed;
   };
 
   const handleDownload = async () => {
@@ -163,7 +176,7 @@ export default function VoiceMessage({ item, currentUserId }) {
   const position = status.currentTime || 0;
   const duration = status.duration || 0;
   const isPlaying = status.playing;
-  const progress = duration > 0 ? (position / duration) * 100 : 0;
+  const progress = isUploading ? uploadProgress * 100 : (duration > 0 ? (position / duration) * 100 : 0);
   const isReceived = item.sender_id !== currentUserId;
 
   return (
@@ -174,9 +187,9 @@ export default function VoiceMessage({ item, currentUserId }) {
         ...getShadow('#000', { width: 0, height: 1 }, 0.1, 2, 1),
       }
     ]}>
-      <TouchableOpacity onPress={loadAndPlay} disabled={loading} style={styles.playButton}>
+      <TouchableOpacity onPress={loadAndPlay} disabled={loading || isUploading} style={styles.playButton}>
         <View style={[styles.playIconContainer, { backgroundColor: isReceived ? colors.primary + '15' : 'rgba(255,255,255,0.2)' }]}>
-          {loading ? (
+          {loading || isUploading ? (
             <ActivityIndicator size="small" color={isReceived ? colors.primary : "#fff"} />
           ) : (
             <MaterialIcons 
@@ -193,10 +206,21 @@ export default function VoiceMessage({ item, currentUserId }) {
         </View>
         <View style={styles.timeContainer}>
           <Text style={[styles.timeText, { color: isReceived ? colors.textSecondary : 'rgba(255,255,255,0.8)' }]}>
-            {formatTime(position)} / {formatTime(duration)}
+            {isUploading ? `Загрузка: ${Math.round(progress)}%` : `${formatTime(position)} / ${formatTime(duration)}`}
           </Text>
         </View>
       </View>
+      <TouchableOpacity 
+        onPress={cyclePlaybackSpeed} 
+        style={[
+          styles.speedButton, 
+          { backgroundColor: isReceived ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.2)' }
+        ]}
+      >
+        <Text style={[styles.speedText, { color: isReceived ? colors.textSecondary : 'rgba(255,255,255,0.8)' }]}>
+          {playbackSpeed === 1 ? '1x' : `${playbackSpeed}x`}
+        </Text>
+      </TouchableOpacity>
       <TouchableOpacity onPress={handleDownload} disabled={loading} style={styles.downloadButton}>
         <MaterialIcons 
           name="file-download" 
@@ -248,5 +272,17 @@ const styles = StyleSheet.create({
   downloadButton: {
     marginLeft: 10,
     padding: 5,
+  },
+  speedButton: {
+    marginLeft: 8,
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+    borderRadius: 8,
+    minWidth: 38,
+    alignItems: 'center',
+  },
+  speedText: {
+    fontSize: 11,
+    fontWeight: 'bold',
   },
 });

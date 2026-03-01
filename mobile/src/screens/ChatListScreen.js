@@ -14,12 +14,10 @@ export default function ChatListScreen({ navigation }) {
 
   useFocusEffect(
     useCallback(() => {
-      // If not connected, we might still want to fetch once via API as fallback
-      // but primarily we rely on get_dialogs via WS in connectChatWs
-      if (!isConnected) {
-        fetchDialogs();
-      }
-    }, [isConnected, fetchDialogs])
+      // Всегда обновляем список диалогов при фокусе на экран, 
+      // чтобы гарантировать актуальность статусов и последних сообщений
+      fetchDialogs();
+    }, [fetchDialogs])
   );
 
 

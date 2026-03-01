@@ -163,6 +163,8 @@ export const adminApi = {
   initUpload: (data, token) => api.post('/admin/upload-app/init', data, { params: { token } }),
   getUploadStatus: (uploadId, token) => api.get(`/admin/upload-app/status/${uploadId}`, { params: { token } }),
   getLogs: (limit = 1000) => api.get('/admin/logs', { params: { limit } }),
+  getAppLogs: (limit = 1000) => api.get('/admin/app-logs', { params: { limit } }),
+  addAppLog: (data) => api.post('/admin/app-logs', data),
 };
 
 export const chatApi = {

@@ -1,22 +1,27 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity, ActivityIndicator, Platform } from 'react-native';
 import { adminApi } from '../api';
-import { Ionicons as Icon } from '@expo/vector-icons';
+import { Ionicons as Icon, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
+import { logger } from '../utils/logger';
 
 export default function AdminLogsScreen() {
   const [logs, setLogs] = useState([]);
   const [filteredLogs, setFilteredLogs] = useState([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
+  const [logType, setLogType] = useState('server'); // 'server' or 'app'
   const { theme } = useTheme();
   const colors = themeConstants[theme];
 
   const fetchLogs = async () => {
     setLoading(true);
     try {
-      const res = await adminApi.getLogs(1000);
+      const res = logType === 'server' 
+        ? await adminApi.getLogs(1000)
+        : await adminApi.getAppLogs(1000);
+        
       // Логи приходят в виде массива строк
       const logLines = res.data.logs || [];
       // Инвертируем порядок, чтобы последние были сверху
@@ -44,7 +49,10 @@ export default function AdminLogsScreen() {
 
   useEffect(() => {
     fetchLogs();
-  }, []);
+    if (logType === 'app') {
+      logger.info('Пользователь открыл логи приложения в админ-панели');
+    }
+  }, [logType]);
 
   const renderLogItem = ({ item }) => (
     <View style={[styles.logItem, { borderBottomColor: colors.border }]}>
@@ -54,6 +62,21 @@ export default function AdminLogsScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <View style={[styles.tabContainer, { borderBottomColor: colors.border }]}>
+        <TouchableOpacity 
+          style={[styles.tab, logType === 'server' && { borderBottomColor: colors.primary, borderBottomWidth: 2 }]}
+          onPress={() => setLogType('server')}
+        >
+          <Text style={[styles.tabText, { color: logType === 'server' ? colors.primary : colors.textSecondary }]}>Сервер</Text>
+        </TouchableOpacity>
+        <TouchableOpacity 
+          style={[styles.tab, logType === 'app' && { borderBottomColor: colors.primary, borderBottomWidth: 2 }]}
+          onPress={() => setLogType('app')}
+        >
+          <Text style={[styles.tabText, { color: logType === 'app' ? colors.primary : colors.textSecondary }]}>Приложение</Text>
+        </TouchableOpacity>
+      </View>
+
       <View style={[styles.searchContainer, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
         <Icon name="search" size={20} color={colors.textSecondary} style={styles.searchIcon} />
         <TextInput
@@ -95,6 +118,20 @@ export default function AdminLogsScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  tabContainer: {
+    flexDirection: 'row',
+    height: 50,
+    borderBottomWidth: 1,
+  },
+  tab: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  tabText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',

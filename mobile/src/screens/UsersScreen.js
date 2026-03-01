@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, FlatList, TextInput, StyleSheet, TouchableOpacity, Image, Platform } from 'react-native';
 import notifee from '@notifee/react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { usersApi } from '../api';
 import { useTheme } from '../context/ThemeContext';
 import { useNotifications } from '../context/NotificationContext';
@@ -109,9 +110,11 @@ export default function UsersScreen({ navigation }) {
     }
   };
 
-  useEffect(() => {
-    fetchData();
-  }, [search, currentUserId, activeTab]);
+  useFocusEffect(
+    useCallback(() => {
+      fetchData();
+    }, [search, currentUserId, activeTab])
+  );
 
   useEffect(() => {
     if (Platform.OS !== 'web' && activeTab === 'friends') {
