@@ -50,14 +50,15 @@ const resolveRemoteUri = (path) => {
   return `${base}${rel}`;
 };
 
-export default function FileMessage({ item, currentUserId }) {
+export default function FileMessage({ item, currentUserId, uploadProgress }) {
   const { theme } = useTheme();
   const colors = themeConstants[theme];
   const [loading, setLoading] = useState(false);
 
-  const remoteUri = resolveRemoteUri(item.file_path);
-  const fileName = item.file_path ? item.file_path.split('/').pop() : 'Без названия';
-  const localFileUri = item.file_path ? `${documentDirectory}${fileName}` : null;
+  const isUploading = uploadProgress !== undefined && uploadProgress !== null;
+  const remoteUri = !isUploading ? resolveRemoteUri(item.file_path) : null;
+  const fileName = item.name || (item.file_path ? item.file_path.split('/').pop() : 'Без названия');
+  const localFileUri = item.file_path && !isUploading ? `${documentDirectory}${fileName}` : item.file_path;
 
   const handleDownloadAndOpen = async () => {
     if (Platform.OS === 'web') {
@@ -208,11 +209,11 @@ export default function FileMessage({ item, currentUserId }) {
     ]}>
       <TouchableOpacity 
         onPress={handleDownloadAndOpen} 
-        disabled={loading} 
+        disabled={loading || isUploading} 
         style={styles.contentContainer}
       >
         <View style={[styles.iconContainer, { backgroundColor: isReceived ? colors.primary + '15' : 'rgba(255,255,255,0.2)' }]}>
-          {loading ? (
+          {loading || isUploading ? (
             <ActivityIndicator size="small" color={isReceived ? colors.primary : "#fff"} />
           ) : (
             <MaterialIcons 
@@ -231,22 +232,29 @@ export default function FileMessage({ item, currentUserId }) {
             {fileName}
           </Text>
           <Text style={[styles.fileAction, { color: isReceived ? colors.textSecondary : 'rgba(255,255,255,0.7)' }]}>
-            Нажмите, чтобы открыть
+            {isUploading ? `Загрузка: ${Math.round(uploadProgress * 100)}%` : 'Нажмите, чтобы открыть'}
           </Text>
+          {isUploading && (
+            <View style={[styles.miniProgressBar, { backgroundColor: isReceived ? colors.border : 'rgba(255,255,255,0.3)' }]}>
+              <View style={[styles.miniProgressFill, { width: `${uploadProgress * 100}%`, backgroundColor: isReceived ? colors.primary : "#fff" }]} />
+            </View>
+          )}
         </View>
       </TouchableOpacity>
       
-      <TouchableOpacity 
-        onPress={handleDownload}
-        disabled={loading}
-        style={[styles.downloadButton, { borderLeftColor: isReceived ? colors.border : 'rgba(255,255,255,0.3)' }]}
-      >
-        <MaterialIcons 
-          name="file-download" 
-          size={22} 
-          color={isReceived ? colors.textSecondary : "#fff"} 
-        />
-      </TouchableOpacity>
+      {!isUploading && (
+        <TouchableOpacity 
+          onPress={handleDownload}
+          disabled={loading}
+          style={[styles.downloadButton, { borderLeftColor: isReceived ? colors.border : 'rgba(255,255,255,0.3)' }]}
+        >
+          <MaterialIcons 
+            name="file-download" 
+            size={22} 
+            color={isReceived ? colors.textSecondary : "#fff"} 
+          />
+        </TouchableOpacity>
+      )}
     </View>
   );
 }
@@ -289,5 +297,15 @@ const styles = StyleSheet.create({
   fileAction: {
     fontSize: 11,
     marginTop: 2,
+  },
+  miniProgressBar: {
+    height: 3,
+    borderRadius: 1.5,
+    width: '100%',
+    marginTop: 4,
+    overflow: 'hidden',
+  },
+  miniProgressFill: {
+    height: '100%',
   },
 });

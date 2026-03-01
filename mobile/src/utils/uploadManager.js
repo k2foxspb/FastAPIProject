@@ -60,6 +60,31 @@ export const uploadManager = {
   },
 
   /**
+   * Загрузка файла (обертка над uploadFileResumable для обратной совместимости)
+   */
+  async uploadFile(fileUri, fileName, mimeType, onProgress) {
+    let unsubscribe = null;
+    try {
+      const result = await this.uploadFileResumable(
+        fileUri,
+        fileName,
+        mimeType,
+        null,
+        (uploadId) => {
+          if (onProgress) {
+            unsubscribe = this.subscribe(uploadId, ({ progress }) => {
+              onProgress(progress);
+            });
+          }
+        }
+      );
+      return result;
+    } finally {
+      if (unsubscribe) unsubscribe();
+    }
+  },
+
+  /**
    * Загружает файл по частям с возможностью возобновления
    */
   async uploadFileResumable(fileUri, fileName, mimeType, receiverId, onInit, apiOptions = {}) {

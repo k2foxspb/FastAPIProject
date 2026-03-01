@@ -1,3 +1,4 @@
+from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, status, File, UploadFile, Form, Query
 from typing import List, Optional
 import os
@@ -15,7 +16,7 @@ from app.models.news import News as NewsModel
 from app.models.orders import Order as OrderModel, OrderItem as OrderItemModel
 from app.models.reviews import Reviews as ReviewsModel
 from app.models.chat import ChatMessage as ChatMessageModel, FileUploadSession
-from app.schemas.users import User as UserSchema, AdminPermissionCreate, AdminPermission as AdminPermissionSchema, AppVersionResponse
+from app.schemas.users import User as UserSchema, AdminPermissionCreate, AdminPermission as AdminPermissionSchema, AppVersionResponse, AppLogRequest
 from app.schemas.products import Product as ProductSchema
 from app.schemas.news import News as NewsSchema
 from app.schemas.chat import ChatMessageResponse, DialogResponse, UploadInitRequest, UploadSessionResponse, UploadStatusResponse
@@ -577,3 +578,41 @@ async def get_logs(
             return {"logs": last_lines}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error reading logs: {str(e)}")
+
+@router.post("/app-logs")
+async def add_app_log(
+    log: AppLogRequest,
+    admin: UserModel = Depends(get_current_admin)
+):
+    """Добавляет лог от мобильного приложения."""
+    log_file = "app_logs.log"
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    log_entry = f"[{timestamp}] [{log.level.upper()}] {log.message}"
+    if log.device_info:
+        log_entry += f" | Device: {log.device_info}"
+    
+    try:
+        with open(log_file, "a", encoding="utf-8") as f:
+            f.write(log_entry + "\n")
+        return {"message": "Log added"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error writing app log: {str(e)}")
+
+@router.get("/app-logs")
+async def get_app_logs(
+    limit: int = Query(1000, description="Количество последних строк"),
+    owner: UserModel = Depends(get_current_owner)
+):
+    """Возвращает последние строки логов приложения."""
+    log_file = "app_logs.log"
+    
+    if not os.path.exists(log_file):
+        return {"logs": ["App log file not yet created"]}
+    
+    try:
+        with open(log_file, "r", encoding="utf-8", errors="replace") as f:
+            lines = f.readlines()
+            last_lines = [line.strip() for line in lines[-limit:]]
+            return {"logs": last_lines}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error reading app logs: {str(e)}")
