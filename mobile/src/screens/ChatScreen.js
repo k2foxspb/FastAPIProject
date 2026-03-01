@@ -29,7 +29,7 @@ export default function ChatScreen({ route, navigation }) {
   const insets = useSafeAreaInsets();
   const { theme } = useTheme();
   const colors = themeConstants[theme];
-  const { setActiveChatId, fetchDialogs, currentUserId, notifications, connect, dialogs, clearUnread, currentUser, sendMessage: sendMessageWs, markAsReadWs, deleteMessageWs, bulkDeleteMessagesWs, getHistoryWs, onHistoryReceived } = useNotifications();
+  const { setActiveChatId, fetchDialogs, currentUserId, notifications, connect, dialogs, clearUnread, currentUser, sendMessage: sendMessageWs, markAsReadWs, deleteMessageWs, bulkDeleteMessagesWs, getHistoryWs, onHistoryReceived, getCachedHistory } = useNotifications();
   const { userId, userName } = route.params;
   const [messages, setMessages] = useState([]);
   const [inputText, setInputText] = useState('');
@@ -184,12 +184,30 @@ export default function ChatScreen({ route, navigation }) {
           
           if (isRelated) {
             setMessages(prev => {
-              if (prev.find(m => Number(m.id) === Number(message.id))) {
-                console.log('[ChatScreen] Message already exists, skipping:', message.id);
+              // 1. Пытаемся найти по client_id (наше отправленное)
+              if (message.client_id) {
+                 const existingIdx = prev.findIndex(m => m.client_id === message.client_id || m.id === message.client_id);
+                 if (existingIdx !== -1) {
+                   console.log('[ChatScreen] Found optimistic message to replace by client_id:', message.client_id);
+                   const updated = [...prev];
+                   // Важно сохранить старый client_id, чтобы не продублировать, если придет вторая нотификация
+                   updated[existingIdx] = { 
+                     ...message, 
+                     client_id: message.client_id || prev[existingIdx].client_id,
+                     status: 'sent' 
+                   };
+                   return updated;
+                 }
+              }
+
+              // 2. Пытаемся найти по id (сообщение от собеседника или уже обработанное)
+              if (prev.find(m => m.id && message.id && String(m.id) === String(message.id))) {
+                console.log('[ChatScreen] Message already exists in state, skipping:', message.id);
                 return prev;
               }
-              console.log('[ChatScreen] Adding message to list:', message.id);
-              return [message, ...prev];
+              
+              console.log('[ChatScreen] Adding new message from notification:', message.id);
+              return [{ ...message, status: 'sent' }, ...prev];
             });
             setSkip(prev => prev + 1);
             
@@ -314,6 +332,14 @@ export default function ChatScreen({ route, navigation }) {
     const initChat = async () => {
       const accessToken = await storage.getAccessToken();
       setToken(accessToken);
+
+      // 1. Мгновенная загрузка из кэша для "непрерывного" UI
+      const cachedHistory = await getCachedHistory(userId);
+      if (cachedHistory && cachedHistory.length > 0) {
+        console.log(`[ChatScreen] Loaded ${cachedHistory.length} messages from cache`);
+        setMessages(cachedHistory);
+        setSkip(cachedHistory.length);
+      }
 
       let myId = currentUser?.id;
       if (!myId) {
@@ -557,19 +583,34 @@ export default function ChatScreen({ route, navigation }) {
     if (selectionMode) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (inputText.trim()) {
+      const clientId = `c_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       const msgData = {
         receiver_id: userId,
         message: inputText.trim(),
-        message_type: 'text'
+        message_type: 'text',
+        client_id: clientId
       };
       
+      // Оптимистичное добавление в UI
+      const optimisticMsg = {
+        ...msgData,
+        id: clientId, // используем clientId как временный id для FlatList key
+        sender_id: currentUserId,
+        timestamp: new Date().toISOString(),
+        is_read: false,
+        status: 'pending' // Статус для визуализации
+      };
+      
+      setMessages(prev => [optimisticMsg, ...prev]);
+      setInputText('');
+
       const sent = sendMessageWs(msgData);
-      if (sent) {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        setInputText('');
-      } else {
-        Alert.alert('Ошибка', 'Не удалось отправить сообщение. Проверьте соединение.');
+      if (!sent) {
+        // Если WS недоступен, сообщение уже в очереди pendingMessages в контексте,
+        // но мы можем оставить его в статусе pending в UI.
+        console.log('[ChatScreen] Message added to pending queue in context');
       }
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
   };
 
@@ -583,11 +624,25 @@ export default function ChatScreen({ route, navigation }) {
           // Для одиночных голосовых сообщений отправляем здесь
           // Для медиа и документов теперь отправляем вручную в функциях загрузки
           if (autoSendOnUpload && !batchMode) { 
+            const clientId = `c_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
             const msgData = {
               receiver_id: userId,
               file_path: result.file_path,
-              message_type: result.message_type
+              message_type: result.message_type,
+              client_id: clientId
             };
+            
+            // Оптимистичное добавление
+            const optimisticMsg = {
+              ...msgData,
+              id: clientId,
+              sender_id: currentUserId,
+              timestamp: new Date().toISOString(),
+              is_read: false,
+              status: 'pending'
+            };
+            setMessages(prev => [optimisticMsg, ...prev]);
+
             sendMessageWs(msgData);
           } 
           setUploadingProgress(null);
@@ -653,17 +708,31 @@ export default function ChatScreen({ route, navigation }) {
         }
 
         if (attachmentsLocal.length > 0) {
+          const clientId = `c_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
           const msgData = attachmentsLocal.length === 1 
             ? {
                 receiver_id: userId,
                 file_path: attachmentsLocal[0].file_path,
-                message_type: attachmentsLocal[0].type
+                message_type: attachmentsLocal[0].type,
+                client_id: clientId
               }
             : {
                 receiver_id: userId,
                 attachments: attachmentsLocal,
-                message_type: 'media_group'
+                message_type: 'media_group',
+                client_id: clientId
               };
+
+          // Оптимистичное добавление
+          const optimisticMsg = {
+            ...msgData,
+            id: clientId,
+            sender_id: currentUserId,
+            timestamp: new Date().toISOString(),
+            is_read: false,
+            status: 'pending'
+          };
+          setMessages(prev => [optimisticMsg, ...prev]);
 
           sendMessageWs(msgData);
         }
@@ -738,17 +807,31 @@ export default function ChatScreen({ route, navigation }) {
         }
 
         if (attachmentsLocal.length > 0) {
+          const clientId = `c_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
           const msgData = attachmentsLocal.length === 1 
             ? {
                 receiver_id: userId,
                 file_path: attachmentsLocal[0].file_path,
-                message_type: attachmentsLocal[0].type
+                message_type: attachmentsLocal[0].type,
+                client_id: clientId
               }
             : {
                 receiver_id: userId,
                 attachments: attachmentsLocal,
-                message_type: 'media_group'
+                message_type: 'media_group',
+                client_id: clientId
               };
+
+          // Оптимистичное добавление
+          const optimisticMsg = {
+            ...msgData,
+            id: clientId,
+            sender_id: currentUserId,
+            timestamp: new Date().toISOString(),
+            is_read: false,
+            status: 'pending'
+          };
+          setMessages(prev => [optimisticMsg, ...prev]);
 
           sendMessageWs(msgData);
         }
@@ -1245,9 +1328,15 @@ export default function ChatScreen({ route, navigation }) {
             </Text>
             {!isReceived && (
               <MaterialIcons 
-                name={item.is_read ? "done-all" : "done"} 
+                name={
+                  item.status === 'pending' ? "schedule" : 
+                  item.is_read ? "done-all" : "done"
+                } 
                 size={14} 
-                color={item.is_read ? "#4CAF50" : "rgba(255,255,255,0.7)"} 
+                color={
+                  item.status === 'pending' ? "rgba(255,255,255,0.5)" :
+                  item.is_read ? "#4CAF50" : "rgba(255,255,255,0.7)"
+                } 
                 style={styles.statusIcon}
               />
             )}

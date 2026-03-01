@@ -55,6 +55,7 @@ export const NotificationProvider = ({ children }) => {
   const reconnectAttempt = useRef(0);
   const shouldReconnect = useRef(true);
   const heartbeatInterval = useRef(null);
+  const pendingMessages = useRef([]); // Очередь сообщений для отправки при восстановлении связи
 
   const notificationPlayer = useAudioPlayer(require('../../assets/sounds/message.mp3'));
   const notificationPlayerRef = useRef(notificationPlayer);
@@ -85,10 +86,35 @@ export const NotificationProvider = ({ children }) => {
     notificationPlayerRef.current = notificationPlayer;
   }, [notificationPlayer]);
 
-  const handleNewMessage = React.useCallback((message, wrappedNotification) => {
+  const handleNewMessage = React.useCallback(async (message, wrappedNotification) => {
     const myId = currentUserIdRef.current;
     const isFromMe = Number(message.sender_id) === Number(myId);
     
+    // Сохраняем в локальный кэш
+    const otherId = isFromMe ? Number(message.receiver_id) : Number(message.sender_id);
+    if (myId && otherId) {
+      const cacheKey = `chat_history_${myId}_${otherId}`;
+      try {
+        const cached = await storage.getItem(cacheKey);
+        let history = cached ? JSON.parse(cached) : [];
+        // Проверяем, нет ли уже такого сообщения по id или client_id
+        const exists = history.some(m => 
+          (message.id && m.id === message.id) || 
+          (message.client_id && m.client_id === message.client_id)
+        );
+        if (!exists) {
+          history = [message, ...history].slice(0, 50); // Храним последние 50 сообщений
+          await storage.saveItem(cacheKey, JSON.stringify(history));
+        } else if (message.id && !history.find(m => m.id === message.id)) {
+           // Если сообщение пришло с ID, но в кэше было только с client_id, обновляем
+           history = history.map(m => (m.client_id && m.client_id === message.client_id) ? message : m);
+           await storage.saveItem(cacheKey, JSON.stringify(history));
+        }
+      } catch (e) {
+        console.error('[NotificationContext] Cache error:', e);
+      }
+    }
+
     console.log('[NotificationContext] handleNewMessage', {
       id: message.id,
       sender_id: message.sender_id,
@@ -130,7 +156,12 @@ export const NotificationProvider = ({ children }) => {
     });
 
     setNotifications(prev => {
-      if (prev.some(n => n.type === 'new_message' && n.data?.id === message.id)) return prev;
+      if (prev.some(n => n.type === 'new_message' && (
+        (message.id && n.data?.id === message.id) || 
+        (message.client_id && n.data?.client_id === message.client_id)
+      ))) {
+        return prev;
+      }
       return [wrappedNotification, ...prev];
     });
 
@@ -224,6 +255,16 @@ export const NotificationProvider = ({ children }) => {
           }
         }, 30000);
 
+        // Отправляем накопившиеся сообщения из очереди
+        if (pendingMessages.current.length > 0) {
+          console.log(`[NotificationContext] Sending ${pendingMessages.current.length} pending messages`);
+          const queue = [...pendingMessages.current];
+          pendingMessages.current = [];
+          queue.forEach(msg => {
+            socket.send(JSON.stringify({ type: 'message', ...msg }));
+          });
+        }
+
         // Request initial dialogs list through WS
         if (socket.readyState === WebSocket.OPEN) {
           socket.send(JSON.stringify({ type: 'get_dialogs' }));
@@ -299,11 +340,14 @@ export const NotificationProvider = ({ children }) => {
       }));
       return true;
     } else {
-      console.error(`[NotificationContext] Chat WS not ready (state: ${currentState}), cannot send message`);
+      console.warn(`[NotificationContext] Chat WS not ready (state: ${currentState}), adding to pending queue`);
+      
+      // Добавляем в очередь для повторной отправки
+      pendingMessages.current.push(msgData);
+
       // If Chat WS is down or connecting, try to reconnect (forcing if stuck)
       storage.getAccessToken().then(tok => { 
         if (tok) {
-          // If stuck in CONNECTING for a long time, connect() will handle it via state check
           connectChatWs(tok);
         }
       });
@@ -728,6 +772,19 @@ export const NotificationProvider = ({ children }) => {
     }
   }, [isConnected, fetchDialogs, fetchFriendRequestsCount]);
 
+  const getCachedHistory = React.useCallback(async (otherUserId) => {
+    const myId = currentUserIdRef.current;
+    if (!myId || !otherUserId) return [];
+    try {
+      const cacheKey = `chat_history_${myId}_${otherUserId}`;
+      const cached = await storage.getItem(cacheKey);
+      return cached ? JSON.parse(cached) : [];
+    } catch (e) {
+      console.error('[NotificationContext] getCachedHistory error:', e);
+      return [];
+    }
+  }, []);
+
   return (
     <NotificationContext.Provider value={{ 
       notifications, 
@@ -753,7 +810,8 @@ export const NotificationProvider = ({ children }) => {
       activeChatId,
       setActiveChatId,
       clearUnread,
-      userStatuses
+      userStatuses,
+      getCachedHistory
     }}>
       {children}
     </NotificationContext.Provider>

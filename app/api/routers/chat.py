@@ -337,6 +337,7 @@ async def websocket_chat_endpoint(
             file_path = message_data.get("file_path")
             attachments = message_data.get("attachments")  # список объектов {file_path, type}
             message_type = message_data.get("message_type", "text")
+            client_id = message_data.get("client_id")  # Добавлено для оптимистичных обновлений
             
             if receiver_id_raw and (content or file_path or (attachments and len(attachments) > 0)):
                 # Приводим к int для корректного поиска в менеджерах соединений
@@ -364,7 +365,8 @@ async def websocket_chat_endpoint(
                     receiver_id=receiver_id,
                     message=content,
                     file_path=file_path,
-                    message_type=message_type
+                    message_type=message_type,
+                    client_id=client_id
                 )
                 db.add(new_msg)
                 await db.commit()
@@ -375,6 +377,7 @@ async def websocket_chat_endpoint(
                 # Готовим данные ответа
                 response_data = {
                     "id": new_msg.id,
+                    "client_id": client_id,  # Возвращаем client_id для фронтенда
                     "sender_id": user_id,
                     "sender_name": sender_name,
                     "receiver_id": receiver_id,
@@ -459,6 +462,7 @@ async def send_message_api(
     file_path = msg_in.file_path
     attachments = msg_in.attachments
     message_type = msg_in.message_type
+    client_id = msg_in.client_id  # Добавлено для оптимистичных обновлений
     
     if attachments and len(attachments) > 0:
         message_type = "media_group"
@@ -468,12 +472,15 @@ async def send_message_api(
             file_path = None
     
     # Сохраняем в базу
+    client_id = msg_in.client_id
+    
     new_msg = ChatMessage(
         sender_id=user_id,
         receiver_id=receiver_id,
         message=content,
         file_path=file_path,
-        message_type=message_type
+        message_type=message_type,
+        client_id=client_id
     )
     db.add(new_msg)
     await db.commit()
@@ -488,6 +495,7 @@ async def send_message_api(
     # Готовим данные ответа
     response_data = {
         "id": new_msg.id,
+        "client_id": client_id,  # Возвращаем client_id
         "sender_id": user_id,
         "sender_name": sender_name,
         "receiver_id": receiver_id,

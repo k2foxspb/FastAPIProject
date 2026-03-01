@@ -13,6 +13,7 @@ from app.api.routers import (
     tasks,
     admin,
     news,
+    testing,
 )
 
 # Основной роутер для API v1
@@ -31,5 +32,6 @@ api_router.include_router(chat.router, tags=["chat"])
 api_router.include_router(tasks.router, tags=["tasks"])
 api_router.include_router(admin.router, tags=["admin"])
 api_router.include_router(news.router, tags=["news"])
+api_router.include_router(testing.router, tags=["testing"])
 
 __all__ = ["api_router"]
