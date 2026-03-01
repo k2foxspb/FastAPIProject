@@ -1,9 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete, and_, or_
+import asyncio
 from app.api.dependencies import get_async_db
 from app.api.routers.chat import manager as chat_manager
 from app.api.routers.notifications import manager as notifications_manager
+from app.core.fcm import send_fcm_notification
 from app.models.users import User as UserModel
 from app.models.chat import ChatMessage
 from app.schemas.chat import ChatMessageCreate, ChatMessageResponse
@@ -62,6 +64,24 @@ async def send_message_as_user(
         "type": "new_message",
         "data": resp_msg.model_dump(mode="json")
     }, user_id=new_msg.receiver_id)
+
+    # Push-уведомление через FCM (для тестирования доставки)
+    receiver = await db.get(UserModel, new_msg.receiver_id, populate_existing=True)
+    if receiver and receiver.fcm_token:
+        body = new_msg.message if new_msg.message else f"Тестовое сообщение ({new_msg.message_type})"
+        # Используем create_task чтобы не блокировать ответ API
+        asyncio.create_task(send_fcm_notification(
+            token=receiver.fcm_token,
+            title=f"[TEST] {sender_name}",
+            body=body,
+            sender_id=sender_id,
+            data={
+                "chat_id": str(sender_id),
+                "message_id": str(new_msg.id),
+                "type": "new_message",
+                "is_test": "true"
+            }
+        ))
 
     return resp_msg
 
