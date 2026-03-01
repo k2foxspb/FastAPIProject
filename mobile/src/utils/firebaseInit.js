@@ -22,7 +22,10 @@ const initializeFirebase = async () => {
   // Проверка на Expo Go
   const isExpoGo = Constants.appOwnership === 'expo' || Constants.executionEnvironment === 'storeClient';
   if (isExpoGo) {
-    console.warn('⚠️ React Native Firebase (Messaging) NOT supported in Expo Go. Use a Development Build (npx expo run:android).');
+    if (__DEV__) {
+      console.warn('⚠️ React Native Firebase (Messaging) NOT supported in Expo Go. Use a Development Build (npx expo run:android).');
+    }
+    return null;
   }
 
   // Если приложение уже инициализировано (нативно)

@@ -618,10 +618,11 @@ async def get_dialogs(
     # Потом те, кто нам писал
     received_from = select(ChatMessage.sender_id).where(ChatMessage.receiver_id == user_id)
     
-    # Объединяем id собеседников
+    # Объединяем id собеседников и убираем дубликаты
     partners_query = sent_to.union(received_from)
     partners_result = await db.execute(partners_query)
-    partner_ids = partners_result.scalars().all()
+    # Используем set для уникальности, на случай если union не сработал как DISTINCT
+    partner_ids = list(set(partners_result.scalars().all()))
 
     dialogs = []
     for p_id in partner_ids:
@@ -659,9 +660,9 @@ async def get_dialogs(
             "email": partner.email,
             "first_name": partner.first_name,
             "last_name": partner.last_name,
-            "avatar_url": getattr(partner, 'avatar_url', None), # Используем getattr если поля нет в модели
+            "avatar_url": getattr(partner, 'avatar_url', None), 
             "last_message": last_msg.message if last_msg and last_msg.message else "[Файл]",
-            "last_message_time": last_msg.timestamp.isoformat() if last_msg and last_msg.timestamp else datetime.utcnow().isoformat(),
+            "last_message_time": last_msg.timestamp if last_msg and last_msg.timestamp else datetime.utcnow(),
             "unread_count": unread_count or 0,
             "status": partner.status,
             "last_seen": partner.last_seen

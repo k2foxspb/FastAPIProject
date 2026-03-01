@@ -1,4 +1,5 @@
 import { Alert, Platform, Vibration, Linking } from 'react-native';
+import Constants from 'expo-constants';
 import messaging from '@react-native-firebase/messaging';
 import notifee from '@notifee/react-native';
 import firebase from '@react-native-firebase/app';
@@ -8,9 +9,18 @@ import { storage } from './storage';
 import { navigationRef } from '../navigation/NavigationService';
 import { displayBundledMessage, handleNotificationResponse, parseNotificationData } from './notificationUtils';
 
+// Global state to track if native module is broken during session
+let nativeMessagingBroken = false;
+const isExpoGo = Constants.appOwnership === 'expo' || Constants.executionEnvironment === 'storeClient';
+
 // Helper to get messaging instance safely
 const getMessaging = async () => {
   if (Platform.OS === 'web') return null;
+  if (isExpoGo) {
+    if (__DEV__) console.warn('[FCM] Firebase Messaging is NOT supported in Expo Go. Use Development Build.');
+    return null;
+  }
+  if (nativeMessagingBroken) return null;
 
   try {
     const fb = firebase?.initializeApp ? firebase : (firebase?.default?.initializeApp ? firebase.default : firebase);
@@ -20,16 +30,29 @@ const getMessaging = async () => {
     }
     
     // Support both direct import and firebase.messaging()
-    const msg = typeof messaging === 'function' ? messaging : (typeof fb?.messaging === 'function' ? fb.messaging : null);
+    const msgFunc = typeof messaging === 'function' ? messaging : (typeof fb?.messaging === 'function' ? fb.messaging : null);
     
-    if (!msg) {
-      console.error('[FCM] Messaging module NOT available');
+    if (!msgFunc) {
+      console.error('[FCM] Messaging module NOT available in library exports');
+      nativeMessagingBroken = true;
       return null;
     }
     
-    return msg();
+    const instance = msgFunc();
+    
+    // Safety check: sometimes the instance exists but methods are missing if native linking failed
+    if (!instance || typeof instance.getToken !== 'function') {
+      console.error('[FCM] Messaging instance is invalid or missing getToken() - native module incomplete');
+      nativeMessagingBroken = true;
+      return null;
+    }
+    
+    return instance;
   } catch (e) {
     console.error('[FCM] Error in getMessaging:', e);
+    if (e.message?.includes('native') || e.message?.includes('not a function') || e.message?.includes('undefined')) {
+      nativeMessagingBroken = true;
+    }
     return null;
   }
 };
@@ -256,8 +279,10 @@ export async function getFcmToken() {
     try {
       token = await msg.getToken();
     } catch (e) {
-      if (e.message?.includes('native') || e.message?.includes('not a function')) {
+      const isNativeError = e.message?.includes('native') || e.message?.includes('not a function') || e.message?.includes('undefined');
+      if (isNativeError) {
         console.error('[FCM] CRITICAL NATIVE ERROR: Native module is incomplete. REBUILD REQUIRED (npx expo run:android).');
+        nativeMessagingBroken = true;
       }
       throw e;
     }
