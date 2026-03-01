@@ -14,7 +14,7 @@ import { setAuthToken, usersApi } from './src/api';
 import { setPlaybackAudioMode } from './src/utils/audioSettings';
 
 function AppContent() {
-  const { connect } = useNotifications();
+  const { connect, injectExternalNotification } = useNotifications();
   const { theme } = useTheme();
 
   const linking = {
@@ -72,7 +72,7 @@ function AppContent() {
           getFcmToken().catch(e => console.log('Initial getFcmToken failed', e));
         }
       });
-      setupCloudMessaging();
+      setupCloudMessaging(injectExternalNotification);
     });
 
     // Проверка сохраненной сессии

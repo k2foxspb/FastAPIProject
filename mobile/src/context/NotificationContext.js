@@ -10,7 +10,7 @@ import { setNotificationAudioMode } from '../utils/audioSettings';
 import { isWithinQuietHours } from '../utils/quietHours';
 import { navigationRef } from '../navigation/NavigationService';
 import { updateServerFcmToken, checkAndRemindPermissions } from '../utils/notifications';
-import { displayBundledMessage } from '../utils/notificationUtils';
+import { displayBundledMessage, parseNotificationData } from '../utils/notificationUtils';
 
 const NotificationContext = createContext();
 
@@ -84,6 +84,88 @@ export const NotificationProvider = ({ children }) => {
   useEffect(() => {
     notificationPlayerRef.current = notificationPlayer;
   }, [notificationPlayer]);
+
+  const handleNewMessage = React.useCallback((message, wrappedNotification) => {
+    const myId = currentUserIdRef.current;
+    const isFromMe = Number(message.sender_id) === Number(myId);
+    
+    console.log('[NotificationContext] handleNewMessage', {
+      id: message.id,
+      sender_id: message.sender_id,
+      myId,
+      isFromMe
+    });
+    
+    setDialogs(prev => {
+      const index = prev.findIndex(d => 
+        Number(d.user_id) === Number(message.sender_id) || 
+        Number(d.user_id) === Number(message.receiver_id)
+      );
+
+      if (index !== -1) {
+        const newDialogs = [...prev];
+        const d = newDialogs[index];
+        const otherUserId = isFromMe ? Number(message.receiver_id) : Number(message.sender_id);
+        const isActiveChat = Number(activeChatIdRef.current) === otherUserId;
+
+        newDialogs[index] = {
+          ...d,
+          last_message: message.message || (message.message_type === 'media_group' ? 'Медиафайлы' : (message.message_type || 'Сообщение')),
+          last_message_time: message.timestamp || message.created_at || new Date().toISOString(),
+          unread_count: (isFromMe || isActiveChat) ? d.unread_count : ((d.unread_count || 0) + 1)
+        };
+
+        const [updated] = newDialogs.splice(index, 1);
+        newDialogs.unshift(updated);
+        return newDialogs;
+      } else {
+        // Если диалога нет, запрашиваем список через API (или сокет, если открыт)
+        if (chatWs.current && chatWs.current.readyState === WebSocket.OPEN) {
+          chatWs.current.send(JSON.stringify({ type: 'get_dialogs' }));
+        } else {
+          fetchDialogs();
+        }
+        return prev;
+      }
+    });
+
+    setNotifications(prev => {
+      if (prev.some(n => n.type === 'new_message' && n.data?.id === message.id)) return prev;
+      return [wrappedNotification, ...prev];
+    });
+
+    // Звуковое уведомление
+    const isActiveChat = Number(activeChatIdRef.current) === Number(message.sender_id);
+    if (appState.current === 'active' && !isFromMe) {
+      if (isActiveChat) {
+        console.log('[NotificationContext] Playing sound for active chat');
+        playNotificationSound();
+      }
+    }
+  }, [fetchDialogs, playNotificationSound]);
+
+  const injectExternalNotification = React.useCallback((remoteMessage) => {
+    if (!remoteMessage || !remoteMessage.data) return;
+    const data = remoteMessage.data;
+    const { type, senderId, senderName, notifTitle, notifBody } = parseNotificationData(data);
+    
+    if (type === 'new_message' && senderId) {
+      const messageId = data.message_id || data.messageId || String(Date.now());
+      const message = {
+        id: messageId,
+        sender_id: senderId,
+        receiver_id: currentUserIdRef.current,
+        sender_name: senderName || notifTitle || 'Пользователь',
+        message: notifBody || data.text || '',
+        timestamp: new Date().toISOString(),
+        is_read: 0,
+        message_type: 'text'
+      };
+      
+      console.log('[NotificationContext] Injecting external notification from FCM:', messageId);
+      handleNewMessage(message, { type: 'new_message', data: message });
+    }
+  }, [handleNewMessage]);
 
   const connectChatWs = React.useCallback((token) => {
     if (!token || token === 'null' || token === 'undefined') {
@@ -171,52 +253,7 @@ export const NotificationProvider = ({ children }) => {
           } else if (msgType === 'pong') {
             // Keep-alive response
           } else if (msgType === 'new_message' && payload.data) {
-            const message = payload.data;
-            const wrappedNotification = payload;
-            const myId = currentUserIdRef.current;
-            const isFromMe = Number(message.sender_id) === Number(myId);
-            
-            console.log('[NotificationContext] Chat WS: Received new_message', {
-              id: message.id,
-              sender_id: message.sender_id,
-              myId,
-              isFromMe
-            });
-            
-            setDialogs(prev => {
-              const index = prev.findIndex(d => 
-                Number(d.user_id) === Number(message.sender_id) || 
-                Number(d.user_id) === Number(message.receiver_id)
-              );
-
-              if (index !== -1) {
-                const newDialogs = [...prev];
-                const d = newDialogs[index];
-                const otherUserId = isFromMe ? Number(message.receiver_id) : Number(message.sender_id);
-                const isActiveChat = Number(activeChatIdRef.current) === otherUserId;
-
-                newDialogs[index] = {
-                  ...d,
-                  last_message: message.message || (message.message_type === 'media_group' ? 'Медиафайлы' : (message.message_type || 'Сообщение')),
-                  last_message_time: message.timestamp || message.created_at,
-                  unread_count: (isFromMe || isActiveChat) ? d.unread_count : ((d.unread_count || 0) + 1)
-                };
-
-                const [updated] = newDialogs.splice(index, 1);
-                newDialogs.unshift(updated);
-                return newDialogs;
-              } else {
-                if (socket.readyState === WebSocket.OPEN) {
-                  socket.send(JSON.stringify({ type: 'get_dialogs' }));
-                }
-                return prev;
-              }
-            });
-
-            setNotifications(prev => {
-              if (prev.some(n => n.type === 'new_message' && n.data?.id === message.id)) return prev;
-              return [wrappedNotification, ...prev];
-            });
+            handleNewMessage(payload.data, payload);
           } else if (msgType === 'messages_read') {
             const otherId = payload.reader_id || payload.data?.reader_id;
             if (otherId) {
@@ -433,53 +470,8 @@ export const NotificationProvider = ({ children }) => {
           setFriendRequestsCount(payload.count);
         }
 
-        if (payload.type === 'new_message') {
-          const message = payload.data;
-          const myId = currentUserIdRef.current;
-          const isFromMe = Number(message.sender_id) === Number(myId);
-          
-          console.log('[NotificationContext] Notifications WS: Received new_message', {
-            id: message.id,
-            sender_id: message.sender_id,
-            myId,
-            isFromMe
-          });
-          
-          setDialogs(prev => {
-            const index = prev.findIndex(d => 
-              Number(d.user_id) === Number(message.sender_id) || 
-              Number(d.user_id) === Number(message.receiver_id)
-            );
-
-            if (index !== -1) {
-              const newDialogs = [...prev];
-              const d = newDialogs[index];
-              const otherUserId = isFromMe ? Number(message.receiver_id) : Number(message.sender_id);
-              const isActiveChat = Number(activeChatIdRef.current) === otherUserId;
-
-              newDialogs[index] = {
-                ...d,
-                last_message: message.message || (message.message_type === 'media_group' ? 'Медиафайлы' : (message.message_type || 'Сообщение')),
-                last_message_time: message.timestamp || message.created_at,
-                unread_count: (isFromMe || isActiveChat) ? d.unread_count : ((d.unread_count || 0) + 1)
-              };
-
-              // Перемещаем диалог в начало списка
-              const [updated] = newDialogs.splice(index, 1);
-              newDialogs.unshift(updated);
-              return newDialogs;
-            } else {
-              // Новый диалог, запрашиваем список заново через сокет
-              if (chatWs.current && chatWs.current.readyState === WebSocket.OPEN) {
-                chatWs.current.send(JSON.stringify({ type: 'get_dialogs' }));
-              }
-              return prev;
-            }
-          });
-
-          // Добавляем сообщение в notifications даже если оно от себя, 
-          // чтобы экраны (например, ChatScreen) могли его отобразить.
-          // Логика звука ниже сама отфильтрует 'isMe'.
+        if (payload.type === 'new_message' && payload.data) {
+          handleNewMessage(payload.data, payload);
         }
 
         if (payload.type === 'message_deleted') {
@@ -536,35 +528,6 @@ export const NotificationProvider = ({ children }) => {
           if (appState.current === 'active') {
              console.log('[NotificationContext] Vibrating for new_post');
              Vibration.vibrate(200);
-          }
-        }
-
-        if (payload.type === 'new_message') {
-          const senderId = payload.data.sender_id;
-          const myId = currentUserIdRef.current;
-          const isActiveChat = Number(activeChatIdRef.current) === Number(senderId);
-          const isMe = Number(senderId) === Number(myId);
-          
-          console.log('[NotificationContext] Sound logic check:', {
-            type: payload.type,
-            senderId,
-            myId,
-            isMe,
-            isActiveChat,
-            appState: appState.current
-          });
-          
-          if (appState.current === 'active' && !isMe) {
-            if (isActiveChat) {
-              // В активном чате — только звук (так как FCM баннер в этом случае подавляется в setupCloudMessaging)
-              console.log('[NotificationContext] Playing sound (isActiveChat: true)');
-              playNotificationSound();
-            } else {
-              // Приложение активно, но не на экране чата — полагаемся на FCM для баннера и звука
-              console.log('[NotificationContext] In-app non-active chat: relying on FCM for notification');
-            }
-          } else {
-            console.log('[NotificationContext] App in background or message from self: relying on FCM or skipping');
           }
         }
 
@@ -715,7 +678,7 @@ export const NotificationProvider = ({ children }) => {
       const token = await storage.getAccessToken();
       if (token) {
         setAuthToken(token);
-        const appVersion = Constants.expoConfig?.version || Constants.manifest2?.extra?.expoClient?.version || '1.0.0';
+        const appVersion = Constants.expoConfig?.version || Constants.manifest2?.extra?.expoClient?.version || '1.0.5';
         const userRes = await usersApi.getMe(appVersion);
         setCurrentUser(userRes.data);
         setCurrentUserId(userRes.data.id);
@@ -776,6 +739,7 @@ export const NotificationProvider = ({ children }) => {
       isConnected, 
       connect, 
       disconnect,
+      injectExternalNotification,
       sendMessage,
       getHistoryWs,
       onHistoryReceived,

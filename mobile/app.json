@@ -2,7 +2,6 @@
   "expo": {
     "sdkVersion": "54.0.0",
     "plugins": [
-      "./plugins/withPlugin",
       [
         "expo-build-properties",
         {
@@ -13,12 +12,13 @@
             "compileSdkVersion": 35,
             "targetSdkVersion": 35,
             "buildToolsVersion": "35.0.0",
-            "kotlinTargetJvmVersion": "21"
+            "kotlinTargetJvmVersion": "17"
           }
         }
       ],
       "@react-native-firebase/app",
       "@react-native-firebase/messaging",
+      "@react-native-google-signin/google-signin",
       [
         "expo-image-picker",
         {
@@ -27,12 +27,19 @@
           "microphonePermission": "Приложение запрашивает доступ к микрофону."
         }
       ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Приложение запрашивает доступ к камере, чтобы вы могли записывать видео-кружочки.",
+          "microphonePermission": "Приложение запрашивает доступ к микрофону."
+        }
+      ],
       "expo-asset"
     ],
     "name": "FastAPI",
     "slug": "fastapi",
     "scheme": "fokinfun",
-    "version": "1.0.0",
+    "version": "1.0.5",
     "orientation": "portrait",
     "icon": "./assets/logo1024.png",
     "userInterfaceStyle": "light",

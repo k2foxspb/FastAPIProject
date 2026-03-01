@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { getShadow } from '../utils/shadowStyles';
 import { View, Text, FlatList, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, Image, Modal, Pressable, Alert, AppState, StatusBar, Dimensions, Share, Animated, Vibration, Keyboard } from 'react-native';
 import notifee from '@notifee/react-native';
+import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import { documentDirectory, getInfoAsync, downloadAsync, deleteAsync, readAsStringAsync, writeAsStringAsync, EncodingType, StorageAccessFramework } from 'expo-file-system/legacy';
@@ -14,7 +15,9 @@ import { uploadManager } from '../utils/uploadManager';
 import CachedMedia from '../components/CachedMedia';
 import VoiceMessage from '../components/VoiceMessage';
 import FileMessage from '../components/FileMessage';
+import VideoNoteMessage from '../components/VideoNoteMessage';
 import { Audio, useAudioRecorder, useAudioRecorderState, useAudioPlayer, RecordingPresets, AudioModule, requestRecordingPermissionsAsync, createAudioPlayer } from 'expo-audio';
+import { CameraView, useCameraPermissions } from 'expo-camera';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
@@ -49,6 +52,9 @@ export default function ChatScreen({ route, navigation }) {
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState([]);
   const [isRecording, setIsRecording] = useState(false);
+  const [inputMode, setInputMode] = useState('audio'); // 'audio' or 'video'
+  const [isVideoRecording, setIsVideoRecording] = useState(false);
+  const cameraRef = useRef(null);
   const [recordedUri, setRecordedUri] = useState(null);
   const [recordingDuration, setRecordingDuration] = useState(0);
   const isStartingRecording = useRef(false);
@@ -549,6 +555,7 @@ export default function ChatScreen({ route, navigation }) {
 
   const sendMessage = async () => {
     if (selectionMode) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (inputText.trim()) {
       const msgData = {
         receiver_id: userId,
@@ -558,6 +565,7 @@ export default function ChatScreen({ route, navigation }) {
       
       const sent = sendMessageWs(msgData);
       if (sent) {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         setInputText('');
       } else {
         Alert.alert('Ошибка', 'Не удалось отправить сообщение. Проверьте соединение.');
@@ -759,6 +767,78 @@ export default function ChatScreen({ route, navigation }) {
     }
   };
 
+
+  const handleSendVideoNote = async (uri) => {
+    if (!uri) return;
+    try {
+      // Имя файла
+      const filename = `video_note_${Date.now()}.mp4`;
+      
+      // Запускаем загрузку через uploadManager
+      const uploadResult = await uploadManager.uploadFile(uri, filename, 'video/mp4', (progress) => {
+        setUploadingProgress(progress);
+      });
+
+      if (uploadResult && uploadResult.file_path) {
+        // Отправляем сообщение через WebSocket
+        sendMessageWs({
+          receiver_id: userId,
+          message: null,
+          file_path: uploadResult.file_path,
+          message_type: 'video_note'
+        });
+      }
+    } catch (err) {
+      console.error('[ChatScreen] handleSendVideoNote error:', err);
+      Alert.alert('Ошибка', 'Не удалось отправить видеосообщение');
+    } finally {
+      setUploadingProgress(null);
+    }
+  };
+
+  const startVideoRecording = async () => {
+    try {
+      const { status: cameraStatus } = await CameraView.requestCameraPermissionsAsync();
+      const { status: audioStatus } = await Audio.requestPermissionsAsync();
+      
+      if (cameraStatus !== 'granted' || audioStatus !== 'granted') {
+        Alert.alert('Доступ запрещен', 'Нам нужны разрешения на камеру и микрофон для записи видеосообщений.');
+        return;
+      }
+
+      setIsVideoRecording(true);
+      setRecordingDuration(0);
+      
+      // Начинаем запись чуть позже, чтобы камера успела инициализироваться
+      setTimeout(async () => {
+        if (cameraRef.current) {
+          try {
+            const video = await cameraRef.current.recordAsync({
+              maxDuration: 60,
+              quality: '720p',
+            });
+            if (video && video.uri) {
+              handleSendVideoNote(video.uri);
+            }
+          } catch (error) {
+            console.error('Video recording error:', error);
+            setIsVideoRecording(false);
+          }
+        }
+      }, 500);
+      
+    } catch (error) {
+      console.error('Start video recording error:', error);
+      setIsVideoRecording(false);
+    }
+  };
+
+  const stopVideoRecording = async () => {
+    if (cameraRef.current && isVideoRecording) {
+      cameraRef.current.stopRecording();
+      setIsVideoRecording(false);
+    }
+  };
 
   const startRecording = async () => {
     if (isStartingRecording.current) return;
@@ -1004,6 +1084,7 @@ export default function ChatScreen({ route, navigation }) {
     const isImage = item.message_type === 'image';
     const isVideo = item.message_type === 'video';
     const isVoice = item.message_type === 'voice';
+    const isVideoNote = item.message_type === 'video_note';
     const isFile = item.message_type === 'file';
     const isReceived = Number(item.sender_id) === Number(userId);
     const isOwner = Number(item.sender_id) === Number(currentUserId);
@@ -1033,6 +1114,7 @@ export default function ChatScreen({ route, navigation }) {
     };
 
     const handleLongPress = () => {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       if (!selectionMode) {
         setSelectionMode(true);
         setSelectedIds([item.id]);
@@ -1138,6 +1220,9 @@ export default function ChatScreen({ route, navigation }) {
           )}
           {isVoice && (
             <VoiceMessage item={item} currentUserId={currentUserId} />
+          )}
+          {isVideoNote && (
+            <VideoNoteMessage item={item} isReceived={isReceived} />
           )}
           {isFile && (
             <FileMessage item={item} currentUserId={currentUserId} />
@@ -1461,12 +1546,12 @@ export default function ChatScreen({ route, navigation }) {
                 </View>
               )}
               
-              {isRecording ? (
+              {(isRecording || isVideoRecording) ? (
                 <View style={styles.recordingContainer}>
                   <View style={styles.recordingIndicator}>
                     <Animated.View style={[styles.recordingDot, { opacity: recordingDotOpacity }]} />
                     <Text style={[styles.recordingTimeText, { color: colors.error }]}>
-                      {formatRecordingTime(recorderStatus.durationMillis || recordingDuration)}
+                      {isVideoRecording ? "Запись видео..." : formatRecordingTime(recorderStatus.durationMillis || recordingDuration)}
                     </Text>
                   </View>
                   <Text style={[styles.recordingHint, { color: colors.textSecondary }]}>Отпустите для завершения</Text>
@@ -1482,25 +1567,46 @@ export default function ChatScreen({ route, navigation }) {
                 />
               )}
 
-              {(inputText.trim() && !isRecording) ? (
+              {(inputText.trim() && !isRecording && !isVideoRecording) ? (
                 <TouchableOpacity onPress={sendMessage} style={[styles.sendButton, { marginRight: 10 }]}>
                   <MaterialIcons name="send" size={24} color={colors.primary} />
                 </TouchableOpacity>
               ) : (
                 <TouchableOpacity 
-                  onPressIn={startRecording} 
-                  onPressOut={stopRecording} 
+                  onLongPress={inputMode === 'audio' ? startRecording : startVideoRecording} 
+                  onPressOut={inputMode === 'audio' ? stopRecording : stopVideoRecording}
+                  onPress={() => {
+                    Vibration.vibrate(50);
+                    setInputMode(prev => prev === 'audio' ? 'video' : 'audio');
+                  }}
+                  delayLongPress={200}
                   style={[
                     styles.sendButton, 
                     { marginRight: 10 },
-                    isRecording && { backgroundColor: colors.primary + '20', borderRadius: 20 }
+                    (isRecording || isVideoRecording) && { backgroundColor: colors.primary + '20', borderRadius: 20 }
                   ]}
                 >
-                  <MaterialIcons name={isRecording ? "mic" : "mic-none"} size={24} color={isRecording ? colors.error : colors.primary} />
+                  <MaterialIcons 
+                    name={inputMode === 'audio' ? (isRecording ? "mic" : "mic-none") : (isVideoRecording ? "videocam" : "videocam-outline")} 
+                    size={24} 
+                    color={(isRecording || isVideoRecording) ? colors.error : colors.primary} 
+                  />
                 </TouchableOpacity>
               )}
             </>
           )}
+        </View>
+      )}
+      {isVideoRecording && (
+        <View style={styles.videoPreviewOverlay}>
+          <View style={styles.videoPreviewContainer}>
+            <CameraView
+              ref={cameraRef}
+              style={styles.videoPreview}
+              facing="front"
+              mode="video"
+            />
+          </View>
         </View>
       )}
     </KeyboardAvoidingView>
@@ -1589,13 +1695,21 @@ const styles = StyleSheet.create({
   },
   messageBubble: { 
     padding: 12, 
-    borderRadius: 20, 
+    borderRadius: 18, 
     maxWidth: '85%',
     overflow: 'hidden',
     ...getShadow('#000', { width: 0, height: 1 }, 0.1, 2, 1),
   },
-  sent: { alignSelf: 'flex-end', borderBottomRightRadius: 4 },
-  received: { alignSelf: 'flex-start', borderBottomLeftRadius: 4 },
+  sent: { 
+    alignSelf: 'flex-end', 
+    borderBottomRightRadius: 2, 
+    elevation: 2 
+  },
+  received: { 
+    alignSelf: 'flex-start', 
+    borderBottomLeftRadius: 2, 
+    elevation: 1 
+  },
   messageText: { fontSize: 16, lineHeight: 22 },
   messageFooter: {
     flexDirection: 'row',
@@ -1720,4 +1834,24 @@ const styles = StyleSheet.create({
   fullScreenVideo: { width: '100%', height: '100%' },
   closeButton: { position: 'absolute', top: 40, right: 20, zIndex: 10 },
   downloadButton: { position: 'absolute', top: 40, left: 20, zIndex: 10 },
+  videoPreviewOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1000,
+  },
+  videoPreviewContainer: {
+    width: 250,
+    height: 250,
+    borderRadius: 125,
+    overflow: 'hidden',
+    borderWidth: 3,
+    borderColor: '#fff',
+    backgroundColor: '#000',
+  },
+  videoPreview: {
+    width: '100%',
+    height: '100%',
+  },
 });

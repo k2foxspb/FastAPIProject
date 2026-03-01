@@ -9,14 +9,16 @@ import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
 import { storage } from '../utils/storage';
 import { formatName, getFullUrl } from '../utils/formatters';
+import { SkeletonItem, NewsSkeleton } from '../components/SkeletonLoader';
 
 export default function ProfileScreen({ navigation }) {
   const [user, setUser] = useState(null);
   const [posts, setPosts] = useState([]);
   const [error, setError] = useState(null);
   const [isSettingsVisible, setSettingsVisible] = useState(false);
+  const [isUpdateBannerHidden, setIsUpdateBannerHidden] = useState(false);
   const [syncing, setSyncing] = useState(false);
-  const [quietHours, setQuietHours] = useState({ enabled: false, start: 'firebase-service-account.json:00', end: '08:00' });
+  const [quietHours, setQuietHours] = useState({ enabled: false, start: '22:00', end: '08:00' });
   const { disconnect, currentUser, loadingUser } = useNotifications();
   const { theme, isDark, toggleTheme, isSystemTheme, useSystemThemeSetting } = useTheme();
   const colors = themeConstants[theme];
@@ -193,6 +195,13 @@ export default function ProfileScreen({ navigation }) {
           setUser(userData);
           const postsRes = await newsApi.getUserNews(userData.id);
           setPosts(postsRes.data);
+          
+          if (userData.latest_app_version) {
+            const hiddenId = await storage.getItem('hidden_update_id');
+            if (hiddenId === String(userData.latest_app_version.id)) {
+              setIsUpdateBannerHidden(true);
+            }
+          }
         } catch (err) {
           const status = err?.response?.status;
           if (status === 401) {
@@ -212,7 +221,7 @@ export default function ProfileScreen({ navigation }) {
           storage.getItem('quiet_hours_end').then(end => {
             setQuietHours({
               enabled: enabled === 'true',
-              start: start || 'firebase-service-account.json:00',
+              start: start || '22:00',
               end: end || '08:00'
             });
           }).catch(() => {});
@@ -229,7 +238,7 @@ export default function ProfileScreen({ navigation }) {
 
   const changeQuietTime = (type) => {
     const times = type === 'start' 
-      ? ['20:00', '21:00', 'firebase-service-account.json:00', '23:00', '00:00']
+      ? ['20:00', '21:00', '22:00', '23:00', '00:00']
       : ['06:00', '07:00', '08:00', '09:00', '10:00'];
       
     Alert.alert(
@@ -249,46 +258,87 @@ export default function ProfileScreen({ navigation }) {
     );
   };
 
+  const handleHideUpdate = async (id) => {
+    if (!id) return;
+    await storage.saveItem('hidden_update_id', String(id));
+    setIsUpdateBannerHidden(true);
+  };
+
   if (!user) return (
-    <View style={[styles.center, { backgroundColor: colors.background }]}>
-      <Text style={{ marginBottom: 20, color: colors.text }}>{error || 'Загрузка...'}</Text>
-      <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-        <Text style={styles.logoutButtonText}>Выйти</Text>
-      </TouchableOpacity>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <View style={[styles.header, { paddingBottom: 20 }]}>
+        <SkeletonItem width={100} height={100} borderRadius={50} style={{ alignSelf: 'center', marginBottom: 15 }} />
+        <SkeletonItem width={180} height={24} style={{ alignSelf: 'center', marginBottom: 8 }} />
+        <SkeletonItem width={120} height={16} style={{ alignSelf: 'center' }} />
+      </View>
+      <View style={{ padding: 15 }}>
+        <SkeletonItem width={150} height={20} style={{ marginBottom: 15 }} />
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20 }}>
+          <SkeletonItem width="48%" height={80} borderRadius={12} />
+          <SkeletonItem width="48%" height={80} borderRadius={12} />
+        </View>
+        <NewsSkeleton />
+        <NewsSkeleton />
+      </View>
     </View>
   );
 
   return (
     <ScrollView style={[styles.container, { backgroundColor: colors.background }]}>
-      {user.update_available && (
-        <TouchableOpacity 
-          style={styles.updateBanner} 
-          onPress={() => {
-            const url = Platform.OS === 'ios' 
-              ? 'https://fokin.fun' // Замените на реальный ID
-              : 'https://fokin.fun'; // Замените на реальный ID
-            Linking.openURL(url).catch(err => console.error("Couldn't load page", err));
-          }}
-        >
-          <Icon name="cloud-download-outline" size={24} color="#fff" />
-          <View style={styles.updateBannerTextContainer}>
-            <Text style={styles.updateBannerTitle}>Доступна новая версия!</Text>
-            <Text style={styles.updateBannerSubtitle}>Нажмите, чтобы обновить приложение</Text>
-          </View>
-          <Icon name="chevron-forward" size={20} color="#fff" />
-        </TouchableOpacity>
+      {user.update_available && !isUpdateBannerHidden && (
+        <View style={styles.updateBannerWrapper}>
+          <TouchableOpacity 
+            style={styles.updateBanner} 
+            onPress={() => {
+              const url = user.latest_app_version?.file_path || (Platform.OS === 'ios' 
+                ? 'https://fokin.fun' 
+                : 'https://fokin.fun');
+              Linking.openURL(getFullUrl(url)).catch(err => console.error("Couldn't load page", err));
+            }}
+          >
+            <Icon name="cloud-download-outline" size={24} color="#fff" />
+            <View style={styles.updateBannerTextContainer}>
+              <Text style={styles.updateBannerTitle}>Доступна новая версия!</Text>
+              <Text style={styles.updateBannerSubtitle}>Нажмите, чтобы обновить приложение</Text>
+            </View>
+            <Icon name="chevron-forward" size={20} color="#fff" />
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={styles.closeBannerButton} 
+            onPress={() => handleHideUpdate(user.latest_app_version?.id)}
+          >
+            <Icon name="close-circle" size={22} color="rgba(255,255,255,0.7)" />
+          </TouchableOpacity>
+        </View>
       )}
       <View style={[styles.header, { borderColor: colors.border }]}>
-        <TouchableOpacity onPress={openAvatarAlbum}>
+        <TouchableOpacity onPress={openAvatarAlbum} style={styles.avatarContainer}>
           <Image 
             source={{ uri: getFullUrl(user.avatar_url) || 'https://via.placeholder.com/150' }} 
             style={styles.avatar} 
           />
+          <View style={[styles.roleBadge, { backgroundColor: colors.primary }]}>
+            <Icon name={user.role === 'admin' || user.role === 'owner' ? "shield-checkmark" : user.role === 'seller' ? "storefront" : "person"} size={12} color="#fff" />
+          </View>
         </TouchableOpacity>
         <Text style={[styles.name, { color: colors.text }]}>{formatName(user)}</Text>
-        {user.role !== 'buyer' && (
-          <Text style={[styles.role, { color: colors.textSecondary }]}>{user.role}</Text>
-        )}
+        
+        <View style={styles.statsContainer}>
+          <View style={styles.statItem}>
+            <Text style={[styles.statValue, { color: colors.text }]}>{posts.length}</Text>
+            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Постов</Text>
+          </View>
+          <View style={[styles.statItem, { borderLeftWidth: 1, borderRightWidth: 1, borderColor: colors.border }]}>
+            <Text style={[styles.statValue, { color: colors.text }]}>{user.albums?.length || 0}</Text>
+            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Альбомов</Text>
+          </View>
+          <View style={styles.statItem}>
+            <Text style={[styles.statValue, { color: colors.text, fontSize: 14 }]}>
+              {user.role === 'buyer' ? 'Клиент' : user.role === 'seller' ? 'Продавец' : 'Админ'}
+            </Text>
+            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Статус</Text>
+          </View>
+        </View>
       </View>
 
       <Modal
@@ -505,9 +555,15 @@ export default function ProfileScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  header: { alignItems: 'center', padding: 20, borderBottomWidth: 1, borderColor: '#eee' },
-  avatar: { width: 100, height: 100, borderRadius: 50, marginBottom: 10 },
-  name: { fontSize: 20, fontWeight: 'bold' },
+  header: { alignItems: 'center', padding: 25, borderBottomWidth: 1, borderColor: '#eee' },
+  avatarContainer: { position: 'relative', marginBottom: 15 },
+  avatar: { width: 100, height: 100, borderRadius: 50, borderWidth: 3, borderColor: '#fff', ...getShadow('#000', { width: 0, height: 4 }, 0.2, 5, 5) },
+  roleBadge: { position: 'absolute', bottom: 0, right: 0, width: 28, height: 28, borderRadius: 14, justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: '#fff' },
+  name: { fontSize: 22, fontWeight: '800', marginBottom: 20 },
+  statsContainer: { flexDirection: 'row', width: '100%', marginTop: 10, paddingHorizontal: 10 },
+  statItem: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 5 },
+  statValue: { fontSize: 18, fontWeight: '700' },
+  statLabel: { fontSize: 12, marginTop: 2 },
   role: { color: 'gray' },
   section: { padding: 20 },
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
@@ -541,7 +597,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#34C759',
     padding: 15,
-    margin: 10,
     borderRadius: 12,
     ...Platform.select({
       ios: {
@@ -567,6 +622,18 @@ const styles = StyleSheet.create({
   updateBannerSubtitle: {
     color: 'rgba(255,255,255,0.9)',
     fontSize: 13,
+  },
+  updateBannerWrapper: {
+    position: 'relative',
+    marginHorizontal: 10,
+    marginTop: 10,
+  },
+  closeBannerButton: {
+    position: 'absolute',
+    top: 5,
+    right: 5,
+    padding: 5,
+    zIndex: 10,
   },
   modalOverlay: {
     flex: 1,

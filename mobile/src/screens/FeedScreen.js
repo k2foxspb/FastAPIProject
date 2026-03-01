@@ -1,13 +1,15 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { getShadow } from '../utils/shadowStyles';
-import { View, Text, FlatList, StyleSheet, TouchableOpacity, RefreshControl, ActivityIndicator, Alert, Image, Platform } from 'react-native';
+import { View, Text, FlatList, StyleSheet, TouchableOpacity, RefreshControl, ActivityIndicator, Alert, Image, Platform, ScrollView } from 'react-native';
 import notifee from '@notifee/react-native';
+import * as Haptics from 'expo-haptics';
 import FadeInImage from '../components/FadeInImage';
 import FadeInView from '../components/FadeInView';
 import { productsApi, newsApi, usersApi, cartApi } from '../api';
 import { getFullUrl, stripHtml } from '../utils/formatters';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
+import { NewsSkeleton, ProductSkeleton } from '../components/SkeletonLoader';
 import { Ionicons as Icon } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useNotifications } from '../context/NotificationContext';
@@ -290,23 +292,53 @@ export default function FeedScreen({ navigation }) {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.tabBar, { borderBottomColor: colors.border }]}>
+      <View style={[styles.tabBarEnhanced, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
         <TouchableOpacity 
-          style={[styles.tab, activeTab === 'news' && { borderBottomColor: colors.primary, borderBottomWidth: 2 }]} 
-          onPress={() => setActiveTab('news')}
+          style={[styles.tabButton, activeTab === 'news' && { backgroundColor: colors.primary + '15' }]} 
+          onPress={() => {
+            if (activeTab !== 'news') {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setActiveTab('news');
+            }
+          }}
         >
-          <Text style={[styles.tabText, { color: activeTab === 'news' ? colors.primary : colors.textSecondary }]}>Новости</Text>
+          <Icon name="newspaper-outline" size={18} color={activeTab === 'news' ? colors.primary : colors.textSecondary} />
+          <Text style={[styles.tabButtonText, { color: activeTab === 'news' ? colors.primary : colors.textSecondary, fontWeight: activeTab === 'news' ? '700' : '500' }]}>
+            Новости
+          </Text>
         </TouchableOpacity>
         <TouchableOpacity 
-          style={[styles.tab, activeTab === 'products' && { borderBottomColor: colors.primary, borderBottomWidth: 2 }]} 
-          onPress={() => setActiveTab('products')}
+          style={[styles.tabButton, activeTab === 'products' && { backgroundColor: colors.primary + '15' }]} 
+          onPress={() => {
+            if (activeTab !== 'products') {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setActiveTab('products');
+            }
+          }}
         >
-          <Text style={[styles.tabText, { color: activeTab === 'products' ? colors.primary : colors.textSecondary }]}>Продукты</Text>
+          <Icon name="basket-outline" size={18} color={activeTab === 'products' ? colors.primary : colors.textSecondary} />
+          <Text style={[styles.tabButtonText, { color: activeTab === 'products' ? colors.primary : colors.textSecondary, fontWeight: activeTab === 'products' ? '700' : '500' }]}>
+            Товары
+          </Text>
         </TouchableOpacity>
       </View>
 
       {loading && !refreshing ? (
-        <ActivityIndicator style={{ marginTop: 20 }} color={colors.primary} />
+        <ScrollView style={styles.listContent}>
+          {activeTab === 'news' ? (
+            <>
+              <NewsSkeleton />
+              <NewsSkeleton />
+            </>
+          ) : (
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' }}>
+              <ProductSkeleton />
+              <ProductSkeleton />
+              <ProductSkeleton />
+              <ProductSkeleton />
+            </View>
+          )}
+        </ScrollView>
       ) : (
         <FadeInView visible={!loading} duration={250}>
           <FlatList
@@ -320,9 +352,12 @@ export default function FeedScreen({ navigation }) {
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[colors.primary]} />
           }
           ListEmptyComponent={
-            <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
-              {activeTab === 'news' ? 'Нет новостей' : 'Нет продуктов'}
-            </Text>
+            <View style={styles.emptyContainer}>
+              <Icon name={activeTab === 'news' ? "newspaper-outline" : "basket-outline"} size={64} color={colors.border} />
+              <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
+                {activeTab === 'news' ? 'Пока новостей нет' : 'Список товаров пуст'}
+              </Text>
+            </View>
           }
         />
         </FadeInView>
@@ -342,9 +377,21 @@ export default function FeedScreen({ navigation }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  tabBar: { flexDirection: 'row', borderBottomWidth: 1 },
-  tab: { flex: 1, paddingVertical: 15, alignItems: 'center' },
-  tabText: { fontSize: 16, fontWeight: 'bold' },
+  tabBarEnhanced: { 
+    flexDirection: 'row', 
+    paddingHorizontal: 15, 
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    justifyContent: 'space-around'
+  },
+  tabButton: { 
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 20,
+    borderRadius: 20,
+  },
+  tabButtonText: { fontSize: 15, marginLeft: 8 },
   listContent: { padding: 10 },
   newsCard: { borderRadius: 12, marginBottom: 16, overflow: 'hidden', borderWidth: 1, ...getShadow('#000', { width: 0, height: 2 }, 0.1, 4, 4) },
   newsAuthorHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 12, borderBottomWidth: 0.5, borderBottomColor: 'rgba(0,0,0,0.05)' },
@@ -403,5 +450,12 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   fab: { position: 'absolute', bottom: 20, right: 20, width: 60, height: 60, borderRadius: 30, justifyContent: 'center', alignItems: 'center', ...getShadow('#000', { width: 0, height: 4 }, 0.3, 4.65, 8) },
-  emptyText: { textAlign: 'center', marginTop: 50, fontSize: 16 },
+  emptyContainer: { 
+    flex: 1, 
+    justifyContent: 'center', 
+    alignItems: 'center', 
+    marginTop: 100,
+    paddingHorizontal: 40
+  },
+  emptyText: { marginTop: 16, fontSize: 16, textAlign: 'center', fontWeight: '500' },
 });

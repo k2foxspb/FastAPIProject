@@ -71,7 +71,7 @@ export async function requestUserPermission() {
   }
 }
 
-export async function setupCloudMessaging() {
+export async function setupCloudMessaging(onNotificationReceived = null) {
   if (Platform.OS === 'web') return;
   try {
     const msg = await getMessaging();
@@ -133,6 +133,13 @@ export async function setupCloudMessaging() {
       const isChatScreen = currentRoute?.name === 'Chat';
       const currentChatUserId = currentRoute?.params?.userId ? parseInt(currentRoute.params.userId, 10) : null;
       const isActiveChatWithSender = isChatScreen && senderId && currentChatUserId && Number(currentChatUserId) === Number(senderId);
+
+      // ВСЕГДА передаем сообщение в контекст, если есть коллбэк, 
+      // чтобы гарантировать отображение в чате даже если WebSocket подвел
+      if (onNotificationReceived) {
+        console.log('[FCM] Passing foreground message to context callback');
+        onNotificationReceived(remoteMessage);
+      }
 
       if (!isActiveChatWithSender) {
         console.log('[FCM] Showing foreground notification via Notifee');

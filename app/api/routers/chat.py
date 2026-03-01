@@ -410,8 +410,16 @@ async def websocket_chat_endpoint(
                 receiver = await db.get(UserModel, receiver_id, populate_existing=True)
                 
                 if receiver and receiver.fcm_token:
-                    # Если сообщение пустое (только файл), пишем тип файла
-                    body = content if content else f"Отправил {message_type}"
+                    if message_type == "video_note":
+                        body = "📹 Видеосообщение"
+                    elif message_type == "audio":
+                        body = "🎤 Голосовое сообщение"
+                    elif message_type == "image":
+                        body = "🖼️ Фотография"
+                    elif message_type == "file":
+                        body = "📁 Файл"
+                    else:
+                        body = content if content else f"Отправил {message_type}"
                     
                     logger.info(f"FCM: Triggering notification for receiver {receiver_id} with token {receiver.fcm_token}")
                     asyncio.create_task(send_fcm_notification(
@@ -513,7 +521,16 @@ async def send_message_api(
     receiver = await db.get(UserModel, receiver_id, populate_existing=True)
     
     if receiver and receiver.fcm_token:
-        body = content if content else f"Отправил {message_type}"
+        if message_type == "video_note":
+            body = "📹 Видеосообщение"
+        elif message_type == "audio":
+            body = "🎤 Голосовое сообщение"
+        elif message_type == "image":
+            body = "🖼️ Фотография"
+        elif message_type == "file":
+            body = "📁 Файл"
+        else:
+            body = content if content else f"Отправил {message_type}"
         
         logger.info(f"FCM (API): Triggering notification for receiver {receiver_id} with token {receiver.fcm_token[:15]}...")
         asyncio.create_task(send_fcm_notification(

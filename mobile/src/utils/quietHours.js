@@ -8,7 +8,7 @@ export const isWithinQuietHours = async () => {
     const enabled = await storage.getItem('quiet_hours_enabled');
     if (enabled !== 'true') return false;
 
-    const start = await storage.getItem('quiet_hours_start') || 'firebase-service-account.json:00';
+    const start = await storage.getItem('quiet_hours_start') || '22:00';
     const end = await storage.getItem('quiet_hours_end') || '08:00';
 
     const now = new Date();
@@ -24,7 +24,7 @@ export const isWithinQuietHours = async () => {
       // Интервал внутри одного дня (например, 14:00 - 16:00)
       return currentTime >= startTime && currentTime <= endTime;
     } else {
-      // Интервал через полночь (например, firebase-service-account.json:00 - 08:00)
+      // Интервал через полночь (например, 22:00 - 08:00)
       return currentTime >= startTime || currentTime <= endTime;
     }
   } catch (e) {
@@ -39,7 +39,7 @@ export const isWithinQuietHours = async () => {
 export const getQuietHoursSettings = async () => {
   return {
     enabled: (await storage.getItem('quiet_hours_enabled')) === 'true',
-    start: (await storage.getItem('quiet_hours_start')) || 'firebase-service-account.json:00',
+    start: (await storage.getItem('quiet_hours_start')) || '22:00',
     end: (await storage.getItem('quiet_hours_end')) || '08:00',
   };
 };

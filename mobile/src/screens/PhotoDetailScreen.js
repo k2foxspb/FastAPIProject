@@ -16,6 +16,7 @@ import {
   Platform
 } from 'react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
+import * as Haptics from 'expo-haptics';
 import { usersApi } from '../api';
 import { Ionicons as Icon } from '@expo/vector-icons';
 import { getFullUrl } from '../utils/urlHelper';
@@ -121,6 +122,13 @@ export default function PhotoDetailScreen({ route, navigation }) {
 
     try {
       const newReaction = currentPhoto.my_reaction === type ? 0 : type;
+      
+      if (newReaction !== 0) {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      } else {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      }
+
       await usersApi.reactToPhoto(currentPhoto.id, newReaction);
       
       // Update local state
@@ -198,6 +206,11 @@ export default function PhotoDetailScreen({ route, navigation }) {
       if (!comment) return;
 
       const newReaction = comment.my_reaction === type ? 0 : type;
+      
+      if (newReaction !== 0) {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      }
+
       await usersApi.reactToPhotoComment(commentId, newReaction);
       
       setComments(prev => prev.map(c => {

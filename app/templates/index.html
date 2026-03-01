@@ -4,178 +4,413 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>FokinShop — Мобильное приложение</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
         :root {
-            --bg-color: #0a0a0c;
-            --surface-color: #16161a;
-            --accent-color: #3b82f6;
-            --accent-hover: #2563eb;
+            --bg-color: #0f172a;
+            --surface-color: rgba(30, 41, 59, 0.7);
+            --accent-color: #6366f1;
+            --accent-hover: #4f46e5;
             --text-primary: #f8fafc;
             --text-secondary: #94a3b8;
-            --border-color: #2e2e36;
+            --border-color: rgba(255, 255, 255, 0.1);
+            --success-color: #10b981;
+        }
+
+        * {
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
         }
 
         body {
-            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             margin: 0;
             background-color: var(--bg-color);
+            background-image: 
+                radial-gradient(circle at 0% 0%, rgba(99, 102, 241, 0.15) 0%, transparent 50%),
+                radial-gradient(circle at 100% 100%, rgba(79, 70, 229, 0.1) 0%, transparent 50%);
             color: var(--text-primary);
             display: flex;
+            flex-direction: column;
             align-items: center;
-            justify-content: center;
             min-height: 100vh;
-            line-height: 1.6;
+            line-height: 1.5;
+            padding: 20px;
         }
 
-        .container {
-            max-width: 500px;
-            width: 90%;
+        .hero {
+            max-width: 800px;
+            width: 100%;
             text-align: center;
-            padding: 40px 20px;
-            background: var(--surface-color);
-            border-radius: 24px;
-            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
-            border: 1px solid var(--border-color);
+            padding: 60px 20px 40px;
+            animation: fadeIn 0.8s ease-out;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
         }
 
         .logo-container {
             margin-bottom: 24px;
+            position: relative;
+            display: inline-block;
         }
 
         .logo {
-            width: 120px;
-            height: 120px;
+            width: 140px;
+            height: 140px;
             object-fit: contain;
-            border-radius: 20%;
-            /* Добавляем мягкое свечение логотипу */
-            filter: drop-shadow(0 0 15px rgba(59, 130, 246, 0.3));
+            border-radius: 32px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+            border: 2px solid var(--border-color);
+            background: #1e293b;
+        }
+
+        .logo-glow {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 160px;
+            height: 160px;
+            background: var(--accent-color);
+            filter: blur(40px);
+            opacity: 0.2;
+            z-index: -1;
+            border-radius: 50%;
         }
 
         h1 {
-            font-size: 28px;
-            font-weight: 700;
-            margin: 0 0 12px;
-            letter-spacing: -0.025em;
+            font-size: clamp(32px, 8vw, 48px);
+            font-weight: 800;
+            margin: 0 0 16px;
+            letter-spacing: -0.04em;
+            background: linear-gradient(135deg, #fff 0%, #94a3b8 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
         }
 
-        p {
+        .tagline {
+            font-size: clamp(18px, 4vw, 20px);
             color: var(--text-secondary);
-            font-size: 16px;
-            margin-bottom: 32px;
-            padding: 0 20px;
+            margin-bottom: 48px;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
         }
 
-        .app-info {
-            background: rgba(255, 255, 255, 0.03);
-            border-radius: 16px;
-            padding: 16px;
-            margin-bottom: 24px;
+        .download-card {
+            background: var(--surface-color);
+            backdrop-filter: blur(12px);
             border: 1px solid var(--border-color);
+            border-radius: 32px;
+            padding: 40px;
+            width: 100%;
+            max-width: 440px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            margin-bottom: 60px;
         }
 
-        .version-label {
-            display: block;
-            font-size: 12px;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            color: var(--text-secondary);
-            margin-bottom: 4px;
-        }
-
-        .version-number {
-            font-weight: 600;
-            font-size: 18px;
+        .version-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 6px 16px;
+            background: rgba(99, 102, 241, 0.1);
+            border: 1px solid rgba(99, 102, 241, 0.2);
+            border-radius: 100px;
             color: var(--accent-color);
+            font-weight: 600;
+            font-size: 14px;
+            margin-bottom: 24px;
         }
 
         .download-btn {
             background-color: var(--accent-color);
             color: white;
-            padding: 16px 32px;
-            border-radius: 14px;
+            padding: 18px 32px;
+            border-radius: 20px;
             text-decoration: none;
-            font-weight: 600;
-            font-size: 16px;
-            display: inline-block;
-            transition: all 0.2s ease;
+            font-weight: 700;
+            font-size: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             width: 100%;
             box-sizing: border-box;
-            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+            box-shadow: 0 10px 25px -5px rgba(99, 102, 241, 0.4);
         }
 
         .download-btn:hover {
             background-color: var(--accent-hover);
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(59, 130, 246, 0.4);
+            transform: translateY(-4px) scale(1.02);
+            box-shadow: 0 20px 30px -10px rgba(99, 102, 241, 0.5);
         }
 
         .download-btn:active {
-            transform: translateY(0);
+            transform: translateY(0) scale(0.98);
         }
 
-        .hidden {
-            display: none;
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 24px;
+            max-width: 1000px;
+            width: 100%;
+            padding: 0 20px 80px;
+        }
+
+        .feature-card {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--border-color);
+            border-radius: 24px;
+            padding: 32px;
+            text-align: left;
+            transition: all 0.3s ease;
+        }
+
+        .feature-card:hover {
+            background: rgba(255, 255, 255, 0.05);
+            border-color: rgba(255, 255, 255, 0.2);
+            transform: translateY(-5px);
+        }
+
+        .feature-icon {
+            width: 48px;
+            height: 48px;
+            background: rgba(99, 102, 241, 0.1);
+            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 20px;
+            color: var(--accent-color);
+            font-size: 24px;
+        }
+
+        .feature-title {
+            font-weight: 700;
+            font-size: 18px;
+            margin-bottom: 8px;
+            color: #fff;
+        }
+
+        .feature-desc {
+            color: var(--text-secondary);
+            font-size: 15px;
+            line-height: 1.6;
         }
 
         .loading-spinner {
-            display: inline-block;
-            width: 20px;
-            height: 20px;
+            width: 24px;
+            height: 24px;
             border: 3px solid rgba(255, 255, 255, 0.3);
             border-radius: 50%;
             border-top-color: #fff;
-            animation: spin 1s ease-in-out infinite;
-            margin-right: 10px;
-            vertical-align: middle;
+            animation: spin 0.8s linear infinite;
+            margin-right: 12px;
         }
 
         @keyframes spin {
             to { transform: rotate(360deg); }
         }
 
-        @media (max-width: 480px) {
-            .container {
-                padding: 30px 15px;
-                border-radius: 0;
-                border: none;
-                background: transparent;
-                box-shadow: none;
-            }
+        .how-it-works {
+            width: 100%;
+            max-width: 1000px;
+            padding: 60px 20px;
+            animation: fadeIn 1s ease-out;
+        }
+        .steps-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 40px;
+        }
+        .step {
+            text-align: center;
+        }
+        .step-num {
+            width: 50px;
+            height: 50px;
+            background: var(--accent-color);
+            color: #fff;
+            border-radius: 25px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 800;
+            font-size: 24px;
+            margin: 0 auto 20px;
+            box-shadow: 0 10px 20px rgba(99, 102, 241, 0.3);
+        }
+        .step h3 { margin-bottom: 10px; font-size: 20px; }
+        .step p { color: var(--text-secondary); line-height: 1.6; }
+
+        .phone-mockup {
+            margin: 80px 0;
+            perspective: 1000px;
+            display: flex;
+            justify-content: center;
+        }
+        .phone-frame {
+            width: 280px;
+            height: 580px;
+            background: #1e293b;
+            border: 8px solid #334155;
+            border-radius: 40px;
+            padding: 12px;
+            box-shadow: 0 50px 100px -20px rgba(0,0,0,0.5);
+            transform: rotateY(-15deg) rotateX(10deg);
+            transition: all 0.6s cubic-bezier(0.23, 1, 0.32, 1);
+        }
+        .phone-frame:hover {
+            transform: rotateY(0) rotateX(0) scale(1.02);
+        }
+        .phone-screen {
+            background: var(--bg-color);
+            width: 100%;
+            height: 100%;
+            border-radius: 24px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            border: 1px solid rgba(255,255,255,0.05);
+        }
+        .mock-header { height: 60px; background: rgba(255,255,255,0.05); padding: 15px 10px; }
+        .mock-status-bar { width: 40px; height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; margin: 0 auto 10px; }
+        .mock-nav { width: 100%; height: 20px; background: rgba(255,255,255,0.05); border-radius: 10px; }
+        .mock-content { flex: 1; padding: 20px; }
+        .mock-card { height: 80px; background: linear-gradient(90deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.05) 100%); border-radius: 15px; margin-bottom: 20px; }
+        .mock-tab-bar { height: 65px; background: rgba(255,255,255,0.05); display: flex; justify-content: space-around; align-items: center; border-top: 1px solid rgba(255,255,255,0.05); }
+        .mock-tab { width: 28px; height: 28px; background: rgba(255,255,255,0.07); border-radius: 8px; }
+
+        .hidden { display: none; }
+
+        footer {
+            margin-top: auto;
+            padding: 40px 20px;
+            color: var(--text-secondary);
+            font-size: 14px;
+            text-align: center;
+            border-top: 1px solid var(--border-color);
+            width: 100%;
+        }
+
+        @media (max-width: 640px) {
+            .hero { padding-top: 40px; }
+            .download-card { padding: 30px 20px; border-radius: 24px; }
+            .features-grid { grid-template-columns: 1fr; }
         }
     </style>
 </head>
 <body>
-    <div class="container">
+    <div class="hero">
         <div class="logo-container">
-            <img src="/logo.png" alt="Logo" class="logo" onerror="this.src='https://via.placeholder.com/120?text=App'">
+            <div class="logo-glow"></div>
+            <img src="/logo.png" alt="Logo" class="logo" onerror="this.src='https://via.placeholder.com/140?text=FS'">
         </div>
         
         <h1>FokinShop</h1>
+        <p class="tagline">Ваше пространство для общения, покупок и новостей. Всё самое важное в одном приложении.</p>
 
+        <div class="download-card" id="appStatus">
+            <div id="loadingInfo" style="display: flex; align-items: center; justify-content: center;">
+                <div class="loading-spinner"></div>
+                <span style="color: var(--text-secondary); font-weight: 500;">Поиск последней версии...</span>
+            </div>
 
-        <div id="appStatus">
             <div id="appBanner" class="hidden">
-                <div class="app-info">
-                    <span class="version-label">Последняя версия</span>
-                    <span class="version-number" id="latestVer">...</span>
+                <div class="version-badge">
+                    Версия <span id="latestVer" style="margin-left: 4px;">...</span>
                 </div>
                 <a id="downloadBtn" class="download-btn" href="#" download>
-                    Скачать APK
+                    <svg style="margin-right: 12px;" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v4"></path>
+                        <polyline points="7 10 12 15 17 10"></polyline>
+                        <line x1="12" y1="15" x2="12" y2="3"></line>
+                    </svg>
+                    Скачать для Android
                 </a>
+                <p style="font-size: 13px; margin-top: 20px; color: var(--text-secondary);">
+                    Безопасный APK-файл. Нажмите «Скачать», чтобы начать установку.
+                </p>
             </div>
             
-            <div id="loadingInfo">
-                <div class="loading-spinner"></div>
-                <span style="color: var(--text-secondary)">Проверка обновлений...</span>
-            </div>
-
             <div id="noApp" class="hidden">
-                <p style="color: var(--text-secondary); font-size: 14px;">
-                    Приложение временно недоступно для загрузки.
-                </p>
+                <div style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.2); padding: 16px; border-radius: 16px; color: #f87171;">
+                    Приложение временно недоступно для загрузки. Пожалуйста, зайдите позже.
+                </div>
+            </div>
+        </div>
+
+        <div class="features-grid">
+            <div class="feature-card">
+                <div class="feature-icon">🛍️</div>
+                <div class="feature-title">Умный магазин</div>
+                <div class="feature-desc">Покупайте товары легко и быстро. Удобный интерфейс и безопасная оплата.</div>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">💬</div>
+                <div class="feature-title">Живое общение</div>
+                <div class="feature-desc">Общайтесь с друзьями в чате, делитесь новостями и впечатлениями в реальном времени.</div>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">🔔</div>
+                <div class="feature-title">Уведомления</div>
+                <div class="feature-desc">Будьте в курсе всех акций и сообщений. Мгновенные пуш-уведомления на ваш телефон.</div>
+            </div>
+        </div>
+
+        <section class="how-it-works">
+            <h2 style="font-size: 32px; margin-bottom: 40px; text-align: center;">Как это работает</h2>
+            <div class="steps-container">
+                <div class="step">
+                    <div class="step-num">1</div>
+                    <h3>Скачайте APK</h3>
+                    <p>Нажмите кнопку загрузки выше, чтобы получить установочный файл.</p>
+                </div>
+                <div class="step">
+                    <div class="step-num">2</div>
+                    <h3>Установите</h3>
+                    <p>Разрешите установку из неизвестных источников в настройках Android.</p>
+                </div>
+                <div class="step">
+                    <div class="step-num">3</div>
+                    <h3>Пользуйтесь</h3>
+                    <p>Войдите через Google и начните покупки или общение!</p>
+                </div>
+            </div>
+        </section>
+
+        <div class="phone-mockup">
+            <div class="phone-frame">
+                <div class="phone-screen">
+                    <div class="mock-header">
+                        <div class="mock-status-bar"></div>
+                        <div class="mock-nav"></div>
+                    </div>
+                    <div class="mock-content">
+                        <div class="mock-card"></div>
+                        <div class="mock-card"></div>
+                        <div class="mock-card"></div>
+                    </div>
+                    <div class="mock-tab-bar">
+                        <div class="mock-tab"></div>
+                        <div class="mock-tab"></div>
+                        <div class="mock-tab"></div>
+                        <div class="mock-tab"></div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
+
+    <footer>
+        &copy; 2026 FokinShop Team. Сделано с любовью для пользователей.
+    </footer>
 
     <script>
         async function loadLatest() {
@@ -186,6 +421,9 @@
             const versionText = document.getElementById('latestVer');
 
             try {
+                // Имитация небольшой задержки для плавности
+                await new Promise(r => setTimeout(r, 600));
+                
                 const res = await fetch('/news/app-version/latest');
                 if (!res.ok) throw new Error('Not found');
                 
@@ -193,16 +431,16 @@
                 
                 if (data && data.file_path) {
                     downloadBtn.href = data.file_path;
-                    versionText.textContent = data.version || 'v1.0.0';
+                    versionText.textContent = data.version || 'v1.0.5';
                     
-                    loader.classList.add('hidden');
+                    loader.style.display = 'none';
                     banner.classList.remove('hidden');
                 } else {
                     throw new Error('No file path');
                 }
             } catch(e) {
                 console.error('Failed to load version:', e);
-                loader.classList.add('hidden');
+                loader.style.display = 'none';
                 noApp.classList.remove('hidden');
             }
         }
