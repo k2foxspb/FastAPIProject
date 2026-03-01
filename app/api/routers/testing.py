@@ -30,6 +30,7 @@ async def send_message_as_user(
         file_path=msg_in.file_path,
         message_type=msg_in.message_type,
         client_id=msg_in.client_id,
+        duration=msg_in.duration,
         timestamp=datetime.utcnow(),
         is_read=0
     )
@@ -37,10 +38,11 @@ async def send_message_as_user(
     await db.commit()
     await db.refresh(new_msg)
     
-    # Пытаемся получить имя отправителя
-    res = await db.execute(select(UserModel.first_name, UserModel.last_name).where(UserModel.id == sender_id))
+    # Пытаемся получить имя отправителя и аватарку
+    res = await db.execute(select(UserModel.first_name, UserModel.last_name, UserModel.avatar_url).where(UserModel.id == sender_id))
     user_info = res.fetchone()
     sender_name = f"{user_info.first_name} {user_info.last_name}" if user_info else f"User {sender_id}"
+    sender_avatar = user_info.avatar_url if user_info else None
 
     # Подготовка ответа
     resp_msg = ChatMessageResponse(
@@ -51,6 +53,7 @@ async def send_message_as_user(
         file_path=new_msg.file_path,
         message_type=new_msg.message_type,
         client_id=new_msg.client_id,
+        duration=new_msg.duration,
         timestamp=new_msg.timestamp,
         is_read=new_msg.is_read,
         sender_name=sender_name
@@ -68,13 +71,26 @@ async def send_message_as_user(
     # Push-уведомление через FCM (для тестирования доставки)
     receiver = await db.get(UserModel, new_msg.receiver_id, populate_existing=True)
     if receiver and receiver.fcm_token:
-        body = new_msg.message if new_msg.message else f"Тестовое сообщение ({new_msg.message_type})"
+        def format_duration(seconds):
+            if seconds is None: return ""
+            minutes = int(seconds // 60)
+            remaining_seconds = int(seconds % 60)
+            return f" ({minutes}:{remaining_seconds:02d})"
+
+        if new_msg.message_type == "video_note":
+            body = f"📹 Видеосообщение{format_duration(new_msg.duration)}"
+        elif new_msg.message_type == "audio":
+            body = f"🎤 Голосовое сообщение{format_duration(new_msg.duration)}"
+        else:
+            body = new_msg.message if new_msg.message else f"Тестовое сообщение ({new_msg.message_type})"
+            
         # Используем create_task чтобы не блокировать ответ API
         asyncio.create_task(send_fcm_notification(
             token=receiver.fcm_token,
             title=f"[TEST] {sender_name}",
             body=body,
             sender_id=sender_id,
+            sender_avatar=sender_avatar,
             data={
                 "chat_id": str(sender_id),
                 "message_id": str(new_msg.id),
@@ -119,6 +135,7 @@ async def get_test_history(
             file_path=m.file_path,
             message_type=m.message_type,
             client_id=m.client_id,
+            duration=m.duration,
             timestamp=m.timestamp,
             is_read=m.is_read,
             sender_name=user_map.get(m.sender_id, f"User {m.sender_id}")
@@ -170,6 +187,7 @@ async def get_last_messages(
             file_path=m.file_path,
             message_type=m.message_type,
             client_id=m.client_id,
+            duration=m.duration,
             timestamp=m.timestamp,
             is_read=m.is_read,
             sender_name=user_map.get(m.sender_id, f"User {m.sender_id}")

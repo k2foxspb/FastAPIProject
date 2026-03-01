@@ -30,7 +30,9 @@ export function parseNotificationData(data) {
   const notifTitle = data.notif_title || data.notifTitle;
   const notifBody = data.notif_body || data.notifBody;
   
-  return { type, senderId, senderName, newsId, notifTitle, notifBody };
+  const senderAvatar = data.sender_avatar || data.senderAvatar || data.image || data.avatar_url;
+  
+  return { type, senderId, senderName, newsId, notifTitle, notifBody, senderAvatar };
 }
 
 // --- Helpers for Notifee ---
@@ -55,7 +57,7 @@ export async function displayBundledMessage(remoteMessage) {
   try {
     console.log(`[Notifee] displayBundledMessage called for messageId: ${remoteMessage?.messageId}`);
     const data = remoteMessage?.data || {};
-    const { type, senderId, senderName, newsId, notifTitle, notifBody } = parseNotificationData(data);
+    const { type, senderId, senderName, newsId, notifTitle, notifBody, senderAvatar } = parseNotificationData(data);
     
     // Проверка на "самого себя" (важно для чата, так как бэкенд шлет всем)
     try {
@@ -118,16 +120,23 @@ export async function displayBundledMessage(remoteMessage) {
           actions: actions,
           groupId: groupId,
           smallIcon: 'ic_launcher',
+          largeIcon: senderAvatar || undefined,
           color: '#023c69',
           importance: AndroidImportance.HIGH,
           pressAction: { id: 'default', launchActivity: 'default' },
           style: {
             type: AndroidStyle.MESSAGING,
-            person: { name: nameToDisplay },
+            person: { 
+              name: nameToDisplay,
+              icon: senderAvatar || undefined,
+            },
             messages: storedMsgs.map(m => ({
               text: m.text,
               timestamp: m.timestamp,
-              person: { name: nameToDisplay },
+              person: { 
+                name: nameToDisplay,
+                icon: senderAvatar || undefined,
+              },
             })),
           },
         },
@@ -150,6 +159,7 @@ export async function displayBundledMessage(remoteMessage) {
           groupId: groupId,
           groupAlertBehavior: AndroidGroupAlertBehavior.SUMMARY,
           smallIcon: 'ic_launcher',
+          largeIcon: senderAvatar || undefined,
           color: '#023c69',
           pressAction: { id: 'default', launchActivity: 'default' },
           importance: AndroidImportance.HIGH,
@@ -157,6 +167,7 @@ export async function displayBundledMessage(remoteMessage) {
         ios: {
           categoryId: type === 'new_message' ? 'message_actions' : undefined,
           threadId: groupId,
+          attachments: senderAvatar ? [{ url: senderAvatar }] : undefined,
         }
       });
 

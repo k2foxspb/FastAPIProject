@@ -14,6 +14,7 @@ class ChatMessage(Base):
     file_path: Mapped[str] = mapped_column(String, nullable=True)
     message_type: Mapped[str] = mapped_column(String, default="text") # text, image, file
     client_id: Mapped[str] = mapped_column(String, nullable=True) # Для оптимистичных обновлений
+    duration: Mapped[float] = mapped_column(Integer, nullable=True) # Длительность аудио/видео в секундах
     timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     is_read: Mapped[int] = mapped_column(Integer, default=0)
     deleted_by_sender: Mapped[bool] = mapped_column(Boolean, default=False)

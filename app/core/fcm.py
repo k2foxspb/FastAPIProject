@@ -87,7 +87,8 @@ async def send_fcm_notification(
     title: str, 
     body: str, 
     data: Optional[dict] = None,
-    sender_id: Optional[int] = None
+    sender_id: Optional[int] = None,
+    sender_avatar: Optional[str] = None
 ):
     """
     Отправляет пуш-уведомление через Firebase Cloud Messaging (HTTP v1 API)
@@ -112,6 +113,11 @@ async def send_fcm_notification(
         
         if sender_id:
             fcm_data["sender_id"] = str(sender_id)
+        
+        if sender_avatar:
+            fcm_data["sender_avatar"] = str(sender_avatar)
+            # Для стандартных уведомлений Android (если бы мы их использовали)
+            # fcm_data["image"] = str(sender_avatar)
         
         # Добавляем поля для обработки на клиенте (особенно важно для Android data-only/custom)
         if title:
@@ -182,7 +188,8 @@ async def send_fcm_notification(
                     category="message_actions" if fcm_data.get("type") == "new_message" else None,
                     badge=1
                 )
-            )
+            ),
+            fcm_options=messaging.APNSFCMOptions(image=sender_avatar) if sender_avatar else None
         )
 
         # Сборка сообщения.
