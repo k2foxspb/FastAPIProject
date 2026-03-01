@@ -58,7 +58,7 @@ async def send_message_as_user(
     await chat_manager.send_personal_message(resp_msg.model_dump(mode="json"), new_msg.receiver_id)
     
     # Также уведомление через notifications_manager
-    await notifications_manager.broadcast({
+    await notifications_manager.send_personal_message({
         "type": "new_message",
         "data": resp_msg.model_dump(mode="json")
     }, user_id=new_msg.receiver_id)
