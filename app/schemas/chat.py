@@ -9,6 +9,7 @@ class ChatMessageBase(BaseModel):
     attachments: Optional[list[dict]] = None
     message_type: str = "text"
     client_id: Optional[str] = None # Для оптимистичных обновлений
+    duration: Optional[float] = None # Длительность аудио/видео в секундах
 
 class ChatMessageCreate(ChatMessageBase):
     pass

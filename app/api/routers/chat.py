@@ -110,11 +110,12 @@ async def websocket_chat_endpoint(
     # Using our custom connect that doesn't call accept() again
     await manager.connect(websocket, user_id)
 
-    # Fetch sender name once for the session
-    sender_result = await db.execute(select(UserModel.first_name, UserModel.last_name).where(UserModel.id == user_id))
+    # Fetch sender info once for the session
+    sender_result = await db.execute(select(UserModel.first_name, UserModel.last_name, UserModel.avatar_url).where(UserModel.id == user_id))
     sender_row = sender_result.first()
     sender_name = f"{sender_row.first_name} {sender_row.last_name}".strip() if sender_row and (sender_row.first_name or sender_row.last_name) else "Пользователь"
     if not sender_name: sender_name = "Пользователь"
+    sender_avatar = sender_row.avatar_url if sender_row else None
 
     try:
         while True:
@@ -338,6 +339,7 @@ async def websocket_chat_endpoint(
             attachments = message_data.get("attachments")  # список объектов {file_path, type}
             message_type = message_data.get("message_type", "text")
             client_id = message_data.get("client_id")  # Добавлено для оптимистичных обновлений
+            duration = message_data.get("duration") # Длительность аудио/видео
             
             if receiver_id_raw and (content or file_path or (attachments and len(attachments) > 0)):
                 # Приводим к int для корректного поиска в менеджерах соединений
@@ -366,7 +368,8 @@ async def websocket_chat_endpoint(
                     message=content,
                     file_path=file_path,
                     message_type=message_type,
-                    client_id=client_id
+                    client_id=client_id,
+                    duration=duration
                 )
                 db.add(new_msg)
                 await db.commit()
@@ -384,6 +387,7 @@ async def websocket_chat_endpoint(
                     "message": content,
                     "file_path": file_path,
                     "message_type": message_type,
+                    "duration": duration,
                     "timestamp": new_msg.timestamp.isoformat(),
                     "is_read": 0
                 }
@@ -413,10 +417,16 @@ async def websocket_chat_endpoint(
                 receiver = await db.get(UserModel, receiver_id, populate_existing=True)
                 
                 if receiver and receiver.fcm_token:
+                    def format_duration(seconds):
+                        if seconds is None: return ""
+                        minutes = int(seconds // 60)
+                        remaining_seconds = int(seconds % 60)
+                        return f" ({minutes}:{remaining_seconds:02d})"
+
                     if message_type == "video_note":
-                        body = "📹 Видеосообщение"
+                        body = f"📹 Видеосообщение{format_duration(duration)}"
                     elif message_type == "audio":
-                        body = "🎤 Голосовое сообщение"
+                        body = f"🎤 Голосовое сообщение{format_duration(duration)}"
                     elif message_type == "image":
                         body = "🖼️ Фотография"
                     elif message_type == "file":
@@ -430,6 +440,7 @@ async def websocket_chat_endpoint(
                         title=sender_name,
                         body=body,
                         sender_id=user_id,
+                        sender_avatar=sender_avatar,
                         data={
                             "chat_id": str(user_id),
                             "message_id": str(new_msg.id)
@@ -463,6 +474,7 @@ async def send_message_api(
     attachments = msg_in.attachments
     message_type = msg_in.message_type
     client_id = msg_in.client_id  # Добавлено для оптимистичных обновлений
+    duration = msg_in.duration # Длительность аудио/видео
     
     if attachments and len(attachments) > 0:
         message_type = "media_group"
@@ -480,17 +492,19 @@ async def send_message_api(
         message=content,
         file_path=file_path,
         message_type=message_type,
-        client_id=client_id
+        client_id=client_id,
+        duration=duration
     )
     db.add(new_msg)
     await db.commit()
     await db.refresh(new_msg)
 
-    # Находим отправителя для имени
-    sender_result = await db.execute(select(UserModel.first_name, UserModel.last_name).where(UserModel.id == user_id))
+    # Находим отправителя для имени и аватарки
+    sender_result = await db.execute(select(UserModel.first_name, UserModel.last_name, UserModel.avatar_url).where(UserModel.id == user_id))
     sender_row = sender_result.first()
     sender_name = f"{sender_row.first_name} {sender_row.last_name}".strip() if sender_row and (sender_row.first_name or sender_row.last_name) else "Пользователь"
     if not sender_name: sender_name = "Пользователь"
+    sender_avatar = sender_row.avatar_url if sender_row else None
 
     # Готовим данные ответа
     response_data = {
@@ -502,6 +516,7 @@ async def send_message_api(
         "message": content,
         "file_path": file_path,
         "message_type": message_type,
+        "duration": duration,
         "timestamp": new_msg.timestamp.isoformat() if hasattr(new_msg.timestamp, 'isoformat') else new_msg.timestamp,
         "is_read": 0
     }
@@ -529,10 +544,16 @@ async def send_message_api(
     receiver = await db.get(UserModel, receiver_id, populate_existing=True)
     
     if receiver and receiver.fcm_token:
+        def format_duration(seconds):
+            if seconds is None: return ""
+            minutes = int(seconds // 60)
+            remaining_seconds = int(seconds % 60)
+            return f" ({minutes}:{remaining_seconds:02d})"
+
         if message_type == "video_note":
-            body = "📹 Видеосообщение"
+            body = f"📹 Видеосообщение{format_duration(duration)}"
         elif message_type == "audio":
-            body = "🎤 Голосовое сообщение"
+            body = f"🎤 Голосовое сообщение{format_duration(duration)}"
         elif message_type == "image":
             body = "🖼️ Фотография"
         elif message_type == "file":
@@ -546,6 +567,7 @@ async def send_message_api(
             title=sender_name,
             body=body,
             sender_id=user_id,
+            sender_avatar=sender_avatar,
             data={
                 "chat_id": str(user_id),
                 "message_id": str(new_msg.id)

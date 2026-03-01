@@ -1600,7 +1600,8 @@ async def send_friend_request(
             title="Новая заявка в друзья",
             body=f"{msg['sender_name']} хочет добавить вас в друзья",
             data=msg,
-            sender_id=current_user.id
+            sender_id=current_user.id,
+            sender_avatar=current_user.avatar_url
         ))
 
     return new_friendship
@@ -1649,7 +1650,8 @@ async def accept_friend_request(
             title="Заявка принята",
             body=f"{msg['sender_name']} принял вашу заявку в друзья",
             data=msg,
-            sender_id=current_user.id
+            sender_id=current_user.id,
+            sender_avatar=current_user.avatar_url
         ))
 
     return friendship
