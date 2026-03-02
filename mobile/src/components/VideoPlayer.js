@@ -1,9 +1,18 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { setPlaybackAudioMode } from '../utils/audioSettings';
 
-const VideoPlayer = ({ uri, isMuted = false, isLooping = false, shouldPlay = false, style, useNativeControls = false, resizeMode = 'cover' }) => {
+const VideoPlayer = ({
+  uri,
+  isMuted = false,
+  isLooping = false,
+  shouldPlay = false,
+  style,
+  useNativeControls = false,
+  resizeMode = 'cover',
+  onPlayerReady,
+}) => {
   const player = useVideoPlayer(uri, (p) => {
     p.loop = isLooping;
     p.muted = isMuted;
@@ -11,6 +20,19 @@ const VideoPlayer = ({ uri, isMuted = false, isLooping = false, shouldPlay = fal
       p.play();
     }
   });
+
+  const onPlayerReadyRef = useRef(onPlayerReady);
+
+  useEffect(() => {
+    onPlayerReadyRef.current = onPlayerReady;
+  }, [onPlayerReady]);
+
+  useEffect(() => {
+    const fn = onPlayerReadyRef.current;
+    if (typeof fn === 'function') {
+      fn(player);
+    }
+  }, [player]);
 
   useEffect(() => {
     if (shouldPlay && !isMuted) {

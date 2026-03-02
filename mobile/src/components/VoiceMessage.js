@@ -18,11 +18,12 @@ const resolveRemoteUri = (path) => {
   return `${base}${rel}`;
 };
 
-export default function VoiceMessage({ item, currentUserId }) {
+export default function VoiceMessage({ item, currentUserId, isParentVisible = true }) {
   const { theme } = useTheme();
   const colors = themeConstants[theme];
   const [loading, setLoading] = useState(false);
   const [localUri, setLocalUri] = useState(null);
+  const [playbackRate, setPlaybackRate] = useState(1);
 
   const remoteUri = resolveRemoteUri(item.file_path);
   const fileName = item.file_path.split('/').pop();
@@ -36,10 +37,29 @@ export default function VoiceMessage({ item, currentUserId }) {
   const status = useAudioPlayerStatus(player);
 
   useEffect(() => {
+    if (!isParentVisible && player.playing) {
+      player.pause();
+    }
+  }, [isParentVisible, player.playing]);
+
+  useEffect(() => {
     if (audioSource) {
       player.replace(audioSource);
+      try {
+        player.playbackRate = playbackRate;
+      } catch (e) {
+        console.log('[VoiceMessage] Failed to set playbackRate on source change:', e);
+      }
     }
   }, [audioSource, player]);
+
+  useEffect(() => {
+    try {
+      player.playbackRate = playbackRate;
+    } catch (e) {
+      console.log('[VoiceMessage] Failed to set playbackRate on value change:', e);
+    }
+  }, [playbackRate, player]);
 
   useEffect(() => {
     if (Platform.OS === 'web') {
@@ -166,6 +186,14 @@ export default function VoiceMessage({ item, currentUserId }) {
   const progress = duration > 0 ? (position / duration) * 100 : 0;
   const isReceived = item.sender_id !== currentUserId;
 
+  const togglePlaybackRate = () => {
+    setPlaybackRate(prev => {
+      if (prev === 1) return 1.5;
+      if (prev === 1.5) return 2;
+      return 1;
+    });
+  };
+
   return (
     <View style={[
       styles.container, 
@@ -197,6 +225,16 @@ export default function VoiceMessage({ item, currentUserId }) {
           </Text>
         </View>
       </View>
+
+      <TouchableOpacity 
+        onPress={togglePlaybackRate} 
+        style={[styles.rateButton, { backgroundColor: isReceived ? colors.primary + '15' : 'rgba(255,255,255,0.2)' }]}
+      >
+        <Text style={[styles.rateText, { color: isReceived ? colors.primary : '#fff' }]}>
+          {playbackRate}x
+        </Text>
+      </TouchableOpacity>
+
       <TouchableOpacity onPress={handleDownload} disabled={loading} style={styles.downloadButton}>
         <MaterialIcons 
           name="file-download" 
@@ -244,6 +282,18 @@ const styles = StyleSheet.create({
   },
   timeText: {
     fontSize: 10,
+  },
+  rateButton: {
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+    borderRadius: 6,
+    marginLeft: 8,
+    minWidth: 32,
+    alignItems: 'center',
+  },
+  rateText: {
+    fontSize: 12,
+    fontWeight: 'bold',
   },
   downloadButton: {
     marginLeft: 10,

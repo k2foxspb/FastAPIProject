@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { getShadow } from '../utils/shadowStyles';
-import { View, Text, FlatList, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, Image, Modal, Pressable, Alert, AppState, StatusBar, Dimensions, Share, Animated, Vibration, Keyboard } from 'react-native';
+import { View, Text, FlatList, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, Image, Modal, Pressable, Alert, AppState, StatusBar, Dimensions, Share, Animated, Vibration, Keyboard, PanResponder } from 'react-native';
 import notifee from '@notifee/react-native';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
@@ -70,8 +70,216 @@ export default function ChatScreen({ route, navigation }) {
 
   const screenWidth = Dimensions.get('window').width;
   const [currentMediaIndex, setCurrentMediaIndex] = useState(0);
+  const [showFullScreenControls, setShowFullScreenControls] = useState(true);
+  const fullScreenPlayersByIndex = useRef(new Map());
+  const fullScreenPlayerSubscriptions = useRef([]);
+  const [fullScreenPosition, setFullScreenPosition] = useState(0);
+  const [fullScreenDuration, setFullScreenDuration] = useState(0);
+  const [fullScreenIsPlaying, setFullScreenIsPlaying] = useState(false);
+  const [fullScreenPlaybackRate, setFullScreenPlaybackRate] = useState(1);
+  const [fullScreenSliderWidth, setFullScreenSliderWidth] = useState(1);
+  const [isVideoNoteModalVisible, setIsVideoNoteModalVisible] = useState(false);
+  const [activeVideoNote, setActiveVideoNote] = useState(null);
+  const [isSeekingFullScreen, setIsSeekingFullScreen] = useState(false);
+  const [seekingPositionFullScreen, setSeekingPositionFullScreen] = useState(null);
   const recordingDotOpacity = useRef(new Animated.Value(1)).current;
   const [isKeyboardVisible, setKeyboardVisible] = useState(false);
+  const [viewableItems, setViewableItems] = useState([]);
+
+  const onViewableItemsChanged = useRef(({ viewableItems }) => {
+    setViewableItems(viewableItems.map(v => v.item.id));
+  }).current;
+
+  const viewabilityConfig = useRef({
+    itemVisiblePercentThreshold: 50
+  }).current;
+
+  const formatMediaTime = (seconds) => {
+    const totalSeconds = Math.floor(seconds || 0);
+    const minutes = Math.floor(totalSeconds / 60);
+    const remainingSeconds = totalSeconds % 60;
+    return `${minutes}:${remainingSeconds < 10 ? '0' : ''}${remainingSeconds}`;
+  };
+
+  const cleanupFullScreenPlayerSubscriptions = () => {
+    try {
+      (fullScreenPlayerSubscriptions.current || []).forEach((sub) => {
+        if (sub && typeof sub.remove === 'function') sub.remove();
+      });
+    } catch (e) {
+      // no-op
+    }
+    fullScreenPlayerSubscriptions.current = [];
+  };
+
+  const attachFullScreenPlayer = (player) => {
+    if (!player) return;
+
+    cleanupFullScreenPlayerSubscriptions();
+
+    try {
+      player.timeUpdateEventInterval = 0.25;
+    } catch (e) {
+      // no-op
+    }
+
+    setFullScreenPosition(player.currentTime || 0);
+    setFullScreenDuration(player.duration || 0);
+    setFullScreenIsPlaying(!!player.playing);
+    setFullScreenPlaybackRate(player.playbackRate || 1);
+
+    const subs = [];
+    try {
+      if (typeof player.addListener === 'function') {
+        subs.push(
+          player.addListener('timeUpdate', (payload) => {
+            if (isSeekingFullScreen) return;
+            const ct = payload?.currentTime ?? player.currentTime;
+            setFullScreenPosition(ct || 0);
+          })
+        );
+        subs.push(
+          player.addListener('sourceLoad', (payload) => {
+            const dur = payload?.duration ?? player.duration;
+            setFullScreenDuration(dur || 0);
+          })
+        );
+        subs.push(
+          player.addListener('playingChange', (payload) => {
+            setFullScreenIsPlaying(!!payload?.isPlaying);
+          })
+        );
+        subs.push(
+          player.addListener('playbackRateChange', (payload) => {
+            setFullScreenPlaybackRate(payload?.playbackRate ?? player.playbackRate);
+          })
+        );
+      }
+    } catch (e) {
+      // no-op
+    }
+    fullScreenPlayerSubscriptions.current = subs;
+  };
+
+  const getActiveFullScreenPlayer = () => {
+    return fullScreenPlayersByIndex.current.get(currentMediaIndex) || null;
+  };
+
+  const toggleFullScreenControls = () => {
+    setShowFullScreenControls((prev) => !prev);
+  };
+
+  const handleFullScreenPlayPause = () => {
+    const player = getActiveFullScreenPlayer();
+    if (!player) return;
+
+    try {
+      if (player.playing) {
+        player.pause();
+        return;
+      }
+
+      // If reached end, restart before play
+      const dur = player.duration || fullScreenDuration || 0;
+      const pos = player.currentTime || fullScreenPosition || 0;
+      if (dur > 0 && pos >= dur) {
+        player.currentTime = 0;
+      }
+      player.play();
+    } catch (e) {
+      console.log('[FullScreenVideo] play/pause failed', e);
+    }
+  };
+
+  const handleFullScreenToggleRate = () => {
+    const player = getActiveFullScreenPlayer();
+    if (!player) return;
+    const nextRate = fullScreenPlaybackRate === 1 ? 1.5 : (fullScreenPlaybackRate === 1.5 ? 2 : 1);
+    try {
+      player.playbackRate = nextRate;
+      setFullScreenPlaybackRate(nextRate);
+    } catch (e) {
+      console.log('[FullScreenVideo] rate toggle failed', e);
+    }
+  };
+
+  const handleFullScreenStop = () => {
+    const player = getActiveFullScreenPlayer();
+    if (!player) return;
+    try {
+      player.pause();
+      player.currentTime = 0;
+    } catch (e) {
+      console.log('[FullScreenVideo] stop failed', e);
+    }
+  };
+
+  const seekFullScreenToRatio = (ratio) => {
+    const player = getActiveFullScreenPlayer();
+    if (!player) return;
+    const dur = player.duration || fullScreenDuration || 0;
+    if (!dur || dur <= 0) return;
+    const clamped = Math.max(0, Math.min(1, ratio));
+    const nextTime = clamped * dur;
+
+    try {
+      player.currentTime = nextTime;
+      setFullScreenPosition(nextTime);
+    } catch (e) {
+      console.log('[FullScreenVideo] seek failed', e);
+    }
+  };
+
+  const fullScreenSliderPanResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: (evt) => {
+        setIsSeekingFullScreen(true);
+        const x = evt?.nativeEvent?.locationX ?? 0;
+        const ratio = fullScreenSliderWidth > 0 ? x / fullScreenSliderWidth : 0;
+        const dur = fullScreenDuration || getActiveFullScreenPlayer()?.duration || 0;
+        const nextTime = Math.max(0, Math.min(dur, ratio * dur));
+        setSeekingPositionFullScreen(nextTime);
+      },
+      onPanResponderMove: (evt) => {
+        const x = evt?.nativeEvent?.locationX ?? 0;
+        const ratio = fullScreenSliderWidth > 0 ? x / fullScreenSliderWidth : 0;
+        const dur = fullScreenDuration || getActiveFullScreenPlayer()?.duration || 0;
+        const nextTime = Math.max(0, Math.min(dur, ratio * dur));
+        setSeekingPositionFullScreen(nextTime);
+      },
+      onPanResponderRelease: () => {
+        const dur = fullScreenDuration || getActiveFullScreenPlayer()?.duration || 0;
+        const nextTime = seekingPositionFullScreen ?? fullScreenPosition;
+        if (dur > 0) {
+          seekFullScreenToRatio((nextTime || 0) / dur);
+        }
+        setIsSeekingFullScreen(false);
+        setSeekingPositionFullScreen(null);
+      },
+      onPanResponderTerminate: () => {
+        setIsSeekingFullScreen(false);
+        setSeekingPositionFullScreen(null);
+      },
+    })
+  ).current;
+
+  useEffect(() => {
+    if (!fullScreenMedia) {
+      cleanupFullScreenPlayerSubscriptions();
+      fullScreenPlayersByIndex.current = new Map();
+      setShowFullScreenControls(true);
+      setFullScreenPosition(0);
+      setFullScreenDuration(0);
+      setFullScreenIsPlaying(false);
+      return;
+    }
+
+    setShowFullScreenControls(true);
+    const player = fullScreenPlayersByIndex.current.get(currentMediaIndex);
+    if (player) attachFullScreenPlayer(player);
+  }, [fullScreenMedia, currentMediaIndex]);
 
   useEffect(() => {
     const keyboardDidShowListener = Keyboard.addListener(
@@ -854,20 +1062,34 @@ export default function ChatScreen({ route, navigation }) {
   const handleSendVideoNote = async (uri) => {
     if (!uri) return;
     try {
-      // Имя файла
       const filename = `video_note_${Date.now()}.mp4`;
-      
-      // Запускаем загрузку через uploadManager
-      const uploadResult = await uploadManager.uploadFile(uri, filename, 'video/mp4', (progress) => {
-        setUploadingProgress(progress);
-      });
+      let currentUploadId = null;
 
-      if (uploadResult && uploadResult.file_path) {
-        // Отправляем сообщение через WebSocket
+      const uploadResult = await uploadManager.uploadFileResumable(
+        uri,
+        filename,
+        'video/mp4',
+        userId,
+        (id) => {
+          currentUploadId = id;
+          setActiveUploadId(id);
+          uploadManager.subscribe(id, ({ progress, status }) => {
+            if (status === 'uploading' || status === 'completed') {
+              setUploadingProgress(progress);
+            } else if (status === 'error' || status === 'cancelled') {
+              setUploadingProgress(null);
+              setActiveUploadId(null);
+            }
+          });
+        }
+      );
+
+      if (uploadResult && (uploadResult.file_path || uploadResult.result?.file_path)) {
+        const filePath = uploadResult.file_path || uploadResult.result?.file_path;
         sendMessageWs({
           receiver_id: userId,
           message: null,
-          file_path: uploadResult.file_path,
+          file_path: filePath,
           message_type: 'video_note'
         });
       }
@@ -876,13 +1098,21 @@ export default function ChatScreen({ route, navigation }) {
       Alert.alert('Ошибка', 'Не удалось отправить видеосообщение');
     } finally {
       setUploadingProgress(null);
+      setActiveUploadId(null);
     }
   };
 
+  const [cameraPermission, requestCameraPermission] = useCameraPermissions();
+
   const startVideoRecording = async () => {
     try {
-      const { status: cameraStatus } = await CameraView.requestCameraPermissionsAsync();
-      const { status: audioStatus } = await Audio.requestPermissionsAsync();
+      // Использование хука для получения разрешений
+      let cameraStatus = cameraPermission?.status;
+      if (cameraStatus !== 'granted') {
+        const res = await requestCameraPermission();
+        cameraStatus = res?.status;
+      }
+      const { status: audioStatus } = await requestRecordingPermissionsAsync();
       
       if (cameraStatus !== 'granted' || audioStatus !== 'granted') {
         Alert.alert('Доступ запрещен', 'Нам нужны разрешения на камеру и микрофон для записи видеосообщений.');
@@ -891,6 +1121,7 @@ export default function ChatScreen({ route, navigation }) {
 
       setIsVideoRecording(true);
       setRecordingDuration(0);
+      const startTime = Date.now();
       
       // Начинаем запись чуть позже, чтобы камера успела инициализироваться
       setTimeout(async () => {
@@ -900,11 +1131,19 @@ export default function ChatScreen({ route, navigation }) {
               maxDuration: 60,
               quality: '720p',
             });
+            const duration = Date.now() - startTime;
             if (video && video.uri) {
-              handleSendVideoNote(video.uri);
+              if (duration >= 500) {
+                handleSendVideoNote(video.uri);
+              } else {
+                console.log('[ChatScreen] Video note too short, discarding...');
+              }
+            } else {
+              console.error('[ChatScreen] recordAsync finished but URI is missing');
             }
           } catch (error) {
             console.error('Video recording error:', error);
+          } finally {
             setIsVideoRecording(false);
           }
         }
@@ -918,7 +1157,11 @@ export default function ChatScreen({ route, navigation }) {
 
   const stopVideoRecording = async () => {
     if (cameraRef.current && isVideoRecording) {
-      cameraRef.current.stopRecording();
+      try {
+        await cameraRef.current.stopRecording();
+      } catch (e) {
+        console.error('Error stopping video recording:', e);
+      }
       setIsVideoRecording(false);
     }
   };
@@ -1072,15 +1315,26 @@ export default function ChatScreen({ route, navigation }) {
           console.log('[ChatScreen] Recording too short, deleting...');
           setRecordedUri(null);
         } else {
-          console.warn('[ChatScreen] Stop finished but URI is missing. Retrying...');
-          // One last attempt to get the URI
-          await new Promise((resolve) => setTimeout(resolve, 300));
-          const retry = recorder.getStatus();
-          const retryUri = recorder.uri || retry?.url || null;
+          console.warn('[ChatScreen] Stop finished but URI is missing. Retrying twice...');
+          // Attempt 1
+          await new Promise((resolve) => setTimeout(resolve, 400));
+          let retry = recorder.getStatus();
+          let retryUri = recorder.uri || retry?.url || null;
+          
+          if (!retryUri) {
+            // Attempt 2
+            console.log('[ChatScreen] Still no URI, final attempt...');
+            await new Promise((resolve) => setTimeout(resolve, 600));
+            retry = recorder.getStatus();
+            retryUri = recorder.uri || retry?.url || null;
+          }
+
           if (retryUri) {
             console.log('[ChatScreen] URI found on retry:', retryUri);
             setRecordingDuration(finalDuration || 1000);
             setRecordedUri(retryUri);
+          } else {
+            console.error('[ChatScreen] Failed to get URI after retries');
           }
         }
       }
@@ -1099,6 +1353,101 @@ export default function ChatScreen({ route, navigation }) {
     }
     setRecordedUri(null);
     setRecordingDuration(0);
+  };
+
+  const [videoNotePosition, setVideoNotePosition] = useState(0);
+  const [videoNoteDuration, setVideoNoteDuration] = useState(0);
+  const [videoNoteIsPlaying, setVideoNoteIsPlaying] = useState(false);
+  const videoNotePlayerRef = useRef(null);
+  const [videoNoteSliderWidth, setVideoNoteSliderWidth] = useState(320);
+  const [isVideoNoteSeeking, setIsVideoNoteSeeking] = useState(false);
+  const [videoNoteSeekingPosition, setVideoNoteSeekingPosition] = useState(null);
+  const videoNoteSubscriptions = useRef([]);
+
+  const cleanupVideoNoteSubscriptions = () => {
+    videoNoteSubscriptions.current.forEach(sub => {
+      if (sub && typeof sub.remove === 'function') sub.remove();
+    });
+    videoNoteSubscriptions.current = [];
+  };
+
+  const handleVideoNotePlayerReady = (player) => {
+    videoNotePlayerRef.current = player;
+    cleanupVideoNoteSubscriptions();
+    
+    if (player) {
+      try {
+        player.timeUpdateEventInterval = 0.1;
+      } catch (e) {}
+
+      setVideoNotePosition(player.currentTime || 0);
+      setVideoNoteDuration(player.duration || 0);
+      setVideoNoteIsPlaying(!!player.playing);
+
+      const subs = [];
+      if (typeof player.addListener === 'function') {
+        subs.push(player.addListener('timeUpdate', (payload) => {
+          if (isVideoNoteSeeking) return;
+          setVideoNotePosition(payload?.currentTime ?? player.currentTime ?? 0);
+        }));
+        subs.push(player.addListener('sourceLoad', (payload) => {
+          setVideoNoteDuration(payload?.duration ?? player.duration ?? 0);
+        }));
+        subs.push(player.addListener('playingChange', (payload) => {
+          setVideoNoteIsPlaying(!!payload?.isPlaying);
+        }));
+      }
+      videoNoteSubscriptions.current = subs;
+    }
+  };
+
+  const videoNotePanResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: (evt, gestureState) => {
+        setIsVideoNoteSeeking(true);
+        handleVideoNoteSeek(evt);
+      },
+      onPanResponderMove: (evt, gestureState) => {
+        handleVideoNoteSeek(evt);
+      },
+      onPanResponderRelease: () => {
+        setIsVideoNoteSeeking(false);
+        if (videoNotePlayerRef.current && videoNoteSeekingPosition !== null) {
+          videoNotePlayerRef.current.currentTime = videoNoteSeekingPosition;
+          setVideoNotePosition(videoNoteSeekingPosition);
+          setVideoNoteSeekingPosition(null);
+        }
+      },
+    })
+  ).current;
+
+  const handleVideoNoteSeek = (evt) => {
+    const { locationX } = evt.nativeEvent;
+    const ratio = Math.max(0, Math.min(1, locationX / videoNoteSliderWidth));
+    if (videoNoteDuration > 0) {
+      setVideoNoteSeekingPosition(ratio * videoNoteDuration);
+    }
+  };
+
+  const handleVideoNoteModalClose = () => {
+    if (videoNotePlayerRef.current) {
+      videoNotePlayerRef.current.pause();
+    }
+    cleanupVideoNoteSubscriptions();
+    setIsVideoNoteModalVisible(false);
+    setActiveVideoNote(null);
+  };
+
+  const handleVideoNoteTogglePlay = () => {
+    if (videoNotePlayerRef.current) {
+      if (videoNoteIsPlaying) {
+        videoNotePlayerRef.current.pause();
+      } else {
+        videoNotePlayerRef.current.play();
+      }
+    }
   };
 
   const formatRecordingTime = (millis) => {
@@ -1210,6 +1559,15 @@ export default function ChatScreen({ route, navigation }) {
       }
     };
 
+    const handleVideoNotePress = (item) => {
+      const uri = item?.file_path || item?.video_url || item?.uri;
+      if (uri) {
+        const fullUri = uri.startsWith('http') ? uri : `${API_BASE_URL}${uri.startsWith('/') ? '' : '/'}${uri}`;
+        setActiveVideoNote(fullUri);
+        setIsVideoNoteModalVisible(true);
+      }
+    };
+
     return (
       <Pressable 
         onPress={handlePress}
@@ -1246,7 +1604,7 @@ export default function ChatScreen({ route, navigation }) {
             <View style={styles.mediaGridContainer}>
               <View style={styles.mediaGrid}>
                 {item.attachments.map((att, idx) => {
-                  if (!att.file_path) return null;
+                  if (!att.file_path || att.type === 'video_note') return null;
                   const attUri = att.file_path.startsWith('http') ? att.file_path : `${API_BASE_URL}${att.file_path}`;
                   
                   // Расчет размеров для сетки
@@ -1286,6 +1644,8 @@ export default function ChatScreen({ route, navigation }) {
                         item={{ ...att, message_type: att.type }} 
                         style={{ width: '100%', height: '100%' }}
                         onFullScreen={() => handleFullScreen(attUri, att.type)}
+                        shouldPlay={viewableItems.includes(item.id)}
+                        isStatic={true}
                       />
                     </Pressable>
                   );
@@ -1298,14 +1658,37 @@ export default function ChatScreen({ route, navigation }) {
                 item={item} 
                 onFullScreen={handleFullScreen} 
                 style={{ borderRadius: 12, overflow: 'hidden' }}
+                shouldPlay={viewableItems.includes(item.id)}
+                isStatic={true}
               />
             )
           )}
           {isVoice && (
-            <VoiceMessage item={item} currentUserId={currentUserId} />
+            <VoiceMessage 
+              item={item} 
+              currentUserId={currentUserId} 
+              isParentVisible={viewableItems.includes(item.id)}
+            />
           )}
           {isVideoNote && (
-            <VideoNoteMessage item={item} isReceived={isReceived} />
+            <Pressable onPress={() => handleVideoNotePress(item)}>
+              <VideoNoteMessage 
+                item={item} 
+                isReceived={isReceived} 
+                isParentVisible={viewableItems.includes(item.id)}
+              />
+            </Pressable>
+          )}
+          {item.attachments && item.attachments.some(att => att.type === 'video_note') && (
+            item.attachments.filter(att => att.type === 'video_note').map((att, idx) => (
+              <Pressable key={`att_vn_${idx}`} onPress={() => handleVideoNotePress(att)}>
+                <VideoNoteMessage 
+                  item={att} 
+                  isReceived={isReceived} 
+                  isParentVisible={viewableItems.includes(item.id)}
+                />
+              </Pressable>
+            ))
           )}
           {isFile && (
             <FileMessage item={item} currentUserId={currentUserId} />
@@ -1502,7 +1885,7 @@ export default function ChatScreen({ route, navigation }) {
       <FlatList
         ref={chatFlatListRef}
         data={messages}
-        extraData={[messages.length, currentUserId, selectedIds.length, theme, userId]}
+        extraData={[messages.length, currentUserId, selectedIds.length, theme, userId, viewableItems]}
         keyExtractor={(item) => (item.id || Math.random()).toString()}
         renderItem={renderMessageItem}
         onEndReached={loadMoreMessages}
@@ -1515,6 +1898,8 @@ export default function ChatScreen({ route, navigation }) {
             animated: true 
           });
         }}
+        onViewableItemsChanged={onViewableItemsChanged}
+        viewabilityConfig={viewabilityConfig}
         removeClippedSubviews={false}
         initialNumToRender={15}
         maxToRenderPerBatch={10}
@@ -1530,19 +1915,23 @@ export default function ChatScreen({ route, navigation }) {
       >
         <View style={styles.fullScreenContainer}>
           <StatusBar hidden />
-          <TouchableOpacity 
-            style={styles.closeButton} 
-            onPress={() => setFullScreenMedia(null)}
-          >
-            <MaterialIcons name="close" size={30} color="white" />
-          </TouchableOpacity>
+          {showFullScreenControls && (
+            <View style={styles.fullScreenControlsTop}>
+              <TouchableOpacity 
+                style={styles.fullScreenIconButton} 
+                onPress={handleDownloadMedia}
+              >
+                <MaterialIcons name="file-download" size={30} color="white" />
+              </TouchableOpacity>
 
-          <TouchableOpacity 
-            style={styles.downloadButton} 
-            onPress={handleDownloadMedia}
-          >
-            <MaterialIcons name="file-download" size={30} color="white" />
-          </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.fullScreenIconButton} 
+                onPress={() => setFullScreenMedia(null)}
+              >
+                <MaterialIcons name="close" size={30} color="white" />
+              </TouchableOpacity>
+            </View>
+          )}
           
           <FlatList
             data={fullScreenMedia?.list || []}
@@ -1579,14 +1968,188 @@ export default function ChatScreen({ route, navigation }) {
                   item={mediaItem}
                   style={styles.fullScreenVideo}
                   resizeMode="contain"
-                  useNativeControls={true}
+                  useNativeControls={false}
+                  isLooping={false}
                   shouldPlay={currentMediaIndex === index}
                   isMuted={false}
+                  onPlayerReady={(player) => {
+                    fullScreenPlayersByIndex.current.set(index, player);
+                    if (index === currentMediaIndex) {
+                      try {
+                        player.playbackRate = fullScreenPlaybackRate;
+                      } catch (e) {
+                        console.log('[FullScreenVideo] onPlayerReady: Failed to set playbackRate:', e);
+                      }
+                      attachFullScreenPlayer(player);
+                    }
+                  }}
                 />
+
+                <Pressable style={StyleSheet.absoluteFill} onPress={toggleFullScreenControls}>
+                  {showFullScreenControls && (mediaItem.message_type === 'video' || mediaItem.type === 'video') && (
+                    <View style={styles.fullScreenCenterButtonContainer}>
+                      <TouchableOpacity 
+                        style={styles.fullScreenCenterPlayButton} 
+                        onPress={handleFullScreenPlayPause}
+                      >
+                        <MaterialIcons 
+                          name={fullScreenIsPlaying ? "pause" : "play-arrow"} 
+                          size={50} 
+                          color="white" 
+                        />
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </Pressable>
               </View>
             )}
           />
+
+          {showFullScreenControls && (
+            <View style={styles.fullScreenControlsBottom}>
+              {(fullScreenMedia?.list[currentMediaIndex]?.type === 'video' || fullScreenMedia?.list[currentMediaIndex]?.message_type === 'video') && (
+                <View style={{ position: 'absolute', top: -50, right: 20 }}>
+                  <TouchableOpacity 
+                    onPress={handleFullScreenToggleRate} 
+                    style={{ backgroundColor: 'rgba(0,0,0,0.5)', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 5, borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)' }}
+                  >
+                    <Text style={{ color: 'white', fontWeight: 'bold' }}>{fullScreenPlaybackRate}x</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+              <View style={styles.fullScreenTimelineRow}>
+                <Text style={styles.fullScreenTimeText}>
+                  {formatMediaTime(isSeekingFullScreen ? (seekingPositionFullScreen ?? fullScreenPosition) : fullScreenPosition)}
+                </Text>
+
+                <View
+                  style={styles.fullScreenSliderContainer}
+                  onLayout={(e) => setFullScreenSliderWidth(e.nativeEvent.layout.width || 1)}
+                  {...fullScreenSliderPanResponder.panHandlers}
+                >
+                  <View style={styles.fullScreenSliderTrack} />
+                  <View
+                    style={[
+                      styles.fullScreenSliderFill,
+                      {
+                        width: `${
+                          fullScreenDuration > 0
+                            ? (
+                                ((isSeekingFullScreen ? (seekingPositionFullScreen ?? fullScreenPosition) : fullScreenPosition) / fullScreenDuration) *
+                                100
+                              ).toFixed(2)
+                            : 0
+                        }%`,
+                      },
+                    ]}
+                  />
+                  <View
+                    style={[
+                      styles.fullScreenSliderThumb,
+                      {
+                        left:
+                          fullScreenDuration > 0
+                            ? Math.max(
+                                0,
+                                Math.min(
+                                  fullScreenSliderWidth - 12,
+                                  ((isSeekingFullScreen ? (seekingPositionFullScreen ?? fullScreenPosition) : fullScreenPosition) / fullScreenDuration) *
+                                    fullScreenSliderWidth -
+                                    6
+                                )
+                              )
+                            : 0,
+                      },
+                    ]}
+                  />
+                </View>
+
+                <Text style={styles.fullScreenTimeText}>{formatMediaTime(fullScreenDuration)}</Text>
+              </View>
+            </View>
+          )}
         </View>
+      </Modal>
+
+      <Modal
+        visible={isVideoNoteModalVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={handleVideoNoteModalClose}
+      >
+        <Pressable 
+          style={styles.videoNoteModalOverlay} 
+          onPress={handleVideoNoteModalClose}
+        >
+          <View style={styles.videoNoteModalContent}>
+            <View 
+              style={styles.videoNoteSliderContainer}
+              onLayout={(e) => setVideoNoteSliderWidth(e.nativeEvent.layout.width || 320)}
+              {...videoNotePanResponder.panHandlers}
+            >
+              <View style={styles.videoNoteModalCircle}>
+                {activeVideoNote && (
+                  <VideoPlayer
+                    uri={activeVideoNote}
+                    style={styles.videoNoteModalVideo}
+                    onClose={handleVideoNoteModalClose}
+                    hideControls={true}
+                    shouldPlay={true}
+                    isLooping={true}
+                    onPlayerReady={handleVideoNotePlayerReady}
+                  />
+                )}
+                {/* Круговой прогресс */}
+                <View style={styles.videoNoteProgressRing}>
+                   {/* В реальном приложении здесь лучше использовать react-native-svg 
+                       Для имитации кольцевого прогресса без SVG, мы используем 
+                       слайдер снизу и круглую рамку.
+                   */}
+                </View>
+              </View>
+
+              {/* Линейный прогресс под кругом (как альтернатива или дополнение для удобства перемотки) */}
+              <View style={styles.videoNoteProgressBar}>
+                <View style={[
+                  styles.videoNoteProgressFill,
+                  { 
+                    width: `${videoNoteDuration > 0 
+                      ? (((isVideoNoteSeeking ? videoNoteSeekingPosition : videoNotePosition) / videoNoteDuration) * 100).toFixed(2) 
+                      : 0}%` 
+                  }
+                ]} />
+              </View>
+            </View>
+
+            <View style={styles.videoNoteControlsRow}>
+              <Text style={styles.videoNoteTimeText}>
+                {formatMediaTime(isVideoNoteSeeking ? videoNoteSeekingPosition : videoNotePosition)}
+              </Text>
+              
+              <TouchableOpacity 
+                style={styles.videoNotePlayPauseBtn} 
+                onPress={handleVideoNoteTogglePlay}
+              >
+                <MaterialIcons 
+                  name={videoNoteIsPlaying ? "pause" : "play-arrow"} 
+                  size={32} 
+                  color="#fff" 
+                />
+              </TouchableOpacity>
+
+              <Text style={styles.videoNoteTimeText}>
+                {formatMediaTime(videoNoteDuration)}
+              </Text>
+            </View>
+
+            <TouchableOpacity 
+              style={styles.videoNoteModalClose} 
+              onPress={handleVideoNoteModalClose}
+            >
+              <MaterialIcons name="close" size={30} color="#fff" />
+            </TouchableOpacity>
+          </View>
+        </Pressable>
       </Modal>
 
       {!selectionMode && (
@@ -1921,6 +2484,85 @@ const styles = StyleSheet.create({
   fullScreenContainer: { flex: 1, backgroundColor: 'black' },
   fullScreenImage: { width: '100%', height: '100%' },
   fullScreenVideo: { width: '100%', height: '100%' },
+  // Fullscreen media controls (custom)
+  fullScreenControlsTop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    paddingTop: 40,
+    paddingHorizontal: 16,
+    paddingBottom: 10,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    zIndex: 20,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+  },
+  fullScreenIconButton: {
+    padding: 6,
+  },
+  fullScreenControlsBottom: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: 16,
+    paddingBottom: 22,
+    paddingTop: 20,
+    zIndex: 20,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+  },
+  fullScreenCenterButtonContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  fullScreenCenterPlayButton: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  fullScreenTimelineRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  fullScreenTimeText: {
+    color: '#fff',
+    fontSize: 12,
+    width: 48,
+    textAlign: 'center',
+  },
+  fullScreenSliderContainer: {
+    flex: 1,
+    height: 28,
+    justifyContent: 'center',
+    marginHorizontal: 10,
+  },
+  fullScreenSliderTrack: {
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255,255,255,0.35)',
+  },
+  fullScreenSliderFill: {
+    position: 'absolute',
+    left: 0,
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: '#fff',
+  },
+  fullScreenSliderThumb: {
+    position: 'absolute',
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#fff',
+  },
+
+  // Legacy (kept for compatibility; not used by custom controls)
   closeButton: { position: 'absolute', top: 40, right: 20, zIndex: 10 },
   downloadButton: { position: 'absolute', top: 40, left: 20, zIndex: 10 },
   videoPreviewOverlay: {
@@ -1942,5 +2584,89 @@ const styles = StyleSheet.create({
   videoPreview: {
     width: '100%',
     height: '100%',
+  },
+  videoNoteModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.85)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  videoNoteModalContent: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  videoNoteModalCircle: {
+    width: 320,
+    height: 320,
+    borderRadius: 160,
+    overflow: 'hidden',
+    backgroundColor: '#000',
+    borderWidth: 0,
+    borderColor: 'rgba(255,255,255,0.2)',
+    ...getShadow('#000', { width: 0, height: 10 }, 0.5, 20, 15),
+  },
+  videoNoteSliderContainer: {
+    width: 320,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  videoNoteProgressBar: {
+    width: 280,
+    height: 4,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderRadius: 2,
+    marginTop: 20,
+    overflow: 'hidden',
+  },
+  videoNoteProgressFill: {
+    height: '100%',
+    backgroundColor: '#fff',
+    borderRadius: 2,
+  },
+  videoNoteControlsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 15,
+    width: 280,
+    justifyContent: 'space-between',
+  },
+  videoNoteTimeText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '500',
+    width: 60,
+    textAlign: 'center',
+  },
+  videoNotePlayPauseBtn: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.3)',
+  },
+  videoNoteProgressRing: {
+    position: 'absolute',
+    top: -4,
+    left: -4,
+    right: -4,
+    bottom: -4,
+    borderRadius: 164,
+    borderWidth: 4,
+    borderColor: 'rgba(255,255,255,0.3)',
+  },
+  videoNoteModalVideo: {
+    width: '100%',
+    height: '100%',
+  },
+  videoNoteModalClose: {
+    marginTop: 30,
+    padding: 10,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderRadius: 30,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.3)',
   },
 });

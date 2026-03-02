@@ -1,7 +1,8 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { getShadow } from '../utils/shadowStyles';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View, Image } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
+import { cacheDirectory, getInfoAsync, downloadAsync } from 'expo-file-system/legacy';
 
 import { API_BASE_URL } from '../constants';
 import { useTheme } from '../context/ThemeContext';
@@ -16,55 +17,76 @@ const resolveRemoteUri = (path) => {
   return `${base}${rel}`;
 };
 
-export default function VideoNoteMessage({ item, isReceived }) {
+export default function VideoNoteMessage({ item, isReceived, isParentVisible = true }) {
   const { theme } = useTheme();
   const colors = themeConstants[theme];
-  const [isPlaying, setIsPlaying] = useState(false);
+  const [localUri, setLocalUri] = useState(null);
+  const [loading, setLoading] = useState(true);
 
-  const uri = useMemo(() => {
+  const remoteUri = useMemo(() => {
     return resolveRemoteUri(item?.file_path || item?.video_url || item?.uri);
   }, [item?.file_path, item?.uri, item?.video_url]);
 
-  if (!uri) return null;
+  useEffect(() => {
+    if (!remoteUri) {
+      setLoading(false);
+      return;
+    }
+
+    const fileName = remoteUri.split('/').pop() || `vnote_${item.id}.mp4`;
+    const localFileUri = `${cacheDirectory}${fileName}`;
+
+    const loadMedia = async () => {
+      try {
+        if (remoteUri.startsWith('file://') || remoteUri.startsWith('content://')) {
+          setLocalUri(remoteUri);
+          setLoading(false);
+          return;
+        }
+
+        const fileInfo = await getInfoAsync(localFileUri);
+        if (fileInfo.exists) {
+          setLocalUri(fileInfo.uri);
+        } else {
+          const downloadRes = await downloadAsync(remoteUri, localFileUri);
+          setLocalUri(downloadRes.uri);
+        }
+      } catch (error) {
+        console.error('Error loading video note:', error);
+        setLocalUri(remoteUri);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadMedia();
+  }, [remoteUri]);
+
+  if (!remoteUri) return null;
 
   return (
     <View
       style={[
         styles.container,
         {
-          backgroundColor: isReceived ? colors.surface : colors.primary,
-          borderColor: isReceived ? colors.border : 'rgba(255,255,255,0.2)',
+          backgroundColor: 'transparent',
         },
       ]}
     >
-      <Pressable onPress={() => setIsPlaying((p) => !p)} style={styles.videoWrapper}>
-        <VideoPlayer
-          uri={uri}
-          isMuted={!isPlaying}
-          isLooping={true}
-          shouldPlay={isPlaying}
-          resizeMode="cover"
+      <Pressable onPress={null} style={styles.videoWrapper}>
+        <Image
+          source={{ uri: localUri || remoteUri }}
           style={styles.video}
         />
-
-        {!isPlaying && (
-          <View
-            style={[
-              styles.playOverlay,
-              {
-                backgroundColor: isReceived
-                  ? colors.primary + '35'
-                  : 'rgba(255,255,255,0.25)',
-              },
-            ]}
-          >
+        <View style={styles.playOverlay}>
+          <View style={styles.playButtonCircle}>
             <MaterialIcons
               name="play-arrow"
               size={34}
-              color={isReceived ? colors.primary : '#fff'}
+              color="#fff"
             />
           </View>
-        )}
+        </View>
       </Pressable>
     </View>
   );
@@ -78,9 +100,7 @@ const styles = StyleSheet.create({
     height: SIZE,
     borderRadius: SIZE / 2,
     overflow: 'hidden',
-    borderWidth: 1,
     marginVertical: 2,
-    ...getShadow('#000', { width: 0, height: 2 }, 0.15, 4, 3),
   },
   videoWrapper: {
     width: '100%',
@@ -90,16 +110,27 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
     borderRadius: SIZE / 2,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.4)',
+    backgroundColor: '#000',
   },
   playOverlay: {
     position: 'absolute',
-    left: '50%',
-    top: '50%',
-    transform: [{ translateX: -26 }, { translateY: -26 }],
+    left: 0,
+    top: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  playButtonCircle: {
     width: 52,
     height: 52,
     borderRadius: 26,
+    backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'center',
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.3)',
   },
 });
