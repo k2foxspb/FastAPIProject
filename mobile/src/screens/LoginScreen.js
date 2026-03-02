@@ -26,7 +26,6 @@ export default function LoginScreen({ navigation }) {
   useEffect(() => {
     GoogleSignin.configure({
       webClientId: '176773891332-vl9om7pugk8voh0mtnkbk2crqd9gtk1m.apps.googleusercontent.com',
-      androidClientId: '176773891332-b6msjuc4rf3fhmd99uq1q4lo1ao5v5e4.apps.googleusercontent.com',
       offlineAccess: true,
       forceCodeForRefreshToken: true,
     });

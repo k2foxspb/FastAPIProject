@@ -4,6 +4,7 @@ import { View, Text, StyleSheet, Image, FlatList, ScrollView, TouchableOpacity, 
 import { useFocusEffect } from '@react-navigation/native';
 import api, { usersApi, newsApi, setAuthToken } from '../api';
 import { Ionicons as Icon } from '@expo/vector-icons';
+import Constants from 'expo-constants';
 import { useNotifications } from '../context/NotificationContext';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
