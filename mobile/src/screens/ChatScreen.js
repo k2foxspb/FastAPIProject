@@ -674,7 +674,7 @@ export default function ChatScreen({ route, navigation }) {
       const msg = messages[i];
       if (msg.message_type === 'media_group' && msg.attachments) {
         msg.attachments.forEach(att => {
-          if (att.file_path) {
+          if (att.file_path && att.type !== 'video_note') {
             media.push({
               uri: att.file_path.startsWith('http') ? att.file_path : `${API_BASE_URL}${att.file_path}`,
               file_path: att.file_path,
@@ -683,7 +683,7 @@ export default function ChatScreen({ route, navigation }) {
             });
           }
         });
-      } else if ((msg.message_type === 'image' || msg.message_type === 'video') && msg.file_path) {
+      } else if ((msg.message_type === 'image' || msg.message_type === 'video') && msg.file_path && msg.message_type !== 'video_note') {
         media.push({
           uri: msg.file_path.startsWith('http') ? msg.file_path : `${API_BASE_URL}${msg.file_path}`,
           file_path: msg.file_path,
@@ -1065,6 +1065,15 @@ export default function ChatScreen({ route, navigation }) {
       const filename = `video_note_${Date.now()}.mp4`;
       let currentUploadId = null;
 
+      // Устанавливаем данные для плейсхолдера
+      setUploadingData({
+        uri: uri,
+        mimeType: 'video/mp4',
+        type: 'video_note',
+        loaded: 0,
+        total: 100
+      });
+
       const uploadResult = await uploadManager.uploadFileResumable(
         uri,
         filename,
@@ -1127,11 +1136,16 @@ export default function ChatScreen({ route, navigation }) {
       setTimeout(async () => {
         if (cameraRef.current) {
           try {
-            const video = await cameraRef.current.recordAsync({
+            console.log('[ChatScreen] startVideoRecording - starting recordAsync');
+            const videoPromise = cameraRef.current.recordAsync({
               maxDuration: 60,
               quality: '720p',
             });
+            
+            const video = await videoPromise;
             const duration = Date.now() - startTime;
+            console.log('[ChatScreen] recordAsync finished. URI:', video?.uri, 'Duration:', duration);
+            
             if (video && video.uri) {
               if (duration >= 500) {
                 handleSendVideoNote(video.uri);
@@ -1156,13 +1170,17 @@ export default function ChatScreen({ route, navigation }) {
   };
 
   const stopVideoRecording = async () => {
+    console.log('[ChatScreen] stopVideoRecording called, isVideoRecording:', isVideoRecording);
     if (cameraRef.current && isVideoRecording) {
       try {
-        await cameraRef.current.stopRecording();
+        console.log('[ChatScreen] stopVideoRecording - calling stopRecording()');
+        cameraRef.current.stopRecording();
       } catch (e) {
         console.error('Error stopping video recording:', e);
       }
-      setIsVideoRecording(false);
+      // Не ставим setIsVideoRecording(false) здесь, дождемся завершения recordAsync
+    } else if (!isVideoRecording) {
+      console.warn('[ChatScreen] stopVideoRecording called but isVideoRecording is false');
     }
   };
 
@@ -1363,6 +1381,29 @@ export default function ChatScreen({ route, navigation }) {
   const [isVideoNoteSeeking, setIsVideoNoteSeeking] = useState(false);
   const [videoNoteSeekingPosition, setVideoNoteSeekingPosition] = useState(null);
   const videoNoteSubscriptions = useRef([]);
+  const [isVideoRecordingTimer, setIsVideoRecordingTimer] = useState(0);
+  const videoRecordingInterval = useRef(null);
+
+  useEffect(() => {
+    let interval;
+    if (isVideoRecording) {
+      setIsVideoRecordingTimer(0);
+      interval = setInterval(() => {
+        setIsVideoRecordingTimer(prev => prev + 1);
+      }, 1000);
+      videoRecordingInterval.current = interval;
+    } else {
+      if (videoRecordingInterval.current) {
+        clearInterval(videoRecordingInterval.current);
+        videoRecordingInterval.current = null;
+      }
+    }
+    return () => {
+      if (interval) {
+        clearInterval(interval);
+      }
+    };
+  }, [isVideoRecording]);
 
   const cleanupVideoNoteSubscriptions = () => {
     videoNoteSubscriptions.current.forEach(sub => {
@@ -1484,27 +1525,91 @@ export default function ChatScreen({ route, navigation }) {
   const renderUploadPlaceholder = () => {
     if (uploadingProgress === null || !uploadingData.uri) return null;
 
+    const isVideoNote = uploadingData.type === 'video_note' || (uploadingData.mimeType === 'video/mp4' && !uploadingData.total);
+    const progressPercent = Math.round(uploadingProgress * 100);
+
     return (
       <View style={[
         styles.messageWrapper, 
         styles.sentWrapper,
-        { opacity: 0.7, marginBottom: 10 }
+        { opacity: 0.8, marginBottom: 10 }
       ]}>
-        <View style={[styles.messageBubble, styles.sent, { backgroundColor: colors.primary }]}>
-          {uploadingData.mimeType?.startsWith('image/') ? (
-            <Image 
-              source={{ uri: uploadingData.uri }} 
-              style={{ width: 200, height: 150, borderRadius: 10 }} 
-              resizeMode="cover" 
-            />
+        <View style={[
+          styles.messageBubble, 
+          styles.sent, 
+          { backgroundColor: colors.primary },
+          uploadingData.type === 'video_note' && { 
+            width: 200, 
+            height: 200, 
+            borderRadius: 100, 
+            padding: 0, 
+            justifyContent: 'center', 
+            alignItems: 'center',
+            borderWidth: 2,
+            borderColor: 'rgba(255,255,255,0.3)'
+          }
+        ]}>
+          {uploadingData.type === 'video_note' ? (
+            <View style={{ width: '100%', height: '100%', justifyContent: 'center', alignItems: 'center' }}>
+               <Image 
+                source={{ uri: uploadingData.uri }} 
+                style={{ width: '100%', height: '100%', borderRadius: 100, position: 'absolute' }} 
+                resizeMode="cover" 
+              />
+              <View style={{ 
+                backgroundColor: 'rgba(0,0,0,0.4)', 
+                width: 60, 
+                height: 60, 
+                borderRadius: 30, 
+                justifyContent: 'center', 
+                alignItems: 'center',
+                borderWidth: 2,
+                borderColor: '#fff'
+              }}>
+                <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 14 }}>{progressPercent}%</Text>
+              </View>
+            </View>
+          ) : uploadingData.mimeType?.startsWith('image/') ? (
+            <View>
+              <Image 
+                source={{ uri: uploadingData.uri }} 
+                style={{ width: 200, height: 150, borderRadius: 10 }} 
+                resizeMode="cover" 
+              />
+              <View style={{ 
+                ...StyleSheet.absoluteFillObject, 
+                backgroundColor: 'rgba(0,0,0,0.3)', 
+                justifyContent: 'center', 
+                alignItems: 'center',
+                borderRadius: 10
+              }}>
+                <View style={{ 
+                  backgroundColor: 'rgba(0,0,0,0.5)', 
+                  paddingHorizontal: 12, 
+                  paddingVertical: 6, 
+                  borderRadius: 15,
+                  flexDirection: 'row',
+                  alignItems: 'center'
+                }}>
+                  <ActivityIndicator size="small" color="#fff" style={{ marginRight: 8 }} />
+                  <Text style={{ color: '#fff', fontWeight: 'bold' }}>{progressPercent}%</Text>
+                </View>
+              </View>
+            </View>
           ) : (
-            <View style={{ flexDirection: 'row', alignItems: 'center', padding: 10 }}>
-              <MaterialIcons name="insert-drive-file" size={24} color="#fff" />
-              <Text style={{ color: '#fff', marginLeft: 10 }}>Загрузка файла...</Text>
+            <View style={{ padding: 10 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+                <MaterialIcons name="insert-drive-file" size={24} color="#fff" />
+                <Text style={{ color: '#fff', marginLeft: 10, fontWeight: '500' }}>Загрузка файла...</Text>
+              </View>
+              <View style={{ height: 4, backgroundColor: 'rgba(255,255,255,0.3)', borderRadius: 2, overflow: 'hidden', width: 150 }}>
+                <View style={{ height: '100%', backgroundColor: '#fff', width: `${progressPercent}%` }} />
+              </View>
+              <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 10, marginTop: 4, textAlign: 'right' }}>{progressPercent}%</Text>
             </View>
           )}
-          <View style={styles.messageFooter}>
-            <Text style={[styles.messageTime, { color: 'rgba(255,255,255,0.7)' }]}>Отправка...</Text>
+          <View style={[styles.messageFooter, uploadingData.type === 'video_note' && { position: 'absolute', bottom: 15, right: 15, backgroundColor: 'rgba(0,0,0,0.3)', borderRadius: 10, paddingHorizontal: 5 }]}>
+            <Text style={[styles.messageTime, { color: 'rgba(255,255,255,0.9)' }]}>Отправка...</Text>
           </View>
         </View>
       </View>
@@ -1679,7 +1784,7 @@ export default function ChatScreen({ route, navigation }) {
               />
             </Pressable>
           )}
-          {item.attachments && item.attachments.some(att => att.type === 'video_note') && (
+          {item.attachments && item.attachments.some(att => att.type === 'video_note') && !isVideoNote && (
             item.attachments.filter(att => att.type === 'video_note').map((att, idx) => (
               <Pressable key={`att_vn_${idx}`} onPress={() => handleVideoNotePress(att)}>
                 <VideoNoteMessage 
@@ -1867,7 +1972,7 @@ export default function ChatScreen({ route, navigation }) {
           </View>
         )}
       </View>
-      {uploadingProgress !== null && (
+      {uploadingProgress !== null && !uploadingData.uri && (
         <View style={[styles.uploadProgressContainer, { backgroundColor: colors.background, borderColor: colors.border }]}>
           <View style={styles.uploadProgressInfo}>
             <Text style={{ color: colors.text }}>
@@ -2258,6 +2363,12 @@ export default function ChatScreen({ route, navigation }) {
               facing="front"
               mode="video"
             />
+            <View style={styles.videoRecordingTimerContainer}>
+              <View style={styles.videoRecordingDot} />
+              <Text style={styles.videoRecordingTimerText}>
+                {Math.floor(isVideoRecordingTimer / 60)}:{isVideoRecordingTimer % 60 < 10 ? '0' : ''}{isVideoRecordingTimer % 60}
+              </Text>
+            </View>
           </View>
         </View>
       )}
@@ -2584,6 +2695,30 @@ const styles = StyleSheet.create({
   videoPreview: {
     width: '100%',
     height: '100%',
+  },
+  videoRecordingTimerContainer: {
+    position: 'absolute',
+    bottom: 20,
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+  },
+  videoRecordingDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#ff3b30',
+    marginRight: 6,
+  },
+  videoRecordingTimerText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
   },
   videoNoteModalOverlay: {
     flex: 1,
