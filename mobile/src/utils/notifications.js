@@ -11,16 +11,31 @@ import { displayBundledMessage, handleNotificationResponse, parseNotificationDat
 
 // Global state to track if native module is broken during session
 let nativeMessagingBroken = false;
-const isExpoGo = Constants.appOwnership === 'expo' || Constants.executionEnvironment === 'storeClient';
+let lastMessagingUnavailableReason = null;
+// Expo Go doesn't support @react-native-firebase/messaging.
+// IMPORTANT: `appOwnership === 'expo'` can also be true for Dev Client / development builds,
+// so we primarily rely on `executionEnvironment === 'storeClient'` (Expo Go).
+const isExpoGo =
+  Constants.executionEnvironment === 'storeClient' ||
+  (Constants.executionEnvironment == null && Constants.appOwnership === 'expo');
 
 // Helper to get messaging instance safely
 const getMessaging = async () => {
   if (Platform.OS === 'web') return null;
   if (isExpoGo) {
-    if (__DEV__) console.warn('[FCM] Firebase Messaging is NOT supported in Expo Go. Use Development Build.');
+    lastMessagingUnavailableReason = 'expo_go';
+    if (__DEV__) {
+      console.warn(
+        '[FCM] Firebase Messaging is NOT supported in Expo Go. Use Development Build. ' +
+          `(executionEnvironment=${Constants.executionEnvironment}, appOwnership=${Constants.appOwnership})`
+      );
+    }
     return null;
   }
-  if (nativeMessagingBroken) return null;
+  if (nativeMessagingBroken) {
+    lastMessagingUnavailableReason = 'native_module_broken';
+    return null;
+  }
 
   try {
     const fb = firebase?.initializeApp ? firebase : (firebase?.default?.initializeApp ? firebase.default : firebase);
@@ -35,6 +50,7 @@ const getMessaging = async () => {
     if (!msgFunc) {
       console.error('[FCM] Messaging module NOT available in library exports');
       nativeMessagingBroken = true;
+      lastMessagingUnavailableReason = 'messaging_export_missing';
       return null;
     }
     
@@ -44,6 +60,7 @@ const getMessaging = async () => {
     if (!instance || typeof instance.getToken !== 'function') {
       console.error('[FCM] Messaging instance is invalid or missing getToken() - native module incomplete');
       nativeMessagingBroken = true;
+      lastMessagingUnavailableReason = 'messaging_instance_invalid';
       return null;
     }
     
@@ -53,9 +70,14 @@ const getMessaging = async () => {
     if (e.message?.includes('native') || e.message?.includes('not a function') || e.message?.includes('undefined')) {
       nativeMessagingBroken = true;
     }
+    lastMessagingUnavailableReason = e?.message ? `exception:${e.message}` : 'exception';
     return null;
   }
 };
+
+export function getLastMessagingUnavailableReason() {
+  return lastMessagingUnavailableReason;
+}
 
 export async function requestUserPermission() {
   if (Platform.OS === 'web') return false;
@@ -257,7 +279,8 @@ export async function getFcmToken() {
   try {
     const msg = await getMessaging();
     if (!msg) {
-      console.log('[FCM] Messaging not available');
+      const reason = lastMessagingUnavailableReason || 'unknown';
+      console.log(`[FCM] Messaging not available (reason=${reason})`);
       return null;
     }
     
@@ -346,8 +369,10 @@ export async function updateServerFcmToken(passedToken = null) {
     }
 
     if (!token) {
-      console.log('FCM Token not available yet, will retry later.');
-      return;
+      const reason = getLastMessagingUnavailableReason();
+      const reasonSuffix = reason ? ` (reason=${reason})` : '';
+      console.log(`FCM Token not available yet, will retry later.${reasonSuffix}`);
+      return { success: false, error: `FCM token not available yet${reasonSuffix}` };
     }
 
     // Проверяем наличие токена авторизации

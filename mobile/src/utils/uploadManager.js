@@ -149,7 +149,7 @@ export const uploadManager = {
     } catch (error) {
       activeUploads.delete(uploadId);
       abortControllers.delete(uploadId);
-      if (error.name === 'AbortError' || error.message === 'Upload cancelled') {
+      if (error.name === 'AbortError' || controller.signal.aborted || error.message === 'Upload cancelled') {
         console.log(`[UploadManager] Upload ${uploadId} caught cancellation`);
         this.notifyProgress(uploadId, 0, 'cancelled');
       } else {
@@ -200,7 +200,14 @@ export const uploadManager = {
 
       return await res.json();
     } catch (error) {
-      console.error('Error in uploadChunk:', error);
+      // AbortError is an expected outcome when user cancels upload (AbortController.abort()).
+      // Do not log it as an error to avoid confusing diagnostics.
+      const aborted = signal?.aborted || error?.name === 'AbortError';
+      if (aborted) {
+        console.log(`[UploadManager] uploadChunk aborted for ${uploadId} at offset ${offset}`);
+      } else {
+        console.error('Error in uploadChunk:', error);
+      }
       throw error;
     }
   },

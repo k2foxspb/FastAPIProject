@@ -19,11 +19,18 @@ const initializeFirebase = async () => {
     databaseURL: "https://fastapi-f628e-default-rtdb.firebaseio.com",
   };
   
-  // Проверка на Expo Go
-  const isExpoGo = Constants.appOwnership === 'expo' || Constants.executionEnvironment === 'storeClient';
+  // Expo Go doesn't support @react-native-firebase/messaging.
+  // IMPORTANT: `appOwnership === 'expo'` can also be true for Dev Client / development builds,
+  // so we primarily rely on `executionEnvironment === 'storeClient'` (Expo Go).
+  const isExpoGo =
+    Constants.executionEnvironment === 'storeClient' ||
+    (Constants.executionEnvironment == null && Constants.appOwnership === 'expo');
   if (isExpoGo) {
     if (__DEV__) {
-      console.warn('⚠️ React Native Firebase (Messaging) NOT supported in Expo Go. Use a Development Build (npx expo run:android).');
+      console.warn(
+        '⚠️ React Native Firebase (Messaging) NOT supported in Expo Go. Use a Development Build (npx expo run:android). ' +
+          `(executionEnvironment=${Constants.executionEnvironment}, appOwnership=${Constants.appOwnership})`
+      );
     }
     return null;
   }

@@ -1676,7 +1676,7 @@ export default function ChatScreen({ route, navigation }) {
                   ]}
                 >
                   <MaterialIcons 
-                    name={inputMode === 'audio' ? (isRecording ? "mic" : "mic-none") : (isVideoRecording ? "videocam" : "videocam-outline")} 
+                    name={inputMode === 'audio' ? (isRecording ? "mic" : "mic-none") : "videocam"} 
                     size={24} 
                     color={(isRecording || isVideoRecording) ? colors.error : colors.primary} 
                   />
