@@ -630,7 +630,17 @@ export const NotificationProvider = ({ children }) => {
 
   useEffect(() => {
     storage.getAccessToken().then(token => {
-      if (token) connect(token);
+      if (token) {
+        connect(token);
+        // Принудительно синхронизируем FCM токен при запуске, 
+        // так как сервер мог его удалить из-за ошибки NotRegistered
+        try {
+          const { updateServerFcmToken } = require('../utils/notifications');
+          updateServerFcmToken(null, true);
+        } catch (e) {
+          console.log('[NotificationContext] Failed to sync FCM token on start:', e.message);
+        }
+      }
     });
   }, [connect]);
 

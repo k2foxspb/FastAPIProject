@@ -416,7 +416,7 @@ export async function getFcmToken() {
   }
 }
 
-export async function updateServerFcmToken(passedToken = null) {
+export async function updateServerFcmToken(passedToken = null, forceSync = false) {
   try {
     let token = passedToken;
     
@@ -442,6 +442,15 @@ export async function updateServerFcmToken(passedToken = null) {
     if (!accessToken) {
       console.log('User not authenticated, skipping FCM token update on server.');
       return;
+    }
+
+    // Если токен не изменился, не шлем (кроме случая принудительной синхронизации)
+    if (!forceSync) {
+      const lastSynced = await storage.getItem('last_synced_fcm_token');
+      if (lastSynced === token) {
+        console.log('[FCM] Token already synced with server, skipping.');
+        return { success: true, token, alreadySynced: true };
+      }
     }
 
     const response = await usersApi.updateFcmToken(token);
