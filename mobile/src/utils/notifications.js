@@ -1,4 +1,4 @@
-import { Alert, Platform, Vibration, Linking } from 'react-native';
+import { Alert, Platform, Vibration, Linking, NativeModules } from 'react-native';
 import Constants from 'expo-constants';
 import messaging from '@react-native-firebase/messaging';
 import notifee from '@notifee/react-native';
@@ -55,7 +55,7 @@ const getMessaging = async () => {
     }
     
     const instance = msgFunc();
-    
+
     // Safety check: sometimes the instance exists but methods are missing if native linking failed
     if (!instance || typeof instance.getToken !== 'function') {
       console.error('[FCM] Messaging instance is invalid or missing getToken() - native module incomplete');
@@ -63,7 +63,17 @@ const getMessaging = async () => {
       lastMessagingUnavailableReason = 'messaging_instance_invalid';
       return null;
     }
-    
+
+    // Deep native check: JS wrapper may exist but native binding can still be missing.
+    // RNFBMessagingModule is the native module registered by @react-native-firebase/messaging.
+    const nativeMsgMod = NativeModules.RNFBMessagingModule;
+    if (!nativeMsgMod || typeof nativeMsgMod.getToken !== 'function') {
+      console.error('[FCM] CRITICAL: RNFBMessagingModule is missing or incomplete. REBUILD REQUIRED (npx expo run:android).');
+      nativeMessagingBroken = true;
+      lastMessagingUnavailableReason = 'native_module_incomplete';
+      return null;
+    }
+
     return instance;
   } catch (e) {
     console.error('[FCM] Error in getMessaging:', e);
@@ -247,14 +257,18 @@ export async function setupCloudMessaging(onNotificationReceived = null) {
     }
 
     if (msg && typeof msg.getInitialNotification === 'function') {
-      msg.getInitialNotification().then(remoteMessage => {
-        if (remoteMessage) {
-          console.log('Initial notification (FCM):', remoteMessage?.notification);
-          setTimeout(() => openFromNotification(remoteMessage), 500);
-        }
-      }).catch(e => {
-        console.error('[FCM] getInitialNotification error:', e.message);
-      });
+      try {
+        msg.getInitialNotification().then(remoteMessage => {
+          if (remoteMessage) {
+            console.log('Initial notification (FCM):', remoteMessage?.notification);
+            setTimeout(() => openFromNotification(remoteMessage), 500);
+          }
+        }).catch(e => {
+          console.error('[FCM] getInitialNotification async error:', e.message);
+        });
+      } catch (e) {
+        console.error('[FCM] getInitialNotification sync error:', e.message);
+      }
     }
 
     // Обработка начального уведомления Notifee (если приложение было закрыто)
@@ -422,7 +436,7 @@ export async function checkAndRemindPermissions(options = {}) {
 
     // Cross-platform permission check via Notifee
     if (!notifee || typeof notifee.getSettings !== 'function') {
-      console.warn('[Notifications] Notifee or getSettings not available');
+      console.log('[Notifications] Notifee or getSettings not available, skipping permission reminder');
       return;
     }
     

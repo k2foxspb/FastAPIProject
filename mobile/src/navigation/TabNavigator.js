@@ -56,7 +56,8 @@ function ChatStack() {
       screenOptions={{
         headerStyle: { backgroundColor: colors.background },
         headerTintColor: colors.text,
-        cardStyleInterpolator: CardStyleInterpolators.forFadeFromBottomAndroid,
+        cardStyle: { backgroundColor: colors.background },
+        cardStyleInterpolator: CardStyleInterpolators.forHorizontalIOS,
         animationEnabled: true,
       }}
     >

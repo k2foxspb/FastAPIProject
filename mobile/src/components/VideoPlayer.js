@@ -1,5 +1,5 @@
-import React, { useEffect, useRef } from 'react';
-import { StyleSheet, View } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { StyleSheet, View, ActivityIndicator } from 'react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { setPlaybackAudioMode } from '../utils/audioSettings';
 
@@ -13,6 +13,7 @@ const VideoPlayer = ({
   resizeMode = 'cover',
   onPlayerReady,
 }) => {
+  const [playerStatus, setPlayerStatus] = useState('idle');
   const player = useVideoPlayer(uri, (p) => {
     p.loop = isLooping;
     p.muted = isMuted;
@@ -32,6 +33,11 @@ const VideoPlayer = ({
     if (typeof fn === 'function') {
       fn(player);
     }
+    
+    const sub = player.addListener('statusChange', (payload) => {
+      setPlayerStatus(payload.status);
+    });
+    return () => sub.remove();
   }, [player]);
 
   useEffect(() => {
@@ -61,6 +67,11 @@ const VideoPlayer = ({
         contentFit={resizeMode === 'contain' ? 'contain' : (resizeMode === 'stretch' ? 'fill' : 'cover')}
         nativeControls={useNativeControls}
       />
+      {(playerStatus === 'loading' || playerStatus === 'idle') && (
+        <View style={[StyleSheet.absoluteFill, { justifyContent: 'center', alignItems: 'center' }]}>
+          <ActivityIndicator size={style?.height > 100 ? "large" : "small"} color="#fff" />
+        </View>
+      )}
     </View>
   );
 };

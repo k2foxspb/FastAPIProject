@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { getShadow } from '../utils/shadowStyles';
-import { View, Text, FlatList, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, Image, Modal, Pressable, Alert, AppState, StatusBar, Dimensions, Share, Animated, Vibration, Keyboard, PanResponder } from 'react-native';
+import { View, Text, FlatList, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, Image, Modal, Pressable, Alert, AppState, StatusBar, Dimensions, Share, Animated, Vibration, Keyboard, PanResponder, ActivityIndicator } from 'react-native';
 import notifee from '@notifee/react-native';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
@@ -16,6 +16,7 @@ import CachedMedia from '../components/CachedMedia';
 import VoiceMessage from '../components/VoiceMessage';
 import FileMessage from '../components/FileMessage';
 import VideoNoteMessage from '../components/VideoNoteMessage';
+import VideoPlayer from '../components/VideoPlayer';
 import { Audio, useAudioRecorder, useAudioRecorderState, useAudioPlayer, RecordingPresets, AudioModule, requestRecordingPermissionsAsync, createAudioPlayer } from 'expo-audio';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -24,6 +25,65 @@ import { theme as themeConstants } from '../constants/theme';
 import { formatStatus, formatName, formatFileSize, parseISODate, formatMessageTime, getAvatarUrl } from '../utils/formatters';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { setRecordingAudioMode } from '../utils/audioSettings';
+
+function VideoUploadPlaceholder({ progressPercent, activeUploadId, uri }) {
+  return (
+    <View style={{ width: 200, height: 150, borderRadius: 10, backgroundColor: '#1a1a1a', overflow: 'hidden' }}>
+      {uri && (
+        <Image 
+          source={{ uri }} 
+          style={StyleSheet.absoluteFill} 
+          resizeMode="cover" 
+        />
+      )}
+      <View style={{
+        ...StyleSheet.absoluteFillObject,
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: uri ? 'rgba(0,0,0,0.2)' : 'transparent'
+      }}>
+        {!uri && <MaterialIcons name="videocam" size={40} color="rgba(255,255,255,0.3)" />}
+      </View>
+      <View style={{
+        ...StyleSheet.absoluteFillObject,
+        backgroundColor: 'rgba(0,0,0,0.4)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderRadius: 10,
+      }}>
+        <View style={{
+          backgroundColor: 'rgba(0,0,0,0.6)',
+          paddingHorizontal: 12,
+          paddingVertical: 6,
+          borderRadius: 15,
+          flexDirection: 'row',
+          alignItems: 'center',
+        }}>
+          <ActivityIndicator size="small" color="#fff" style={{ marginRight: 8 }} />
+          <Text style={{ color: '#fff', fontWeight: 'bold' }}>{progressPercent}%</Text>
+        </View>
+        <TouchableOpacity
+          style={{
+            position: 'absolute',
+            top: 8,
+            right: 8,
+            width: 28,
+            height: 28,
+            borderRadius: 14,
+            backgroundColor: 'rgba(0,0,0,0.6)',
+            borderWidth: 1,
+            borderColor: 'rgba(255,255,255,0.3)',
+            justifyContent: 'center',
+            alignItems: 'center',
+          }}
+          onPress={() => uploadManager.cancelUpload(activeUploadId)}
+        >
+          <MaterialIcons name="close" size={16} color="#fff" />
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
 
 export default function ChatScreen({ route, navigation }) {
   const insets = useSafeAreaInsets();
@@ -54,12 +114,14 @@ export default function ChatScreen({ route, navigation }) {
   const [isRecording, setIsRecording] = useState(false);
   const [inputMode, setInputMode] = useState('audio'); // 'audio' or 'video'
   const [isVideoRecording, setIsVideoRecording] = useState(false);
+  const [pendingVideoNoteUri, setPendingVideoNoteUri] = useState(null);
   const cameraRef = useRef(null);
   const [recordedUri, setRecordedUri] = useState(null);
   const [recordingDuration, setRecordingDuration] = useState(0);
   const isStartingRecording = useRef(false);
   const stopRequested = useRef(false);
   const isMounted = useRef(true);
+  const isVideoNoteUploadRef = useRef(false);
   const LIMIT = 15;
   const lastProcessedNotificationId = useRef(null);
   const videoPlayerRef = useRef(null);
@@ -83,6 +145,13 @@ export default function ChatScreen({ route, navigation }) {
   const [isSeekingFullScreen, setIsSeekingFullScreen] = useState(false);
   const [seekingPositionFullScreen, setSeekingPositionFullScreen] = useState(null);
   const recordingDotOpacity = useRef(new Animated.Value(1)).current;
+  const fsSliderWidthRef = useRef(1);
+  const fsDurationRef = useRef(0);
+  const fsSeekingPosRef = useRef(null);
+  const fsPositionRef = useRef(0);
+  const fsIsSeekingRef = useRef(false);
+  const currentMediaIndexRef = useRef(0);
+  const seekFullScreenToRatioRef = useRef(null);
   const [isKeyboardVisible, setKeyboardVisible] = useState(false);
   const [viewableItems, setViewableItems] = useState([]);
 
@@ -123,7 +192,9 @@ export default function ChatScreen({ route, navigation }) {
       // no-op
     }
 
+    fsPositionRef.current = player.currentTime || 0;
     setFullScreenPosition(player.currentTime || 0);
+    fsDurationRef.current = player.duration || 0;
     setFullScreenDuration(player.duration || 0);
     setFullScreenIsPlaying(!!player.playing);
     setFullScreenPlaybackRate(player.playbackRate || 1);
@@ -133,14 +204,16 @@ export default function ChatScreen({ route, navigation }) {
       if (typeof player.addListener === 'function') {
         subs.push(
           player.addListener('timeUpdate', (payload) => {
-            if (isSeekingFullScreen) return;
+            if (fsIsSeekingRef.current) return;
             const ct = payload?.currentTime ?? player.currentTime;
+            fsPositionRef.current = ct || 0;
             setFullScreenPosition(ct || 0);
           })
         );
         subs.push(
           player.addListener('sourceLoad', (payload) => {
             const dur = payload?.duration ?? player.duration;
+            fsDurationRef.current = dur || 0;
             setFullScreenDuration(dur || 0);
           })
         );
@@ -215,55 +288,99 @@ export default function ChatScreen({ route, navigation }) {
   };
 
   const seekFullScreenToRatio = (ratio) => {
-    const player = getActiveFullScreenPlayer();
+    const player = fullScreenPlayersByIndex.current.get(currentMediaIndexRef.current) || null;
     if (!player) return;
-    const dur = player.duration || fullScreenDuration || 0;
+    const dur = player.duration || fsDurationRef.current || 0;
     if (!dur || dur <= 0) return;
     const clamped = Math.max(0, Math.min(1, ratio));
     const nextTime = clamped * dur;
 
     try {
       player.currentTime = nextTime;
-      setFullScreenPosition(nextTime);
     } catch (e) {
-      console.log('[FullScreenVideo] seek failed', e);
+      try {
+        player.seekBy(nextTime - (player.currentTime || 0));
+      } catch (e2) {
+        console.log('[FullScreenVideo] seek failed', e2);
+      }
     }
+    fsPositionRef.current = nextTime;
+    setFullScreenPosition(nextTime);
   };
+  seekFullScreenToRatioRef.current = seekFullScreenToRatio;
 
   const fullScreenSliderPanResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
+      onStartShouldSetPanResponderCapture: () => true,
       onMoveShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponderCapture: () => true,
       onPanResponderGrant: (evt) => {
+        fsIsSeekingRef.current = true;
         setIsSeekingFullScreen(true);
+        
+        const player = fullScreenPlayersByIndex.current.get(currentMediaIndexRef.current);
+        if (player) {
+          try { player.pause(); } catch (e) {}
+          setFullScreenIsPlaying(false);
+        }
+
         const x = evt?.nativeEvent?.locationX ?? 0;
-        const ratio = fullScreenSliderWidth > 0 ? x / fullScreenSliderWidth : 0;
-        const dur = fullScreenDuration || getActiveFullScreenPlayer()?.duration || 0;
+        const w = fsSliderWidthRef.current;
+        const ratio = w > 0 ? x / w : 0;
+        const dur = fsDurationRef.current || fullScreenPlayersByIndex.current.get(currentMediaIndexRef.current)?.duration || 0;
         const nextTime = Math.max(0, Math.min(dur, ratio * dur));
+        fsSeekingPosRef.current = nextTime;
         setSeekingPositionFullScreen(nextTime);
+
+        if (player) {
+          try { player.currentTime = nextTime; } catch (e) {}
+        }
       },
       onPanResponderMove: (evt) => {
         const x = evt?.nativeEvent?.locationX ?? 0;
-        const ratio = fullScreenSliderWidth > 0 ? x / fullScreenSliderWidth : 0;
-        const dur = fullScreenDuration || getActiveFullScreenPlayer()?.duration || 0;
+        const w = fsSliderWidthRef.current;
+        const ratio = w > 0 ? x / w : 0;
+        const dur = fsDurationRef.current || fullScreenPlayersByIndex.current.get(currentMediaIndexRef.current)?.duration || 0;
         const nextTime = Math.max(0, Math.min(dur, ratio * dur));
+        fsSeekingPosRef.current = nextTime;
         setSeekingPositionFullScreen(nextTime);
+
+        const player = fullScreenPlayersByIndex.current.get(currentMediaIndexRef.current);
+        if (player) {
+          try { player.currentTime = nextTime; } catch (e) {}
+        }
       },
       onPanResponderRelease: () => {
-        const dur = fullScreenDuration || getActiveFullScreenPlayer()?.duration || 0;
-        const nextTime = seekingPositionFullScreen ?? fullScreenPosition;
+        const dur = fsDurationRef.current || fullScreenPlayersByIndex.current.get(currentMediaIndexRef.current)?.duration || 0;
+        const nextTime = fsSeekingPosRef.current ?? fsPositionRef.current;
         if (dur > 0) {
-          seekFullScreenToRatio((nextTime || 0) / dur);
+          seekFullScreenToRatioRef.current?.((nextTime || 0) / dur);
         }
+        fsSeekingPosRef.current = null;
         setIsSeekingFullScreen(false);
         setSeekingPositionFullScreen(null);
+        setTimeout(() => { fsIsSeekingRef.current = false; }, 600);
       },
       onPanResponderTerminate: () => {
+        fsSeekingPosRef.current = null;
+        fsIsSeekingRef.current = false;
         setIsSeekingFullScreen(false);
         setSeekingPositionFullScreen(null);
       },
     })
   ).current;
+
+  useEffect(() => {
+    if (fullScreenMedia) {
+      StatusBar.setHidden(true, 'fade');
+    } else {
+      StatusBar.setHidden(false, 'fade');
+    }
+    return () => {
+      StatusBar.setHidden(false, 'fade');
+    };
+  }, [fullScreenMedia]);
 
   useEffect(() => {
     if (!fullScreenMedia) {
@@ -708,6 +825,7 @@ export default function ChatScreen({ route, navigation }) {
     
     if (index !== -1) {
       setCurrentMediaIndex(index);
+      currentMediaIndexRef.current = index;
       setFullScreenMedia({ index, list: allMedia });
       
       // Синхронизируем чат при открытии
@@ -723,6 +841,7 @@ export default function ChatScreen({ route, navigation }) {
     } else {
       // Fallback если вдруг не нашли в общем списке
       setCurrentMediaIndex(0);
+      currentMediaIndexRef.current = 0;
       setFullScreenMedia({ index: 0, list: [{ uri, type: type || 'image', file_path: uri }] });
     }
   };
@@ -831,7 +950,7 @@ export default function ChatScreen({ route, navigation }) {
         if (status === 'completed') {
           // Для одиночных голосовых сообщений отправляем здесь
           // Для медиа и документов теперь отправляем вручную в функциях загрузки
-          if (autoSendOnUpload && !batchMode) { 
+          if (autoSendOnUpload && !batchMode && !isVideoNoteUploadRef.current) { 
             const clientId = `c_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
             const msgData = {
               receiver_id: userId,
@@ -1061,6 +1180,7 @@ export default function ChatScreen({ route, navigation }) {
 
   const handleSendVideoNote = async (uri) => {
     if (!uri) return;
+    isVideoNoteUploadRef.current = true;
     try {
       const filename = `video_note_${Date.now()}.mp4`;
       let currentUploadId = null;
@@ -1106,6 +1226,7 @@ export default function ChatScreen({ route, navigation }) {
       console.error('[ChatScreen] handleSendVideoNote error:', err);
       Alert.alert('Ошибка', 'Не удалось отправить видеосообщение');
     } finally {
+      isVideoNoteUploadRef.current = false;
       setUploadingProgress(null);
       setActiveUploadId(null);
     }
@@ -1148,7 +1269,7 @@ export default function ChatScreen({ route, navigation }) {
             
             if (video && video.uri) {
               if (duration >= 500) {
-                handleSendVideoNote(video.uri);
+                setPendingVideoNoteUri(video.uri);
               } else {
                 console.log('[ChatScreen] Video note too short, discarding...');
               }
@@ -1321,7 +1442,7 @@ export default function ChatScreen({ route, navigation }) {
         await new Promise((resolve) => setTimeout(resolve, 400));
 
         const after = recorder.getStatus();
-        const uri = recorder.uri || after?.url || null;
+        const uri = recorder.uri || null;
         const finalDuration = after?.durationMillis || durationAtStop;
 
         console.log('[ChatScreen] Stop completed. URI:', uri, 'Final Duration:', finalDuration);
@@ -1336,15 +1457,13 @@ export default function ChatScreen({ route, navigation }) {
           console.warn('[ChatScreen] Stop finished but URI is missing. Retrying twice...');
           // Attempt 1
           await new Promise((resolve) => setTimeout(resolve, 400));
-          let retry = recorder.getStatus();
-          let retryUri = recorder.uri || retry?.url || null;
+          let retryUri = recorder.uri || null;
           
           if (!retryUri) {
             // Attempt 2
             console.log('[ChatScreen] Still no URI, final attempt...');
             await new Promise((resolve) => setTimeout(resolve, 600));
-            retry = recorder.getStatus();
-            retryUri = recorder.uri || retry?.url || null;
+            retryUri = recorder.uri || null;
           }
 
           if (retryUri) {
@@ -1437,6 +1556,10 @@ export default function ChatScreen({ route, navigation }) {
         subs.push(player.addListener('playingChange', (payload) => {
           setVideoNoteIsPlaying(!!payload?.isPlaying);
         }));
+        subs.push(player.addListener('playToEnd', () => {
+          setVideoNoteIsPlaying(false);
+          try { player.currentTime = 0; } catch (e) {}
+        }));
       }
       videoNoteSubscriptions.current = subs;
     }
@@ -1448,6 +1571,10 @@ export default function ChatScreen({ route, navigation }) {
       onMoveShouldSetPanResponder: () => true,
       onPanResponderGrant: (evt, gestureState) => {
         setIsVideoNoteSeeking(true);
+        if (videoNotePlayerRef.current) {
+          try { videoNotePlayerRef.current.pause(); } catch (e) {}
+          setVideoNoteIsPlaying(false);
+        }
         handleVideoNoteSeek(evt);
       },
       onPanResponderMove: (evt, gestureState) => {
@@ -1468,7 +1595,11 @@ export default function ChatScreen({ route, navigation }) {
     const { locationX } = evt.nativeEvent;
     const ratio = Math.max(0, Math.min(1, locationX / videoNoteSliderWidth));
     if (videoNoteDuration > 0) {
-      setVideoNoteSeekingPosition(ratio * videoNoteDuration);
+      const nextTime = ratio * videoNoteDuration;
+      setVideoNoteSeekingPosition(nextTime);
+      if (videoNotePlayerRef.current) {
+        try { videoNotePlayerRef.current.currentTime = nextTime; } catch (e) {}
+      }
     }
   };
 
@@ -1525,68 +1656,92 @@ export default function ChatScreen({ route, navigation }) {
   const renderUploadPlaceholder = () => {
     if (uploadingProgress === null || !uploadingData.uri) return null;
 
-    const isVideoNote = uploadingData.type === 'video_note' || (uploadingData.mimeType === 'video/mp4' && !uploadingData.total);
     const progressPercent = Math.round(uploadingProgress * 100);
 
+    // Video note — renders like VideoNoteMessage inline (no messageBubble wrapper)
+    if (uploadingData.type === 'video_note') {
+      return (
+        <View style={[styles.messageWrapper, styles.sentWrapper, { opacity: 0.85, marginBottom: 10 }]}>
+          <View style={{ flexDirection: 'column', alignItems: 'flex-end' }}>
+          <View style={{ position: 'relative', width: 170, height: 170 }}>
+            {/* Circle matching VideoNoteMessage inline style */}
+            <View style={{
+              width: 170,
+              height: 170,
+              borderRadius: 85,
+              overflow: 'hidden',
+              backgroundColor: '#1a1a1a',
+              justifyContent: 'center',
+              alignItems: 'center',
+            }}>
+              {uploadingData.uri && (
+                <Image 
+                  source={{ uri: uploadingData.uri }} 
+                  style={StyleSheet.absoluteFill} 
+                  resizeMode="cover"
+                />
+              )}
+              <View style={{ ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'center', alignItems: 'center' }}>
+                <ActivityIndicator size="large" color="#4FC3F7" />
+                <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 13, marginTop: 8 }}>
+                  {progressPercent}%
+                </Text>
+              </View>
+            </View>
+            {/* Cancel button */}
+            <TouchableOpacity
+              style={{
+                position: 'absolute',
+                top: 8,
+                right: 8,
+                width: 30,
+                height: 30,
+                borderRadius: 15,
+                backgroundColor: 'rgba(0,0,0,0.6)',
+                borderWidth: 1,
+                borderColor: 'rgba(255,255,255,0.3)',
+                justifyContent: 'center',
+                alignItems: 'center',
+              }}
+              onPress={() => uploadManager.cancelUpload(activeUploadId)}
+            >
+              <MaterialIcons name="close" size={17} color="#fff" />
+            </TouchableOpacity>
+          </View>
+          <Text style={{ color: 'rgba(255,255,255,0.45)', fontSize: 10, alignSelf: 'flex-end', marginTop: 3 }}>
+            Отправка...
+          </Text>
+          </View>
+        </View>
+      );
+    }
+
+    // Other types (image, file, voice…) — keep original messageBubble layout
     return (
       <View style={[
-        styles.messageWrapper, 
+        styles.messageWrapper,
         styles.sentWrapper,
         { opacity: 0.8, marginBottom: 10 }
       ]}>
-        <View style={[
-          styles.messageBubble, 
-          styles.sent, 
-          { backgroundColor: colors.primary },
-          uploadingData.type === 'video_note' && { 
-            width: 200, 
-            height: 200, 
-            borderRadius: 100, 
-            padding: 0, 
-            justifyContent: 'center', 
-            alignItems: 'center',
-            borderWidth: 2,
-            borderColor: 'rgba(255,255,255,0.3)'
-          }
-        ]}>
-          {uploadingData.type === 'video_note' ? (
-            <View style={{ width: '100%', height: '100%', justifyContent: 'center', alignItems: 'center' }}>
-               <Image 
-                source={{ uri: uploadingData.uri }} 
-                style={{ width: '100%', height: '100%', borderRadius: 100, position: 'absolute' }} 
-                resizeMode="cover" 
-              />
-              <View style={{ 
-                backgroundColor: 'rgba(0,0,0,0.4)', 
-                width: 60, 
-                height: 60, 
-                borderRadius: 30, 
-                justifyContent: 'center', 
-                alignItems: 'center',
-                borderWidth: 2,
-                borderColor: '#fff'
-              }}>
-                <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 14 }}>{progressPercent}%</Text>
-              </View>
-            </View>
-          ) : uploadingData.mimeType?.startsWith('image/') ? (
+        <View style={[styles.messageBubble, styles.sent, { backgroundColor: colors.primary }]}>
+          {uploadingData.mimeType?.startsWith('image/') ? (
             <View>
-              <Image 
-                source={{ uri: uploadingData.uri }} 
-                style={{ width: 200, height: 150, borderRadius: 10 }} 
-                resizeMode="cover" 
+              <Image
+                source={{ uri: uploadingData.uri }}
+                style={{ width: 200, height: 150, borderRadius: 10 }}
+                resizeMode="cover"
               />
-              <View style={{ 
-                ...StyleSheet.absoluteFillObject, 
-                backgroundColor: 'rgba(0,0,0,0.3)', 
-                justifyContent: 'center', 
+              <View style={{
+                ...StyleSheet.absoluteFillObject,
+                backgroundColor: 'rgba(0,0,0,0.3)',
+                justifyContent: 'center',
                 alignItems: 'center',
                 borderRadius: 10
               }}>
-                <View style={{ 
-                  backgroundColor: 'rgba(0,0,0,0.5)', 
-                  paddingHorizontal: 12, 
-                  paddingVertical: 6, 
+                <View style={{
+                  backgroundColor: 'rgba(0,0,0,0.5)',
+                  paddingHorizontal: 12,
+                  paddingVertical: 6,
                   borderRadius: 15,
                   flexDirection: 'row',
                   alignItems: 'center'
@@ -1594,13 +1749,53 @@ export default function ChatScreen({ route, navigation }) {
                   <ActivityIndicator size="small" color="#fff" style={{ marginRight: 8 }} />
                   <Text style={{ color: '#fff', fontWeight: 'bold' }}>{progressPercent}%</Text>
                 </View>
+                <TouchableOpacity
+                  style={{
+                    position: 'absolute',
+                    top: 8,
+                    right: 8,
+                    width: 28,
+                    height: 28,
+                    borderRadius: 14,
+                    backgroundColor: 'rgba(0,0,0,0.6)',
+                    borderWidth: 1,
+                    borderColor: 'rgba(255,255,255,0.3)',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                  }}
+                  onPress={() => uploadManager.cancelUpload(activeUploadId)}
+                >
+                  <MaterialIcons name="close" size={16} color="#fff" />
+                </TouchableOpacity>
               </View>
             </View>
+          ) : uploadingData.mimeType?.startsWith('video/') ? (
+            <VideoUploadPlaceholder
+              progressPercent={progressPercent}
+              activeUploadId={activeUploadId}
+              uri={uploadingData.uri}
+            />
           ) : (
             <View style={{ padding: 10 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
                 <MaterialIcons name="insert-drive-file" size={24} color="#fff" />
-                <Text style={{ color: '#fff', marginLeft: 10, fontWeight: '500' }}>Загрузка файла...</Text>
+                <Text style={{ color: '#fff', marginLeft: 10, fontWeight: '500', flex: 1 }}>Загрузка файла...</Text>
+                <TouchableOpacity
+                  style={{
+                    width: 26,
+                    height: 26,
+                    borderRadius: 13,
+                    backgroundColor: 'rgba(0,0,0,0.4)',
+                    borderWidth: 1,
+                    borderColor: 'rgba(255,255,255,0.3)',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    marginLeft: 8,
+                  }}
+                  onPress={() => uploadManager.cancelUpload(activeUploadId)}
+                >
+                  <MaterialIcons name="close" size={15} color="#fff" />
+                </TouchableOpacity>
               </View>
               <View style={{ height: 4, backgroundColor: 'rgba(255,255,255,0.3)', borderRadius: 2, overflow: 'hidden', width: 150 }}>
                 <View style={{ height: '100%', backgroundColor: '#fff', width: `${progressPercent}%` }} />
@@ -1608,7 +1803,7 @@ export default function ChatScreen({ route, navigation }) {
               <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 10, marginTop: 4, textAlign: 'right' }}>{progressPercent}%</Text>
             </View>
           )}
-          <View style={[styles.messageFooter, uploadingData.type === 'video_note' && { position: 'absolute', bottom: 15, right: 15, backgroundColor: 'rgba(0,0,0,0.3)', borderRadius: 10, paddingHorizontal: 5 }]}>
+          <View style={styles.messageFooter}>
             <Text style={[styles.messageTime, { color: 'rgba(255,255,255,0.9)' }]}>Отправка...</Text>
           </View>
         </View>
@@ -1669,6 +1864,7 @@ export default function ChatScreen({ route, navigation }) {
       if (uri) {
         const fullUri = uri.startsWith('http') ? uri : `${API_BASE_URL}${uri.startsWith('/') ? '' : '/'}${uri}`;
         setActiveVideoNote(fullUri);
+        setVideoNoteIsPlaying(true);
         setIsVideoNoteModalVisible(true);
       }
     };
@@ -1691,6 +1887,7 @@ export default function ChatScreen({ route, navigation }) {
               ? [styles.received, { backgroundColor: colors.surface }] 
               : [styles.sent, { backgroundColor: colors.primary }],
             (isImage || isVideo) && !item.message && { padding: 4 },
+            isVideoNote && { padding: 0, backgroundColor: 'transparent', elevation: 0, shadowOpacity: 0 },
             isSelected && !isReceived && { opacity: 0.8 },
             isGrouped && (isReceived ? { borderTopLeftRadius: 18 } : { borderTopRightRadius: 18 })
           ]}
@@ -1776,23 +1973,20 @@ export default function ChatScreen({ route, navigation }) {
             />
           )}
           {isVideoNote && (
-            <Pressable onPress={() => handleVideoNotePress(item)}>
-              <VideoNoteMessage 
-                item={item} 
-                isReceived={isReceived} 
-                isParentVisible={viewableItems.includes(item.id)}
-              />
-            </Pressable>
+            <VideoNoteMessage 
+              item={item} 
+              isReceived={isReceived} 
+              isParentVisible={viewableItems.includes(item.id)}
+            />
           )}
           {item.attachments && item.attachments.some(att => att.type === 'video_note') && !isVideoNote && (
             item.attachments.filter(att => att.type === 'video_note').map((att, idx) => (
-              <Pressable key={`att_vn_${idx}`} onPress={() => handleVideoNotePress(att)}>
-                <VideoNoteMessage 
-                  item={att} 
-                  isReceived={isReceived} 
-                  isParentVisible={viewableItems.includes(item.id)}
-                />
-              </Pressable>
+              <VideoNoteMessage 
+                key={`att_vn_${idx}`}
+                item={att} 
+                isReceived={isReceived} 
+                isParentVisible={viewableItems.includes(item.id)}
+              />
             ))
           )}
           {isFile && (
@@ -2019,8 +2213,7 @@ export default function ChatScreen({ route, navigation }) {
         onRequestClose={() => setFullScreenMedia(null)}
       >
         <View style={styles.fullScreenContainer}>
-          <StatusBar hidden />
-          {showFullScreenControls && (
+          {(
             <View style={styles.fullScreenControlsTop}>
               <TouchableOpacity 
                 style={styles.fullScreenIconButton} 
@@ -2050,6 +2243,7 @@ export default function ChatScreen({ route, navigation }) {
             })}
             onMomentumScrollEnd={(e) => {
               const index = Math.round(e.nativeEvent.contentOffset.x / screenWidth);
+              currentMediaIndexRef.current = index;
               setCurrentMediaIndex(index);
               
               // Синхронизация чата: прокручиваем к сообщению, из которого это медиа
@@ -2077,6 +2271,7 @@ export default function ChatScreen({ route, navigation }) {
                   isLooping={false}
                   shouldPlay={currentMediaIndex === index}
                   isMuted={false}
+                  isStatic={index !== currentMediaIndex}
                   onPlayerReady={(player) => {
                     fullScreenPlayersByIndex.current.set(index, player);
                     if (index === currentMediaIndex) {
@@ -2110,18 +2305,16 @@ export default function ChatScreen({ route, navigation }) {
             )}
           />
 
-          {showFullScreenControls && (
+          {showFullScreenControls && (fullScreenMedia?.list[currentMediaIndex]?.type === 'video' || fullScreenMedia?.list[currentMediaIndex]?.message_type === 'video') && (
             <View style={styles.fullScreenControlsBottom}>
-              {(fullScreenMedia?.list[currentMediaIndex]?.type === 'video' || fullScreenMedia?.list[currentMediaIndex]?.message_type === 'video') && (
-                <View style={{ position: 'absolute', top: -50, right: 20 }}>
-                  <TouchableOpacity 
-                    onPress={handleFullScreenToggleRate} 
-                    style={{ backgroundColor: 'rgba(0,0,0,0.5)', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 5, borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)' }}
-                  >
-                    <Text style={{ color: 'white', fontWeight: 'bold' }}>{fullScreenPlaybackRate}x</Text>
-                  </TouchableOpacity>
-                </View>
-              )}
+              <View style={{ position: 'absolute', top: -50, right: 20 }}>
+                <TouchableOpacity 
+                  onPress={handleFullScreenToggleRate} 
+                  style={{ backgroundColor: 'rgba(0,0,0,0.5)', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 5, borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)' }}
+                >
+                  <Text style={{ color: 'white', fontWeight: 'bold' }}>{fullScreenPlaybackRate}x</Text>
+                </TouchableOpacity>
+              </View>
               <View style={styles.fullScreenTimelineRow}>
                 <Text style={styles.fullScreenTimeText}>
                   {formatMediaTime(isSeekingFullScreen ? (seekingPositionFullScreen ?? fullScreenPosition) : fullScreenPosition)}
@@ -2129,11 +2322,12 @@ export default function ChatScreen({ route, navigation }) {
 
                 <View
                   style={styles.fullScreenSliderContainer}
-                  onLayout={(e) => setFullScreenSliderWidth(e.nativeEvent.layout.width || 1)}
+                  onLayout={(e) => { const w = e.nativeEvent.layout.width || 1; fsSliderWidthRef.current = w; setFullScreenSliderWidth(w); }}
                   {...fullScreenSliderPanResponder.panHandlers}
                 >
-                  <View style={styles.fullScreenSliderTrack} />
+                  <View style={styles.fullScreenSliderTrack} pointerEvents="none" />
                   <View
+                    pointerEvents="none"
                     style={[
                       styles.fullScreenSliderFill,
                       {
@@ -2149,6 +2343,7 @@ export default function ChatScreen({ route, navigation }) {
                     ]}
                   />
                   <View
+                    pointerEvents="none"
                     style={[
                       styles.fullScreenSliderThumb,
                       {
@@ -2199,8 +2394,8 @@ export default function ChatScreen({ route, navigation }) {
                     style={styles.videoNoteModalVideo}
                     onClose={handleVideoNoteModalClose}
                     hideControls={true}
-                    shouldPlay={true}
-                    isLooping={true}
+                    shouldPlay={videoNoteIsPlaying}
+                    isLooping={false}
                     onPlayerReady={handleVideoNotePlayerReady}
                   />
                 )}
@@ -2269,7 +2464,20 @@ export default function ChatScreen({ route, navigation }) {
               : (isKeyboardVisible ? 5 : Math.max(insets.bottom, 12) + 5)
           }
         ]}>
-          {recordedUri ? (
+          {pendingVideoNoteUri ? (
+            <View style={styles.recordedContainer}>
+              <TouchableOpacity onPress={() => setPendingVideoNoteUri(null)} style={styles.deleteRecordingButton}>
+                <MaterialIcons name="delete" size={24} color={colors.error} />
+              </TouchableOpacity>
+              <View style={styles.recordingWaveformPlaceholder}>
+                <MaterialIcons name="videocam" size={20} color={colors.primary} />
+                <Text style={[styles.recordingTimeText, { color: colors.text }]}>Видеосообщение</Text>
+              </View>
+              <TouchableOpacity onPress={() => { handleSendVideoNote(pendingVideoNoteUri); setPendingVideoNoteUri(null); }} style={[styles.sendButton, { marginRight: 10 }]}>
+                <MaterialIcons name="send" size={24} color={colors.primary} />
+              </TouchableOpacity>
+            </View>
+          ) : recordedUri ? (
             <View style={styles.recordedContainer}>
               <TouchableOpacity onPress={deleteRecording} style={styles.deleteRecordingButton}>
                 <MaterialIcons name="delete" size={24} color={colors.error} />

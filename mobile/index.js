@@ -74,7 +74,7 @@ if (Platform.OS !== 'web') {
           console.error('[Entry] Error in Notifee background handler:', err);
         }
       });
-      console.log('[Entry] Background handlers registered');
+
     } else {
        console.error('[Entry] Notifee is NOT available, registration skipped');
     }

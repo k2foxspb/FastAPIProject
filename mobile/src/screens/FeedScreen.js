@@ -31,7 +31,6 @@ export default function FeedScreen({ navigation }) {
     console.log('[FeedScreen] loadData starting... loadingUser:', loadingUser, 'currentUser:', !!currentUser);
     // Ждем, пока NotificationContext загрузит пользователя, чтобы не дублировать запросы
     if (loadingUser) {
-      console.log('[FeedScreen] loadData skipped: user still loading');
       return;
     }
 

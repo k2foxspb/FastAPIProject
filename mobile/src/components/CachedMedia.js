@@ -60,8 +60,12 @@ const CachedMedia = ({ item, onFullScreen, style, resizeMode = "cover", useNativ
 
   if (loading) {
     return (
-      <View style={[styles.loaderContainer, style || { backgroundColor: colors.surface }]}>
-        <ActivityIndicator size="small" color={colors.primary} />
+      <View style={[
+        styles.loaderContainer, 
+        style,
+        { backgroundColor: isVideo ? '#000' : (style?.backgroundColor || colors.surface) }
+      ]}>
+        <ActivityIndicator size={isVideo ? "large" : "small"} color={isVideo ? "#fff" : colors.primary} />
       </View>
     );
   }

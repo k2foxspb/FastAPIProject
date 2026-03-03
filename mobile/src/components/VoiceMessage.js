@@ -46,7 +46,7 @@ export default function VoiceMessage({ item, currentUserId, isParentVisible = tr
     if (audioSource) {
       player.replace(audioSource);
       try {
-        player.playbackRate = playbackRate;
+        player.setPlaybackRate(playbackRate);
       } catch (e) {
         console.log('[VoiceMessage] Failed to set playbackRate on source change:', e);
       }
@@ -55,7 +55,7 @@ export default function VoiceMessage({ item, currentUserId, isParentVisible = tr
 
   useEffect(() => {
     try {
-      player.playbackRate = playbackRate;
+      player.setPlaybackRate(playbackRate);
     } catch (e) {
       console.log('[VoiceMessage] Failed to set playbackRate on value change:', e);
     }

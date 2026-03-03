@@ -72,7 +72,6 @@ export const NotificationProvider = ({ children }) => {
   }, [activeChatId]);
 
   useEffect(() => {
-    console.log('[NotificationContext] currentUserId changed to:', currentUserId);
     currentUserIdRef.current = currentUserId;
   }, [currentUserId]);
 
@@ -242,7 +241,7 @@ export const NotificationProvider = ({ children }) => {
 
       socket.onopen = () => {
         clearTimeout(connectionTimeout);
-        console.log('[NotificationContext] Chat WS connected. readyState:', socket.readyState);
+
         chatWsReconnectAttempt.current = 0;
         if (chatWsReconnectTimer.current) {
           clearTimeout(chatWsReconnectTimer.current);
@@ -546,8 +545,6 @@ export const NotificationProvider = ({ children }) => {
 
         if (payload.type === 'user_status') {
           const { user_id, status, last_seen } = payload.data;
-          console.log(`[NotificationContext] Real-time user status update: ${user_id} -> ${status} (last_seen: ${last_seen})`);
-          
           setUserStatuses(prev => ({
             ...prev,
             [user_id]: { status, last_seen }

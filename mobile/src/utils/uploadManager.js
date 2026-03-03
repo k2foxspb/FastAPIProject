@@ -8,6 +8,7 @@ const CHUNK_SIZE = 1024 * 1024; // 1MB
 const listeners = new Map(); // uploadId -> Set of callbacks
 const activeUploads = new Map(); // uploadId -> boolean (is uploading)
 const abortControllers = new Map(); // uploadId -> AbortController
+const cancelledUploads = new Set(); // uploadIds explicitly cancelled by user
 
 export const uploadManager = {
   /**
@@ -48,14 +49,18 @@ export const uploadManager = {
    * Отменить загрузку
    */
   cancelUpload(uploadId) {
+    console.log(`[UploadManager] Cancelling upload ${uploadId}`);
+    cancelledUploads.add(uploadId);
+    // Remove persisted info so it won't be resumed on chat re-entry
+    storage.removeItem(`upload_info_${uploadId}`).catch(() => {});
     if (abortControllers.has(uploadId)) {
-      console.log(`[UploadManager] Cancelling upload ${uploadId}`);
       abortControllers.get(uploadId).abort();
       abortControllers.delete(uploadId);
       activeUploads.delete(uploadId);
       this.notifyProgress(uploadId, 0, 'cancelled');
       return true;
     }
+    this.notifyProgress(uploadId, 0, 'cancelled');
     return false;
   },
 
@@ -139,6 +144,12 @@ export const uploadManager = {
 
     let currentOffset = Number(startOffset) || 0;
     const totalSize = Number(fileSize);
+
+    // Notify immediately so UI shows the upload indicator before the first chunk is sent
+    this.notifyProgress(uploadId, currentOffset / totalSize, 'uploading', null, {
+      loaded: currentOffset,
+      total: totalSize
+    });
 
     try {
       while (currentOffset < totalSize) {
@@ -273,6 +284,9 @@ export const uploadManager = {
       const recovered = [];
       for (const serverUpload of serverActiveUploads) {
         // Проверяем, есть ли у нас локальная информация об этой загрузке
+        // Skip uploads explicitly cancelled by the user in this session
+        if (cancelledUploads.has(serverUpload.upload_id)) continue;
+
         const localInfoStr = await storage.getItem(`upload_info_${serverUpload.upload_id}`);
         if (localInfoStr) {
           const localInfo = JSON.parse(localInfoStr);

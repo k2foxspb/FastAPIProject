@@ -561,12 +561,11 @@ async def get_logs(
     owner: UserModel = Depends(get_current_owner)
 ):
     """Возвращает последние строки логов (только для владельца)."""
-    log_file = "info.log"
+    log_file = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))), "info.log")
     
-    # Пытаемся найти файл в корне проекта
+    # Пытаемся найти файл в текущей директории, если по абсолютному пути не найден
     if not os.path.exists(log_file):
-        root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        log_file = os.path.join(root_dir, "info.log")
+        log_file = "info.log"
 
     if not os.path.exists(log_file):
         return {"logs": [f"Log file not found at {log_file}"]}
@@ -585,7 +584,10 @@ async def add_app_log(
     admin: UserModel = Depends(get_current_admin)
 ):
     """Добавляет лог от мобильного приложения."""
-    log_file = "app_logs.log"
+    # Пытаемся найти файл в корне проекта
+    root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+    log_file = os.path.join(root_dir, "app_logs.log")
+    
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     log_entry = f"[{timestamp}] [{log.level.upper()}] {log.message}"
     if log.device_info:
@@ -604,7 +606,13 @@ async def get_app_logs(
     owner: UserModel = Depends(get_current_owner)
 ):
     """Возвращает последние строки логов приложения."""
-    log_file = "app_logs.log"
+    # Пытаемся найти файл в корне проекта
+    root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+    log_file = os.path.join(root_dir, "app_logs.log")
+    
+    # Резервный поиск в текущей директории
+    if not os.path.exists(log_file):
+        log_file = "app_logs.log"
     
     if not os.path.exists(log_file):
         return {"logs": ["App log file not yet created"]}

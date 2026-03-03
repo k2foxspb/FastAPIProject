@@ -1,13 +1,36 @@
-import React, { useMemo, useState, useEffect } from 'react';
-import { getShadow } from '../utils/shadowStyles';
-import { Pressable, StyleSheet, View, Image } from 'react-native';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import {
+  StyleSheet,
+  View,
+  Text,
+  TouchableOpacity,
+  TouchableWithoutFeedback,
+  Modal,
+  Animated,
+  PanResponder,
+  ActivityIndicator,
+  Dimensions,
+  Image,
+} from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { cacheDirectory, getInfoAsync, downloadAsync } from 'expo-file-system/legacy';
-
+import { createVideoPlayer, VideoView } from 'expo-video';
+import * as FileSystem from 'expo-file-system/legacy';
 import { API_BASE_URL } from '../constants';
-import { useTheme } from '../context/ThemeContext';
-import { theme as themeConstants } from '../constants/theme';
-import VideoPlayer from './VideoPlayer';
+
+const INLINE_SIZE = 170;
+const MODAL_VIDEO_SIZE = 280;
+const RING_STROKE = 7;
+const RING_GAP = 8;
+const M_OUTER = MODAL_VIDEO_SIZE + 2 * (RING_GAP + RING_STROKE);
+const M_CENTER = M_OUTER / 2;
+const M_RING_R = MODAL_VIDEO_SIZE / 2 + RING_GAP + RING_STROKE / 2;
+const THUMB_R = 9;
+const ARC_SEGMENTS = 120;
+const DOT_SIZE = RING_STROKE + 1;
+
+const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
+const MODAL_PAGE_X = (SCREEN_W - M_OUTER) / 2;
+const MODAL_PAGE_Y = (SCREEN_H - M_OUTER) / 2;
 
 const resolveRemoteUri = (path) => {
   if (!path) return '';
@@ -17,120 +40,527 @@ const resolveRemoteUri = (path) => {
   return `${base}${rel}`;
 };
 
-export default function VideoNoteMessage({ item, isReceived, isParentVisible = true }) {
-  const { theme } = useTheme();
-  const colors = themeConstants[theme];
-  const [localUri, setLocalUri] = useState(null);
-  const [loading, setLoading] = useState(true);
+const formatTime = (secs) => {
+  if (!secs || secs <= 0) return '0:00';
+  const m = Math.floor(secs / 60);
+  const s = Math.floor(secs % 60);
+  return `${m}:${s.toString().padStart(2, '0')}`;
+};
 
-  const remoteUri = useMemo(() => {
-    return resolveRemoteUri(item?.file_path || item?.video_url || item?.uri);
-  }, [item?.file_path, item?.uri, item?.video_url]);
-
-  useEffect(() => {
-    if (!remoteUri) {
-      setLoading(false);
-      return;
-    }
-
-    const fileName = remoteUri.split('/').pop() || `vnote_${item.id}.mp4`;
-    const localFileUri = `${cacheDirectory}${fileName}`;
-
-    const loadMedia = async () => {
-      try {
-        if (remoteUri.startsWith('file://') || remoteUri.startsWith('content://')) {
-          setLocalUri(remoteUri);
-          setLoading(false);
-          return;
-        }
-
-        const fileInfo = await getInfoAsync(localFileUri);
-        if (fileInfo.exists) {
-          setLocalUri(fileInfo.uri);
-        } else {
-          const downloadRes = await downloadAsync(remoteUri, localFileUri);
-          setLocalUri(downloadRes.uri);
-        }
-      } catch (error) {
-        console.error('Error loading video note:', error);
-        setLocalUri(remoteUri);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadMedia();
-  }, [remoteUri]);
-
+const getLocalCacheUri = (remoteUri) => {
   if (!remoteUri) return null;
+  const seg = remoteUri.split('/');
+  const filename = seg[seg.length - 1] || 'videonote.mp4';
+  return FileSystem.cacheDirectory + 'vn_' + filename;
+};
+
+// Draw a progress arc using dot segments (works without SVG)
+function ProgressRing({ progress }) {
+  const thumbAngle = progress * 2 * Math.PI - Math.PI / 2;
+  const thumbX = M_CENTER + M_RING_R * Math.cos(thumbAngle);
+  const thumbY = M_CENTER + M_RING_R * Math.sin(thumbAngle);
 
   return (
-    <View
-      style={[
-        styles.container,
-        {
-          backgroundColor: 'transparent',
-        },
-      ]}
-    >
-      <Pressable onPress={null} style={styles.videoWrapper}>
-        <Image
-          source={{ uri: localUri || remoteUri }}
-          style={styles.video}
-        />
-        <View style={styles.playOverlay}>
-          <View style={styles.playButtonCircle}>
-            <MaterialIcons
-              name="play-arrow"
-              size={34}
-              color="#fff"
-            />
-          </View>
-        </View>
-      </Pressable>
+    <View style={styles.ringContainer} pointerEvents="none">
+      {Array.from({ length: ARC_SEGMENTS }, (_, i) => {
+        const a = (i / ARC_SEGMENTS) * 2 * Math.PI - Math.PI / 2;
+        const active = i / ARC_SEGMENTS <= progress;
+        return (
+          <View
+            key={i}
+            style={{
+              position: 'absolute',
+              left: M_CENTER + M_RING_R * Math.cos(a) - DOT_SIZE / 2,
+              top: M_CENTER + M_RING_R * Math.sin(a) - DOT_SIZE / 2,
+              width: DOT_SIZE,
+              height: DOT_SIZE,
+              borderRadius: DOT_SIZE / 2,
+              backgroundColor: active ? '#4FC3F7' : 'rgba(255,255,255,0.25)',
+            }}
+          />
+        );
+      })}
+      {/* Thumb dot */}
+      <View style={[styles.thumbDot, { left: thumbX - THUMB_R, top: thumbY - THUMB_R }]} />
     </View>
   );
 }
 
-const SIZE = 170;
+export default function VideoNoteMessage({ item, isReceived, isParentVisible }) {
+  const remoteUri = resolveRemoteUri(item?.file_path || item?.video_url || item?.uri);
+
+  const [playUri, setPlayUri] = useState('');
+  const [downloading, setDownloading] = useState(false);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [playerReady, setPlayerReady] = useState(false);
+  // player instance for modal — created lazily, destroyed on close
+  const [modalPlayer, setModalPlayer] = useState(null);
+
+  const playerRef = useRef(null);
+  const durationRef = useRef(0);
+  const isSeeking = useRef(false);
+  const intervalRef = useRef(null);
+
+  const backdropOpacity = useRef(new Animated.Value(0)).current;
+  const videoScale = useRef(new Animated.Value(0.1)).current;
+
+  // Check local cache on mount
+  useEffect(() => {
+    if (!remoteUri) return;
+    const localUri = getLocalCacheUri(remoteUri);
+    if (!localUri) return;
+    FileSystem.getInfoAsync(localUri).then((info) => {
+      if (info.exists) setPlayUri(info.uri);
+    });
+  }, [remoteUri]);
+
+  // Wire up listeners whenever modalPlayer changes
+  useEffect(() => {
+    const player = modalPlayer;
+    if (!player) return;
+    playerRef.current = player;
+
+    const subs = [
+      player.addListener('statusChange', ({ status }) => {
+        if (status === 'readyToPlay') {
+          setPlayerReady(true);
+          const dur = player.duration || 0;
+          if (dur > 0) {
+            setDuration(dur);
+            durationRef.current = dur;
+          }
+        } else if (status === 'idle') {
+          setPlayerReady(false);
+          setIsPlaying(false);
+          setProgress(0);
+          setCurrentTime(0);
+        }
+      }),
+      player.addListener('playToEnd', () => {
+        try { player.pause(); } catch (_) {}
+        setIsPlaying(false);
+        setProgress(0);
+        setCurrentTime(0);
+        try { player.currentTime = 0; } catch (_) {}
+        setPlayerReady(true);
+      }),
+      player.addListener('playingChange', ({ isPlaying: playing }) => {
+        setIsPlaying(playing);
+      }),
+    ];
+
+    return () => {
+      subs.forEach((s) => s.remove());
+    };
+  }, [modalPlayer]);
+
+  // Poll current time while modal is open
+  useEffect(() => {
+    if (!isModalOpen) {
+      clearInterval(intervalRef.current);
+      return;
+    }
+    if (!playerReady) return;
+    intervalRef.current = setInterval(() => {
+      if (isSeeking.current) return;
+      const p = playerRef.current;
+      if (!p) return;
+      const ct = p.currentTime || 0;
+      const dur = durationRef.current || p.duration || 0;
+      if (dur > 0 && durationRef.current === 0) {
+        durationRef.current = dur;
+        setDuration(dur);
+      }
+      setCurrentTime(ct);
+      setProgress(dur > 0 ? Math.min(ct / dur, 1) : 0);
+    }, 100);
+    return () => clearInterval(intervalRef.current);
+  }, [isModalOpen, playerReady]);
+
+  const downloadFile = useCallback(async () => {
+    if (!remoteUri) return null;
+    const localUri = getLocalCacheUri(remoteUri);
+    setDownloading(true);
+    try {
+      const result = await FileSystem.downloadAsync(remoteUri, localUri);
+      setPlayUri(result.uri);
+      return result.uri;
+    } catch (e) {
+      console.warn('[VideoNoteMessage] download error:', e);
+      setPlayUri(remoteUri);
+      return remoteUri;
+    } finally {
+      setDownloading(false);
+    }
+  }, [remoteUri]);
+
+  const openModal = useCallback(async () => {
+    if (downloading) return;
+
+    let uri = playUri;
+    if (!uri) {
+      uri = await downloadFile();
+      if (!uri) return;
+    }
+
+    // Reset state
+    setIsPlaying(false);
+    setProgress(0);
+    setCurrentTime(0);
+    setPlayerReady(false);
+    durationRef.current = 0;
+    setDuration(0);
+
+    // Create a fresh player — only one player exists while modal is open
+    const player = createVideoPlayer(uri);
+    player.loop = false;
+    playerRef.current = player;
+    setModalPlayer(player);
+
+    // Start playback immediately
+    player.play();
+
+    backdropOpacity.setValue(0);
+    videoScale.setValue(0.05);
+    setIsModalOpen(true);
+    Animated.parallel([
+      Animated.timing(backdropOpacity, { toValue: 1, duration: 300, useNativeDriver: true }),
+      Animated.spring(videoScale, { toValue: 1, friction: 8, tension: 50, useNativeDriver: true }),
+    ]).start();
+  }, [downloading, playUri, downloadFile, backdropOpacity, videoScale]);
+
+  const closeModal = useCallback(() => {
+    const player = playerRef.current;
+    try { player?.pause(); } catch (_) {}
+
+    Animated.parallel([
+      Animated.timing(backdropOpacity, { toValue: 0, duration: 250, useNativeDriver: true }),
+      Animated.timing(videoScale, { toValue: 0.05, duration: 250, useNativeDriver: true }),
+    ]).start(() => {
+      setIsModalOpen(false);
+      setIsPlaying(false);
+      setProgress(0);
+      setCurrentTime(0);
+      // Release player to free native resources
+      try { player?.release(); } catch (_) {}
+      playerRef.current = null;
+      setModalPlayer(null);
+    });
+  }, [backdropOpacity, videoScale]);
+
+  const handlePlayPause = useCallback(() => {
+    const p = playerRef.current;
+    if (!p) return;
+    if (isPlaying) {
+      p.pause();
+    } else {
+      p.play();
+    }
+  }, [isPlaying]);
+
+  const seekToProgressRef = useRef(null);
+  const angleToProgressRef = useRef(null);
+
+  seekToProgressRef.current = (prog) => {
+    const dur = durationRef.current || 0;
+    if (dur <= 0) return;
+    const seekTime = Math.max(0, Math.min(prog, 1)) * dur;
+    const p = playerRef.current;
+    if (!p) return;
+    try { p.currentTime = seekTime; } catch {
+      try { p.seekBy(seekTime - (p.currentTime || 0)); } catch (_) {}
+    }
+    setCurrentTime(seekTime);
+    setProgress(Math.min(prog, 1));
+  };
+
+  angleToProgressRef.current = (pageX, pageY) => {
+    const cx = MODAL_PAGE_X + M_CENTER;
+    const cy = MODAL_PAGE_Y + M_CENTER;
+    const dx = pageX - cx;
+    const dy = pageY - cy;
+    let angle = Math.atan2(dx, -dy);
+    if (angle < 0) angle += 2 * Math.PI;
+    return angle / (2 * Math.PI);
+  };
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: (evt) => {
+        const { pageX, pageY } = evt.nativeEvent;
+        const cx = MODAL_PAGE_X + M_CENTER;
+        const cy = MODAL_PAGE_Y + M_CENTER;
+        const dist = Math.sqrt((pageX - cx) ** 2 + (pageY - cy) ** 2);
+        return dist >= MODAL_VIDEO_SIZE / 2 + RING_GAP - 4 && dist <= M_OUTER / 2 + 8;
+      },
+      onMoveShouldSetPanResponder: (evt) => {
+        const { pageX, pageY } = evt.nativeEvent;
+        const cx = MODAL_PAGE_X + M_CENTER;
+        const cy = MODAL_PAGE_Y + M_CENTER;
+        const dist = Math.sqrt((pageX - cx) ** 2 + (pageY - cy) ** 2);
+        return dist >= MODAL_VIDEO_SIZE / 2 + RING_GAP - 4 && dist <= M_OUTER / 2 + 8;
+      },
+      onPanResponderGrant: (evt) => {
+        isSeeking.current = true;
+        const p = playerRef.current;
+        if (p) {
+          try { p.pause(); } catch (_) {}
+          setIsPlaying(false);
+        }
+        const prog = angleToProgressRef.current(evt.nativeEvent.pageX, evt.nativeEvent.pageY);
+        seekToProgressRef.current(prog);
+      },
+      onPanResponderMove: (evt) => {
+        const prog = angleToProgressRef.current(evt.nativeEvent.pageX, evt.nativeEvent.pageY);
+        seekToProgressRef.current(prog);
+      },
+      onPanResponderRelease: (evt) => {
+        const prog = angleToProgressRef.current(evt.nativeEvent.pageX, evt.nativeEvent.pageY);
+        seekToProgressRef.current(prog);
+        isSeeking.current = false;
+      },
+      onPanResponderTerminate: () => {
+        isSeeking.current = false;
+      },
+    })
+  ).current;
+
+  const durationLabel = formatTime(duration || durationRef.current);
+  const currentLabel = formatTime(currentTime);
+  const timeLabel = isPlaying || currentTime > 0
+    ? `${currentLabel} / ${durationLabel}`
+    : durationLabel;
+
+  if (!remoteUri) return null;
+
+  return (
+    <>
+      {/* Inline circle — static placeholder, no VideoView/player */}
+      <TouchableOpacity onPress={openModal} activeOpacity={0.85} style={styles.inlineContainer}>
+        <View style={styles.inlineVideoWrap}>
+          {playUri ? (
+            <Image 
+              source={{ uri: playUri }} 
+              style={StyleSheet.absoluteFill} 
+              resizeMode="cover"
+            />
+          ) : (
+            <View style={styles.inlinePlaceholder} />
+          )}
+          <View style={styles.inlineOverlay}>
+            {downloading ? (
+              <ActivityIndicator size="large" color="#fff" />
+            ) : (
+              <View style={styles.playBtnSmall}>
+                <MaterialIcons name="play-arrow" size={32} color="#fff" />
+              </View>
+            )}
+          </View>
+        </View>
+        {(duration > 0 || durationRef.current > 0) && (
+          <View style={styles.timeBadge}>
+            <Text style={styles.timeText}>{formatTime(duration || durationRef.current)}</Text>
+          </View>
+        )}
+      </TouchableOpacity>
+
+      {/* Modal — VideoView only here, with lazily created player */}
+      <Modal
+        visible={isModalOpen}
+        transparent
+        animationType="none"
+        onRequestClose={closeModal}
+        statusBarTranslucent
+      >
+        <Animated.View style={[styles.backdrop, { opacity: backdropOpacity }]}>
+          <TouchableWithoutFeedback onPress={closeModal}>
+            <View style={StyleSheet.absoluteFill} />
+          </TouchableWithoutFeedback>
+
+          <Animated.View
+            style={[
+              styles.modalContent,
+              { transform: [{ scale: videoScale }] },
+            ]}
+            {...panResponder.panHandlers}
+          >
+            <View style={styles.modalVideoWrap}>
+              {modalPlayer && (
+                <VideoView
+                  player={modalPlayer}
+                  style={styles.modalVideo}
+                  contentFit="cover"
+                  nativeControls={false}
+                  allowsPictureInPicture={false}
+                />
+              )}
+              {!playerReady && (
+                <View style={[styles.modalVideo, { backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' }]}>
+                  <ActivityIndicator size="large" color="#4FC3F7" />
+                </View>
+              )}
+              <TouchableWithoutFeedback onPress={handlePlayPause}>
+                <View style={styles.centerOverlay}>
+                  {!isPlaying && (
+                    <View style={styles.playBtnLarge}>
+                      <MaterialIcons name="play-arrow" size={52} color="#fff" />
+                    </View>
+                  )}
+                </View>
+              </TouchableWithoutFeedback>
+            </View>
+
+            <ProgressRing progress={progress} />
+
+            <View style={styles.modalTimeBadge}>
+              <Text style={styles.timeText}>{timeLabel}</Text>
+            </View>
+          </Animated.View>
+        </Animated.View>
+      </Modal>
+    </>
+  );
+}
 
 const styles = StyleSheet.create({
-  container: {
-    width: SIZE,
-    height: SIZE,
-    borderRadius: SIZE / 2,
-    overflow: 'hidden',
+  // ── Inline ──
+  inlineContainer: {
+    width: INLINE_SIZE,
     marginVertical: 2,
+    alignItems: 'center',
   },
-  videoWrapper: {
-    width: '100%',
-    height: '100%',
+  inlineVideoWrap: {
+    width: INLINE_SIZE,
+    height: INLINE_SIZE,
+    borderRadius: INLINE_SIZE / 2,
+    overflow: 'hidden',
+    backgroundColor: '#1a1a1a',
   },
-  video: {
-    width: '100%',
-    height: '100%',
-    borderRadius: SIZE / 2,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.4)',
-    backgroundColor: '#000',
+  inlinePlaceholder: {
+    flex: 1,
+    backgroundColor: '#1a1a1a',
   },
-  playOverlay: {
+  inlineOverlay: {
     position: 'absolute',
-    left: 0,
-    top: 0,
-    right: 0,
-    bottom: 0,
+    top: 0, left: 0, right: 0, bottom: 0,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  playButtonCircle: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+  playBtnSmall: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: 'rgba(0,0,0,0.50)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.45)',
+  },
+  timeBadge: {
+    marginTop: 4,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  timeText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  // ── Modal ──
+  backdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.96)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    width: M_OUTER,
+    height: M_OUTER,
+    borderRadius: M_OUTER / 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'transparent',
+  },
+  modalVideoWrap: {
+    width: MODAL_VIDEO_SIZE,
+    height: MODAL_VIDEO_SIZE,
+    borderRadius: MODAL_VIDEO_SIZE / 2,
+    overflow: 'hidden',
+    backgroundColor: '#111',
+    position: 'absolute',
+  },
+  modalVideo: {
+    position: 'absolute',
+    top: 0, left: 0,
+    width: MODAL_VIDEO_SIZE,
+    height: MODAL_VIDEO_SIZE,
+    borderRadius: MODAL_VIDEO_SIZE / 2,
+  },
+  centerOverlay: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0, bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  playBtnLarge: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    backgroundColor: 'rgba(0,0,0,0.50)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.45)',
+  },
+  // ── Progress ring ──
+  ringContainer: {
+    position: 'absolute',
+    top: 0, left: 0,
+    width: M_OUTER,
+    height: M_OUTER,
+    backgroundColor: 'transparent',
+  },
+  thumbDot: {
+    position: 'absolute',
+    width: THUMB_R * 2,
+    height: THUMB_R * 2,
+    borderRadius: THUMB_R,
+    backgroundColor: '#4FC3F7',
+    shadowColor: '#4FC3F7',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.8,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  // ── Modal extras ──
+  modalTimeBadge: {
+    position: 'absolute',
+    bottom: RING_GAP + RING_STROKE + 6,
+    alignSelf: 'center',
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+  },
+  closeButtonWrap: {
+    position: 'absolute',
+    top: SCREEN_H / 2 - M_OUTER / 2 - 14,
+    right: SCREEN_W / 2 - M_OUTER / 2 - 14,
+  },
+  closeButtonInner: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: 'rgba(0,0,0,0.65)',
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.3)',
+    borderColor: 'rgba(255,255,255,0.35)',
   },
 });
