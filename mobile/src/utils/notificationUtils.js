@@ -62,8 +62,9 @@ export async function displayBundledMessage(remoteMessage) {
     // Проверка на "самого себя" (важно для чата, так как бэкенд шлет всем)
     try {
       const myId = await storage.getUserId();
+      console.log(`[Notifee] MyId: ${myId}, SenderId: ${senderId}`);
       if (myId && senderId && Number(myId) === Number(senderId)) {
-        console.log('[Notifee] Skipping notification for self-sent message');
+        console.log('[Notifee] Skipping notification for self-sent message (isMe check)');
         return;
       }
     } catch (err) {
@@ -72,6 +73,12 @@ export async function displayBundledMessage(remoteMessage) {
     
     const text = notifBody || data.text || data.message || data.body || remoteMessage?.notification?.body || '';
     const nameToDisplay = notifTitle || senderName || data.title || remoteMessage?.notification?.title || 'Сообщение';
+
+    // ВАЖНО: Notifee ожидает ЛИБО валидный URL (http/https), ЛИБО ресурс. 
+    // Пустые строки или относительные пути ('/media/...') вызывают ошибку отображения.
+    const iconUrl = (senderAvatar && (senderAvatar.startsWith('http://') || senderAvatar.startsWith('https://'))) 
+      ? senderAvatar 
+      : undefined;
 
     if (!text && !nameToDisplay) {
       console.log('[Notifee] Skipping display: empty content');
@@ -120,7 +127,7 @@ export async function displayBundledMessage(remoteMessage) {
           actions: actions,
           groupId: groupId,
           smallIcon: 'ic_launcher',
-          largeIcon: senderAvatar || undefined,
+          largeIcon: iconUrl,
           color: '#023c69',
           importance: AndroidImportance.HIGH,
           pressAction: { id: 'default', launchActivity: 'default' },
@@ -128,14 +135,14 @@ export async function displayBundledMessage(remoteMessage) {
             type: AndroidStyle.MESSAGING,
             person: { 
               name: nameToDisplay,
-              icon: senderAvatar || undefined,
+              icon: iconUrl,
             },
             messages: storedMsgs.map(m => ({
               text: m.text,
               timestamp: m.timestamp,
               person: { 
                 name: nameToDisplay,
-                icon: senderAvatar || undefined,
+                icon: iconUrl,
               },
             })),
           },
@@ -159,7 +166,7 @@ export async function displayBundledMessage(remoteMessage) {
           groupId: groupId,
           groupAlertBehavior: AndroidGroupAlertBehavior.SUMMARY,
           smallIcon: 'ic_launcher',
-          largeIcon: senderAvatar || undefined,
+          largeIcon: iconUrl,
           color: '#023c69',
           pressAction: { id: 'default', launchActivity: 'default' },
           importance: AndroidImportance.HIGH,
@@ -167,7 +174,7 @@ export async function displayBundledMessage(remoteMessage) {
         ios: {
           categoryId: type === 'new_message' ? 'message_actions' : undefined,
           threadId: groupId,
-          attachments: senderAvatar ? [{ url: senderAvatar }] : undefined,
+          attachments: iconUrl ? [{ url: iconUrl }] : undefined,
         }
       });
 

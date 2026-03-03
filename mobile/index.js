@@ -31,7 +31,9 @@ if (Platform.OS !== 'web') {
     if (fb && typeof fb.initializeApp === 'function' && (fb?.apps?.length || 0) === 0) {
       console.log('[Entry] No Firebase app detected, performing manual init');
       try {
-        fb.initializeApp(firebaseConfig);
+        // Use the native-friendly initializeApp if available
+        const app = fb.initializeApp(firebaseConfig);
+        console.log('[Entry] Manual init SUCCESS');
       } catch (e) {
         console.error('[Entry] Manual init call failed:', e.message);
       }

@@ -20,7 +20,7 @@ const isExpoGo =
   (Constants.executionEnvironment == null && Constants.appOwnership === 'expo');
 
 // Helper to get messaging instance safely
-const getMessaging = async () => {
+export const getMessaging = async () => {
   if (Platform.OS === 'web') return null;
   if (isExpoGo) {
     lastMessagingUnavailableReason = 'expo_go';
@@ -87,6 +87,52 @@ const getMessaging = async () => {
 
 export function getLastMessagingUnavailableReason() {
   return lastMessagingUnavailableReason;
+}
+
+// --- Delete and Reset FCM Token ---
+export async function resetFcmToken() {
+  if (Platform.OS === 'web') return false;
+  try {
+    const msg = await getMessaging();
+    if (!msg) return false;
+
+    console.log('[FCM] Force resetting FCM token...');
+    
+    // 0. Unregister from remote messages first
+    try {
+      if (Platform.OS === 'android') {
+        await msg.unregisterDeviceForRemoteMessages();
+        console.log('[FCM] Device unregistered from remote messages');
+      }
+    } catch (e) {
+      console.log('[FCM] Unregister failed (non-critical):', e.message);
+    }
+
+    // 1. Delete the current token from Firebase
+    await msg.deleteToken();
+    console.log('[FCM] Token deleted from Firebase');
+
+    // 2. Clear from local storage
+    await storage.saveItem('fcm_token', null);
+    await storage.saveItem('last_synced_fcm_token', null);
+    
+    // 3. Wait a bit for Firebase to process deletion
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
+    // 4. Get a new one
+    const newToken = await msg.getToken();
+    if (newToken) {
+      console.log('[FCM] New token generated after reset:', newToken.substring(0, 15) + '...');
+      await storage.saveItem('fcm_token', newToken);
+      // 4. Update on server
+      await updateServerFcmToken(newToken);
+      return true;
+    }
+    return false;
+  } catch (e) {
+    console.error('[FCM] Failed to reset FCM token:', e);
+    return false;
+  }
 }
 
 export async function requestUserPermission() {
@@ -172,12 +218,14 @@ export async function setupCloudMessaging(onNotificationReceived = null) {
     const unsubscribeMessaging = msg.onMessage(async remoteMessage => {
       console.log('[FCM] Foreground message received!');
       console.log('[FCM] Data:', JSON.stringify(remoteMessage?.data, null, 2));
+      console.log('[FCM] Notification Object:', JSON.stringify(remoteMessage?.notification, null, 2));
       
       // Добавляем алерт для отладки в режиме разработки
       if (__DEV__) {
+        console.log('[FCM] Showing Debug Alert...');
         Alert.alert(
-          'FCM Message Received',
-          `Title: ${remoteMessage?.data?.notif_title || remoteMessage?.notification?.title || 'No Title'}\nBody: ${remoteMessage?.data?.notif_body || remoteMessage?.notification?.body || 'No Body'}`
+          'FCM Message (DEBUG)',
+          `Title: ${remoteMessage?.data?.notif_title || remoteMessage?.notification?.title || 'No Title'}\nBody: ${remoteMessage?.data?.notif_body || remoteMessage?.notification?.body || 'No Body'}\nData keys: ${Object.keys(remoteMessage?.data || {}).join(', ')}`
         );
       }
 
