@@ -861,6 +861,9 @@ async def update_fcm_token(
     """
     from loguru import logger
     
+    # Флаг, указывающий что токен был пуст (мог быть недавно аннулирован сервером)
+    was_cleared = current_user.fcm_token is None
+
     # Чтобы токен был уникален для одного пользователя (важно при смене аккаунтов на одном девайсе)
     if body.fcm_token:
         # Сначала очищаем этот токен у всех остальных пользователей
@@ -890,7 +893,7 @@ async def update_fcm_token(
         else:
             logger.debug(f"FCM: Token was already empty for user {current_user.id}")
         
-    return {"status": "ok", "fcm_token": current_user.fcm_token}
+    return {"status": "ok", "fcm_token": current_user.fcm_token, "was_cleared": was_cleared}
 
 
 # Локальные пути остаются для режима local, но основная логика сохранения вынесена в app.utils.storage

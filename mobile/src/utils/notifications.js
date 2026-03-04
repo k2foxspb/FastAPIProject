@@ -66,7 +66,13 @@ export const getMessaging = async () => {
 
     // Deep native check: JS wrapper may exist but native binding can still be missing.
     // RNFBMessagingModule is the native module registered by @react-native-firebase/messaging.
-    const nativeMsgMod = NativeModules.RNFBMessagingModule;
+    let nativeMsgMod = NativeModules.RNFBMessagingModule;
+    if (!nativeMsgMod || typeof nativeMsgMod.getToken !== 'function') {
+      console.log('[FCM] RNFBMessagingModule not found in NativeModules, waiting 1s...');
+      await new Promise(r => setTimeout(r, 1000));
+      nativeMsgMod = NativeModules.RNFBMessagingModule;
+    }
+
     if (!nativeMsgMod || typeof nativeMsgMod.getToken !== 'function') {
       console.error('[FCM] CRITICAL: RNFBMessagingModule is missing or incomplete. REBUILD REQUIRED (npx expo run:android).');
       nativeMessagingBroken = true;
@@ -346,57 +352,70 @@ export async function getFcmToken() {
       return null;
     }
     
-    // Register for remote notifications on iOS
+    // Register for remote notifications on both platforms
+    // On Android this is generally a no-op but can help initialize the service
+    try {
+      if (Platform.OS === 'ios' || Platform.OS === 'android') {
+        console.log(`[FCM] Registering device for remote messages (${Platform.OS})...`);
+        await msg.registerDeviceForRemoteMessages();
+        console.log(`[FCM] Device registered successfully (${Platform.OS})`);
+      }
+    } catch (e) {
+      console.log(`[FCM] Registration warning (non-critical): ${e.message}`);
+    }
+
+    // iOS-specific: Additional APNs token check
     if (Platform.OS === 'ios') {
-      await msg.registerDeviceForRemoteMessages();
-      
-      // Дополнительная проверка APNs токена (согласно гайду)
       const apnsToken = await msg.getAPNSToken();
       if (!apnsToken) {
         console.warn('[FCM] APNs token is null. Push notifications might not work on iOS simulator or if not configured.');
-        // На симуляторах iOS APNs токена обычно нет, и getToken() может зависнуть или вернуть ошибку.
       } else {
         console.log('[FCM] APNs Token obtained:', apnsToken.substring(0, 10) + '...');
       }
     }
 
+    console.log('[FCM] Calling msg.getToken()...');
     let token = null;
     try {
-      token = await msg.getToken();
+      // Use a timeout for getToken to prevent hanging
+      const tokenPromise = msg.getToken();
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('getToken timeout (15s)')), 15000)
+      );
+      
+      token = await Promise.race([tokenPromise, timeoutPromise]);
     } catch (e) {
-      const isNativeError = e.message?.includes('native') || e.message?.includes('not a function') || e.message?.includes('undefined');
+      console.error(`[FCM] getToken failed: ${e.message}`);
+      const isNativeError = e.message?.includes('native') || e.message?.includes('not a function') || e.message?.includes('undefined') || e.message?.includes('RNFBMessagingModule');
       if (isNativeError) {
         console.error('[FCM] CRITICAL NATIVE ERROR: Native module is incomplete. REBUILD REQUIRED (npx expo run:android).');
         nativeMessagingBroken = true;
       }
-      throw e;
+      // If regular getToken fails, try with senderId as fallback
+      try {
+        const senderId = "176773891332"; 
+        
+        console.log(`[FCM] Attempting getToken with explicit senderId: ${senderId}`);
+        token = await msg.getToken(senderId);
+      } catch (e2) {
+        console.error(`[FCM] getToken with senderId also failed: ${e2.message}`);
+      }
+      
+      if (!token) throw e;
     }
-    console.log('[FCM] Full Token obtained:', token);
+    console.log('[FCM] Full Token obtained:', token ? (token.substring(0, 20) + '...') : 'NULL');
     
     // В режиме разработки выводим токен в алерте, чтобы его можно было скопировать для теста
     if (__DEV__ && token) {
       console.log('--- COPY THIS TOKEN TO test_fcm.py ---');
       console.log(token);
       console.log('---------------------------------------');
-      // Alert.alert('FCM Token (Dev Only)', token);
+      Alert.alert('FCM Token (Dev Only)', token);
     }
 
     if (token) {
       console.log('[FCM] Token obtained successfully');
       
-      // На Android нужно явно зарегистрировать устройство для уведомлений, 
-      // иначе setBackgroundMessageHandler может не срабатывать.
-      if (Platform.OS === 'android') {
-        try {
-          if (!msg.isDeviceRegisteredForRemoteMessages) {
-            await msg.registerDeviceForRemoteMessages();
-            console.log('[FCM] Device registered for remote messages');
-          }
-        } catch (e) {
-          console.log('[FCM] Registration failed:', e);
-        }
-      }
-
       const saved = await storage.getItem('fcm_token');
       if (saved !== token) {
         console.log('[FCM] Saving NEW token to storage');
@@ -419,6 +438,21 @@ export async function getFcmToken() {
 export async function updateServerFcmToken(passedToken = null, forceSync = false) {
   try {
     let token = passedToken;
+    
+    // If forceSync is true, we perform a complete reset (deleteToken + getToken)
+    // to avoid using cached but invalid tokens from previous sessions/installs.
+    if (!token && forceSync) {
+      console.log('[FCM] forceSync is TRUE, performing full resetFcmToken...');
+      // Note: resetFcmToken will internally call updateServerFcmToken(newToken)
+      const success = await resetFcmToken();
+      if (success) {
+        console.log('[FCM] forceSync successful via resetFcmToken');
+        return { success: true, resetPerformed: true };
+      } else {
+        console.warn('[FCM] forceSync FAILED during resetFcmToken, falling back to getFcmToken');
+        token = await getFcmToken();
+      }
+    }
     
     if (!token) {
       // Try to get from local storage first (faster)
@@ -457,6 +491,15 @@ export async function updateServerFcmToken(passedToken = null, forceSync = false
     
     if (response.data && response.data.status === 'ok') {
       console.log('[FCM] Token updated on server SUCCESSFULLY:', token.substring(0, 15) + '...');
+      
+      // If server reported that token was empty/cleared, it might have been invalidated due to UnregisteredError.
+      // If we are not already in a forceSync/reset flow, let's trigger a full reset to ensure we have a fresh token.
+      if (response.data.was_cleared && !forceSync && !passedToken) {
+        console.log('[FCM] Server reported token was cleared. Triggering full reset to ensure fresh token...');
+        // We don't await to avoid recursion/blocking, it will sync itself after reset
+        resetFcmToken().catch(err => console.error('[FCM] Background reset failed:', err));
+      }
+
       // Store the last synced token and timestamp to avoid redundant updates
       await storage.saveItem('last_synced_fcm_token', token);
       await storage.saveItem('last_fcm_sync_time', new Date().toISOString());
