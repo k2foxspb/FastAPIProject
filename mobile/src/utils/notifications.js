@@ -206,16 +206,16 @@ export async function setupCloudMessaging(onNotificationReceived = null) {
 
     // Обработка уведомлений, когда приложение на переднем переднем плане (onMessage)
     const unsubscribeMessaging = msg.onMessage(async remoteMessage => {
-      console.log('[FCM] Foreground message received!');
-      console.log('[FCM] Data:', JSON.stringify(remoteMessage?.data, null, 2));
-      console.log('[FCM] Notification Object:', JSON.stringify(remoteMessage?.notification, null, 2));
+      console.log('[FCM] Foreground message (onMessage) received!');
+      console.log('[FCM] MessageId:', remoteMessage?.messageId);
+      console.log('[FCM] Data keys:', Object.keys(remoteMessage?.data || {}));
       
       // Добавляем алерт для отладки в режиме разработки
       if (__DEV__) {
-        console.log('[FCM] Showing Debug Alert...');
+        console.log('[FCM] Showing Debug Alert (Foreground)...');
         Alert.alert(
-          'FCM Message (DEBUG)',
-          `Title: ${remoteMessage?.data?.notif_title || remoteMessage?.notification?.title || 'No Title'}\nBody: ${remoteMessage?.data?.notif_body || remoteMessage?.notification?.body || 'No Body'}\nData keys: ${Object.keys(remoteMessage?.data || {}).join(', ')}`
+          'FCM Foreground (DEBUG)',
+          `Title: ${remoteMessage?.data?.notif_title || remoteMessage?.notification?.title || 'No Title'}\nBody: ${remoteMessage?.data?.notif_body || remoteMessage?.notification?.body || 'No Body'}\nMsgId: ${remoteMessage?.messageId}`
         );
       }
 
