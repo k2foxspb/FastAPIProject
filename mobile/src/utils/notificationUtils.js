@@ -76,9 +76,9 @@ export async function displayBundledMessage(remoteMessage) {
 
     // ВАЖНО: Notifee ожидает ЛИБО валидный URL (http/https), ЛИБО ресурс. 
     // Пустые строки или относительные пути ('/media/...') вызывают ошибку отображения.
-    const iconUrl = (senderAvatar && (senderAvatar.startsWith('http://') || senderAvatar.startsWith('https://'))) 
+    const iconUrl = (typeof senderAvatar === 'string' && (senderAvatar.startsWith('http://') || senderAvatar.startsWith('https://'))) 
       ? senderAvatar 
-      : undefined;
+      : null;
 
     if (!text && !nameToDisplay) {
       console.log('[Notifee] Skipping display: empty content');
@@ -117,7 +117,10 @@ export async function displayBundledMessage(remoteMessage) {
       if (storedMsgs.length > 10) storedMsgs = storedMsgs.slice(-10);
       await storage.saveItem(messagesKey, JSON.stringify(storedMsgs));
 
-      await notifee.displayNotification({
+      const personObj = { name: nameToDisplay };
+      if (iconUrl) personObj.icon = iconUrl;
+
+      const notificationOptions = {
         id: `sender_${senderId}`,
         title: nameToDisplay,
         body: text,
@@ -127,27 +130,26 @@ export async function displayBundledMessage(remoteMessage) {
           actions: actions,
           groupId: groupId,
           smallIcon: 'ic_launcher',
-          largeIcon: iconUrl,
           color: '#023c69',
           importance: AndroidImportance.HIGH,
           pressAction: { id: 'default', launchActivity: 'default' },
           style: {
             type: AndroidStyle.MESSAGING,
-            person: { 
-              name: nameToDisplay,
-              icon: iconUrl,
-            },
+            person: personObj,
             messages: storedMsgs.map(m => ({
               text: m.text,
               timestamp: m.timestamp,
-              person: { 
-                name: nameToDisplay,
-                icon: iconUrl,
-              },
+              person: personObj,
             })),
           },
         },
-      });
+      };
+
+      if (iconUrl) {
+        notificationOptions.android.largeIcon = iconUrl;
+      }
+
+      await notifee.displayNotification(notificationOptions);
     } else {
       // Стандартная группировка для остальных случаев
       const messageUniqueId = remoteMessage?.messageId || `msg_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
@@ -155,7 +157,7 @@ export async function displayBundledMessage(remoteMessage) {
         ? `sender_${senderId}_${messageUniqueId}` 
         : (newsId ? `news_${newsId}_${messageUniqueId}` : `gen_${messageUniqueId}`);
 
-      await notifee.displayNotification({
+      const notificationOptions = {
         id: notificationId,
         title: nameToDisplay,
         body: text,
@@ -166,7 +168,6 @@ export async function displayBundledMessage(remoteMessage) {
           groupId: groupId,
           groupAlertBehavior: AndroidGroupAlertBehavior.SUMMARY,
           smallIcon: 'ic_launcher',
-          largeIcon: iconUrl,
           color: '#023c69',
           pressAction: { id: 'default', launchActivity: 'default' },
           importance: AndroidImportance.HIGH,
@@ -174,9 +175,15 @@ export async function displayBundledMessage(remoteMessage) {
         ios: {
           categoryId: type === 'new_message' ? 'message_actions' : undefined,
           threadId: groupId,
-          attachments: iconUrl ? [{ url: iconUrl }] : undefined,
         }
-      });
+      };
+
+      if (iconUrl) {
+        notificationOptions.android.largeIcon = iconUrl;
+        notificationOptions.ios.attachments = [{ url: iconUrl }];
+      }
+
+      await notifee.displayNotification(notificationOptions);
 
       if (Platform.OS === 'android') {
         await notifee.displayNotification({

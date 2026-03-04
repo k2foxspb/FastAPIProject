@@ -24,12 +24,6 @@ export const getMessaging = async () => {
   if (Platform.OS === 'web') return null;
   if (isExpoGo) {
     lastMessagingUnavailableReason = 'expo_go';
-    if (__DEV__) {
-      console.warn(
-        '[FCM] Firebase Messaging is NOT supported in Expo Go. Use Development Build. ' +
-          `(executionEnvironment=${Constants.executionEnvironment}, appOwnership=${Constants.appOwnership})`
-      );
-    }
     return null;
   }
   if (nativeMessagingBroken) {
@@ -38,55 +32,41 @@ export const getMessaging = async () => {
   }
 
   try {
-    const fb = firebase?.initializeApp ? firebase : (firebase?.default?.initializeApp ? firebase.default : firebase);
-    if (fb && (fb.apps?.length || 0) === 0) {
-      const { initializeFirebase } = require('./firebaseInit');
-      await initializeFirebase();
+    // 1. Попытка получить инстанс через стандартный импорт
+    let msgInstance = null;
+    try {
+      msgInstance = messaging();
+    } catch (e) {
+      console.log('[FCM] messaging() call failed, trying fallback...');
     }
-    
-    // Support both direct import and firebase.messaging()
-    const msgFunc = typeof messaging === 'function' ? messaging : (typeof fb?.messaging === 'function' ? fb.messaging : null);
-    
-    if (!msgFunc) {
-      console.error('[FCM] Messaging module NOT available in library exports');
-      nativeMessagingBroken = true;
-      lastMessagingUnavailableReason = 'messaging_export_missing';
-      return null;
-    }
-    
-    const instance = msgFunc();
 
-    // Safety check: sometimes the instance exists but methods are missing if native linking failed
-    if (!instance || typeof instance.getToken !== 'function') {
-      console.error('[FCM] Messaging instance is invalid or missing getToken() - native module incomplete');
+    // 2. Если не вышло, пробуем через firebase.messaging()
+    if (!msgInstance) {
+      try {
+        msgInstance = firebase.messaging();
+      } catch (e) {
+        console.log('[FCM] firebase.messaging() call failed');
+      }
+    }
+
+    if (!msgInstance) {
       nativeMessagingBroken = true;
-      lastMessagingUnavailableReason = 'messaging_instance_invalid';
+      lastMessagingUnavailableReason = 'no_messaging_instance';
       return null;
     }
 
-    // Deep native check: JS wrapper may exist but native binding can still be missing.
-    // RNFBMessagingModule is the native module registered by @react-native-firebase/messaging.
-    let nativeMsgMod = NativeModules.RNFBMessagingModule;
-    if (!nativeMsgMod || typeof nativeMsgMod.getToken !== 'function') {
-      console.log('[FCM] RNFBMessagingModule not found in NativeModules, waiting 1s...');
-      await new Promise(r => setTimeout(r, 1000));
-      nativeMsgMod = NativeModules.RNFBMessagingModule;
-    }
-
-    if (!nativeMsgMod || typeof nativeMsgMod.getToken !== 'function') {
-      console.error('[FCM] CRITICAL: RNFBMessagingModule is missing or incomplete. REBUILD REQUIRED (npx expo run:android).');
+    // 3. Проверка наличия методов (защита от "пустого" нативного модуля)
+    if (typeof msgInstance.getToken !== 'function') {
+      console.error('[FCM] getToken is not a function on messaging instance');
       nativeMessagingBroken = true;
-      lastMessagingUnavailableReason = 'native_module_incomplete';
+      lastMessagingUnavailableReason = 'missing_methods';
       return null;
     }
 
-    return instance;
+    return msgInstance;
   } catch (e) {
     console.error('[FCM] Error in getMessaging:', e);
-    if (e.message?.includes('native') || e.message?.includes('not a function') || e.message?.includes('undefined')) {
-      nativeMessagingBroken = true;
-    }
-    lastMessagingUnavailableReason = e?.message ? `exception:${e.message}` : 'exception';
+    lastMessagingUnavailableReason = `exception:${e.message}`;
     return null;
   }
 };
@@ -115,8 +95,12 @@ export async function resetFcmToken() {
     }
 
     // 1. Delete the current token from Firebase
-    await msg.deleteToken();
-    console.log('[FCM] Token deleted from Firebase');
+    if (typeof msg.deleteToken === 'function') {
+      await msg.deleteToken();
+      console.log('[FCM] Token deleted from Firebase');
+    } else {
+      console.warn('[FCM] deleteToken not available, skipping');
+    }
 
     // 2. Clear from local storage
     await storage.saveItem('fcm_token', null);
@@ -318,10 +302,10 @@ export async function setupCloudMessaging(onNotificationReceived = null) {
             setTimeout(() => openFromNotification(remoteMessage), 500);
           }
         }).catch(e => {
-          console.error('[FCM] getInitialNotification async error:', e.message);
+          console.warn('[FCM] getInitialNotification async error:', e.message);
         });
       } catch (e) {
-        console.error('[FCM] getInitialNotification sync error:', e.message);
+        console.warn('[FCM] getInitialNotification sync error:', e.message);
       }
     }
 
@@ -353,9 +337,8 @@ export async function getFcmToken() {
     }
     
     // Register for remote notifications on both platforms
-    // On Android this is generally a no-op but can help initialize the service
     try {
-      if (Platform.OS === 'ios' || Platform.OS === 'android') {
+      if ((Platform.OS === 'ios' || Platform.OS === 'android') && typeof msg.registerDeviceForRemoteMessages === 'function') {
         console.log(`[FCM] Registering device for remote messages (${Platform.OS})...`);
         await msg.registerDeviceForRemoteMessages();
         console.log(`[FCM] Device registered successfully (${Platform.OS})`);
@@ -365,7 +348,7 @@ export async function getFcmToken() {
     }
 
     // iOS-specific: Additional APNs token check
-    if (Platform.OS === 'ios') {
+    if (Platform.OS === 'ios' && typeof msg.getAPNSToken === 'function') {
       const apnsToken = await msg.getAPNSToken();
       if (!apnsToken) {
         console.warn('[FCM] APNs token is null. Push notifications might not work on iOS simulator or if not configured.');
@@ -378,7 +361,13 @@ export async function getFcmToken() {
     let token = null;
     try {
       // Use a timeout for getToken to prevent hanging
-      const tokenPromise = msg.getToken();
+      let tokenPromise = null;
+      if (typeof msg.getToken === 'function') {
+        tokenPromise = msg.getToken();
+      } else {
+        throw new Error('getToken method missing');
+      }
+
       const timeoutPromise = new Promise((_, reject) => 
         setTimeout(() => reject(new Error('getToken timeout (15s)')), 15000)
       );
@@ -395,8 +384,10 @@ export async function getFcmToken() {
       try {
         const senderId = "176773891332"; 
         
-        console.log(`[FCM] Attempting getToken with explicit senderId: ${senderId}`);
-        token = await msg.getToken(senderId);
+        if (typeof msg.getToken === 'function') {
+          console.log(`[FCM] Attempting getToken with explicit senderId: ${senderId}`);
+          token = await msg.getToken(senderId);
+        }
       } catch (e2) {
         console.error(`[FCM] getToken with senderId also failed: ${e2.message}`);
       }
