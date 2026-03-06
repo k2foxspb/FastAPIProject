@@ -10,9 +10,20 @@ class ChatMessageBase(BaseModel):
     message_type: str = "text"
     client_id: Optional[str] = None # Для оптимистичных обновлений
     duration: Optional[float] = None # Длительность аудио/видео в секундах
+    reply_to_id: Optional[int] = None
 
 class ChatMessageCreate(ChatMessageBase):
     pass
+
+class ChatMessageReply(BaseModel):
+    id: int
+    message: Optional[str] = None
+    message_type: str
+    sender_id: int
+    sender_name: Optional[str] = None
+
+    class Config:
+        from_attributes = True
 
 class ChatMessageResponse(ChatMessageBase):
     id: int
@@ -21,6 +32,7 @@ class ChatMessageResponse(ChatMessageBase):
     sender_name: Optional[str] = None
     timestamp: datetime
     is_read: int
+    reply_to: Optional[ChatMessageReply] = None
 
     class Config:
         from_attributes = True

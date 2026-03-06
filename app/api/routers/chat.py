@@ -9,6 +9,7 @@ from PIL import Image
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, UploadFile, File, Form, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_, and_, func, update
+from sqlalchemy.orm import joinedload
 import jwt
 
 from app.core.config import SECRET_KEY, ALGORITHM
@@ -340,6 +341,7 @@ async def websocket_chat_endpoint(
             message_type = message_data.get("message_type", "text")
             client_id = message_data.get("client_id")  # Добавлено для оптимистичных обновлений
             duration = message_data.get("duration") # Длительность аудио/видео
+            reply_to_id = message_data.get("reply_to_id")
             
             if receiver_id_raw and (content or file_path or (attachments and len(attachments) > 0)):
                 # Приводим к int для корректного поиска в менеджерах соединений
@@ -369,11 +371,34 @@ async def websocket_chat_endpoint(
                     file_path=file_path,
                     message_type=message_type,
                     client_id=client_id,
-                    duration=duration
+                    duration=duration,
+                    reply_to_id=reply_to_id
                 )
                 db.add(new_msg)
                 await db.commit()
                 await db.refresh(new_msg)
+
+                # Готовим данные отвечаемого сообщения, если оно есть
+                reply_to_data = None
+                if reply_to_id:
+                    try:
+                        reply_res = await db.execute(
+                            select(ChatMessage, UserModel.first_name, UserModel.last_name)
+                            .join(UserModel, ChatMessage.sender_id == UserModel.id)
+                            .where(ChatMessage.id == reply_to_id)
+                        )
+                        reply_row = reply_res.first()
+                        if reply_row:
+                            r_msg, r_fname, r_lname = reply_row
+                            reply_to_data = {
+                                "id": r_msg.id,
+                                "message": r_msg.message,
+                                "message_type": r_msg.message_type,
+                                "sender_id": r_msg.sender_id,
+                                "sender_name": f"{r_fname} {r_lname}".strip() or "Пользователь"
+                            }
+                    except Exception as e:
+                        logger.error(f"Error fetching reply_to message: {e}")
 
                 # sender_name is already fetched once above the loop
 
@@ -388,6 +413,8 @@ async def websocket_chat_endpoint(
                     "file_path": file_path,
                     "message_type": message_type,
                     "duration": duration,
+                    "reply_to_id": reply_to_id,
+                    "reply_to": reply_to_data,
                     "timestamp": new_msg.timestamp.isoformat(),
                     "is_read": 0
                 }
@@ -591,7 +618,9 @@ async def get_chat_history(
         return []
 
     result = await db.execute(
-        select(ChatMessage).where(
+        select(ChatMessage)
+        .options(joinedload(ChatMessage.reply_to).joinedload(ChatMessage.sender))
+        .where(
             or_(
                 and_(ChatMessage.sender_id == user_id, ChatMessage.receiver_id == other_user_id, ChatMessage.deleted_by_sender == False),
                 and_(ChatMessage.sender_id == other_user_id, ChatMessage.receiver_id == user_id, ChatMessage.deleted_by_receiver == False)
@@ -612,9 +641,25 @@ async def get_chat_history(
             "message": m.message,
             "file_path": m.file_path,
             "message_type": m.message_type,
+            "client_id": m.client_id,
+            "duration": m.duration,
             "timestamp": m.timestamp,
-            "is_read": m.is_read
+            "is_read": m.is_read,
+            "reply_to_id": m.reply_to_id,
         }
+        
+        if m.reply_to:
+            r = m.reply_to
+            r_sender = r.sender
+            item["reply_to"] = {
+                "id": r.id,
+                "message": r.message,
+                "message_type": r.message_type,
+                "sender_id": r.sender_id,
+                "sender_name": f"{r_sender.first_name} {r_sender.last_name}".strip() or "Пользователь" if r_sender else "Пользователь"
+            }
+        else:
+            item["reply_to"] = None
         if m.message_type == "media_group" and m.file_path:
             try:
                 item["attachments"] = json.loads(m.file_path)

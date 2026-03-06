@@ -17,11 +17,13 @@ class ChatMessage(Base):
     duration: Mapped[float] = mapped_column(Integer, nullable=True) # Длительность аудио/видео в секундах
     timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     is_read: Mapped[int] = mapped_column(Integer, default=0)
+    reply_to_id: Mapped[int] = mapped_column(Integer, ForeignKey("chat_messages.id"), nullable=True)
     deleted_by_sender: Mapped[bool] = mapped_column(Boolean, default=False)
     deleted_by_receiver: Mapped[bool] = mapped_column(Boolean, default=False)
 
     sender = relationship("User", foreign_keys=[sender_id])
     receiver = relationship("User", foreign_keys=[receiver_id])
+    reply_to = relationship("ChatMessage", remote_side=[id])
 
 class FileUploadSession(Base):
     __tablename__ = "file_upload_sessions"

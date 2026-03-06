@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { getShadow } from '../utils/shadowStyles';
 import { View, Text, FlatList, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, Image, Modal, Pressable, Alert, AppState, StatusBar, Dimensions, Share, Animated, Vibration, Keyboard, PanResponder, ActivityIndicator } from 'react-native';
+import { Swipeable } from 'react-native-gesture-handler';
 import notifee from '@notifee/react-native';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
@@ -93,6 +94,7 @@ export default function ChatScreen({ route, navigation }) {
   const { userId, userName } = route.params;
   const [messages, setMessages] = useState([]);
   const [inputText, setInputText] = useState('');
+  const textInputRef = useRef(null);
   const [token, setToken] = useState(null);
   const [uploadingProgress, setUploadingProgress] = useState(null);
   const [uploadingData, setUploadingData] = useState({ loaded: 0, total: 0, uri: null, mimeType: null });
@@ -109,6 +111,16 @@ export default function ChatScreen({ route, navigation }) {
   const [skip, setSkip] = useState(0);
   const [interlocutor, setInterlocutor] = useState(null);
   const [attachmentsLocalCount, setAttachmentsLocalCount] = useState(0);
+  const [replyingToMessage, setReplyingToMessage] = useState(null);
+
+  const handleReply = (message) => {
+    setReplyingToMessage(message);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    // Фокус на TextInput
+    if (textInputRef.current) {
+      textInputRef.current.focus();
+    }
+  };
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState([]);
   const [isRecording, setIsRecording] = useState(false);
@@ -915,7 +927,8 @@ export default function ChatScreen({ route, navigation }) {
         receiver_id: userId,
         message: inputText.trim(),
         message_type: 'text',
-        client_id: clientId
+        client_id: clientId,
+        reply_to_id: replyingToMessage ? replyingToMessage.id : null
       };
       
       // Оптимистичное добавление в UI
@@ -925,11 +938,13 @@ export default function ChatScreen({ route, navigation }) {
         sender_id: currentUserId,
         timestamp: new Date().toISOString(),
         is_read: false,
-        status: 'pending' // Статус для визуализации
+        status: 'pending', // Статус для визуализации
+        reply_to: replyingToMessage
       };
       
       setMessages(prev => [optimisticMsg, ...prev]);
       setInputText('');
+      setReplyingToMessage(null);
 
       const sent = sendMessageWs(msgData);
       if (!sent) {
@@ -956,7 +971,8 @@ export default function ChatScreen({ route, navigation }) {
               receiver_id: userId,
               file_path: result.file_path,
               message_type: result.message_type,
-              client_id: clientId
+              client_id: clientId,
+              reply_to_id: replyingToMessage ? replyingToMessage.id : null
             };
             
             // Оптимистичное добавление
@@ -966,9 +982,11 @@ export default function ChatScreen({ route, navigation }) {
               sender_id: currentUserId,
               timestamp: new Date().toISOString(),
               is_read: false,
-              status: 'pending'
+              status: 'pending',
+              reply_to: replyingToMessage
             };
             setMessages(prev => [optimisticMsg, ...prev]);
+            setReplyingToMessage(null);
 
             sendMessageWs(msgData);
           } 
@@ -988,7 +1006,7 @@ export default function ChatScreen({ route, navigation }) {
       });
       return () => unsubscribe();
     }
-  }, [activeUploadId, userId, autoSendOnUpload]);
+  }, [activeUploadId, userId, autoSendOnUpload, replyingToMessage]);
 
   const pickAndUploadDocument = async () => {
     if (selectionMode) return;
@@ -1869,9 +1887,30 @@ export default function ChatScreen({ route, navigation }) {
       }
     };
 
+    const renderLeftActions = (progress, dragX) => {
+      const scale = dragX.interpolate({
+        inputRange: [0, 50, 80],
+        outputRange: [0, 0.8, 1.2],
+        extrapolate: 'clamp',
+      });
+      return (
+        <View style={{ width: 80, justifyContent: 'center', alignItems: 'center' }}>
+          <Animated.View style={{ transform: [{ scale }] }}>
+            <MaterialIcons name="reply" size={24} color={colors.primary} />
+          </Animated.View>
+        </View>
+      );
+    };
+
     return (
-      <Pressable 
-        onPress={handlePress}
+      <Swipeable
+        renderLeftActions={renderLeftActions}
+        onSwipeableLeftOpen={() => handleReply(item)}
+        leftThreshold={50}
+        friction={2}
+      >
+        <Pressable 
+          onPress={handlePress}
         onLongPress={handleLongPress}
         style={[
           styles.messageWrapper,
@@ -1892,6 +1931,22 @@ export default function ChatScreen({ route, navigation }) {
             isGrouped && (isReceived ? { borderTopLeftRadius: 18 } : { borderTopRightRadius: 18 })
           ]}
         >
+          {item.reply_to && (
+            <View style={[
+              styles.replyMessageContainer, 
+              { borderLeftColor: isReceived ? colors.primary : '#fff' }
+            ]}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 2 }}>
+                <MaterialIcons name="reply" size={12} color={isReceived ? colors.primary : '#fff'} style={{ marginRight: 4 }} />
+                <Text style={[styles.replyMessageSender, { color: isReceived ? colors.primary : '#fff' }]} numberOfLines={1}>
+                  {Number(item.reply_to.sender_id) === Number(currentUserId) ? 'Вы' : (item.reply_to.sender_name || 'Собеседник')}
+                </Text>
+              </View>
+              <Text style={[styles.replyMessageText, { color: isReceived ? colors.textSecondary : 'rgba(255,255,255,0.8)' }]} numberOfLines={1}>
+                {item.reply_to.message || (item.reply_to.message_type === 'image' ? 'Фотография' : (item.reply_to.message_type === 'voice' ? 'Голосовое сообщение' : 'Файл'))}
+              </Text>
+            </View>
+          )}
           {selectionMode && (
             <View style={styles.selectionIndicator}>
               <MaterialIcons 
@@ -2025,6 +2080,7 @@ export default function ChatScreen({ route, navigation }) {
           </View>
         </View>
       </Pressable>
+    </Swipeable>
     );
   };
 
@@ -2461,10 +2517,28 @@ export default function ChatScreen({ route, navigation }) {
             borderTopWidth: 1,
             paddingBottom: Platform.OS === 'web' 
               ? 20 
-              : (isKeyboardVisible ? 5 : Math.max(insets.bottom, 12) + 5)
+              : (isKeyboardVisible ? 5 : Math.max(insets.bottom, 12) + 5),
+            flexDirection: 'column'
           }
         ]}>
-          {pendingVideoNoteUri ? (
+          {replyingToMessage && (
+            <View style={styles.replyPreviewContainer}>
+              <View style={[styles.replyPreviewBorder, { backgroundColor: colors.primary }]} />
+              <View style={styles.replyPreviewContent}>
+                <Text style={[styles.replyPreviewSender, { color: colors.primary }]} numberOfLines={1}>
+                  {Number(replyingToMessage.sender_id) === Number(currentUserId) ? 'Вы' : (interlocutor?.first_name || 'Собеседник')}
+                </Text>
+                <Text style={[styles.replyPreviewText, { color: colors.textSecondary }]} numberOfLines={1}>
+                  {replyingToMessage.message || (replyingToMessage.message_type === 'image' ? 'Фотография' : (replyingToMessage.message_type === 'voice' ? 'Голосовое сообщение' : 'Файл'))}
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => setReplyingToMessage(null)} style={styles.replyPreviewClose}>
+                <MaterialIcons name="close" size={20} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+          )}
+          <View style={{ flexDirection: 'row', alignItems: 'center', width: '100%' }}>
+            {pendingVideoNoteUri ? (
             <View style={styles.recordedContainer}>
               <TouchableOpacity onPress={() => setPendingVideoNoteUri(null)} style={styles.deleteRecordingButton}>
                 <MaterialIcons name="delete" size={24} color={colors.error} />
@@ -2523,6 +2597,7 @@ export default function ChatScreen({ route, navigation }) {
                 </View>
               ) : (
                 <TextInput
+                  ref={textInputRef}
                   style={[styles.input, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]}
                   value={inputText}
                   onChangeText={setInputText}
@@ -2560,6 +2635,7 @@ export default function ChatScreen({ route, navigation }) {
               )}
             </>
           )}
+          </View>
         </View>
       )}
       {isVideoRecording && (
@@ -3011,5 +3087,49 @@ const styles = StyleSheet.create({
     borderRadius: 30,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.3)',
+  },
+  replyPreviewContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 15,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.05)',
+    backgroundColor: 'transparent',
+    width: '100%',
+  },
+  replyPreviewBorder: {
+    width: 3,
+    height: '100%',
+    borderRadius: 2,
+    marginRight: 10,
+  },
+  replyPreviewContent: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  replyPreviewSender: {
+    fontSize: 13,
+    fontWeight: 'bold',
+  },
+  replyPreviewText: {
+    fontSize: 12,
+  },
+  replyPreviewClose: {
+    padding: 5,
+  },
+  replyMessageContainer: {
+    padding: 8,
+    borderRadius: 8,
+    backgroundColor: 'rgba(0,0,0,0.05)',
+    marginBottom: 4,
+    borderLeftWidth: 3,
+  },
+  replyMessageSender: {
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  replyMessageText: {
+    fontSize: 11,
   },
 });
