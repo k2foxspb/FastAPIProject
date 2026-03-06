@@ -1,7 +1,7 @@
 """add_reply_to_id_to_chat_messages
 
 Revision ID: b76e1a9c3d4e
-Revises: a1b2c3d4e5f6
+Revises: af99037b0ab3
 Create Date: 2026-03-06 14:55:00.000000
 
 """
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = 'b76e1a9c3d4e'
-down_revision: Union[str, Sequence[str], None] = 'a1b2c3d4e5f6'
+down_revision: Union[str, Sequence[str], None] = 'af99037b0ab3'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
