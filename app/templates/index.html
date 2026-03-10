@@ -283,7 +283,10 @@
         .mock-header { height: 60px; background: rgba(255,255,255,0.05); padding: 15px 10px; }
         .mock-status-bar { width: 40px; height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; margin: 0 auto 10px; }
         .mock-nav { width: 100%; height: 20px; background: rgba(255,255,255,0.05); border-radius: 10px; }
-        .mock-content { flex: 1; padding: 20px; }
+        .mock-content { flex: 1; padding: 20px; display: flex; flex-direction: column; }
+        .mock-message { height: 16px; border-radius: 8px; margin-bottom: 12px; width: 70%; }
+        .mock-message.left { background: rgba(99, 102, 241, 0.2); align-self: flex-start; }
+        .mock-message.right { background: rgba(255, 255, 255, 0.1); align-self: flex-end; width: 60%; }
         .mock-card { height: 80px; background: linear-gradient(90deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.05) 100%); border-radius: 15px; margin-bottom: 20px; }
         .mock-tab-bar { height: 65px; background: rgba(255,255,255,0.05); display: flex; justify-content: space-around; align-items: center; border-top: 1px solid rgba(255,255,255,0.05); }
         .mock-tab { width: 28px; height: 28px; background: rgba(255,255,255,0.07); border-radius: 8px; }
@@ -307,6 +310,12 @@
         }
     </style>
     <meta name="google-site-verification" content="29HuyK0yV3eZ1XaA4VNvb3JqYKFLdkrytJH3DNJUScw" />
+    <meta name="description" content="FokinShop — современная платформа для покупок, общения и обмена новостями. Скачайте наше приложение для Android и будьте всегда на связи.">
+    <meta name="keywords" content="FokinShop, магазин, чат, новости, покупки, Android, APK, общение">
+    <meta property="og:title" content="FokinShop — Ваше пространство для общения и покупок">
+    <meta property="og:description" content="Всё самое важное в одном приложении: магазин, чат, новости и уведомления.">
+    <meta property="og:image" content="/logo.png">
+    <meta property="og:type" content="website">
 </head>
 <body>
     <div class="hero">
@@ -337,7 +346,9 @@
                     Скачать для Android
                 </a>
                 <p style="font-size: 13px; margin-top: 20px; color: var(--text-secondary);">
-                    Безопасный APK-файл. Нажмите «Скачать», чтобы начать установку.
+                    Безопасный APK-файл. Нажимая «Скачать», вы соглашаетесь с 
+                    <a href="/terms" style="color: var(--accent-color); text-decoration: none; font-weight: 500;">правилами использования</a> и 
+                    <a href="/privacy-policy" style="color: var(--accent-color); text-decoration: none; font-weight: 500;">политикой конфиденциальности</a>.
                 </p>
             </div>
             
@@ -364,6 +375,11 @@
                 <div class="feature-title">Уведомления</div>
                 <div class="feature-desc">Будьте в курсе всех акций и сообщений. Мгновенные пуш-уведомления на ваш телефон.</div>
             </div>
+            <div class="feature-card">
+                <div class="feature-icon">📸</div>
+                <div class="feature-title">Фото и альбомы</div>
+                <div class="feature-desc">Создавайте личные альбомы, делитесь моментами и получайте реакции от друзей.</div>
+            </div>
         </div>
 
         <section class="how-it-works">
@@ -384,6 +400,11 @@
                     <h3>Пользуйтесь</h3>
                     <p>Войдите через Google и начните покупки или общение!</p>
                 </div>
+                <div class="step">
+                    <div class="step-num">4</div>
+                    <h3>Приглашайте друзей</h3>
+                    <p>Вместе покупать и общаться гораздо интереснее!</p>
+                </div>
             </div>
         </section>
 
@@ -395,8 +416,10 @@
                         <div class="mock-nav"></div>
                     </div>
                     <div class="mock-content">
-                        <div class="mock-card"></div>
-                        <div class="mock-card"></div>
+                        <div class="mock-message left"></div>
+                        <div class="mock-message right"></div>
+                        <div class="mock-message left" style="width: 50%;"></div>
+                        <div class="mock-card" style="margin-top: 20px;"></div>
                         <div class="mock-card"></div>
                     </div>
                     <div class="mock-tab-bar">
@@ -411,6 +434,11 @@
     </div>
 
     <footer>
+        <div style="margin-bottom: 24px;">
+            <a href="/privacy-policy" style="color: var(--text-secondary); text-decoration: none; margin: 0 12px; transition: color 0.2s;">Политика конфиденциальности</a>
+            <a href="/terms" style="color: var(--text-secondary); text-decoration: none; margin: 0 12px; transition: color 0.2s;">Правила использования</a>
+            <a href="mailto:support@fokinshop.ru" style="color: var(--text-secondary); text-decoration: none; margin: 0 12px; transition: color 0.2s;">Поддержка</a>
+        </div>
         &copy; 2026 FokinShop Team. Сделано с любовью для пользователей.
     </footer>
 

@@ -71,7 +71,7 @@ async def notify_friends_about_news(news_id: int, author_id: int, author_name: s
     except Exception as e:
         logger.error(f"FCM: Error notifying friends about news: {e}")
 
-@router.get("/app-version/latest/", response_model=AppVersionResponse)
+@router.get("/app-version/latest", response_model=AppVersionResponse)
 async def get_latest_app_version(db: AsyncSession = Depends(get_async_db)):
     """Возвращает последнюю версию приложения."""
     from sqlalchemy import desc

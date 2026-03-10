@@ -104,7 +104,7 @@ export default function LoginScreen({ navigation }) {
   const onTermsOfUse = () => {
     navigation.navigate('WebView', { 
       url: `${API_BASE_URL}/terms`, 
-      title: 'Условия использования' 
+      title: 'Правила использования' 
     });
   };
 
@@ -172,7 +172,7 @@ export default function LoginScreen({ navigation }) {
               style={{ textDecorationLine: 'underline', color: colors.primary }} 
               onPress={onTermsOfUse}
             >
-              условиями использования
+              правилами использования
             </Text>
             {' '}и{' '}
             <Text 
