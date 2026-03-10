@@ -113,8 +113,14 @@ export default function VideoNoteMessage({ item, isReceived, isParentVisible }) 
     if (!remoteUri) return;
     const localUri = getLocalCacheUri(remoteUri);
     if (!localUri) return;
-    FileSystem.getInfoAsync(localUri).then((info) => {
-      if (info.exists) setPlayUri(info.uri);
+    FileSystem.getInfoAsync(localUri).then(async (info) => {
+      if (info.exists && info.size > 0) {
+        setPlayUri(info.uri);
+      } else if (info.exists && info.size === 0) {
+        try {
+          await FileSystem.deleteAsync(localUri, { idempotent: true });
+        } catch (e) {}
+      }
     });
   }, [remoteUri]);
 
@@ -187,10 +193,16 @@ export default function VideoNoteMessage({ item, isReceived, isParentVisible }) 
     setDownloading(true);
     try {
       const result = await FileSystem.downloadAsync(remoteUri, localUri);
+      if (result.status < 200 || result.status >= 300) {
+        throw new Error(`Download failed with status ${result.status}`);
+      }
       setPlayUri(result.uri);
       return result.uri;
     } catch (e) {
       console.warn('[VideoNoteMessage] download error:', e);
+      try {
+        await FileSystem.deleteAsync(localUri, { idempotent: true });
+      } catch (_) {}
       setPlayUri(remoteUri);
       return remoteUri;
     } finally {

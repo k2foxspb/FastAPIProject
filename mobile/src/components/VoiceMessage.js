@@ -5,7 +5,7 @@ import { Audio, useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
-import { cacheDirectory, getInfoAsync, downloadAsync, readAsStringAsync, writeAsStringAsync, EncodingType, StorageAccessFramework } from 'expo-file-system/legacy';
+import { cacheDirectory, getInfoAsync, downloadAsync, deleteAsync, readAsStringAsync, writeAsStringAsync, EncodingType, StorageAccessFramework } from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { API_BASE_URL } from '../constants';
 import { setPlaybackAudioMode } from '../utils/audioSettings';
@@ -69,8 +69,10 @@ export default function VoiceMessage({ item, currentUserId, isParentVisible = tr
     const checkLocal = async () => {
       try {
         const fileInfo = await getInfoAsync(localFileUri);
-        if (fileInfo.exists) {
+        if (fileInfo.exists && fileInfo.size > 0) {
           setLocalUri(fileInfo.uri);
+        } else if (fileInfo.exists && fileInfo.size === 0) {
+          await deleteAsync(localFileUri, { idempotent: true });
         }
       } catch (e) {
         console.log('Error checking local audio file:', e);
@@ -97,15 +99,24 @@ export default function VoiceMessage({ item, currentUserId, isParentVisible = tr
       try {
         const fileInfo = await getInfoAsync(localFileUri);
         let uri = null;
-        if (fileInfo.exists) {
+        if (fileInfo.exists && fileInfo.size > 0) {
           uri = fileInfo.uri;
         } else {
+          if (fileInfo.exists && fileInfo.size === 0) {
+            await deleteAsync(localFileUri, { idempotent: true });
+          }
           const downloadRes = await downloadAsync(remoteUri, localFileUri);
+          if (downloadRes.status < 200 || downloadRes.status >= 300) {
+            throw new Error(`Download failed with status ${downloadRes.status}`);
+          }
           uri = downloadRes.uri;
         }
         setLocalUri(uri);
       } catch (error) {
         console.error('Error loading voice message:', error);
+        try {
+          await deleteAsync(localFileUri, { idempotent: true });
+        } catch (e) {}
       } finally {
         setLoading(false);
       }

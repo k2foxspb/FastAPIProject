@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Image, TouchableOpacity, StyleSheet, ActivityIndicator, Platform } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { cacheDirectory, getInfoAsync, downloadAsync } from 'expo-file-system/legacy';
+import { cacheDirectory, getInfoAsync, downloadAsync, deleteAsync } from 'expo-file-system/legacy';
 import { API_BASE_URL } from '../constants';
 import VideoPlayer from './VideoPlayer';
 import { useTheme } from '../context/ThemeContext';
@@ -39,17 +39,32 @@ const CachedMedia = ({ item, onFullScreen, style, resizeMode = "cover", useNativ
         }
 
         const fileInfo = await getInfoAsync(localFileUri);
-        if (fileInfo.exists) {
+        if (fileInfo.exists && fileInfo.size > 0) {
           setLocalUri(fileInfo.uri);
           setLoading(false);
         } else {
+          // If file exists but is empty, delete it
+          if (fileInfo.exists && fileInfo.size === 0) {
+            try {
+              await deleteAsync(localFileUri, { idempotent: true });
+            } catch (e) {
+              console.warn('Failed to delete empty file:', e);
+            }
+          }
           // Download and cache
           const downloadRes = await downloadAsync(remoteUri, localFileUri);
+          if (downloadRes.status < 200 || downloadRes.status >= 300) {
+            throw new Error(`Download failed with status ${downloadRes.status}`);
+          }
           setLocalUri(downloadRes.uri);
           setLoading(false);
         }
       } catch (error) {
         console.error('Error loading/caching media:', error);
+        // If download failed, try to clean up potentially corrupted file
+        try {
+          await deleteAsync(localFileUri, { idempotent: true });
+        } catch (e) {}
         setLocalUri(remoteUri); // Fallback to remote if cache fails
         setLoading(false);
       }

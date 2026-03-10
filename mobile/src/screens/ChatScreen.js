@@ -90,7 +90,7 @@ export default function ChatScreen({ route, navigation }) {
   const insets = useSafeAreaInsets();
   const { theme } = useTheme();
   const colors = themeConstants[theme];
-  const { setActiveChatId, fetchDialogs, currentUserId, notifications, connect, dialogs, clearUnread, currentUser, sendMessage: sendMessageWs, markAsReadWs, deleteMessageWs, bulkDeleteMessagesWs, getHistoryWs, onHistoryReceived, getCachedHistory } = useNotifications();
+  const { setActiveChatId, fetchDialogs, currentUserId, notifications, connect, dialogs, clearUnread, currentUser, sendMessage: sendMessageWs, markAsReadWs, deleteMessageWs, bulkDeleteMessagesWs, getHistoryWs, onHistoryReceived, getCachedHistory, isChatConnected } = useNotifications();
   const { userId, userName } = route.params;
   const [messages, setMessages] = useState([]);
   const [inputText, setInputText] = useState('');
@@ -508,7 +508,6 @@ export default function ChatScreen({ route, navigation }) {
         
         if (notifyType === 'new_message' && lastNotify.data) {
           const message = lastNotify.data;
-          console.log('[ChatScreen] Processing new message notification:', message.id, 'from:', message.sender_id, 'text:', message.message);
           const msgSenderId = Number(message.sender_id);
           const msgReceiverId = Number(message.receiver_id);
           const currentChatId = Number(userId);
@@ -521,9 +520,9 @@ export default function ChatScreen({ route, navigation }) {
           
           if (isRelated) {
             setMessages(prev => {
-              // 1. Пытаемся найти по client_id (наше отправленное)
-              if (message.client_id) {
-                 const existingIdx = prev.findIndex(m => m.client_id === message.client_id || m.id === message.client_id);
+              // 1. Пытаемся найти по client_id (только если сообщение от нас)
+              if (message.client_id && msgSenderId === myIdNum) {
+                 const existingIdx = prev.findIndex(m => (m.client_id && m.client_id === message.client_id) || (m.id && String(m.id) === String(message.client_id)));
                  if (existingIdx !== -1) {
                    console.log('[ChatScreen] Found optimistic message to replace by client_id:', message.client_id);
                    const updated = [...prev];
@@ -542,8 +541,7 @@ export default function ChatScreen({ route, navigation }) {
                 console.log('[ChatScreen] Message already exists in state, skipping:', message.id);
                 return prev;
               }
-              
-              console.log('[ChatScreen] Adding new message from notification:', message.id);
+
               return [{ ...message, status: 'sent' }, ...prev];
             });
             setSkip(prev => prev + 1);
@@ -604,16 +602,28 @@ export default function ChatScreen({ route, navigation }) {
   useEffect(() => {
     const subscription = AppState.addEventListener('change', nextAppState => {
       if (nextAppState === 'active' && userId) {
-        console.log('[ChatScreen] App became active while in chat, check if we should mark as read');
-        // Помечаем как прочитанные только если экран действительно в фокусе (через Ref не совсем надежно, но в этом компоненте должно работать)
+        console.log('[ChatScreen] App became active while in chat, refreshing history');
+        // Помечаем как прочитанные
         markAsReadWs(userId);
         clearUnread(userId);
+        // Запрашиваем историю, чтобы гарантированно получить сообщения, пришедшие пока приложение было в фоне
+        getHistoryWs(userId, LIMIT, 0);
       }
     });
     return () => {
       subscription.remove();
     };
-  }, [markAsReadWs, clearUnread, userId]);
+  }, [markAsReadWs, clearUnread, userId, getHistoryWs]);
+
+  // Перезагружаем историю при восстановлении соединения сокета
+  useEffect(() => {
+    if (isChatConnected && userId) {
+      console.log('[ChatScreen] Chat socket connected, requesting fresh history');
+      getHistoryWs(userId, LIMIT, 0);
+      markAsReadWs(userId);
+      clearUnread(userId);
+    }
+  }, [isChatConnected, userId, getHistoryWs, markAsReadWs, clearUnread]);
 
   useEffect(() => {
     isMounted.current = true;
@@ -639,7 +649,28 @@ export default function ChatScreen({ route, navigation }) {
       if (Number(payload.other_user_id) === Number(userId)) {
         setMessages(prev => {
           if (payload.skip === 0) {
-            return payload.data;
+            // При получении свежей истории (skip=0) сохраняем отправляемые в данный момент сообщения
+            const pending = prev.filter(m => m.status === 'pending');
+            // Сохраняем также сообщения, которые пришли через уведомления, пока мы ждали историю
+            // Если в полученной истории НЕТ сообщения, которое уже есть в стейте (добавлено через уведомление), 
+            // то мы должны его оставить. Но обычно история содержит всё.
+            // Проблема в том, что payload.data может быть чуть старее, чем уведомления, которые уже прилетели.
+            
+            const fromNotifications = prev.filter(m => m.status === 'sent' && !payload.data.find(im => im.id === m.id));
+            if (fromNotifications.length > 0) {
+              console.log('[ChatScreen] Preserving messages from notifications during history refresh:', fromNotifications.map(m => m.id));
+            }
+
+            // Исключаем из pending те, которые уже вернулись от сервера в составе истории
+            const actualPending = pending.filter(pm => !payload.data.find(m => (
+              m.sender_id && Number(m.sender_id) === Number(currentUserId) && 
+              m.client_id && m.client_id === pm.client_id
+            )));
+            
+            const result = [...actualPending, ...fromNotifications, ...payload.data];
+            // Сортируем по ID (или дате), так как смешивание может нарушить порядок
+            // result.sort((a, b) => (b.id || 0) - (a.id || 0)); // sorting removed to avoid unexpected shifts if IDs are not reliable
+            return result;
           } else {
             const newMsgs = payload.data.filter(m => !prev.find(pm => pm.id === m.id));
             return [...prev, ...newMsgs];

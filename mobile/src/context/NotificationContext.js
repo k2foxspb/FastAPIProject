@@ -28,6 +28,7 @@ export const NotificationProvider = ({ children }) => {
       chatWs.current.send(JSON.stringify(payload));
       return true;
     }
+    console.log(`[NotificationContext] Failed to request history for ${otherUserId}: Chat WS not OPEN (state: ${chatWs.current?.readyState})`);
     return false;
   }, []);
 
@@ -41,6 +42,7 @@ export const NotificationProvider = ({ children }) => {
   const [unreadTotal, setUnreadTotal] = useState(0);
   const [friendRequestsCount, setFriendRequestsCount] = useState(0);
   const [isConnected, setIsConnected] = useState(false);
+  const [isChatConnected, setIsChatConnected] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
   const [loadingUser, setLoadingUser] = useState(true);
   const [currentUserId, setCurrentUserId] = useState(null);
@@ -99,13 +101,13 @@ export const NotificationProvider = ({ children }) => {
         // Проверяем, нет ли уже такого сообщения по id или client_id
         const exists = history.some(m => 
           (message.id && m.id === message.id) || 
-          (message.client_id && m.client_id === message.client_id)
+          (isFromMe && message.client_id && m.client_id === message.client_id)
         );
         if (!exists) {
           history = [message, ...history].slice(0, 50); // Храним последние 50 сообщений
           await storage.saveItem(cacheKey, JSON.stringify(history));
-        } else if (message.id && !history.find(m => m.id === message.id)) {
-           // Если сообщение пришло с ID, но в кэше было только с client_id, обновляем
+        } else if (isFromMe && message.id && message.client_id && !history.find(m => m.id === message.id)) {
+           // Если наше сообщение пришло с ID, но в кэше было только с client_id, обновляем
            history = history.map(m => (m.client_id && m.client_id === message.client_id) ? message : m);
            await storage.saveItem(cacheKey, JSON.stringify(history));
         }
@@ -157,7 +159,7 @@ export const NotificationProvider = ({ children }) => {
     setNotifications(prev => {
       if (prev.some(n => n.type === 'new_message' && (
         (message.id && n.data?.id === message.id) || 
-        (message.client_id && n.data?.client_id === message.client_id)
+        (isFromMe && message.client_id && n.data?.client_id === message.client_id)
       ))) {
         return prev;
       }
@@ -241,6 +243,7 @@ export const NotificationProvider = ({ children }) => {
 
       socket.onopen = () => {
         clearTimeout(connectionTimeout);
+        setIsChatConnected(true);
 
         chatWsReconnectAttempt.current = 0;
         if (chatWsReconnectTimer.current) {
@@ -273,23 +276,26 @@ export const NotificationProvider = ({ children }) => {
       socket.onmessage = (e) => {
         try {
           const payload = JSON.parse(e.data);
-          const msgType = payload.type || payload.msg_type;
-          
-          if (!payload.type) {
-            payload.type = msgType;
-          }
+          let msgType = payload.type || payload.msg_type;
           
           if (!msgType && payload.id && payload.sender_id) {
             // Raw message without type - treat as new_message
             console.log('[NotificationContext] Received raw message via Chat WS:', payload.id);
             payload.type = 'new_message';
             payload.data = { ...payload };
+            msgType = 'new_message';
+          }
+          
+          if (!payload.type) {
+            payload.type = msgType;
           }
 
           if (msgType === 'dialogs_list') {
             setDialogs(payload.data || []);
           } else if (msgType === 'chat_history') {
-            historyListeners.forEach(cb => cb(payload));
+            historyListeners.forEach(cb => {
+              try { cb(payload); } catch(e) { console.error('Error in history listener:', e); }
+            });
           } else if (msgType === 'pong') {
             // Keep-alive response
           } else if (msgType === 'new_message' && payload.data) {
@@ -309,6 +315,7 @@ export const NotificationProvider = ({ children }) => {
 
       socket.onclose = (e) => {
         console.log('[NotificationContext] Chat WS closed:', e.code);
+        setIsChatConnected(false);
         if (chatWsHeartbeatInterval.current) {
           clearInterval(chatWsHeartbeatInterval.current);
           chatWsHeartbeatInterval.current = null;
@@ -671,7 +678,8 @@ export const NotificationProvider = ({ children }) => {
       // При возврате в активное состояние пытаемся восстановить соединение нотификаций и чата
       if (nextAppState === 'active') {
         const checkConnection = (socket, name, connectFn) => {
-          if (!socket.current || (socket.current.readyState !== WebSocket.OPEN && socket.current.readyState !== WebSocket.CONNECTING)) {
+          const state = socket.current?.readyState;
+          if (!socket.current || (state !== WebSocket.OPEN && state !== WebSocket.CONNECTING)) {
             console.log(`[NotificationContext] App active, ${name} WS disconnected, reconnecting...`);
             // Reset attempts on manual foreground reconnect to try immediately
             if (name === 'Chat') chatWsReconnectAttempt.current = 0;
@@ -679,7 +687,11 @@ export const NotificationProvider = ({ children }) => {
             
             storage.getAccessToken().then(tok => { if (tok) connectFn(tok); });
           } else {
-            console.log(`[NotificationContext] App active, ${name} WS is ${socket.current?.readyState === WebSocket.OPEN ? 'OPEN' : 'CONNECTING'}`);
+            console.log(`[NotificationContext] App active, ${name} WS is ${state === WebSocket.OPEN ? 'OPEN' : 'CONNECTING'}`);
+            // Если соединение OPEN, отправляем пинг для проверки реальности канала
+            if (state === WebSocket.OPEN) {
+               try { socket.current.send(JSON.stringify({ type: 'ping' })); } catch(e) {}
+            }
           }
         };
 
@@ -801,6 +813,7 @@ export const NotificationProvider = ({ children }) => {
       fetchDialogs, 
       fetchFriendRequestsCount,
       isConnected, 
+      isChatConnected,
       connect, 
       disconnect,
       injectExternalNotification,
