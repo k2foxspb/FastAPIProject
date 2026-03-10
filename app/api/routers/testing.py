@@ -60,13 +60,14 @@ async def send_message_as_user(
     )
 
     # Отправка через WebSocket (если подключен)
-    await chat_manager.send_personal_message(resp_msg.model_dump(mode="json"), new_msg.receiver_id)
-    
-    # Также уведомление через notifications_manager
-    await notifications_manager.send_personal_message({
+    chat_event = {
         "type": "new_message",
         "data": resp_msg.model_dump(mode="json")
-    }, user_id=new_msg.receiver_id)
+    }
+    await chat_manager.send_personal_message(chat_event, new_msg.receiver_id)
+    
+    # Также уведомление через notifications_manager
+    await notifications_manager.send_personal_message(chat_event, user_id=new_msg.receiver_id)
 
     # Push-уведомление через FCM (для тестирования доставки)
     receiver = await db.get(UserModel, new_msg.receiver_id, populate_existing=True)
