@@ -24,6 +24,7 @@ import MyReviewsScreen from '../screens/MyReviewsScreen';
 import EditProductScreen from '../screens/EditProductScreen';
 import ProductDetailScreen from '../screens/ProductDetailScreen';
 import LoginScreen from '../screens/LoginScreen';
+import WebViewScreen from '../screens/WebViewScreen';
 import AdminScreen from '../screens/AdminScreen';
 import AdminUsersScreen from '../screens/AdminUsersScreen';
 import AdminModerationScreen from '../screens/AdminModerationScreen';
@@ -113,6 +114,7 @@ function ProfileStack() {
       <Stack.Screen name="MyLikes" component={MyLikesScreen} options={{ title: 'Понравилось' }} />
       <Stack.Screen name="MyReviews" component={MyReviewsScreen} options={{ title: 'Мои отзывы' }} />
       <Stack.Screen name="UserProfile" component={UserProfileScreen} options={{ title: 'Профиль пользователя' }} />
+      <Stack.Screen name="WebView" component={WebViewScreen} />
       <Stack.Screen 
         name="Login" 
         component={LoginScreen} 

@@ -3,6 +3,7 @@ import { getShadow } from '../utils/shadowStyles';
 import { View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator, Animated, Dimensions } from 'react-native';
 import { GoogleSignin, statusCodes } from '@react-native-google-signin/google-signin';
 import { usersApi, setAuthToken } from '../api';
+import { API_BASE_URL } from '../constants';
 import { useNotifications } from '../context/NotificationContext';
 import { updateServerFcmToken } from '../utils/notifications';
 import { storage } from '../utils/storage';
@@ -93,6 +94,20 @@ export default function LoginScreen({ navigation }) {
     }
   };
 
+  const onPrivacyPolicy = () => {
+    navigation.navigate('WebView', { 
+      url: `${API_BASE_URL}/privacy-policy`, 
+      title: 'Политика конфиденциальности' 
+    });
+  };
+
+  const onTermsOfUse = () => {
+    navigation.navigate('WebView', { 
+      url: `${API_BASE_URL}/terms`, 
+      title: 'Условия использования' 
+    });
+  };
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <Animated.View 
@@ -152,7 +167,20 @@ export default function LoginScreen({ navigation }) {
 
         <View style={styles.footer}>
           <Text style={[styles.footerText, { color: colors.textSecondary }]}>
-            Используя приложение, вы соглашаетесь с условиями использования
+            Используя приложение, вы соглашаетесь с{' '}
+            <Text 
+              style={{ textDecorationLine: 'underline', color: colors.primary }} 
+              onPress={onTermsOfUse}
+            >
+              условиями использования
+            </Text>
+            {' '}и{' '}
+            <Text 
+              style={{ textDecorationLine: 'underline', color: colors.primary }} 
+              onPress={onPrivacyPolicy}
+            >
+              политикой конфиденциальности
+            </Text>
           </Text>
         </View>
       </Animated.View>

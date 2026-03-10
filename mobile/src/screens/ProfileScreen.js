@@ -3,6 +3,7 @@ import { getShadow } from '../utils/shadowStyles';
 import { View, Text, StyleSheet, Image, FlatList, ScrollView, TouchableOpacity, Modal, TouchableWithoutFeedback, Switch, Alert, Platform, Linking } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import api, { usersApi, newsApi, setAuthToken } from '../api';
+import { API_BASE_URL } from '../constants';
 import { Ionicons as Icon } from '@expo/vector-icons';
 import Constants from 'expo-constants';
 import { useNotifications } from '../context/NotificationContext';
@@ -458,6 +459,38 @@ export default function ProfileScreen({ navigation }) {
                   <Text style={[styles.menuItemText, { color: colors.primary }]}>
                     {syncing ? 'Синхронизация...' : 'Синхронизировать уведомления'}
                   </Text>
+                </TouchableOpacity>
+
+                <View style={[styles.menuDivider, { backgroundColor: colors.border }]} />
+                
+                <Text style={[styles.menuSectionTitle, { color: colors.textSecondary, marginTop: 5 }]}>О приложении</Text>
+                
+                <TouchableOpacity 
+                  style={styles.menuItem} 
+                  onPress={() => {
+                    setSettingsVisible(false);
+                    navigation.navigate('WebView', { 
+                      url: `${API_BASE_URL}/terms`, 
+                      title: 'Условия использования' 
+                    });
+                  }}
+                >
+                  <Icon name="document-text-outline" size={22} color={colors.textSecondary} />
+                  <Text style={[styles.menuItemText, { color: colors.textSecondary }]}>Условия использования</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity 
+                  style={styles.menuItem} 
+                  onPress={() => {
+                    setSettingsVisible(false);
+                    navigation.navigate('WebView', { 
+                      url: `${API_BASE_URL}/privacy-policy`, 
+                      title: 'Политика конфиденциальности' 
+                    });
+                  }}
+                >
+                  <Icon name="shield-outline" size={22} color={colors.textSecondary} />
+                  <Text style={[styles.menuItemText, { color: colors.textSecondary }]}>Политика конфиденциальности</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity 
