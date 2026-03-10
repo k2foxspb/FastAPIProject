@@ -471,12 +471,12 @@ export default function ProfileScreen({ navigation }) {
                     setSettingsVisible(false);
                     navigation.navigate('WebView', { 
                       url: `${API_BASE_URL}/terms`, 
-                      title: 'Условия использования' 
+                      title: 'Правила использования' 
                     });
                   }}
                 >
                   <Icon name="document-text-outline" size={22} color={colors.textSecondary} />
-                  <Text style={[styles.menuItemText, { color: colors.textSecondary }]}>Условия использования</Text>
+                  <Text style={[styles.menuItemText, { color: colors.textSecondary }]}>Правила использования</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity 
