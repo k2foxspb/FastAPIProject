@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { getShadow } from '../utils/shadowStyles';
-import { View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator, Animated, Dimensions } from 'react-native';
-import { GoogleSignin, statusCodes } from '@react-native-google-signin/google-signin';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator, Animated, Dimensions, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
+import auth from '@react-native-firebase/auth';
 import { usersApi, setAuthToken } from '../api';
 import { API_BASE_URL } from '../constants';
 import { useNotifications } from '../context/NotificationContext';
@@ -17,6 +17,9 @@ export default function LoginScreen({ navigation }) {
   const { theme } = useTheme();
   const colors = themeConstants[theme];
   const [loading, setLoading] = useState(false);
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [code, setCode] = useState('');
+  const [confirm, setConfirm] = useState(null);
   const { connect, loadUser } = useNotifications();
 
   // Animations
@@ -25,12 +28,6 @@ export default function LoginScreen({ navigation }) {
   const logoScale = useRef(new Animated.Value(0.8)).current;
 
   useEffect(() => {
-    GoogleSignin.configure({
-      webClientId: '176773891332-vl9om7pugk8voh0mtnkbk2crqd9gtk1m.apps.googleusercontent.com',
-      offlineAccess: true,
-      forceCodeForRefreshToken: true,
-    });
-
     Animated.parallel([
       Animated.timing(fadeAnim, {
         toValue: 1,
@@ -52,43 +49,71 @@ export default function LoginScreen({ navigation }) {
     ]).start();
   }, []);
 
-  const onGoogleLogin = async () => {
+  const signInWithPhoneNumber = async () => {
+    if (!phoneNumber || phoneNumber.length < 10) {
+      Alert.alert('Ошибка', 'Пожалуйста, введите корректный номер телефона');
+      return;
+    }
+
     try {
       setLoading(true);
-      await GoogleSignin.hasPlayServices();
-      const userInfo = await GoogleSignin.signIn();
-      const idToken = userInfo.idToken || userInfo.data?.idToken;
-      
-      if (!idToken) {
-        throw new Error('Не удалось получить ID токен Google');
+      // Форматируем номер телефона (должен быть в формате +79991234567)
+      let formattedPhone = phoneNumber;
+      if (!formattedPhone.startsWith('+')) {
+        if (formattedPhone.startsWith('8')) {
+          formattedPhone = '+7' + formattedPhone.substring(1);
+        } else if (formattedPhone.startsWith('7')) {
+          formattedPhone = '+' + formattedPhone;
+        } else {
+          formattedPhone = '+7' + formattedPhone;
+        }
       }
 
-      const fcmToken = await storage.getItem('fcm_token');
-      const res = await usersApi.googleAuth(idToken, fcmToken);
-      
-      const { access_token, refresh_token } = res.data;
-      
-      if (!access_token) {
-        throw new Error('Токен не получен от сервера');
-      }
-
-      await storage.saveTokens(access_token, refresh_token);
-      setAuthToken(access_token);
-      
-      await loadUser();
-      connect(access_token);
-      updateServerFcmToken();
-      
-      navigation.replace('ProfileMain');
+      const confirmation = await auth().signInWithPhoneNumber(formattedPhone);
+      setConfirm(confirmation);
+      console.log(confirmation);
     } catch (error) {
-      if (error.code === statusCodes.SIGN_IN_CANCELLED) {
-        console.log('User cancelled login');
-      } else if (error.code === statusCodes.IN_PROGRESS) {
-        console.log('Signin in progress');
-      } else {
-        console.error('Google Auth Error:', error);
-        Alert.alert('Ошибка входа', error.message || 'Не удалось войти через Google');
+      console.error('Phone Auth Error:', error);
+      Alert.alert('Ошибка', error.message || 'Не удалось отправить SMS');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const confirmCode = async () => {
+    if (!code || code.length < 6) {
+      Alert.alert('Ошибка', 'Введите 6-значный код из SMS');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const result = await confirm.confirm(code);
+      const user = result.user;
+      
+      if (user) {
+        const idToken = await user.getIdToken();
+        const fcmToken = await storage.getItem('fcm_token');
+        const res = await usersApi.firebaseAuth(idToken, fcmToken);
+        
+        const { access_token, refresh_token } = res.data;
+        
+        if (!access_token) {
+          throw new Error('Токен не получен от сервера');
+        }
+
+        await storage.saveTokens(access_token, refresh_token);
+        setAuthToken(access_token);
+        
+        await loadUser();
+        connect(access_token);
+        updateServerFcmToken();
+        
+        navigation.replace('ProfileMain');
       }
+    } catch (error) {
+      console.error('Confirm Code Error:', error);
+      Alert.alert('Ошибка', 'Неверный код подтверждения');
     } finally {
       setLoading(false);
     }
@@ -109,7 +134,10 @@ export default function LoginScreen({ navigation }) {
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
+    <KeyboardAvoidingView 
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      style={[styles.container, { backgroundColor: colors.background }]}
+    >
       <Animated.View 
         style={[
           styles.inner, 
@@ -119,7 +147,7 @@ export default function LoginScreen({ navigation }) {
           }
         ]}
       >
-        <Animated.View style={{ transform: [{ scale: logoScale }], alignSelf: 'center', marginBottom: 32 }}>
+        <Animated.View style={{ transform: [{ scale: logoScale }], alignSelf: 'center', marginBottom: 24 }}>
           <View style={[styles.logoContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <Ionicons name="cart" size={60} color={colors.primary} />
           </View>
@@ -127,28 +155,82 @@ export default function LoginScreen({ navigation }) {
 
         <Text style={[styles.title, { color: colors.text }]}>FokinShop</Text>
         <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-          Твой путь в мир покупок и общения. Заходи и будь как дома.
+          Вход по номеру телефона
         </Text>
 
-        <TouchableOpacity 
-          style={[
-            styles.googleButton, 
-            { backgroundColor: colors.surface, borderColor: colors.border },
-            loading && styles.buttonDisabled
-          ]} 
-          onPress={onGoogleLogin} 
-          disabled={loading}
-          activeOpacity={0.8}
-        >
-          {loading ? (
-            <ActivityIndicator color={colors.primary} />
-          ) : (
-            <View style={styles.buttonContent}>
-              <Ionicons name="logo-google" size={22} color="#4285F4" style={{ marginRight: 12 }} />
-              <Text style={[styles.buttonText, { color: colors.text }]}>Войти через Google</Text>
+        {!confirm ? (
+          <>
+            <View style={[styles.inputContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <Ionicons name="call-outline" size={20} color={colors.textSecondary} style={{ marginRight: 12 }} />
+              <TextInput
+                style={[styles.input, { color: colors.text }]}
+                placeholder="Номер телефона (+7...)"
+                placeholderTextColor={colors.textSecondary + '80'}
+                keyboardType="phone-pad"
+                value={phoneNumber}
+                onChangeText={setPhoneNumber}
+                disabled={loading}
+              />
             </View>
-          )}
-        </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={[
+                styles.primaryButton, 
+                { backgroundColor: colors.primary },
+                loading && styles.buttonDisabled
+              ]} 
+              onPress={signInWithPhoneNumber} 
+              disabled={loading}
+              activeOpacity={0.8}
+            >
+              {loading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.primaryButtonText}>Получить код</Text>
+              )}
+            </TouchableOpacity>
+          </>
+        ) : (
+          <>
+            <View style={[styles.inputContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <Ionicons name="keypad-outline" size={20} color={colors.textSecondary} style={{ marginRight: 12 }} />
+              <TextInput
+                style={[styles.input, { color: colors.text }]}
+                placeholder="Код из SMS"
+                placeholderTextColor={colors.textSecondary + '80'}
+                keyboardType="number-pad"
+                value={code}
+                onChangeText={setCode}
+                maxLength={6}
+                disabled={loading}
+              />
+            </View>
+
+            <TouchableOpacity 
+              style={[
+                styles.primaryButton, 
+                { backgroundColor: colors.primary },
+                loading && styles.buttonDisabled
+              ]} 
+              onPress={confirmCode} 
+              disabled={loading}
+              activeOpacity={0.8}
+            >
+              {loading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.primaryButtonText}>Войти</Text>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              onPress={() => setConfirm(null)}
+              style={{ marginTop: 16, alignItems: 'center' }}
+            >
+              <Text style={{ color: colors.primary }}>Изменить номер</Text>
+            </TouchableOpacity>
+          </>
+        )}
 
         <View style={styles.features}>
           <View style={styles.featureItem}>
@@ -184,7 +266,7 @@ export default function LoginScreen({ navigation }) {
           </Text>
         </View>
       </Animated.View>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -223,4 +305,31 @@ const styles = StyleSheet.create({
   featureText: { fontSize: 12, marginTop: 8, fontWeight: '500' },
   footer: { position: 'absolute', bottom: 40, left: 0, right: 0, paddingHorizontal: 40 },
   footerText: { fontSize: 12, textAlign: 'center', opacity: 0.6 },
+  inputContainer: {
+    height: 60,
+    borderRadius: 18,
+    borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    marginBottom: 16,
+    ...getShadow('#000', { width: 0, height: 2 }, 0.05, 5, 1),
+  },
+  input: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  primaryButton: {
+    height: 60,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...getShadow('#000', { width: 0, height: 4 }, 0.1, 10, 2),
+  },
+  primaryButtonText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '700',
+  },
 });

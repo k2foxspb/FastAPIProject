@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 import jwt
 from fastapi import Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, or_
 
 from sqlalchemy.orm import selectinload
 
@@ -73,11 +73,15 @@ async def get_current_user_optional(
         return None
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        email: str = payload.get("sub")
-        if email is None:
+        sub: str = payload.get("sub")
+        if sub is None:
             return None
         result = await db.scalars(
-            select(UserModel).where(UserModel.email == email, UserModel.is_active == True))
+            select(UserModel).where(
+                or_(UserModel.email == sub, UserModel.phone_number == sub),
+                UserModel.is_active == True
+            )
+        )
         return result.first()
     except:
         return None
@@ -95,8 +99,8 @@ async def get_current_user(token: str = Depends(oauth2_scheme),
     )
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        email: str = payload.get("sub")
-        if email is None:
+        sub: str = payload.get("sub")
+        if sub is None:
             raise credentials_exception
     except jwt.ExpiredSignatureError:
         raise HTTPException(
@@ -107,7 +111,11 @@ async def get_current_user(token: str = Depends(oauth2_scheme),
     except jwt.PyJWTError as e:
         raise credentials_exception
     result = await db.scalars(
-        select(UserModel).where(UserModel.email == email, UserModel.is_active == True))
+        select(UserModel).where(
+            or_(UserModel.email == sub, UserModel.phone_number == sub),
+            UserModel.is_active == True
+        )
+    )
     user = result.first()
     if user is None:
         raise credentials_exception
@@ -126,10 +134,10 @@ async def verify_refresh_token(refresh_token: str, db: AsyncSession):
 
     try:
         payload = jwt.decode(refresh_token, SECRET_KEY, algorithms=[ALGORITHM])
-        email: str | None = payload.get("sub")
+        sub: str | None = payload.get("sub")
         token_type: str | None = payload.get("token_type")
 
-        if email is None or token_type != "refresh":
+        if sub is None or token_type != "refresh":
             raise credentials_exception
 
     except (jwt.ExpiredSignatureError, jwt.PyJWTError):
@@ -137,7 +145,7 @@ async def verify_refresh_token(refresh_token: str, db: AsyncSession):
 
     result = await db.scalars(
         select(UserModel).where(
-            UserModel.email == email,
+            or_(UserModel.email == sub, UserModel.phone_number == sub),
             UserModel.is_active == True
         )
     )

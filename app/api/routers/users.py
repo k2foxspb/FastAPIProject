@@ -22,7 +22,7 @@ from app.schemas.users import (
     FCMTokenUpdate, BulkDeletePhotosRequest, Friendship as FriendshipSchema,
     UserPhotoComment as UserPhotoCommentSchema, UserPhotoCommentCreate,
     TokenResponse, FirebaseConfigResponse, VerifyCodeRequest, ResendCodeRequest,
-    GoogleAuthRequest
+    GoogleAuthRequest, FirebaseAuthRequest
 )
 from app.schemas.news import News as NewsSchema, NewsComment as NewsCommentSchema
 from app.schemas.reviews import Review as ReviewSchema
@@ -567,89 +567,83 @@ async def refresh_token_access(
     }
 
 
-@router.post("/google-auth", response_model=TokenResponse)
-async def google_auth(
-    request: GoogleAuthRequest,
+@router.post("/firebase-auth", response_model=TokenResponse)
+async def firebase_auth(
+    request: FirebaseAuthRequest,
     db: AsyncSession = Depends(get_async_db)
 ):
     """
-    Аутентифицирует пользователя через Google ID Token (Firebase).
+    Аутентифицирует пользователя через Firebase ID Token (Phone или Google).
     Если пользователь не существует, создает его.
     """
     from firebase_admin import auth as fb_auth
-    from google.oauth2 import id_token
-    from google.auth.transport import requests
     
     try:
-        decoded_token = None
-        try:
-            # Сначала пробуем верификацию через Firebase (основной метод)
-            # Мы используем run_in_executor, так как Firebase Admin SDK блокирующий (синхронный)
-            decoded_token = await asyncio.get_event_loop().run_in_executor(
-                None, lambda: fb_auth.verify_id_token(request.id_token)
-            )
-            logger.info(f"Google Auth: Verified via Firebase for {decoded_token.get('email')}")
-        except Exception as fb_err:
-            logger.warning(f"Google Auth: Firebase verification failed, trying Google Auth fallback: {fb_err}")
-            # Если Firebase не принял токен (например, это чистый Google ID Token),
-            # пробуем верифицировать его напрямую через Google OAuth2 библиотеку.
-            # Нам не нужно указывать CLIENT_ID, если мы доверяем всем клиентам нашего проекта,
-            # но мы проверим audience позже.
-            try:
-                decoded_token = await asyncio.get_event_loop().run_in_executor(
-                    None, lambda: id_token.verify_oauth2_token(
-                        request.id_token, 
-                        requests.Request()
-                    )
-                )
-                logger.info(f"Google Auth: Verified via Google Auth library for {decoded_token.get('email')}")
-            except Exception as g_err:
-                logger.error(f"Google Auth: Both verification methods failed. Firebase: {fb_err}, Google: {g_err}")
-                raise g_err
+        decoded_token = await asyncio.get_event_loop().run_in_executor(
+            None, lambda: fb_auth.verify_id_token(request.id_token)
+        )
+        logger.info(f"Firebase Auth: Verified token for UID {decoded_token.get('uid')}")
 
         email = decoded_token.get("email")
-        if not email:
-            raise HTTPException(status_code=400, detail="Email not provided in Google token")
+        phone_number = decoded_token.get("phone_number")
         
-        # Проверяем наличие пользователя
-        result = await db.execute(select(UserModel).where(UserModel.email == email))
-        user = result.scalar_one_or_none()
+        if not email and not phone_number:
+            raise HTTPException(status_code=400, detail="Neither email nor phone number provided in Firebase token")
         
+        # Ищем пользователя
+        user = None
+        if email:
+            result = await db.execute(select(UserModel).where(UserModel.email == email))
+            user = result.scalar_one_or_none()
+        
+        if not user and phone_number:
+            result = await db.execute(select(UserModel).where(UserModel.phone_number == phone_number))
+            user = result.scalar_one_or_none()
+            
         if not user:
             # Создаем нового пользователя
             full_name = decoded_token.get("name", "")
-            first_name = full_name.split(" ")[0] if full_name else ""
-            last_name = " ".join(full_name.split(" ")[1:]) if full_name else ""
+            first_name = full_name.split(" ")[0] if full_name else "User"
+            last_name = " ".join(full_name.split(" ")[1:]) if full_name else (phone_number[-4:] if phone_number else "")
             picture = decoded_token.get("picture")
             
+            # Владельца определяем по email
             user_role = "owner" if email == "k2foxspb@gmail.com" else "buyer"
             
             user = UserModel(
                 email=email,
+                phone_number=phone_number,
                 hashed_password=hash_password(secrets.token_urlsafe(16)),
                 first_name=first_name,
                 last_name=last_name,
-                is_active=True,  # Google verified email
+                is_active=True,
                 avatar_url=picture,
                 role=user_role
             )
             db.add(user)
             await db.commit()
             await db.refresh(user)
-            logger.info(f"Google Auth: Created new user {email}")
+            logger.info(f"Firebase Auth: Created new user {email or phone_number}")
         else:
             is_updated = False
-            # Если пользователь был не активен, активируем его (так как Google подтвердил email)
+            # Если пользователь был не активен, активируем его
             if not user.is_active:
                 user.is_active = True
                 is_updated = True
-                logger.info(f"Google Auth: Activated existing user {email}")
+                logger.info(f"Firebase Auth: Activated existing user {email or phone_number}")
             
-            # Если это владелец, гарантируем роль
+            # Привязываем email или телефон если их не было
+            if email and not user.email:
+                user.email = email
+                is_updated = True
+            if phone_number and not user.phone_number:
+                user.phone_number = phone_number
+                is_updated = True
+
+            # Если это владелец по email, гарантируем роль
             if email == "k2foxspb@gmail.com" and user.role != "owner":
                 user.role = "owner"
                 is_updated = True
-                logger.info(f"Google Auth: User {email} promoted to owner")
 
             if is_updated:
                 await db.commit()
@@ -665,9 +659,10 @@ async def google_auth(
             user.fcm_token = request.fcm_token
             await db.commit()
 
-        # Генерируем токены
-        access_token = create_access_token(data={"sub": user.email, "role": user.role, "id": user.id})
-        refresh_token = create_refresh_token(data={"sub": user.email, "role": user.role, "id": user.id})
+        # Генерируем токены. Используем то что есть (email или телефон) для sub
+        sub_val = user.email or user.phone_number
+        access_token = create_access_token(data={"sub": sub_val, "role": user.role, "id": user.id})
+        refresh_token = create_refresh_token(data={"sub": sub_val, "role": user.role, "id": user.id})
         
         return {
             "access_token": access_token, 
@@ -677,8 +672,18 @@ async def google_auth(
         }
         
     except Exception as e:
-        logger.error(f"Google Auth error: {e}")
-        raise HTTPException(status_code=401, detail=f"Invalid Google token: {str(e)}")
+        logger.error(f"Firebase Auth error: {e}")
+        raise HTTPException(status_code=401, detail=str(e))
+
+
+@router.post("/google-auth", response_model=TokenResponse)
+async def google_auth(
+    request: GoogleAuthRequest,
+    db: AsyncSession = Depends(get_async_db)
+):
+    # Оставляем для совместимости, но вызываем firebase_auth внутри
+    firebase_request = FirebaseAuthRequest(id_token=request.id_token, fcm_token=request.fcm_token)
+    return await firebase_auth(firebase_request, db)
 
 
 @router.post("/albums", response_model=PhotoAlbumSchema, status_code=status.HTTP_201_CREATED)

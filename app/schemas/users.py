@@ -197,22 +197,23 @@ class AdminPermission(BaseModel):
 
 class User(BaseModel):
     id: int
-    email: str # Changed from EmailStr to str for flexibility
-    first_name: str | None = None
-    last_name: str | None = None
+    email: Optional[str] = None
+    phone_number: Optional[str] = None
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
     is_active: bool = True
     role: str = "buyer"
-    status: str | None = "offline"
-    last_seen: str | None = None
-    avatar_url: str | None = None
-    avatar_preview_url: str | None = None
-    fcm_token: str | None = None
-    friendship_status: str | None = None # "pending", "accepted", "requested_by_me", "requested_by_them", null
+    status: Optional[str] = "offline"
+    last_seen: Optional[str] = None
+    avatar_url: Optional[str] = None
+    avatar_preview_url: Optional[str] = None
+    fcm_token: Optional[str] = None
+    friendship_status: Optional[str] = None # "pending", "accepted", "requested_by_me", "requested_by_them", null
     photos: list[UserPhoto] = []
     albums: list[PhotoAlbum] = []
     admin_permissions: list[AdminPermission] = []
     update_available: bool = False
-    latest_app_version: 'AppVersionResponse | None' = None
+    latest_app_version: Optional['AppVersionResponse'] = None
     
     model_config = ConfigDict(from_attributes=True)
 
@@ -223,7 +224,8 @@ class User(BaseModel):
                 # Ensure mandatory fields have defaults if missing in dict
                 data = {
                     "id": obj.get("id", 0),
-                    "email": obj.get("email", ""),
+                    "email": obj.get("email"),
+                    "phone_number": obj.get("phone_number"),
                     "first_name": obj.get("first_name"),
                     "last_name": obj.get("last_name"),
                     "is_active": obj.get("is_active", True),
@@ -245,7 +247,8 @@ class User(BaseModel):
             # Получаем базовые поля
             data = {
                 "id": int(getattr(obj, "id", 0)),
-                "email": str(getattr(obj, "email", "")),
+                "email": getattr(obj, "email", None),
+                "phone_number": getattr(obj, "phone_number", None),
                 "first_name": getattr(obj, "first_name", None),
                 "last_name": getattr(obj, "last_name", None),
                 "is_active": bool(getattr(obj, "is_active", True)),
@@ -289,6 +292,11 @@ class User(BaseModel):
 
 
 class GoogleAuthRequest(BaseModel):
+    id_token: str
+    fcm_token: str | None = None
+
+
+class FirebaseAuthRequest(BaseModel):
     id_token: str
     fcm_token: str | None = None
 
