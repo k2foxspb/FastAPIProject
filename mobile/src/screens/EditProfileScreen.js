@@ -11,7 +11,8 @@ export default function EditProfileScreen({ route, navigation }) {
   const { theme } = useTheme();
   const colors = themeConstants[theme];
   const { user } = route.params;
-  const [email, setEmail] = useState(user.email);
+  const [email, setEmail] = useState(user.email || '');
+  const [phoneNumber, setPhoneNumber] = useState(user.phone_number || '');
   const [firstName, setFirstName] = useState(user.first_name || '');
   const [lastName, setLastName] = useState(user.last_name || '');
   const [avatar, setAvatar] = useState(null);
@@ -34,7 +35,8 @@ export default function EditProfileScreen({ route, navigation }) {
     setLoading(true);
     try {
       const formData = new FormData();
-      if (email !== user.email) formData.append('email', email);
+      if (email !== (user.email || '')) formData.append('email', email);
+      if (phoneNumber !== (user.phone_number || '')) formData.append('phone_number', phoneNumber);
       if (firstName !== (user.first_name || '')) formData.append('first_name', firstName);
       if (lastName !== (user.last_name || '')) formData.append('last_name', lastName);
       
@@ -89,6 +91,16 @@ export default function EditProfileScreen({ route, navigation }) {
           placeholderTextColor={colors.textSecondary}
           keyboardType="email-address"
           autoCapitalize="none"
+        />
+
+        <Text style={[styles.label, { color: colors.textSecondary }]}>Телефон</Text>
+        <TextInput 
+          style={[styles.input, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]}
+          value={phoneNumber}
+          onChangeText={setPhoneNumber}
+          placeholder="Телефон"
+          placeholderTextColor={colors.textSecondary}
+          keyboardType="phone-pad"
         />
 
         <Text style={[styles.label, { color: colors.textSecondary }]}>Имя</Text>

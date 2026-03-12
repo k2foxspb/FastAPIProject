@@ -314,6 +314,7 @@ async def get_me(
 @router.patch("/me", response_model=UserSchema)
 async def update_me(
     email: str | None = Form(None),
+    phone_number: str | None = Form(None),
     first_name: str | None = Form(None),
     last_name: str | None = Form(None),
     avatar: UploadFile = File(None),
@@ -324,7 +325,21 @@ async def update_me(
     Обновляет информацию о текущем пользователе.
     """
     if email:
+        # Проверка уникальности email
+        if email != current_user.email:
+            res = await db.execute(select(UserModel).where(UserModel.email == email))
+            if res.scalar_one_or_none():
+                raise HTTPException(status_code=400, detail="Этот Email уже зарегистрирован другим пользователем")
         current_user.email = email
+
+    if phone_number:
+        # Проверка уникальности телефона
+        if phone_number != current_user.phone_number:
+            res = await db.execute(select(UserModel).where(UserModel.phone_number == phone_number))
+            if res.scalar_one_or_none():
+                raise HTTPException(status_code=400, detail="Этот номер телефона уже зарегистрирован другим пользователем")
+        current_user.phone_number = phone_number
+
     if first_name is not None:
         current_user.first_name = first_name
     if last_name is not None:
@@ -386,6 +401,7 @@ async def update_me(
 async def create_user(
     db: AsyncSession = Depends(get_async_db),
     email: str = Form(...),
+    phone_number: str | None = Form(None),
     password: str = Form(...),
     first_name: str = Form(...),
     last_name: str = Form(...),
@@ -396,13 +412,21 @@ async def create_user(
     Регистрирует нового пользователя. 
     """
     print(f"DEBUG: create_user called for email: {email}")
-    # Проверка существования пользователя
+    # Проверка существования пользователя по email
     result = await db.execute(select(UserModel).where(UserModel.email == email))
-    existing_user = result.scalar_one_or_none()
+    existing_user_email = result.scalar_one_or_none()
 
-    if existing_user:
+    if existing_user_email:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
                             detail="Email already registered")
+
+    # Проверка существования пользователя по телефону
+    if phone_number:
+        result = await db.execute(select(UserModel).where(UserModel.phone_number == phone_number))
+        existing_user_phone = result.scalar_one_or_none()
+        if existing_user_phone:
+             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="Phone number already registered")
 
     # Запрещаем регистрацию как owner или admin через обычный эндпоинт
     if role in ["owner", "admin"]:
@@ -421,6 +445,7 @@ async def create_user(
     # Создание объекта пользователя
     db_user = UserModel(
         email=email,
+        phone_number=phone_number,
         hashed_password=hash_password(password),
         first_name=first_name,
         last_name=last_name,
@@ -591,14 +616,25 @@ async def firebase_auth(
             raise HTTPException(status_code=400, detail="Neither email nor phone number provided in Firebase token")
         
         # Ищем пользователя
-        user = None
+        user_by_email = None
+        user_by_phone = None
+        
         if email:
             result = await db.execute(select(UserModel).where(UserModel.email == email))
-            user = result.scalar_one_or_none()
+            user_by_email = result.scalar_one_or_none()
         
-        if not user and phone_number:
+        if phone_number:
             result = await db.execute(select(UserModel).where(UserModel.phone_number == phone_number))
-            user = result.scalar_one_or_none()
+            user_by_phone = result.scalar_one_or_none()
+            
+        if user_by_email and user_by_phone and user_by_email.id != user_by_phone.id:
+            logger.warning(f"Firebase Auth conflict: email {email} (UID {user_by_email.id}) and phone {phone_number} (UID {user_by_phone.id})")
+            raise HTTPException(
+                status_code=400, 
+                detail="Этот Email и номер телефона уже привязаны к разным аккаунтам. Пожалуйста, используйте один способ входа."
+            )
+            
+        user = user_by_email or user_by_phone
             
         if not user:
             # Создаем нового пользователя
@@ -647,6 +683,7 @@ async def firebase_auth(
 
             if is_updated:
                 await db.commit()
+                await db.refresh(user)
 
         # Обновляем FCM токен, если он передан
         if request.fcm_token:
@@ -668,7 +705,9 @@ async def firebase_auth(
             "access_token": access_token, 
             "refresh_token": refresh_token, 
             "token_type": "bearer",
-            "fcm_token": user.fcm_token
+            "fcm_token": user.fcm_token,
+            "needs_phone": user.phone_number is None,
+            "needs_email": user.email is None
         }
         
     except Exception as e:

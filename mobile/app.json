@@ -38,7 +38,7 @@
     "name": "FastAPI",
     "slug": "fastapi",
     "scheme": "fokinfun",
-    "version": "1.0.5",
+    "version": "1.0.10",
     "orientation": "portrait",
     "icon": "./assets/logo1024.png",
     "userInterfaceStyle": "light",
@@ -57,7 +57,8 @@
         "aps-environment": "production"
       },
       "associatedDomains": [
-        "applinks:fokin.fun"
+        "applinks:fokin.fun",
+        "applinks:fastapi-f628e.firebaseapp.com"
       ],
       "infoPlist": {
         "UIBackgroundModes": [
@@ -85,6 +86,21 @@
               "scheme": "https",
               "host": "fokin.fun",
               "pathPrefix": "/verify-email"
+            },
+            {
+              "scheme": "https",
+              "host": "fokin.fun",
+              "pathPrefix": "/login"
+            },
+            {
+              "scheme": "https",
+              "host": "fokin.fun",
+              "pathPrefix": "/__/auth/links"
+            },
+            {
+              "scheme": "https",
+              "host": "fastapi-f628e.firebaseapp.com",
+              "pathPrefix": "/__/auth/links"
             }
           ],
           "category": [

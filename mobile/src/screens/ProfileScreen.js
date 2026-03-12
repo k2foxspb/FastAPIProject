@@ -185,7 +185,7 @@ export default function ProfileScreen({ navigation }) {
           }
 
           // Обновляем данные текущего пользователя из API
-          const appVersion = Constants.expoConfig?.version || '1.0.5';
+          const appVersion = Constants.expoConfig?.version || '1.0.10';
           const userRes = await usersApi.getMe(appVersion);
           const userData = userRes.data;
           

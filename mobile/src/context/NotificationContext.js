@@ -741,7 +741,7 @@ export const NotificationProvider = ({ children }) => {
       const token = await storage.getAccessToken();
       if (token) {
         setAuthToken(token);
-        const appVersion = Constants.expoConfig?.version || Constants.manifest2?.extra?.expoClient?.version || '1.0.5';
+        const appVersion = Constants.expoConfig?.version || Constants.manifest2?.extra?.expoClient?.version || '1.0.10';
         const userRes = await usersApi.getMe(appVersion);
         setCurrentUser(userRes.data);
         setCurrentUserId(userRes.data.id);

@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { getShadow } from '../utils/shadowStyles';
-import { View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator, Animated, Dimensions, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator, Animated, Dimensions, TextInput, KeyboardAvoidingView, Platform, Image } from 'react-native';
 import auth from '@react-native-firebase/auth';
+import * as Linking from 'expo-linking';
 import { usersApi, setAuthToken } from '../api';
 import { API_BASE_URL } from '../constants';
 import { useNotifications } from '../context/NotificationContext';
@@ -18,6 +19,8 @@ export default function LoginScreen({ navigation }) {
   const colors = themeConstants[theme];
   const [loading, setLoading] = useState(false);
   const [phoneNumber, setPhoneNumber] = useState('');
+  const [email, setEmail] = useState('');
+  const [loginMethod, setLoginMethod] = useState('phone'); // 'phone' or 'email'
   const [code, setCode] = useState('');
   const [confirm, setConfirm] = useState(null);
   const { connect, loadUser } = useNotifications();
@@ -47,7 +50,61 @@ export default function LoginScreen({ navigation }) {
         useNativeDriver: true,
       })
     ]).start();
+
+    // Обработка входящей ссылки для входа по email
+    const handleInitialLink = async () => {
+      const initialUrl = await Linking.getInitialURL();
+      if (initialUrl) {
+        handleSignInLink(initialUrl);
+      }
+    };
+
+    handleInitialLink();
+
+    const subscription = Linking.addEventListener('url', ({ url }) => {
+      handleSignInLink(url);
+    });
+
+    return () => subscription.remove();
   }, []);
+
+  const handleAfterLogin = async (user) => {
+    if (user) {
+      const idToken = await user.getIdToken();
+      const fcmToken = await storage.getItem('fcm_token');
+      const res = await usersApi.firebaseAuth(idToken, fcmToken);
+      
+      const { access_token, refresh_token, needs_phone, needs_email } = res.data;
+      
+      if (!access_token) {
+        throw new Error('Токен не получен от сервера');
+      }
+
+      await storage.saveTokens(access_token, refresh_token);
+      setAuthToken(access_token);
+      
+      await loadUser();
+      connect(access_token);
+      
+      if (needs_phone || needs_email) {
+        // Получаем свежего юзера для перехода в EditProfile
+        const userRes = await usersApi.getMe();
+        const userData = userRes.data;
+        
+        Alert.alert(
+          'Завершение профиля',
+          'Пожалуйста, укажите ваш ' + (needs_phone ? 'номер телефона' : 'email') + ' для продолжения.',
+          [{ 
+            text: 'ОК', 
+            onPress: () => navigation.replace('EditProfile', { user: userData }) 
+          }],
+          { cancelable: false }
+        );
+      } else {
+        navigation.replace('ProfileMain');
+      }
+    }
+  };
 
   const signInWithPhoneNumber = async () => {
     if (!phoneNumber || phoneNumber.length < 10) {
@@ -89,33 +146,78 @@ export default function LoginScreen({ navigation }) {
     try {
       setLoading(true);
       const result = await confirm.confirm(code);
-      const user = result.user;
-      
-      if (user) {
-        const idToken = await user.getIdToken();
-        const fcmToken = await storage.getItem('fcm_token');
-        const res = await usersApi.firebaseAuth(idToken, fcmToken);
-        
-        const { access_token, refresh_token } = res.data;
-        
-        if (!access_token) {
-          throw new Error('Токен не получен от сервера');
-        }
-
-        await storage.saveTokens(access_token, refresh_token);
-        setAuthToken(access_token);
-        
-        await loadUser();
-        connect(access_token);
-        updateServerFcmToken();
-        
-        navigation.replace('ProfileMain');
-      }
+      await handleAfterLogin(result.user);
     } catch (error) {
       console.error('Confirm Code Error:', error);
       Alert.alert('Ошибка', 'Неверный код подтверждения');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const sendSignInLinkToEmail = async () => {
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail || !trimmedEmail.includes('@')) {
+      Alert.alert('Ошибка', 'Пожалуйста, введите корректный адрес электронной почты');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const actionCodeSettings = {
+        url: 'https://fokin.fun/login',
+        handleCodeInApp: true,
+        android: {
+          packageName: 'com.k2foxspb.fokinfun',
+          installApp: true,
+        },
+        ios: {
+          bundleId: 'com.k2foxspb.fokinfun',
+        },
+        iOS: {
+          bundleId: 'com.k2foxspb.fokinfun',
+        },
+      };
+
+      const authInstance = auth();
+      await authInstance.sendSignInLinkToEmail(trimmedEmail, actionCodeSettings);
+      await storage.saveItem('email_for_sign_in', trimmedEmail);
+      Alert.alert('Ссылка отправлена', 'Проверьте свою почту для завершения входа');
+    } catch (error) {
+      console.error('Email Link Send Error:', error);
+      Alert.alert('Ошибка', error.message || 'Не удалось отправить ссылку на почту');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSignInLink = async (link) => {
+    if (!link) return;
+
+    if (auth().isSignInWithEmailLink(link)) {
+      try {
+        setLoading(true);
+        let storedEmail = await storage.getItem('email_for_sign_in');
+        
+        if (!storedEmail) {
+          // Если email не сохранен, просим пользователя ввести его в поле ввода
+          setLoginMethod('email');
+          Alert.alert(
+            'Подтвердите email',
+            'Пожалуйста, введите ваш адрес электронной почты в поле ввода для завершения входа.'
+          );
+          return;
+        }
+
+        const result = await auth().signInWithEmailLink(storedEmail, link);
+        await handleAfterLogin(result.user);
+        await storage.removeItem('email_for_sign_in');
+      } catch (error) {
+        console.error('Email Link Auth Error:', error);
+        Alert.alert('Ошибка', error.message || 'Не удалось войти по ссылке');
+      } finally {
+        setLoading(false);
+      }
     }
   };
 
@@ -147,61 +249,114 @@ export default function LoginScreen({ navigation }) {
           }
         ]}
       >
-        <Animated.View style={{ transform: [{ scale: logoScale }], alignSelf: 'center', marginBottom: 24 }}>
-          <View style={[styles.logoContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Ionicons name="cart" size={60} color={colors.primary} />
+        <Animated.View style={{ transform: [{ scale: logoScale }], alignSelf: 'center', marginBottom: 16 }}>
+          <View style={styles.logoContainer}>
+            <Image 
+              source={require('../../assets/logo120.png')} 
+              style={{ width: 100, height: 100 }}
+              resizeMode="contain"
+            />
           </View>
         </Animated.View>
 
         <Text style={[styles.title, { color: colors.text }]}>FokinShop</Text>
         <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-          Вход по номеру телефона
+          {loginMethod === 'phone' ? 'Вход по номеру телефона' : 'Вход по адресу почты'}
         </Text>
 
-        {!confirm ? (
-          <>
-            <View style={[styles.inputContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <Ionicons name="call-outline" size={20} color={colors.textSecondary} style={{ marginRight: 12 }} />
-              <TextInput
-                style={[styles.input, { color: colors.text }]}
-                placeholder="Номер телефона (+7...)"
-                placeholderTextColor={colors.textSecondary + '80'}
-                keyboardType="phone-pad"
-                value={phoneNumber}
-                onChangeText={setPhoneNumber}
-                disabled={loading}
-              />
-            </View>
+        {loginMethod === 'phone' ? (
+          !confirm ? (
+            <>
+              <View style={[styles.inputContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <Ionicons name="call-outline" size={20} color={colors.textSecondary} style={{ marginRight: 12 }} />
+                <TextInput
+                  style={[styles.input, { color: colors.text }]}
+                  placeholder="Номер телефона (+7...)"
+                  placeholderTextColor={colors.textSecondary + '80'}
+                  keyboardType="phone-pad"
+                  value={phoneNumber}
+                  onChangeText={setPhoneNumber}
+                  disabled={loading}
+                />
+              </View>
 
-            <TouchableOpacity 
-              style={[
-                styles.primaryButton, 
-                { backgroundColor: colors.primary },
-                loading && styles.buttonDisabled
-              ]} 
-              onPress={signInWithPhoneNumber} 
-              disabled={loading}
-              activeOpacity={0.8}
-            >
-              {loading ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.primaryButtonText}>Получить код</Text>
-              )}
-            </TouchableOpacity>
-          </>
+              <TouchableOpacity 
+                style={[
+                  styles.primaryButton, 
+                  { backgroundColor: colors.primary },
+                  loading && styles.buttonDisabled
+                ]} 
+                onPress={signInWithPhoneNumber} 
+                disabled={loading}
+                activeOpacity={0.8}
+              >
+                {loading ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.primaryButtonText}>Получить код</Text>
+                )}
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                onPress={() => setLoginMethod('email')}
+                style={{ marginTop: 16, alignItems: 'center' }}
+              >
+                <Text style={{ color: colors.primary }}>Использовать почту</Text>
+              </TouchableOpacity>
+            </>
+          ) : (
+            <>
+              <View style={[styles.inputContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <Ionicons name="keypad-outline" size={20} color={colors.textSecondary} style={{ marginRight: 12 }} />
+                <TextInput
+                  style={[styles.input, { color: colors.text }]}
+                  placeholder="Код из SMS"
+                  placeholderTextColor={colors.textSecondary + '80'}
+                  keyboardType="number-pad"
+                  value={code}
+                  onChangeText={setCode}
+                  maxLength={6}
+                  disabled={loading}
+                />
+              </View>
+
+              <TouchableOpacity 
+                style={[
+                  styles.primaryButton, 
+                  { backgroundColor: colors.primary },
+                  loading && styles.buttonDisabled
+                ]} 
+                onPress={confirmCode} 
+                disabled={loading}
+                activeOpacity={0.8}
+              >
+                {loading ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.primaryButtonText}>Войти</Text>
+                )}
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                onPress={() => setConfirm(null)}
+                style={{ marginTop: 16, alignItems: 'center' }}
+              >
+                <Text style={{ color: colors.primary }}>Изменить номер</Text>
+              </TouchableOpacity>
+            </>
+          )
         ) : (
           <>
             <View style={[styles.inputContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <Ionicons name="keypad-outline" size={20} color={colors.textSecondary} style={{ marginRight: 12 }} />
+              <Ionicons name="mail-outline" size={20} color={colors.textSecondary} style={{ marginRight: 12 }} />
               <TextInput
                 style={[styles.input, { color: colors.text }]}
-                placeholder="Код из SMS"
+                placeholder="Ваша почта (email@domain.com)"
                 placeholderTextColor={colors.textSecondary + '80'}
-                keyboardType="number-pad"
-                value={code}
-                onChangeText={setCode}
-                maxLength={6}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                value={email}
+                onChangeText={setEmail}
                 disabled={loading}
               />
             </View>
@@ -212,22 +367,22 @@ export default function LoginScreen({ navigation }) {
                 { backgroundColor: colors.primary },
                 loading && styles.buttonDisabled
               ]} 
-              onPress={confirmCode} 
+              onPress={sendSignInLinkToEmail} 
               disabled={loading}
               activeOpacity={0.8}
             >
               {loading ? (
                 <ActivityIndicator color="#fff" />
               ) : (
-                <Text style={styles.primaryButtonText}>Войти</Text>
+                <Text style={styles.primaryButtonText}>Отправить ссылку</Text>
               )}
             </TouchableOpacity>
 
             <TouchableOpacity 
-              onPress={() => setConfirm(null)}
+              onPress={() => setLoginMethod('phone')}
               style={{ marginTop: 16, alignItems: 'center' }}
             >
-              <Text style={{ color: colors.primary }}>Изменить номер</Text>
+              <Text style={{ color: colors.primary }}>Использовать телефон</Text>
             </TouchableOpacity>
           </>
         )}
@@ -272,18 +427,15 @@ export default function LoginScreen({ navigation }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  inner: { flex: 1, justifyContent: 'center', padding: 32 },
+  inner: { flex: 1, justifyContent: 'center', paddingHorizontal: 32, paddingVertical: 16 },
   logoContainer: {
     width: 100,
     height: 100,
-    borderRadius: 30,
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 1,
-    ...getShadow('#000', { width: 0, height: 10 }, 0.1, 15, 5),
   },
-  title: { fontSize: 36, fontWeight: '900', marginBottom: 12, textAlign: 'center', letterSpacing: -1.5 },
-  subtitle: { fontSize: 17, textAlign: 'center', marginBottom: 56, lineHeight: 26, paddingHorizontal: 30, opacity: 0.8 },
+  title: { fontSize: 32, fontWeight: '900', marginBottom: 8, textAlign: 'center', letterSpacing: -1.5 },
+  subtitle: { fontSize: 16, textAlign: 'center', marginBottom: 32, lineHeight: 24, paddingHorizontal: 30, opacity: 0.8 },
   googleButton: { 
     height: 60, 
     borderRadius: 18, 
@@ -298,21 +450,21 @@ const styles = StyleSheet.create({
   features: { 
     flexDirection: 'row', 
     justifyContent: 'space-between', 
-    marginTop: 60,
+    marginTop: 32,
     paddingHorizontal: 10
   },
   featureItem: { alignItems: 'center' },
   featureText: { fontSize: 12, marginTop: 8, fontWeight: '500' },
-  footer: { position: 'absolute', bottom: 40, left: 0, right: 0, paddingHorizontal: 40 },
+  footer: { marginTop: 'auto', paddingHorizontal: 40, paddingTop: 20, paddingBottom: 20 },
   footerText: { fontSize: 12, textAlign: 'center', opacity: 0.6 },
   inputContainer: {
-    height: 60,
-    borderRadius: 18,
+    height: 52,
+    borderRadius: 16,
     borderWidth: 1,
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
-    marginBottom: 16,
+    marginBottom: 12,
     ...getShadow('#000', { width: 0, height: 2 }, 0.05, 5, 1),
   },
   input: {
@@ -321,8 +473,8 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   primaryButton: {
-    height: 60,
-    borderRadius: 18,
+    height: 52,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
     ...getShadow('#000', { width: 0, height: 4 }, 0.1, 10, 2),

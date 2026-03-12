@@ -320,6 +320,8 @@ class TokenResponse(BaseModel):
     refresh_token: str
     token_type: str = "bearer"
     fcm_token: str | None = None
+    needs_phone: bool = False
+    needs_email: bool = False
 
 
 class FirebaseConfigResponse(BaseModel):
