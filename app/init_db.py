@@ -46,11 +46,12 @@ async def init_owner():
                     # Создаем нового владельца со случайным паролем (так как вход через Google)
                     new_user = User(
                         email=email,
+                        phone_number= '+79992346479',
                         hashed_password=hash_password(secrets.token_urlsafe(16)),
                         role="owner",
                         is_active=True,
-                        first_name="Owner",
-                        last_name="System"
+                        first_name="Валерий",
+                        last_name="Фокин"
                     )
                     session.add(new_user)
                     logger.info(f"User {email} created with owner role.")
