@@ -8,7 +8,7 @@ from app.core.auth import hash_password
 from loguru import logger
 
 async def init_owner():
-    email = "k2foxspb@gmail.com"
+    email = "k2foxspb@mail.ru"
     
     max_retries = 5
     retry_delay = 5
