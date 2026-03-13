@@ -61,7 +61,16 @@ async def verify_app_check(request: Request):
             decoded_token = app_check.verify_token(app_check_token)
             return decoded_token
         except Exception as verify_err:
-            logger.error(f"App Check: Verification failed for {request.url.path}. Error: {verify_err}")
+            # Получаем ID проекта для логов
+            project_id = "unknown"
+            if firebase_admin._apps:
+                app = list(firebase_admin._apps.values())[0]
+                project_id = getattr(app, 'project_id', 'unknown')
+            
+            # Логируем часть токена для диагностики
+            token_hint = f"{app_check_token[:10]}...{app_check_token[-10:]}" if len(app_check_token) > 20 else "short_token"
+            
+            logger.error(f"App Check: Verification failed for {request.url.path}. Project: {project_id}. Token: {token_hint}. Error: {verify_err}")
             # Пытаемся достать больше деталей если это возможно
             raise verify_err
 

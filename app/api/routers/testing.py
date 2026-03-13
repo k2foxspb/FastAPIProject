@@ -11,6 +11,7 @@ from app.models.chat import ChatMessage
 from app.schemas.chat import ChatMessageCreate, ChatMessageResponse
 from typing import List, Optional
 from datetime import datetime
+import os
 
 router = APIRouter(prefix="/test/chat", tags=["Testing Chat"])
 
@@ -194,3 +195,26 @@ async def get_last_messages(
             sender_name=user_map.get(m.sender_id, f"User {m.sender_id}")
         ) for m in messages
     ]
+
+@router.get("/app-check-info")
+async def get_app_check_info():
+    """
+    Получить информацию о конфигурации App Check (для отладки).
+    """
+    import firebase_admin
+    from app.core import config
+    
+    apps_info = []
+    for app in firebase_admin._apps.values():
+        apps_info.append({
+            "name": app.name,
+            "project_id": app.project_id if hasattr(app, 'project_id') else "unknown"
+        })
+        
+    return {
+        "enforced": config.FIREBASE_APP_CHECK_ENFORCED,
+        "service_account_path": config.FIREBASE_SERVICE_ACCOUNT_PATH,
+        "active_apps": apps_info,
+        "cwd": os.getcwd(),
+        "env": {k: v for k, v in os.environ.items() if "FIREBASE" in k}
+    }
