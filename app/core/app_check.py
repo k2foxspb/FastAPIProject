@@ -1,5 +1,6 @@
 import firebase_admin
-from firebase_admin import app_check
+import os
+from firebase_admin import app_check, credentials
 from fastapi import Request, HTTPException, status
 from loguru import logger
 from app.core import config
@@ -24,20 +25,47 @@ async def verify_app_check(request: Request):
     try:
         # Убеждаемся, что firebase_admin инициализирован
         if not firebase_admin._apps:
-             # Если по какой-то причине не инициализирован (хотя должен быть через fcm.py),
-             # пробуем инициализацию по умолчанию.
-             logger.info("App Check: Firebase Admin not initialized, attempting default initialization")
+             logger.info("App Check: Firebase Admin not initialized, attempting initialization with service account")
              try:
-                 firebase_admin.initialize_app()
+                 # Ищем файл так же, как в fcm.py
+                 possible_paths = [
+                     os.path.abspath(config.FIREBASE_SERVICE_ACCOUNT_PATH),
+                     os.path.join(os.getcwd(), config.FIREBASE_SERVICE_ACCOUNT_PATH),
+                     os.path.join(os.getcwd(), "app", config.FIREBASE_SERVICE_ACCOUNT_PATH),
+                 ]
+                 
+                 found_path = None
+                 for path in possible_paths:
+                     if os.path.exists(path):
+                         found_path = path
+                         break
+                 
+                 if found_path:
+                     cred = credentials.Certificate(found_path)
+                     firebase_admin.initialize_app(cred)
+                     logger.success(f"App Check: Initialized with {found_path}")
+                 else:
+                     firebase_admin.initialize_app()
+                     logger.info("App Check: Initialized with default credentials")
              except Exception as init_err:
                  logger.error(f"App Check: Failed to initialize Firebase Admin: {init_err}")
         
         # Верификация токена
-        decoded_token = app_check.verify_token(app_check_token)
-        return decoded_token
+        try:
+            decoded_token = app_check.verify_token(app_check_token)
+            return decoded_token
+        except Exception as verify_err:
+            logger.error(f"App Check: Verification failed for {request.url.path}. Error: {verify_err}")
+            # Пытаемся достать больше деталей если это возможно
+            raise verify_err
+
     except Exception as e:
-        logger.error(f"App Check: Verification failed for {request.url.path}: {e}")
+        # Если это уже HTTPException, пробрасываем
+        if isinstance(e, HTTPException):
+            raise e
+            
+        logger.error(f"App Check: Uncaught error for {request.url.path}: {e}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid Firebase App Check token",
+            detail=f"Invalid Firebase App Check token: {str(e)}",
         )
