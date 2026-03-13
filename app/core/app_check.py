@@ -1,9 +1,67 @@
 import firebase_admin
 import os
+import httpx
 from firebase_admin import app_check, credentials
 from fastapi import Request, HTTPException, status
 from loguru import logger
 from app.core import config
+
+async def verify_recaptcha(token: str | None):
+    """
+    Верифицирует токен Google reCAPTCHA Enterprise.
+    Если RECAPTCHA_API_KEY не задан, пропускает проверку (для разработки).
+    """
+    if not token:
+        logger.warning("reCAPTCHA: Token is missing")
+        return False
+
+    if not config.RECAPTCHA_API_KEY:
+        logger.info("reCAPTCHA: API Key not set, skipping verification (Development mode)")
+        return True
+
+    project_id = config.RECAPTCHA_PROJECT_ID
+    site_key = config.RECAPTCHA_SITE_KEY
+    api_key = config.RECAPTCHA_API_KEY
+
+    url = f"https://recaptchaenterprise.googleapis.com/v1/projects/{project_id}/assessments?key={api_key}"
+    
+    payload = {
+        "event": {
+            "token": token,
+            "siteKey": site_key,
+            "expectedAction": "LOGIN"
+        }
+    }
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(url, json=payload)
+            response.raise_for_status()
+            data = response.json()
+
+            # Проверяем валидность токена
+            if not data.get("tokenProperties", {}).get("valid"):
+                invalid_reason = data.get("tokenProperties", {}).get("invalidReason")
+                logger.warning(f"reCAPTCHA: Invalid token. Reason: {invalid_reason}")
+                return False
+
+            # Проверяем оценку риска (score)
+            # score от 0.0 (бот) до 1.0 (человек). Обычно 0.5 - порог.
+            risk_analysis = data.get("riskAnalysis", {})
+            score = risk_analysis.get("score", 0)
+            logger.info(f"reCAPTCHA: Token verified. Score: {score}")
+
+            if score < 0.5:
+                logger.warning(f"reCAPTCHA: Low score ({score}). Possible bot activity.")
+                return False
+
+            return True
+
+    except Exception as e:
+        logger.error(f"reCAPTCHA: Error during verification: {e}")
+        # В случае ошибки API Google, мы можем либо разрешить вход, либо запретить.
+        # Обычно лучше разрешить, чтобы не блокировать пользователей при сбоях сервиса.
+        return True
 
 async def verify_app_check(request: Request):
     """

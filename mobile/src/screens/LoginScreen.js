@@ -11,6 +11,7 @@ import { storage } from '../utils/storage';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
 import { Ionicons } from '@expo/vector-icons';
+import ReCaptcha from '../components/ReCaptcha';
 
 const { width } = Dimensions.get('window');
 
@@ -24,6 +25,8 @@ export default function LoginScreen({ navigation }) {
   const [code, setCode] = useState('');
   const [confirm, setConfirm] = useState(null);
   const { connect, loadUser } = useNotifications();
+  const recaptchaRef = useRef(null);
+  const pendingAuthUser = useRef(null);
 
   // Animations
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -68,13 +71,21 @@ export default function LoginScreen({ navigation }) {
     return () => subscription.remove();
   }, []);
 
-  const handleAfterLogin = async (user) => {
+  const handleAfterLogin = async (user, recaptchaToken = null) => {
     if (user) {
-      const idToken = await user.getIdToken();
-      const fcmToken = await storage.getItem('fcm_token');
-      const res = await usersApi.firebaseAuth(idToken, fcmToken);
-      
-      const { access_token, refresh_token, needs_phone, needs_email } = res.data;
+      if (!recaptchaToken && recaptchaRef.current) {
+        pendingAuthUser.current = user;
+        recaptchaRef.current.refreshToken();
+        return;
+      }
+
+      setLoading(true);
+      try {
+        const idToken = await user.getIdToken();
+        const fcmToken = await storage.getItem('fcm_token');
+        const res = await usersApi.firebaseAuth(idToken, fcmToken, recaptchaToken);
+        
+        const { access_token, refresh_token, needs_phone, needs_email } = res.data;
       
       if (!access_token) {
         throw new Error('Токен не получен от сервера');
@@ -103,8 +114,14 @@ export default function LoginScreen({ navigation }) {
       } else {
         navigation.replace('ProfileMain');
       }
+    } catch (error) {
+      console.error('Firebase Auth Error:', error);
+      Alert.alert('Ошибка', error.response?.data?.detail || error.message || 'Ошибка авторизации');
+    } finally {
+      setLoading(false);
     }
-  };
+  }
+};
 
   const signInWithPhoneNumber = async () => {
     if (!phoneNumber || phoneNumber.length < 10) {
@@ -235,11 +252,19 @@ export default function LoginScreen({ navigation }) {
     });
   };
 
+  const handleRecaptchaVerify = (token) => {
+    if (pendingAuthUser.current) {
+      handleAfterLogin(pendingAuthUser.current, token);
+      pendingAuthUser.current = null;
+    }
+  };
+
   return (
     <KeyboardAvoidingView 
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={[styles.container, { backgroundColor: colors.background }]}
     >
+      <ReCaptcha ref={recaptchaRef} onVerify={handleRecaptchaVerify} />
       <Animated.View 
         style={[
           styles.inner, 

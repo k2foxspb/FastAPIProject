@@ -299,6 +299,7 @@ class GoogleAuthRequest(BaseModel):
 class FirebaseAuthRequest(BaseModel):
     id_token: str
     fcm_token: str | None = None
+    recaptcha_token: str | None = None
 
 
 class VerifyCodeRequest(BaseModel):

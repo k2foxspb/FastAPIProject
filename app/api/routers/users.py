@@ -36,6 +36,7 @@ from app.core.auth import (
     get_current_user_optional,
     verify_refresh_token
 )
+from app.core.app_check import verify_recaptcha
 from app.api.routers.notifications import manager as notification_manager
 from app.core.fcm import send_fcm_notification
 from loguru import logger
@@ -601,6 +602,15 @@ async def firebase_auth(
     Аутентифицирует пользователя через Firebase ID Token (Phone или Google).
     Если пользователь не существует, создает его.
     """
+    # Верификация reCAPTCHA
+    if request.recaptcha_token:
+        is_human = await verify_recaptcha(request.recaptcha_token)
+        if not is_human:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="reCAPTCHA verification failed. Possible bot activity."
+            )
+    
     from firebase_admin import auth as fb_auth
     
     try:
