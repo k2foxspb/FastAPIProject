@@ -1,10 +1,34 @@
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import firebase from '@react-native-firebase/app';
+import appCheck from '@react-native-firebase/app-check';
 
 // Переменная для хранения статуса инициализации
 let isInitializing = false;
 let initPromise = null;
+
+// Функция настройки App Check
+const setupAppCheck = (app) => {
+  if (!app) return;
+  try {
+    const provider = appCheck().newReactNativeFirebaseAppCheckProvider();
+    provider.configure({
+      android: {
+        // Play Integrity (рекомендуется для Google Play)
+        // Для отладки на эмуляторе можно использовать 'debug' и получить debug token в логах
+        provider: __DEV__ ? 'debug' : 'playIntegrity',
+      },
+      apple: {
+        provider: 'deviceCheck',
+      },
+    });
+    // Активируем App Check. Второй параметр true включает автообновление токена.
+    appCheck().activate(provider, true);
+    console.log('[AppCheck] Activated successfully');
+  } catch (e) {
+    console.log('[AppCheck] Failed to activate App Check:', e);
+  }
+};
 
 // Initialize Firebase
 const initializeFirebase = async () => {
@@ -38,7 +62,9 @@ const initializeFirebase = async () => {
   // Если приложение уже инициализировано (нативно)
   if (firebase.apps.length > 0) {
     console.log('[FCM] Firebase already initialized (native)');
-    return firebase.app();
+    const app = firebase.app();
+    setupAppCheck(app);
+    return app;
   }
 
   if (isInitializing) return initPromise;
@@ -56,6 +82,7 @@ const initializeFirebase = async () => {
           console.log('[FCM] Native auto-init failed, performing manual init...');
           const app = firebase.initializeApp(firebaseConfig);
           console.log('[FCM] firebase.initializeApp SUCCESS (Manual Fallback)');
+          setupAppCheck(app);
           return app;
         }
         throw e;

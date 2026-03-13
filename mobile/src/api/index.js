@@ -1,10 +1,31 @@
 import axios from 'axios';
+import appCheck from '@react-native-firebase/app-check';
 import { API_BASE_URL } from '../constants';
 import { storage } from '../utils/storage';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
   timeout: 15000,
+});
+
+// Интерцептор для добавления Firebase App Check токена
+api.interceptors.request.use(async (config) => {
+  try {
+    // Получаем текущий токен App Check
+    const { token } = await appCheck().getToken();
+    if (token) {
+      config.headers['X-Firebase-AppCheck'] = token;
+    }
+  } catch (error) {
+    // В некоторых средах (например, эмулятор без Play Services) может выдать ошибку
+    // Мы не блокируем запрос, если не удалось получить токен, бэкенд сам решит, что делать.
+    if (__DEV__) {
+      console.log('[AppCheck] Token acquisition failed:', error.message);
+    }
+  }
+  return config;
+}, (error) => {
+  return Promise.reject(error);
 });
 
 export const setAuthToken = (token) => {

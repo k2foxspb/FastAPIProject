@@ -1,5 +1,6 @@
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
+from app.core.app_check import verify_app_check
 from app.api.routers import (
     categories,
     products,
@@ -17,7 +18,7 @@ from app.api.routers import (
 )
 
 # Основной роутер для API v1
-api_router = APIRouter()
+api_router = APIRouter(dependencies=[Depends(verify_app_check)])
 
 # Регистрация всех роутеров
 api_router.include_router(categories.router, tags=["categories"])
