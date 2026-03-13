@@ -10,7 +10,13 @@ async def verify_app_check(request: Request):
     Зависимость для верификации токена Firebase App Check.
     Проверяет наличие заголовка 'X-Firebase-AppCheck' и его валидность.
     """
+    # Мы логируем вход в функцию, чтобы пользователь видел, что она вызывается
+    logger.info(f"App Check: Checking request to {request.url.path}")
+
     if not config.FIREBASE_APP_CHECK_ENFORCED:
+        app_check_token = request.headers.get("X-Firebase-AppCheck")
+        if app_check_token:
+             logger.info(f"App Check: Token found in header, but enforcement is OFF (FIREBASE_APP_CHECK_ENFORCED=false)")
         return None
 
     app_check_token = request.headers.get("X-Firebase-AppCheck")
