@@ -18,21 +18,29 @@ from app.api.routers import (
 )
 
 # Основной роутер для API v1
-api_router = APIRouter(dependencies=[Depends(verify_app_check)])
+api_router = APIRouter()
 
-# Регистрация всех роутеров
-api_router.include_router(categories.router, tags=["categories"])
-api_router.include_router(products.router, tags=["products"])
-api_router.include_router(users.router, tags=["users"])
-api_router.include_router(reviews.router, tags=["reviews"])
-api_router.include_router(cart.router, tags=["cart"])
-api_router.include_router(orders.router, tags=["orders"])
-api_router.include_router(payments.router, tags=["payments"])
-api_router.include_router(notifications.router, tags=["websocket"])
-api_router.include_router(chat.router, tags=["chat"])
-api_router.include_router(tasks.router, tags=["tasks"])
-api_router.include_router(admin.router, tags=["admin"])
-api_router.include_router(news.router, tags=["news"])
+# Регистрация всех роутеров.
+# Включаем проверку App Check индивидуально, чтобы оставить testing.router открытым для диагностики.
+protected_routers = [
+    (categories.router, ["categories"]),
+    (products.router, ["products"]),
+    (users.router, ["users"]),
+    (reviews.router, ["reviews"]),
+    (cart.router, ["cart"]),
+    (orders.router, ["orders"]),
+    (payments.router, ["payments"]),
+    (notifications.router, ["websocket"]),
+    (chat.router, ["chat"]),
+    (tasks.router, ["tasks"]),
+    (admin.router, ["admin"]),
+    (news.router, ["news"]),
+]
+
+for router, tags in protected_routers:
+    api_router.include_router(router, tags=tags, dependencies=[Depends(verify_app_check)])
+
+# Регистрация без защиты (для отладки)
 api_router.include_router(testing.router, tags=["testing"])
 
 __all__ = ["api_router"]
