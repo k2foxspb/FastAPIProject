@@ -740,38 +740,42 @@ async def request_phone_code(
     if SMS_CENTER_LOGIN and SMS_CENTER_PASSWORD and not sent:
         try:
             async with httpx.AsyncClient() as client:
-                # В SMSC.RU используем звонок-пароль (стоимость ~0.3-0.9 руб)
-                # Чтобы SMSC сам сгенерировал код, передаем mes=code
-                # Тогда в ответе придет JSON с полем "code"
+                # МЫ САМИ ГЕНЕРИРУЕМ КОД и просим SMSC.RU позвонить с номера, оканчивающегося на него.
+                # mes - наш 4-значный код.
+                # call=1 - флаг звонка.
+                # Для этого в SMSC.RU должна быть включена услуга "Звонок-пароль".
                 res = await client.get(
                     "https://smsc.ru/sys/send.php",
                     params={
                         "login": SMS_CENTER_LOGIN,
                         "psw": SMS_CENTER_PASSWORD,
                         "phones": clean_phone,
-                        "mes": "code", # Просим сгенерировать код сам провайдер!
-                        "call": 1,     # Флаг звонка
-                        "fmt": 3       # JSON
+                        "mes": code, # НАШ КОД (например, 4681)
+                        "call": 1,    # Флаг звонка
+                        "fmt": 3      # JSON
                     },
                     timeout=10.0
                 )
                 data = res.json()
+                logger.debug(f"[Auth] SMSC.RU full response (our code {code}): {data}")
+                
                 if "error" not in data:
-                    # Если провайдер вернул свой сгенерированный код, используем его!
-                    generated_code = str(data.get("code"))
-                    if generated_code and generated_code != "None":
-                        code = generated_code
+                    # ВАЖНО: SMSC.RU может всё равно сгенерировать свой код, если наш не подходит.
+                    # Если в ответе есть поле "code", значит провайдер ПЕРЕОПРЕДЕЛИЛ наш код своим.
+                    smsc_code = data.get("code")
+                    if smsc_code:
+                        code = str(smsc_code)
                         _phone_code_cache[clean_phone] = code
                         try:
                             r = aioredis.Redis(host=REDIS_HOST, port=int(REDIS_PORT), db=1)
                             await r.setex(redis_key, 600, code)
                         except: pass
-                        logger.info(f"[Auth] Flash Call sent via SMS-Center. SMSC GENERATED CODE: {code}")
+                        logger.info(f"[Auth] Flash Call sent via SMS-Center. SMSC OVERRIDDEN CODE: {code}")
                     else:
-                        logger.info(f"[Auth] Flash Call request successful via SMS-Center to {clean_phone}. Our code used: {code}")
+                        logger.info(f"[Auth] Flash Call request successful via SMS-Center. Our code {code} should be used.")
                     sent = True
                 else:
-                    logger.error(f"[Auth] SMS-Center Call error: {data}. Trying standard SMS...")
+                    logger.error(f"[Auth] SMS-Center Call error: {data}. Trying standard SMS fallback...")
                     # Fallback to standard SMS
                     res = await client.get(
                         "https://smsc.ru/sys/send.php",
