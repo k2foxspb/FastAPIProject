@@ -2191,34 +2191,44 @@ export default function ChatScreen({ route, navigation }) {
           style={[
             styles.messageWrapper,
             isReceived ? styles.receivedWrapper : styles.sentWrapper,
-            (isSelected || isCurrentSearchResult || isReplyHighlighted) && { 
-              backgroundColor: isCurrentSearchResult 
-                ? colors.primary + '30' 
-                : (isReplyHighlighted ? colors.primary + '40' : colors.primary + '20') 
-            },
-            isGrouped && { marginTop: -2 }
-          ]}
-        >
-          <View 
-            style={[
-              styles.messageBubble, 
-              isReceived 
-                ? [styles.received, { backgroundColor: colors.surface }] 
-                : [styles.sent, { backgroundColor: colors.primary }],
-              (isImage || isVideo) && !item.message && { padding: 4 },
-              isVideoNote && { padding: 0, backgroundColor: 'transparent', elevation: 0, shadowOpacity: 0 },
-              isSelected && !isReceived && { opacity: 0.8 },
-              (isCurrentSearchResult || isReplyHighlighted) && { borderWidth: 1, borderColor: colors.primary },
-              isGrouped && (isReceived ? { borderTopLeftRadius: 18 } : { borderTopRightRadius: 18 })
+              (isSelected || isCurrentSearchResult || isReplyHighlighted) && { 
+                backgroundColor: isCurrentSearchResult 
+                  ? colors.primary + '30' 
+                  : (isReplyHighlighted ? colors.primary + '15' : colors.primary + '20') 
+              },
+              isGrouped && { marginTop: -2 },
+              { zIndex: (isCurrentSearchResult || isReplyHighlighted) ? 10 : 1 }
             ]}
           >
+            <View 
+              style={[
+                styles.messageBubble, 
+                isReceived 
+                  ? [styles.received, { backgroundColor: colors.surface }] 
+                  : [styles.sent, { backgroundColor: colors.primary }],
+                (isImage || isVideo) && !item.message && { padding: 4, overflow: 'hidden' },
+                isVideoNote && { padding: 0, backgroundColor: 'transparent', elevation: 0, shadowOpacity: 0 },
+                isSelected && !isReceived && { opacity: 0.8 },
+                (isCurrentSearchResult || isReplyHighlighted) && { 
+                  borderWidth: 1.5, 
+                  borderColor: colors.primary, 
+                  shadowColor: colors.primary,
+                  shadowOffset: { width: 0, height: 0 },
+                  shadowOpacity: 0.3,
+                  shadowRadius: 4,
+                  elevation: 3
+                },
+                { zIndex: (isCurrentSearchResult || isReplyHighlighted) ? 11 : 2 },
+                isGrouped && (isReceived ? { borderTopLeftRadius: 18 } : { borderTopRightRadius: 18 })
+              ]}
+            >
           {item.reply_to && (
             <TouchableOpacity 
               activeOpacity={0.7}
               onPress={() => scrollToMessageById(item.reply_to.id)}
               style={[
                 styles.replyMessageContainer, 
-                { borderLeftColor: isReceived ? colors.primary : '#fff' }
+                { borderLeftColor: isReceived ? colors.primary : '#fff', backgroundColor: isReceived ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.1)' }
               ]}
             >
               <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 2 }}>
@@ -2296,13 +2306,15 @@ export default function ChatScreen({ route, navigation }) {
             </View>
           ) : (
             (isImage || isVideo) && (
-              <CachedMedia 
-                item={item} 
-                onFullScreen={handleFullScreen} 
-                style={{ borderRadius: 12, overflow: 'hidden' }}
-                shouldPlay={viewableItems.includes(item.id)}
-                isStatic={true}
-              />
+              <View style={{ borderRadius: 12, overflow: 'hidden' }}>
+                <CachedMedia 
+                  item={item} 
+                  onFullScreen={handleFullScreen} 
+                  style={{ borderRadius: 12, overflow: 'hidden' }}
+                  shouldPlay={viewableItems.includes(item.id)}
+                  isStatic={true}
+                />
+              </View>
             )
           )}
           {isVoice && (
@@ -2330,7 +2342,9 @@ export default function ChatScreen({ route, navigation }) {
             ))
           )}
           {isFile && (
-            <FileMessage item={item} currentUserId={currentUserId} />
+            <View style={{ alignSelf: isReceived ? 'flex-start' : 'flex-end', minWidth: 220 }}>
+              <FileMessage item={item} currentUserId={currentUserId} />
+            </View>
           )}
           {item.message && (
             <View style={[
@@ -3169,7 +3183,6 @@ const styles = StyleSheet.create({
     padding: 12, 
     borderRadius: 18, 
     maxWidth: '85%',
-    overflow: 'hidden',
     ...getShadow('#000', { width: 0, height: 1 }, 0.1, 2, 1),
   },
   sent: { 
