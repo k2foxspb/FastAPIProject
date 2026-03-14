@@ -20,48 +20,60 @@ async def verify_recaptcha(token: str | None):
         return True
 
     project_id = config.RECAPTCHA_PROJECT_ID
-    site_key = config.RECAPTCHA_SITE_KEY
     api_key = config.RECAPTCHA_API_KEY
+
+    # Определяем какой site_key использовать на основе токена, 
+    # если это возможно, или пробуем все ключи (но API Enterprise обычно требует точный siteKey)
+    # Так как мы не знаем платформу здесь напрямую, мы можем попробовать 
+    # сопоставить tokenProperties.androidPackageName или iosBundleId ПОСЛЕ запроса,
+    # но для запроса нам УЖЕ нужен siteKey.
+    
+    # Решение: пробуем использовать тот ключ, который указан в конфиге.
+    # Если на бэкенде RECAPTCHA_SITE_KEY не переопределен в env, 
+    # он будет RECAPTCHA_SITE_KEY_DEFAULT.
+    site_key = config.RECAPTCHA_SITE_KEY
 
     url = f"https://recaptchaenterprise.googleapis.com/v1/projects/{project_id}/assessments?key={api_key}"
     
-    payload = {
-        "event": {
-            "token": token,
-            "siteKey": site_key,
-            "expectedAction": "LOGIN"
-        }
-    }
+    # Мы могли бы попробовать несколько ключей, если верификация не проходит,
+    # но reCAPTCHA Enterprise обычно возвращает ошибку если siteKey не совпадает с тем,
+    # для которого был сгенерирован токен.
+    
+    keys_to_try = [site_key]
+    if site_key == config.RECAPTCHA_SITE_KEY_DEFAULT:
+        keys_to_try.extend([config.RECAPTCHA_SITE_KEY_ANDROID, config.RECAPTCHA_SITE_KEY_IOS])
 
-    try:
-        async with httpx.AsyncClient() as client:
-            response = await client.post(url, json=payload)
-            response.raise_for_status()
-            data = response.json()
+    async with httpx.AsyncClient() as client:
+        for current_key in keys_to_try:
+            payload = {
+                "event": {
+                    "token": token,
+                    "siteKey": current_key,
+                    "expectedAction": "LOGIN"
+                }
+            }
+            try:
+                response = await client.post(url, json=payload)
+                response.raise_for_status()
+                data = response.json()
 
-            # Проверяем валидность токена
-            if not data.get("tokenProperties", {}).get("valid"):
-                invalid_reason = data.get("tokenProperties", {}).get("invalidReason")
-                logger.warning(f"reCAPTCHA: Invalid token. Reason: {invalid_reason}")
-                return False
+                if data.get("tokenProperties", {}).get("valid"):
+                    risk_analysis = data.get("riskAnalysis", {})
+                    score = risk_analysis.get("score", 0)
+                    logger.info(f"reCAPTCHA: Token verified with key {current_key}. Score: {score}")
 
-            # Проверяем оценку риска (score)
-            # score от 0.0 (бот) до 1.0 (человек). Обычно 0.5 - порог.
-            risk_analysis = data.get("riskAnalysis", {})
-            score = risk_analysis.get("score", 0)
-            logger.info(f"reCAPTCHA: Token verified. Score: {score}")
-
-            if score < 0.5:
-                logger.warning(f"reCAPTCHA: Low score ({score}). Possible bot activity.")
-                return False
-
-            return True
-
-    except Exception as e:
-        logger.error(f"reCAPTCHA: Error during verification: {e}")
-        # В случае ошибки API Google, мы можем либо разрешить вход, либо запретить.
-        # Обычно лучше разрешить, чтобы не блокировать пользователей при сбоях сервиса.
-        return True
+                    if score < 0.5:
+                        logger.warning(f"reCAPTCHA: Low score ({score}). Possible bot activity.")
+                        return False
+                    return True
+                else:
+                    invalid_reason = data.get("tokenProperties", {}).get("invalidReason")
+                    logger.debug(f"reCAPTCHA: Token invalid with key {current_key}. Reason: {invalid_reason}")
+            except Exception as e:
+                logger.error(f"reCAPTCHA: Error during verification with key {current_key}: {e}")
+                continue
+    
+    return False
 
 async def verify_app_check(request: Request):
     """
