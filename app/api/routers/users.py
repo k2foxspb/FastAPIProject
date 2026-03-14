@@ -689,7 +689,9 @@ async def request_phone_code(
         logger.error(f"[Auth] Redis error: {e}. Falling back to memory cache.")
 
     # Отправка через SMS-провайдеров
-    message = f"Код подтверждения: {code}"
+    # ВАЖНО: При звонке-пароле (call=1) в mes передаем ТОЛЬКО цифры кода. 
+    # Никакого лишнего текста, иначе провайдер может неверно подобрать номер для звонка.
+    message_sms = f"Код подтверждения: {code}"
     sent = False
 
     # 1. Пробуем SMS.RU (Flash Call или SMS)
@@ -725,7 +727,7 @@ async def request_phone_code(
                         params={
                             "api_id": SMS_RU_API_KEY,
                             "to": clean_phone,
-                            "msg": message,
+                            "msg": message_sms,
                             "json": 1
                         }
                     )
@@ -739,13 +741,14 @@ async def request_phone_code(
         try:
             async with httpx.AsyncClient() as client:
                 # В SMSC.RU используем звонок-пароль (стоимость ~0.3-0.9 руб)
+                # ПЕРЕДАЕМ ТОЛЬКО ЦИФРЫ КОДА В mes
                 res = await client.get(
                     "https://smsc.ru/sys/send.php",
                     params={
                         "login": SMS_CENTER_LOGIN,
                         "psw": SMS_CENTER_PASSWORD,
                         "phones": clean_phone,
-                        "mes": code, # Передаем наш сгенерированный код
+                        "mes": code, # ТОЛЬКО ЦИФРЫ!
                         "call": 1,    # Флаг звонка
                         "fmt": 3      # JSON
                     },
@@ -764,7 +767,7 @@ async def request_phone_code(
                             "login": SMS_CENTER_LOGIN,
                             "psw": SMS_CENTER_PASSWORD,
                             "phones": clean_phone,
-                            "mes": message,
+                            "mes": message_sms, # ТУТ МОЖНО ТЕКСТ
                             "fmt": 3
                         }
                     )
@@ -777,7 +780,7 @@ async def request_phone_code(
     if not sent:
         # Имитация отправки SMS для отладки, если провайдеры не настроены или упали
         logger.warning(f"[Auth] No SMS provider worked. Simulation mode for {clean_phone}. Code: {code}")
-        print(f"\n[SMS SIMULATION] To: {clean_phone}, Message: {message}\n")
+        print(f"\n[SMS SIMULATION] To: {clean_phone}, Message: {message_sms}\n")
         return {"message": "Code generated (SIMULATION mode)", "phone": clean_phone}
     
     return {"message": "Code sent successfully", "phone": clean_phone}
