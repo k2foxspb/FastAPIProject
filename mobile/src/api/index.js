@@ -114,6 +114,8 @@ export const usersApi = {
   updateFcmToken: (token) => api.post('/users/fcm-token', { fcm_token: token }),
   googleAuth: (idToken, fcmToken = null, recaptchaToken = null) => api.post('/users/firebase-auth', { id_token: idToken, fcm_token: fcmToken, recaptcha_token: recaptchaToken }),
   firebaseAuth: (idToken, fcmToken = null, recaptchaToken = null) => api.post('/users/firebase-auth', { id_token: idToken, fcm_token: fcmToken, recaptcha_token: recaptchaToken }),
+  requestPhoneCode: (phoneNumber) => api.post('/users/request-phone-code', { phone_number: phoneNumber }),
+  verifyPhoneCode: (phoneNumber, code) => api.post('/users/verify-phone-code', { phone_number: phoneNumber, code }),
   updateMe: (formData) => api.patch('/users/me', formData, {
     headers: {
       'Content-Type': 'multipart/form-data',

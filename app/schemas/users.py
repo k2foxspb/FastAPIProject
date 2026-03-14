@@ -303,11 +303,14 @@ class FirebaseAuthRequest(BaseModel):
 
 
 class VerifyCodeRequest(BaseModel):
-    email: str
+    phone_number: str
     code: str
 
 class ResendCodeRequest(BaseModel):
-    email: str
+    phone_number: str
+
+class RequestCodeRequest(BaseModel):
+    phone_number: str
 
 class RefreshTokenRequest(BaseModel):
     refresh_token: str

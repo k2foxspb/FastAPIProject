@@ -81,16 +81,17 @@ export default function LoginScreen({navigation}) {
         // Обработка входящей ссылки для входа по email
         const handleInitialLink = async () => {
             const initialUrl = await Linking.getInitialURL();
-            console.log('Initial URL:', initialUrl);
+            console.log('[LoginScreen] Initial URL:', initialUrl);
             if (initialUrl) {
-                handleSignInLink(initialUrl);
+                // Добавляем небольшую задержку, чтобы Firebase успел инициализироваться
+                setTimeout(() => handleSignInLink(initialUrl), 1000);
             }
         };
 
         handleInitialLink();
 
         const subscription = Linking.addEventListener('url', ({url}) => {
-            console.log('Incoming URL:', url);
+            console.log('[LoginScreen] Incoming URL:', url);
             handleSignInLink(url);
         });
 
@@ -205,22 +206,16 @@ export default function LoginScreen({navigation}) {
                 }
             }
 
-            console.log('Attempting phone auth for:', formattedPhone);
-            const confirmation = await signInWithPhoneNumber(getAuth(), formattedPhone);
-            setConfirm(confirmation);
-            console.log('Confirmation object received:', confirmation ? 'YES' : 'NO');
+            console.log('Attempting custom backend phone auth for:', formattedPhone);
+            await usersApi.requestPhoneCode(formattedPhone);
+            setConfirm({ phone: formattedPhone }); // Имитируем объект confirmation
+            console.log('Code requested successfully via backend');
+            Alert.alert('Код отправлен', 'Мы отправили код подтверждения на ваш номер.');
         } catch (error) {
             console.error('Phone Auth Error:', error);
-            console.log('Full error object:', JSON.stringify(error, null, 2));
-            
-            let errorMessage = error.message || 'Не удалось отправить SMS';
-            if (error.code === 'auth/app-not-authorized') {
-                errorMessage = 'Приложение не авторизовано. Пожалуйста, убедитесь, что SHA-отпечатки добавлены в Firebase Console и Google Cloud API (Play Integrity/SafetyNet) включены.';
-            } else if (error.code === 'auth/captcha-check-failed') {
-                errorMessage = 'Проверка reCAPTCHA не пройдена. Попробуйте еще раз.';
-            }
-            
-            Alert.alert('Ошибка авторизации', errorMessage);
+            const detail = error.response?.data?.detail;
+            const message = typeof detail === 'string' ? detail : (error.message || 'Не удалось отправить код');
+            Alert.alert('Ошибка', message);
         } finally {
             setLoading(false);
         }
@@ -228,17 +223,37 @@ export default function LoginScreen({navigation}) {
 
     const confirmCode = async () => {
         if (!code || code.length < 6) {
-            Alert.alert('Ошибка', 'Введите 6-значный код из SMS');
+            Alert.alert('Ошибка', 'Введите 6-значный код');
             return;
         }
 
         try {
             setLoading(true);
-            const result = await confirm.confirm(code);
-            await handleAfterLogin(result.user);
+            console.log('Verifying code with backend...');
+            const res = await usersApi.verifyPhoneCode(confirm.phone, code);
+            console.log('Verification success, handling login...');
+            
+            const {access_token, refresh_token, needs_phone, needs_email} = res.data;
+            
+            await storage.saveTokens(access_token, refresh_token);
+            setAuthToken(access_token);
+            await loadUser();
+            connect(access_token);
+
+            if (needs_email) {
+                const userRes = await usersApi.getMe();
+                navigation.replace('EditProfile', {user: userRes.data, isInitialSetup: true});
+            } else {
+                navigation.reset({
+                    index: 0,
+                    routes: [{ name: 'ProfileMain' }],
+                });
+            }
         } catch (error) {
             console.error('Confirm Code Error:', error);
-            Alert.alert('Ошибка', 'Неверный код подтверждения');
+            const detail = error.response?.data?.detail;
+            const message = typeof detail === 'string' ? detail : (error.message || 'Неверный код подтверждения');
+            Alert.alert('Ошибка', message);
         } finally {
             setLoading(false);
         }

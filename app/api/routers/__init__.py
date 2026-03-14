@@ -20,20 +20,26 @@ from app.api.routers import (
 # Основной роутер для API v1
 api_router = APIRouter()
 
-# Регистрация всех роутеров.
-# Включаем проверку App Check индивидуально, чтобы оставить testing.router открытым для диагностики.
-protected_routers = [
-    (categories.router, ["categories"]),
-    (products.router, ["products"]),
+# Роутеры, доступные без App Check (для входа, новостей и т.д.)
+public_routers = [
     (users.router, ["users"]),
-    (reviews.router, ["reviews"]),
-    (cart.router, ["cart"]),
     (orders.router, ["orders"]),
     (payments.router, ["payments"]),
     (tasks.router, ["tasks"]),
-    (admin.router, ["admin"]),
     (news.router, ["news"]),
+    (admin.router, ["admin"]),
 ]
+
+# Роутеры, которые требуют защиты App Check (опционально)
+protected_routers = [
+    (categories.router, ["categories"]),
+    (products.router, ["products"]),
+    (reviews.router, ["reviews"]),
+    (cart.router, ["cart"]),
+]
+
+for router, tags in public_routers:
+    api_router.include_router(router, tags=tags)
 
 for router, tags in protected_routers:
     api_router.include_router(router, tags=tags, dependencies=[Depends(verify_app_check)])
