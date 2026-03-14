@@ -1,8 +1,14 @@
 import React, { useRef, useImperativeHandle, forwardRef } from 'react';
-import { View, StyleSheet, Dimensions } from 'react-native';
+import { View, StyleSheet, Platform } from 'react-native';
 import { WebView } from 'react-native-webview';
 
-const siteKey = '6LdQj4gsAAAAAMxNDH8C0uyUAzJ5JXYrWt0NwNY3';
+const RECAPTCHA_KEYS = {
+  android: '6LeQ5oksAAAAAHzVvCQbMnOgGw85gdW7Uv5ijKWk',
+  ios: '6LfuyoksAAAAABc7rd5Rp5N43BtOdisvkdJzH47d',
+  default: '6LfQ5IksAAAAABlQKWZ2z3-u4O9X29Z3mlLmq4A4',
+};
+
+const siteKey = RECAPTCHA_KEYS[Platform.OS] || RECAPTCHA_KEYS.default;
 const baseUrl = 'https://fokin.fun'; // Домен вашего сайта
 
 const ReCaptcha = forwardRef(({ onVerify, action = 'LOGIN' }, ref) => {
