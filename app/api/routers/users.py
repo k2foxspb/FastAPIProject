@@ -793,9 +793,9 @@ async def request_phone_code(
         # Имитация отправки SMS для отладки, если провайдеры не настроены или упали
         logger.warning(f"[Auth] No SMS provider worked. Simulation mode for {clean_phone}. Code: {code}")
         print(f"\n[SMS SIMULATION] To: {clean_phone}, Message: {message_sms}\n")
-        return {"message": "Code generated (SIMULATION mode)", "phone": clean_phone}
+        return {"message": f"Code generated (SIMULATION mode). Code: {code}", "phone": clean_phone, "debug_code": code}
     
-    return {"message": "Code sent successfully", "phone": clean_phone}
+    return {"message": "Code sent successfully", "phone": clean_phone, "debug_code": code}
 
 
 @router.post("/verify-phone-code", response_model=TokenResponse)
@@ -827,6 +827,7 @@ async def verify_phone_code(
         logger.info(f"[Auth] SUPER-CODE {code} used for {clean_phone}")
 
     # 1. Проверяем в Redis
+    stored_code_str = "None"
     if not is_valid:
         try:
             r = aioredis.Redis(host=REDIS_HOST, port=int(REDIS_PORT), db=1)
@@ -837,20 +838,27 @@ async def verify_phone_code(
                 if stored_code_str == code:
                     is_valid = True
                     await r.delete(redis_key)
+            else:
+                logger.warning(f"[Auth] Redis key {redis_key} not found for {clean_phone}")
         except Exception as e:
             logger.error(f"[Auth] Redis error during verification: {e}")
 
     # 2. Проверяем в локальном кэше памяти (как последний шанс)
+    memory_code = _phone_code_cache.get(clean_phone)
     if not is_valid:
-        memory_code = _phone_code_cache.get(clean_phone)
         if memory_code and memory_code == code:
             is_valid = True
             logger.info(f"[Auth] Memory cache match for {clean_phone}: {code}")
             del _phone_code_cache[clean_phone]
 
     if not is_valid:
-        logger.warning(f"[Auth] Verification failed for {clean_phone}: input code {code} is incorrect")
-        raise HTTPException(status_code=400, detail="Invalid or expired verification code")
+        error_msg = f"Invalid or expired verification code. Expected: [Redis:{stored_code_str}, Mem:{memory_code}], Got: [{code}] for phone [{clean_phone}]"
+        logger.warning(f"[Auth] Verification failed for {clean_phone}: {error_msg}")
+        # Возвращаем РАСШИРЕННУЮ ошибку для отладки пользователем прямо в приложении
+        raise HTTPException(
+            status_code=400, 
+            detail=error_msg
+        )
 
     # Ищем пользователя по номеру телефона
     result = await db.execute(

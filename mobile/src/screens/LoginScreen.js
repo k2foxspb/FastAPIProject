@@ -208,6 +208,8 @@ export default function LoginScreen({navigation}) {
 
             console.log('Attempting custom backend phone auth for:', formattedPhone);
             const response = await usersApi.requestPhoneCode(formattedPhone);
+            console.log('Full response from requestPhoneCode:', JSON.stringify(response.data, null, 2));
+            
             const debugCode = response.data?.debug_code;
             
             setConfirm({ phone: formattedPhone }); // Имитируем объект confirmation
@@ -215,7 +217,7 @@ export default function LoginScreen({navigation}) {
             
             Alert.alert(
                 'Код подтверждения', 
-                `Ожидаемый код: ${debugCode || 'не получен'}. \nВам поступит звонок. Введите эти цифры или код из номера телефона.`
+                `Ожидаемый код: ${debugCode || 'НЕ ПОЛУЧЕН'}. \nВам поступит звонок. Введите эти цифры (или код из номера телефона).`
             );
         } catch (error) {
             console.error('Phone Auth Error:', error);
