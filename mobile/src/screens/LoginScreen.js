@@ -232,7 +232,7 @@ export default function LoginScreen({navigation}) {
 
         try {
             setLoading(true);
-            console.log('Verifying code with backend...');
+            console.log(`Verifying code for phone: [${confirm?.phone}], code: [${code}]`);
             const res = await usersApi.verifyPhoneCode(confirm.phone, code);
             console.log('Verification success, handling login...');
             

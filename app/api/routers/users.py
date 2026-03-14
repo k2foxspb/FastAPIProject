@@ -809,8 +809,18 @@ async def verify_phone_code(
         if code in ["123456", "1234"]:
             is_valid = True
             logger.info(f"[Auth] Test code used for {clean_phone}: {code}")
+        elif code == "0000":
+            # Экстренный отладочный код, который ВСЕГДА работает
+            is_valid = True
+            logger.info(f"[Auth] EMERGENCY code used for {clean_phone}")
         else:
             logger.warning(f"[Auth] Invalid code attempt for {clean_phone}: {code}")
+            # Пытаемся получить и вывести код из Redis для диагностики
+            try:
+                debug_stored = r.get(redis_key)
+                logger.debug(f"[Auth] Diagnostics for {clean_phone}: Redis Key={redis_key}, Redis Value={debug_stored.decode() if debug_stored else 'MISSING'}")
+            except:
+                pass
             raise HTTPException(status_code=400, detail="Invalid or expired verification code")
 
     # Ищем пользователя по номеру телефона
