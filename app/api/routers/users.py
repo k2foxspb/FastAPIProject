@@ -662,6 +662,10 @@ async def request_phone_code(
 
     # Очистка номера (оставляем только цифры для ключа в Redis и SMSC)
     clean_phone = "".join(filter(str.isdigit, phone))
+    # ВАЖНО: Нормализуем 8... в 7... для единообразия в Redis
+    if clean_phone.startswith('8') and len(clean_phone) == 11:
+        clean_phone = '7' + clean_phone[1:]
+        
     # Для ключа в Redis используем только цифры, чтобы формат не влиял
     redis_key = f"phone_code:{clean_phone}"
     
@@ -784,6 +788,10 @@ async def verify_phone_code(
     
     # Нормализация номера телефона (только цифры)
     clean_phone = "".join(filter(str.isdigit, phone))
+    # ВАЖНО: Мы нормализуем 8... в 7... для единообразия в Redis
+    if clean_phone.startswith('8') and len(clean_phone) == 11:
+        clean_phone = '7' + clean_phone[1:]
+    
     redis_key = f"phone_code:{clean_phone}"
     
     from app.core.config import REDIS_HOST, REDIS_PORT
@@ -794,7 +802,12 @@ async def verify_phone_code(
         r = redis.Redis(host=REDIS_HOST, port=int(REDIS_PORT), db=1)
         stored_code = r.get(redis_key)
         
-        logger.info(f"[Auth] Verifying code for {clean_phone}. Code: {code}, Stored in Redis: {stored_code.decode() if stored_code else 'None'}")
+        # Если не нашли по 7..., пробуем поискать все ключи этого номера для отладки
+        if not stored_code:
+            all_keys = r.keys("phone_code:*")
+            logger.debug(f"[Auth] Debugging Redis keys: {all_keys}")
+            
+        logger.info(f"[Auth] Verifying code for {clean_phone}. Code: {code}, Stored in Redis: {stored_code.decode() if stored_code else 'None'} (Key: {redis_key})")
         
         if stored_code and stored_code.decode() == code:
             is_valid = True
