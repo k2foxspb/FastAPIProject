@@ -207,7 +207,7 @@ export default function LoginScreen({navigation}) {
         try {
             setLoading(true);
             const actionCodeSettings = {
-                url: 'https://fokin.fun/login',
+                url: 'https://fokin.fun/verify-email',
                 handleCodeInApp: true,
                 android: {
                     packageName: 'com.k2foxspb.fokinfun',
