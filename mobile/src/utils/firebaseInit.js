@@ -10,15 +10,14 @@ let initPromise = null;
 // Функция настройки App Check
 const setupAppCheck = () => {
   try {
-    // Активируем App Check с провайдером по умолчанию
-    // RN Firebase автоматически выбирает Play Integrity на Android и Device Check на iOS
+    // Используем современный модульный API Firebase (v22+)
     initializeAppCheck(undefined, {
       provider: 'playIntegrity',
       isTokenAutoRefreshEnabled: true,
     });
-    console.log('[AppCheck] Activated successfully');
+    console.log('[AppCheck] Activated successfully (Modular SDK)');
   } catch (e) {
-    console.log('[AppCheck] Failed to activate App Check:', e);
+    console.log('[AppCheck] Failed to activate App Check:', e.message);
   }
 };
 

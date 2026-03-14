@@ -90,7 +90,7 @@ export default function ChatScreen({ route, navigation }) {
   const insets = useSafeAreaInsets();
   const { theme } = useTheme();
   const colors = themeConstants[theme];
-  const { setActiveChatId, fetchDialogs, currentUserId, notifications, connect, dialogs, clearUnread, currentUser, sendMessage: sendMessageWs, markAsReadWs, deleteMessageWs, bulkDeleteMessagesWs, getHistoryWs, onHistoryReceived, getCachedHistory, isChatConnected } = useNotifications();
+  const { setActiveChatId, fetchDialogs, currentUserId, notifications, connect, dialogs, clearUnread, currentUser, sendMessage: sendMessageWs, markAsReadWs, deleteMessageWs, bulkDeleteMessagesWs, getHistoryWs, onHistoryReceived, onSearchResultsReceived, searchMessagesWs, getCachedHistory, isChatConnected } = useNotifications();
   const { userId, userName } = route.params;
   const [messages, setMessages] = useState([]);
   const [inputText, setInputText] = useState('');
@@ -112,6 +112,66 @@ export default function ChatScreen({ route, navigation }) {
   const [interlocutor, setInterlocutor] = useState(null);
   const [attachmentsLocalCount, setAttachmentsLocalCount] = useState(0);
   const [replyingToMessage, setReplyingToMessage] = useState(null);
+
+  const [globalSearchResults, setGlobalSearchResults] = useState([]); // [{id, message, ...}]
+  const [currentGlobalSearchIdx, setCurrentGlobalSearchIdx] = useState(-1);
+  const [isLoadingSearchResults, setIsLoadingSearchResults] = useState(false);
+  const pendingScrollToId = useRef(null);
+
+  useEffect(() => {
+    const unsubscribe = onSearchResultsReceived((payload) => {
+      if (Number(payload.other_user_id) === Number(userId)) {
+        console.log('[ChatScreen] Global search results received:', payload.data?.length);
+        setGlobalSearchResults(payload.data || []);
+        setIsLoadingSearchResults(false);
+        if (payload.data && payload.data.length > 0) {
+          setCurrentGlobalSearchIdx(0);
+          scrollToMessageById(payload.data[0].id);
+        } else {
+          setCurrentGlobalSearchIdx(-1);
+        }
+      }
+    });
+    return () => unsubscribe();
+  }, [userId, onSearchResultsReceived]);
+
+  const [replyHighlightId, setReplyHighlightId] = useState(null);
+
+  const scrollToMessageById = (messageId) => {
+    // Check if we have this message loaded
+    const index = messages.findIndex(m => m.id === messageId);
+    if (index !== -1) {
+      setReplyHighlightId(messageId);
+      scrollToMessage(index);
+      setTimeout(() => setReplyHighlightId(null), 2000);
+    } else {
+      // Message not loaded yet, need to fetch more history
+      console.log(`[ChatScreen] Message ${messageId} not in local list, requesting more history...`);
+      pendingScrollToId.current = messageId;
+      loadMoreMessages();
+    }
+  };
+
+  useEffect(() => {
+    if (pendingScrollToId.current) {
+      const index = messages.findIndex(m => m.id === pendingScrollToId.current);
+      if (index !== -1) {
+        console.log(`[ChatScreen] Found pending message ${pendingScrollToId.current} at index ${index}`);
+        const id = pendingScrollToId.current;
+        pendingScrollToId.current = null;
+        setReplyHighlightId(id);
+        scrollToMessage(index);
+        setTimeout(() => setReplyHighlightId(null), 2000);
+      } else if (!hasMore && !loadingMore) {
+        // We reached the end of history and still didn't find the message
+        console.log(`[ChatScreen] Could not find message ${pendingScrollToId.current} in full history`);
+        pendingScrollToId.current = null;
+      } else if (!loadingMore) {
+        // Keep loading more if we have more
+        loadMoreMessages();
+      }
+    }
+  }, [messages, loadingMore, hasMore]);
 
   const handleReply = (message) => {
     setReplyingToMessage(message);
@@ -136,6 +196,52 @@ export default function ChatScreen({ route, navigation }) {
   const isVideoNoteUploadRef = useRef(false);
   const LIMIT = 15;
   const lastProcessedNotificationId = useRef(null);
+  const lastProcessedMsgId = useRef(null);
+
+  // Слушаем новые уведомления (сообщения) в реальном времени
+  useEffect(() => {
+    if (notifications && notifications.length > 0) {
+      const latest = notifications[0];
+      if ((latest.type === 'new_message' || latest.type === 'message') && latest.data) {
+        // Чтобы не обрабатывать одно и то же уведомление дважды при ререндерах
+        const notifId = latest.data.id || latest.data.client_id;
+        if (lastProcessedNotificationId.current === notifId) return;
+        lastProcessedNotificationId.current = notifId;
+
+        const msg = latest.data;
+        const isFromMe = Number(msg.sender_id) === Number(currentUserId);
+        const otherId = isFromMe ? Number(msg.receiver_id) : Number(msg.sender_id);
+
+        if (Number(otherId) === Number(userId)) {
+          console.log('[ChatScreen] New real-time message received from notifications:', msg.id || msg.client_id, 'type:', latest.type);
+          setMessages(prev => {
+            // Если это наше сообщение (есть client_id), ищем его в pending и обновляем
+            if (isFromMe && msg.client_id) {
+              const pendingIdx = prev.findIndex(m => m.client_id === msg.client_id && m.status === 'pending');
+              if (pendingIdx !== -1) {
+                console.log('[ChatScreen] Updating pending message to sent:', msg.client_id);
+                const newMsgs = [...prev];
+                newMsgs[pendingIdx] = { ...msg, status: 'sent' };
+                return newMsgs;
+              }
+            }
+
+            // Проверка на дубликаты (по id или client_id)
+            const exists = prev.some(m => 
+              (msg.id && m.id === msg.id) || 
+              (msg.client_id && m.client_id === msg.client_id && m.status !== 'pending')
+            );
+            
+            if (!exists) {
+              console.log('[ChatScreen] Adding new message to list from real-time:', msg.id || msg.client_id);
+              return [msg, ...prev];
+            }
+            return prev;
+          });
+        }
+      }
+    }
+  }, [notifications, userId, currentUserId]);
   const videoPlayerRef = useRef(null);
   const chatFlatListRef = useRef(null);
   const recordingOptions = useMemo(() => RecordingPresets.HIGH_QUALITY, []);
@@ -166,6 +272,103 @@ export default function ChatScreen({ route, navigation }) {
   const seekFullScreenToRatioRef = useRef(null);
   const [isKeyboardVisible, setKeyboardVisible] = useState(false);
   const [viewableItems, setViewableItems] = useState([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchResults, setSearchResults] = useState([]); // Array of indices
+  const [currentSearchResultIndex, setCurrentSearchResultIndex] = useState(-1);
+  const [showScrollDownButton, setShowScrollDownButton] = useState(false);
+  const searchTimeoutRef = useRef(null);
+
+  const handleSearch = (text) => {
+    setSearchQuery(text);
+    
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+
+    searchTimeoutRef.current = setTimeout(() => {
+      performSearch(text);
+    }, 400);
+  };
+
+  const performSearch = (text) => {
+    if (!text.trim()) {
+      setGlobalSearchResults([]);
+      setCurrentGlobalSearchIdx(-1);
+      return;
+    }
+
+    setIsLoadingSearchResults(true);
+    searchMessagesWs(userId, text.trim());
+  };
+
+  const prevSearchResult = () => {
+    if (globalSearchResults.length === 0) return;
+    const prevIdx = (currentGlobalSearchIdx - 1 + globalSearchResults.length) % globalSearchResults.length;
+    setCurrentGlobalSearchIdx(prevIdx);
+    scrollToMessageById(globalSearchResults[prevIdx].id);
+  };
+
+  const nextSearchResult = () => {
+    if (globalSearchResults.length === 0) return;
+    const nextIdx = (currentGlobalSearchIdx + 1) % globalSearchResults.length;
+    setCurrentGlobalSearchIdx(nextIdx);
+    scrollToMessageById(globalSearchResults[nextIdx].id);
+  };
+
+  const scrollToMessage = (index) => {
+    if (index < 0 || index >= messages.length) return;
+    
+    // Ensure the index is within range for the current list
+    const safeIndex = Math.min(index, messages.length - 1);
+    
+    // Use a small delay to ensure the list is ready
+    setTimeout(() => {
+      if (chatFlatListRef.current) {
+        try {
+          chatFlatListRef.current.scrollToIndex({
+            index: safeIndex,
+            animated: true,
+            viewPosition: 0.5
+          });
+        } catch (e) {
+          console.warn('scrollToIndex failed, falling back to scrollToOffset', e);
+          // Fallback: estimate offset based on average item height (approx 100 in chat)
+          // Since it is inverted, offset 0 is at the bottom (latest message)
+          chatFlatListRef.current.scrollToOffset({
+            offset: safeIndex * 100,
+            animated: true
+          });
+        }
+      }
+    }, 100);
+  };
+
+  const toggleSearch = () => {
+    if (isSearching) {
+      setIsSearching(false);
+      setSearchQuery('');
+      setGlobalSearchResults([]);
+      setCurrentGlobalSearchIdx(-1);
+      pendingScrollToId.current = null;
+    } else {
+      setIsSearching(true);
+    }
+  };
+
+  const scrollToBottom = () => {
+    chatFlatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+  };
+
+  const handleScroll = (event) => {
+    const offsetY = event.nativeEvent.contentOffset.y;
+    // Since FlatList is inverted, offsetY increases as we scroll UP (away from latest messages)
+    if (offsetY > 300) {
+      if (!showScrollDownButton) setShowScrollDownButton(true);
+    } else {
+      if (showScrollDownButton) setShowScrollDownButton(false);
+    }
+  };
 
   const onViewableItemsChanged = useRef(({ viewableItems }) => {
     setViewableItems(viewableItems.map(v => v.item.id));
@@ -722,6 +925,7 @@ export default function ChatScreen({ route, navigation }) {
 
       // Загрузка начальной истории через WebSocket
       console.log(`[ChatScreen] Requesting initial history via WS for user: ${userId}`);
+      setLoadingMore(true);
       const requested = getHistoryWs(userId, LIMIT, 0);
       if (!requested) {
         // Fallback to API if WS not ready
@@ -737,6 +941,8 @@ export default function ChatScreen({ route, navigation }) {
           }
         } catch (error) {
           console.error('Failed to load history via API', error);
+        } finally {
+          setLoadingMore(false);
         }
       }
 
@@ -1861,6 +2067,35 @@ export default function ChatScreen({ route, navigation }) {
   };
 
 
+  const renderMessageText = (message, isReceived) => {
+    if (!searchQuery || !isSearching || !message) {
+      return (
+        <Text style={[
+          styles.messageText,
+          isReceived ? { color: colors.text } : { color: '#fff' }
+        ]}>
+          {message}
+        </Text>
+      );
+    }
+
+    const parts = message.split(new RegExp(`(${searchQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi'));
+    return (
+      <Text style={[
+        styles.messageText,
+        isReceived ? { color: colors.text } : { color: '#fff' }
+      ]}>
+        {parts.map((part, i) => (
+          part.toLowerCase() === searchQuery.toLowerCase() ? (
+            <Text key={i} style={{ backgroundColor: 'rgba(255, 255, 0, 0.4)', fontWeight: 'bold' }}>{part}</Text>
+          ) : (
+            <Text key={i}>{part}</Text>
+          )
+        ))}
+      </Text>
+    );
+  };
+
   const renderMessageItem = ({ item, index }) => {
     const isImage = item.message_type === 'image';
     const isVideo = item.message_type === 'video';
@@ -1933,40 +2168,59 @@ export default function ChatScreen({ route, navigation }) {
       );
     };
 
+    const isCurrentSearchResult = globalSearchResults[currentGlobalSearchIdx]?.id === item.id;
+    const isReplyHighlighted = replyHighlightId === item.id;
+
     return (
       <Swipeable
         renderLeftActions={renderLeftActions}
-        onSwipeableLeftOpen={() => handleReply(item)}
+        onSwipeableOpen={(direction, swipeable) => {
+          if (direction === 'left') {
+            handleReply(item);
+            setTimeout(() => {
+              swipeable?.close();
+            }, 0);
+          }
+        }}
         leftThreshold={50}
         friction={2}
       >
         <Pressable 
           onPress={handlePress}
-        onLongPress={handleLongPress}
-        style={[
-          styles.messageWrapper,
-          isReceived ? styles.receivedWrapper : styles.sentWrapper,
-          isSelected && { backgroundColor: colors.primary + '20' },
-          isGrouped && { marginTop: -2 }
-        ]}
-      >
-        <View 
+          onLongPress={handleLongPress}
           style={[
-            styles.messageBubble, 
-            isReceived 
-              ? [styles.received, { backgroundColor: colors.surface }] 
-              : [styles.sent, { backgroundColor: colors.primary }],
-            (isImage || isVideo) && !item.message && { padding: 4 },
-            isVideoNote && { padding: 0, backgroundColor: 'transparent', elevation: 0, shadowOpacity: 0 },
-            isSelected && !isReceived && { opacity: 0.8 },
-            isGrouped && (isReceived ? { borderTopLeftRadius: 18 } : { borderTopRightRadius: 18 })
+            styles.messageWrapper,
+            isReceived ? styles.receivedWrapper : styles.sentWrapper,
+            (isSelected || isCurrentSearchResult || isReplyHighlighted) && { 
+              backgroundColor: isCurrentSearchResult 
+                ? colors.primary + '30' 
+                : (isReplyHighlighted ? colors.primary + '40' : colors.primary + '20') 
+            },
+            isGrouped && { marginTop: -2 }
           ]}
         >
+          <View 
+            style={[
+              styles.messageBubble, 
+              isReceived 
+                ? [styles.received, { backgroundColor: colors.surface }] 
+                : [styles.sent, { backgroundColor: colors.primary }],
+              (isImage || isVideo) && !item.message && { padding: 4 },
+              isVideoNote && { padding: 0, backgroundColor: 'transparent', elevation: 0, shadowOpacity: 0 },
+              isSelected && !isReceived && { opacity: 0.8 },
+              (isCurrentSearchResult || isReplyHighlighted) && { borderWidth: 1, borderColor: colors.primary },
+              isGrouped && (isReceived ? { borderTopLeftRadius: 18 } : { borderTopRightRadius: 18 })
+            ]}
+          >
           {item.reply_to && (
-            <View style={[
-              styles.replyMessageContainer, 
-              { borderLeftColor: isReceived ? colors.primary : '#fff' }
-            ]}>
+            <TouchableOpacity 
+              activeOpacity={0.7}
+              onPress={() => scrollToMessageById(item.reply_to.id)}
+              style={[
+                styles.replyMessageContainer, 
+                { borderLeftColor: isReceived ? colors.primary : '#fff' }
+              ]}
+            >
               <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 2 }}>
                 <MaterialIcons name="reply" size={12} color={isReceived ? colors.primary : '#fff'} style={{ marginRight: 4 }} />
                 <Text style={[styles.replyMessageSender, { color: isReceived ? colors.primary : '#fff' }]} numberOfLines={1}>
@@ -1976,7 +2230,7 @@ export default function ChatScreen({ route, navigation }) {
               <Text style={[styles.replyMessageText, { color: isReceived ? colors.textSecondary : 'rgba(255,255,255,0.8)' }]} numberOfLines={1}>
                 {item.reply_to.message || (item.reply_to.message_type === 'image' ? 'Фотография' : (item.reply_to.message_type === 'voice' ? 'Голосовое сообщение' : 'Файл'))}
               </Text>
-            </View>
+            </TouchableOpacity>
           )}
           {selectionMode && (
             <View style={styles.selectionIndicator}>
@@ -2079,13 +2333,11 @@ export default function ChatScreen({ route, navigation }) {
             <FileMessage item={item} currentUserId={currentUserId} />
           )}
           {item.message && (
-            <Text style={[
-              styles.messageText, 
-              (isImage || isVideo) && {marginTop: 5, marginHorizontal: 8, marginBottom: 4}, 
-              isReceived ? {color: colors.text} : {color: '#fff'}
+            <View style={[
+              (isImage || isVideo) && { marginTop: 5, marginHorizontal: 8, marginBottom: 4 }
             ]}>
-              {item.message}
-            </Text>
+              {renderMessageText(item.message, isReceived)}
+            </View>
           )}
           <View style={styles.messageFooter}>
             <Text style={[
@@ -2223,6 +2475,49 @@ export default function ChatScreen({ route, navigation }) {
               <MaterialIcons name="delete" size={24} color={selectedIds.length > 0 ? colors.error : colors.textSecondary} />
             </TouchableOpacity>
           </View>
+        ) : isSearching ? (
+          <View style={styles.searchBar}>
+            <TextInput
+              autoFocus
+              style={[styles.searchInput, { color: colors.text, backgroundColor: colors.border + '44' }]}
+              placeholder="Поиск..."
+              placeholderTextColor={colors.textSecondary}
+              value={searchQuery}
+              onChangeText={handleSearch}
+            />
+            {isLoadingSearchResults && (
+              <ActivityIndicator size="small" color={colors.primary} style={{ marginRight: 8 }} />
+            )}
+            {searchQuery.length > 0 && globalSearchResults.length === 0 && !isLoadingSearchResults && (
+               <Text style={[styles.noResultsText, { color: colors.error }]}>Нет</Text>
+            )}
+            <View style={styles.searchControls}>
+              <View style={styles.searchNav}>
+                {globalSearchResults.length > 0 && (
+                  <Text style={[styles.searchCount, { color: colors.textSecondary }]}>
+                    {currentGlobalSearchIdx + 1}/{globalSearchResults.length}
+                  </Text>
+                )}
+                <TouchableOpacity 
+                  onPress={prevSearchResult} 
+                  style={[styles.searchNavItem, { opacity: globalSearchResults.length > 0 ? 1 : 0.3 }]}
+                  disabled={globalSearchResults.length === 0}
+                >
+                  <MaterialIcons name="keyboard-arrow-up" size={28} color={colors.text} />
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  onPress={nextSearchResult} 
+                  style={[styles.searchNavItem, { opacity: globalSearchResults.length > 0 ? 1 : 0.3 }]}
+                  disabled={globalSearchResults.length === 0}
+                >
+                  <MaterialIcons name="keyboard-arrow-down" size={28} color={colors.text} />
+                </TouchableOpacity>
+              </View>
+              <TouchableOpacity onPress={toggleSearch} style={styles.searchClose}>
+                <MaterialIcons name="close" size={24} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+          </View>
         ) : (
           <View style={styles.headerInfoContainer}>
             <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
@@ -2250,9 +2545,21 @@ export default function ChatScreen({ route, navigation }) {
                 )}
               </View>
             </TouchableOpacity>
+            <TouchableOpacity 
+              style={styles.headerIconButton} 
+              onPress={toggleSearch}
+            >
+              <MaterialIcons name="search" size={24} color={colors.text} />
+            </TouchableOpacity>
           </View>
         )}
       </View>
+      {!isChatConnected && (
+        <View style={[styles.offlineBanner, { backgroundColor: colors.error + '22' }]}>
+          <MaterialIcons name="cloud-off" size={16} color={colors.error} />
+          <Text style={[styles.offlineText, { color: colors.error }]}>Соединение потеряно. Сообщения будут отправлены позже.</Text>
+        </View>
+      )}
       {uploadingProgress !== null && !uploadingData.uri && (
         <View style={[styles.uploadProgressContainer, { backgroundColor: colors.background, borderColor: colors.border }]}>
           <View style={styles.uploadProgressInfo}>
@@ -2285,6 +2592,8 @@ export default function ChatScreen({ route, navigation }) {
           });
         }}
         onViewableItemsChanged={onViewableItemsChanged}
+        onScroll={handleScroll}
+        scrollEventThrottle={16}
         viewabilityConfig={viewabilityConfig}
         removeClippedSubviews={false}
         initialNumToRender={15}
@@ -2293,6 +2602,15 @@ export default function ChatScreen({ route, navigation }) {
         style={{ flex: 1 }}
         contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: 16 }}
       />
+
+      {showScrollDownButton && (
+        <TouchableOpacity 
+          style={[styles.scrollDownButton, { backgroundColor: colors.surface }]}
+          onPress={scrollToBottom}
+        >
+          <MaterialIcons name="keyboard-arrow-down" size={30} color={colors.text} />
+        </TouchableOpacity>
+      )}
 
       <Modal
         visible={!!fullScreenMedia}
@@ -2715,6 +3033,70 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
+  headerIconButton: {
+    padding: 8,
+    borderRadius: 20,
+  },
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    flex: 1,
+  },
+  searchInput: {
+    flex: 1,
+    height: 36,
+    borderRadius: 18,
+    paddingHorizontal: 12,
+    fontSize: 14,
+  },
+  searchControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  searchNav: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.05)',
+    borderRadius: 15,
+    marginLeft: 4,
+    paddingLeft: 4,
+  },
+  searchCount: {
+    fontSize: 10,
+    fontWeight: '600',
+    minWidth: 24,
+    textAlign: 'center',
+  },
+  searchNavItem: {
+    padding: 0,
+  },
+  noResultsText: {
+    fontSize: 10,
+    marginHorizontal: 4,
+    fontStyle: 'italic',
+  },
+  searchClose: {
+    padding: 4,
+    marginLeft: 2,
+  },
+  scrollDownButton: {
+    position: 'absolute',
+    bottom: 80,
+    right: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    zIndex: 10,
+  },
   backButton: {
     marginRight: 10,
     padding: 5,
@@ -2749,6 +3131,18 @@ const styles = StyleSheet.create({
   },
   headerStatus: {
     fontSize: 12,
+  },
+  offlineBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+  },
+  offlineText: {
+    fontSize: 12,
+    marginLeft: 6,
+    fontWeight: '500',
   },
   messageWrapper: {
     flexDirection: 'row',

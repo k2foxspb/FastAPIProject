@@ -12,6 +12,7 @@ import { theme as themeConstants } from '../constants/theme';
 import { storage } from '../utils/storage';
 import { formatName, getFullUrl } from '../utils/formatters';
 import { SkeletonItem, NewsSkeleton } from '../components/SkeletonLoader';
+import { requestAllAppPermissions } from '../utils/permissions';
 
 export default function ProfileScreen({ navigation }) {
   const [user, setUser] = useState(null);
@@ -176,6 +177,9 @@ export default function ProfileScreen({ navigation }) {
 
       const fetchProfile = async () => {
         try {
+          // Запрашиваем разрешения при входе в профиль
+          requestAllAppPermissions();
+
           // Проверяем токен
           const token = await storage.getAccessToken();
           if (!token) {

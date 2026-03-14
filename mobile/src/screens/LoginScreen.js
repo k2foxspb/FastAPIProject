@@ -49,6 +49,8 @@ export default function LoginScreen({navigation}) {
     const {connect, loadUser} = useNotifications();
     const recaptchaRef = useRef(null);
     const pendingAuthUser = useRef(null);
+    const lastHandledLink = useRef(null);
+    const recaptchaTimeout = useRef(null);
 
     // Animations
     const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -79,6 +81,7 @@ export default function LoginScreen({navigation}) {
         // Обработка входящей ссылки для входа по email
         const handleInitialLink = async () => {
             const initialUrl = await Linking.getInitialURL();
+            console.log('Initial URL:', initialUrl);
             if (initialUrl) {
                 handleSignInLink(initialUrl);
             }
@@ -87,6 +90,7 @@ export default function LoginScreen({navigation}) {
         handleInitialLink();
 
         const subscription = Linking.addEventListener('url', ({url}) => {
+            console.log('Incoming URL:', url);
             handleSignInLink(url);
         });
 
@@ -94,18 +98,45 @@ export default function LoginScreen({navigation}) {
     }, []);
 
     const handleAfterLogin = async (user, recaptchaToken = null) => {
+        console.log('handleAfterLogin called for user:', user?.uid, 'with recaptchaToken:', recaptchaToken ? 'PRESENT' : 'MISSING');
         if (user) {
-            if (!recaptchaToken && recaptchaRef.current) {
+            // Если мы входим по email-ссылке, Firebase уже подтвердил нас.
+            // Пропускаем принудительную reCAPTCHA, чтобы избежать зависания.
+            const isEmailLinkLogin = !confirm; // confirm есть только при входе по телефону
+            
+            if (!recaptchaToken && recaptchaRef.current && !isEmailLinkLogin) {
+                console.log('Starting reCAPTCHA verification before backend auth...');
                 pendingAuthUser.current = user;
+                
+                // Устанавливаем таймаут: если reCAPTCHA не ответит за 10 секунд, 
+                // продолжаем без нее (бэкенд сам решит, принимать ли запрос)
+                if (recaptchaTimeout.current) clearTimeout(recaptchaTimeout.current);
+                recaptchaTimeout.current = setTimeout(() => {
+                    if (pendingAuthUser.current === user) {
+                        console.log('reCAPTCHA timeout reached, proceeding without token...');
+                        handleAfterLogin(user, 'timeout_token');
+                    }
+                }, 10000);
+
                 recaptchaRef.current.refreshToken();
                 return;
             }
 
+            // Очищаем таймаут при получении токена
+            if (recaptchaTimeout.current) {
+                clearTimeout(recaptchaTimeout.current);
+                recaptchaTimeout.current = null;
+            }
+
             setLoading(true);
             try {
-                const idToken = await user.getIdToken();
+                console.log('Getting Firebase ID Token...');
+                const idToken = await user.getIdToken(true);
+                console.log('ID Token acquired, sending to backend...');
                 const fcmToken = await storage.getItem('fcm_token');
+                
                 const res = await usersApi.firebaseAuth(idToken, fcmToken, recaptchaToken);
+                console.log('Backend response received:', res.data ? 'SUCCESS' : 'NO DATA');
 
                 const {access_token, refresh_token, needs_phone, needs_email} = res.data;
 
@@ -113,13 +144,16 @@ export default function LoginScreen({navigation}) {
                     throw new Error('Токен не получен от сервера');
                 }
 
+                console.log('Saving tokens to storage...');
                 await storage.saveTokens(access_token, refresh_token);
                 setAuthToken(access_token);
 
+                console.log('Loading user data and connecting to notification socket...');
                 await loadUser();
                 connect(access_token);
 
                 if (needs_phone || needs_email) {
+                    console.log('User needs to complete profile (phone/email)');
                     // Получаем свежего юзера для перехода в EditProfile
                     const userRes = await usersApi.getMe();
                     const userData = userRes.data;
@@ -129,16 +163,22 @@ export default function LoginScreen({navigation}) {
                         'Пожалуйста, укажите ваш ' + (needs_phone ? 'номер телефона' : 'email') + ' для продолжения.',
                         [{
                             text: 'ОК',
-                            onPress: () => navigation.replace('EditProfile', {user: userData})
+                            onPress: () => navigation.replace('EditProfile', {user: userData, isInitialSetup: true})
                         }],
                         {cancelable: false}
                     );
                 } else {
-                    navigation.replace('ProfileMain');
+                    console.log('Login complete, navigating to ProfileMain');
+                    navigation.reset({
+                        index: 0,
+                        routes: [{ name: 'ProfileMain' }],
+                    });
                 }
             } catch (error) {
-                console.error('Firebase Auth Error:', error);
-                Alert.alert('Ошибка', error.response?.data?.detail || error.message || 'Ошибка авторизации');
+                console.error('Firebase Auth Error (Backend Sync):', error);
+                const detail = error.response?.data?.detail;
+                const message = typeof detail === 'string' ? detail : (error.message || 'Ошибка авторизации');
+                Alert.alert('Ошибка сервера', message);
             } finally {
                 setLoading(false);
             }
@@ -165,15 +205,22 @@ export default function LoginScreen({navigation}) {
                 }
             }
 
+            console.log('Attempting phone auth for:', formattedPhone);
             const confirmation = await signInWithPhoneNumber(getAuth(), formattedPhone);
             setConfirm(confirmation);
-            console.log(confirmation);
+            console.log('Confirmation object received:', confirmation ? 'YES' : 'NO');
         } catch (error) {
             console.error('Phone Auth Error:', error);
-            Alert.alert('Ошибка', error.message || 'Не удалось отправить SMS');
-            console.log('Phone auth full error:', JSON.stringify(error, null, 2));
-            console.log('Phone auth code:', error?.code);
-            console.log('Phone auth message:', error?.message);
+            console.log('Full error object:', JSON.stringify(error, null, 2));
+            
+            let errorMessage = error.message || 'Не удалось отправить SMS';
+            if (error.code === 'auth/app-not-authorized') {
+                errorMessage = 'Приложение не авторизовано. Пожалуйста, убедитесь, что SHA-отпечатки добавлены в Firebase Console и Google Cloud API (Play Integrity/SafetyNet) включены.';
+            } else if (error.code === 'auth/captcha-check-failed') {
+                errorMessage = 'Проверка reCAPTCHA не пройдена. Попробуйте еще раз.';
+            }
+            
+            Alert.alert('Ошибка авторизации', errorMessage);
         } finally {
             setLoading(false);
         }
@@ -206,8 +253,11 @@ export default function LoginScreen({navigation}) {
 
         try {
             setLoading(true);
+            console.log('Saving email for sign in:', trimmedEmail);
+            await storage.saveItem('email_for_sign_in', trimmedEmail);
+
             const actionCodeSettings = {
-                url: 'https://fokin.fun/verify-email',
+                url: `https://fokin.fun/verify-email?email=${encodeURIComponent(trimmedEmail)}&ts=${Date.now()}`,
                 handleCodeInApp: true,
                 android: {
                     packageName: 'com.k2foxspb.fokinfun',
@@ -222,8 +272,9 @@ export default function LoginScreen({navigation}) {
             };
 
             const authInstance = getAuth();
+            console.log('Sending signInLink with URL:', actionCodeSettings.url);
             await sendSignInLinkToEmail(authInstance, trimmedEmail, actionCodeSettings);
-            await storage.saveItem('email_for_sign_in', trimmedEmail);
+            console.log('Sign in link sent successfully to:', trimmedEmail);
             Alert.alert('Ссылка отправлена', 'Проверьте свою почту для завершения входа');
         } catch (error) {
             console.error('Email Link Send Error:', error);
@@ -234,32 +285,84 @@ export default function LoginScreen({navigation}) {
     };
 
     const handleSignInLink = async (link) => {
+        console.log('Attempting to handle link:', link);
         if (!link) return;
+        
+        // Предотвращаем повторную обработку одной и той же ссылки
+        if (lastHandledLink.current === link) {
+            console.log('Link already handled recently, skipping duplicate call');
+            return;
+        }
+        lastHandledLink.current = link;
 
-        if (isSignInWithEmailLink(getAuth(), link)) {
-            try {
+        try {
+            const authInstance = getAuth();
+            if (isSignInWithEmailLink(authInstance, link)) {
+                console.log('Link IS a sign-in email link');
                 setLoading(true);
+                
                 let storedEmail = await storage.getItem('email_for_sign_in');
+                console.log('Email from storage:', storedEmail);
+                
+                // Если в хранилище пусто, пробуем достать из URL любым способом
+                if (!storedEmail) {
+                    try {
+                        console.log('Storage is empty, parsing email from link...');
+                        // 1. Пытаемся декодировать URL несколько раз (Firebase часто вкладывает один URL в другой)
+                        let currentLink = link;
+                        for (let i = 0; i < 3; i++) {
+                            currentLink = decodeURIComponent(currentLink);
+                            console.log(`Decoding level ${i + 1}:`, currentLink);
+                            
+                            // Пробуем найти регуляркой email=...
+                            const emailMatch = currentLink.match(/email=([^&?]+)/);
+                            if (emailMatch && emailMatch[1]) {
+                                storedEmail = decodeURIComponent(emailMatch[1]);
+                                console.log('Email found by regex at level', i + 1, ':', storedEmail);
+                                break;
+                            }
+                        }
+                    } catch (e) {
+                        console.log('Failed to parse email from URL:', e);
+                    }
+                }
+                
+                console.log('Final email to use:', storedEmail);
 
                 if (!storedEmail) {
-                    // Если email не сохранен, просим пользователя ввести его в поле ввода
+                    console.log('No stored email found, asking user to enter it');
                     setLoginMethod('email');
                     Alert.alert(
                         'Подтвердите email',
                         'Пожалуйста, введите ваш адрес электронной почты в поле ввода для завершения входа.'
                     );
+                    setLoading(false);
                     return;
                 }
 
-                const result = await signInWithEmailLink(getAuth(), storedEmail, link);
+                console.log('Calling signInWithEmailLink with email:', storedEmail);
+                const result = await signInWithEmailLink(authInstance, storedEmail, link);
+                console.log('Sign in with email link SUCCESS:', result.user.uid);
                 await handleAfterLogin(result.user);
                 await storage.removeItem('email_for_sign_in');
-            } catch (error) {
-                console.error('Email Link Auth Error:', error);
-                Alert.alert('Ошибка', error.message || 'Не удалось войти по ссылке');
-            } finally {
-                setLoading(false);
+            } else {
+                console.log('Link is NOT a sign-in email link according to SDK');
             }
+        } catch (error) {
+            console.error('Email Link Auth Error details:', error);
+            console.log('Error code:', error.code);
+            console.log('Error message:', error.message);
+            
+            if (error.code === 'auth/invalid-action-code') {
+                 Alert.alert(
+                    'Ссылка недействительна', 
+                    'Этот код уже был использован или истек. Пожалуйста, запросите новую ссылку из приложения.'
+                 );
+            } else {
+                 Alert.alert('Ошибка входа по ссылке', error.message || 'Не удалось завершить вход');
+            }
+        } finally {
+            setLoading(false);
         }
     };
 

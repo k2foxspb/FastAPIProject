@@ -16,6 +16,7 @@ const NotificationContext = createContext();
 
 export const NotificationProvider = ({ children }) => {
   const [historyListeners] = useState(new Set());
+  const [searchResultsListeners] = useState(new Set());
 
   const getHistoryWs = React.useCallback((otherUserId, limit = 15, skip = 0) => {
     if (chatWs.current && chatWs.current.readyState === WebSocket.OPEN) {
@@ -36,6 +37,23 @@ export const NotificationProvider = ({ children }) => {
     historyListeners.add(callback);
     return () => historyListeners.delete(callback);
   }, [historyListeners]);
+
+  const onSearchResultsReceived = React.useCallback((callback) => {
+    searchResultsListeners.add(callback);
+    return () => searchResultsListeners.delete(callback);
+  }, [searchResultsListeners]);
+
+  const searchMessagesWs = React.useCallback((otherUserId, query) => {
+    if (chatWs.current && chatWs.current.readyState === WebSocket.OPEN) {
+      chatWs.current.send(JSON.stringify({
+        type: 'search_messages',
+        other_user_id: otherUserId,
+        query
+      }));
+      return true;
+    }
+    return false;
+  }, []);
   const [userStatuses, setUserStatuses] = useState({});
   const [dialogs, setDialogs] = useState([]);
   const [notifications, setNotifications] = useState([]);
@@ -263,7 +281,9 @@ export const NotificationProvider = ({ children }) => {
           const queue = [...pendingMessages.current];
           pendingMessages.current = [];
           queue.forEach(msg => {
-            socket.send(JSON.stringify({ type: 'message', ...msg }));
+            // Приводим к формату sendMessage: если в msgData уже есть type, используем его, иначе 'message'
+            const payload = msg.type ? msg : { type: 'message', ...msg };
+            socket.send(JSON.stringify(payload));
           });
         }
 
@@ -291,14 +311,22 @@ export const NotificationProvider = ({ children }) => {
           }
 
           if (msgType === 'dialogs_list') {
+            console.log(`[NotificationContext] Received dialogs_list via Chat WS, count: ${payload.data?.length}`);
             setDialogs(payload.data || []);
           } else if (msgType === 'chat_history') {
+            console.log(`[NotificationContext] Received chat_history via Chat WS, partner: ${payload.other_user_id}`);
             historyListeners.forEach(cb => {
               try { cb(payload); } catch(e) { console.error('Error in history listener:', e); }
+            });
+          } else if (msgType === 'search_results') {
+            console.log(`[NotificationContext] Received search_results via Chat WS, count: ${payload.data?.length}`);
+            searchResultsListeners.forEach(cb => {
+              try { cb(payload); } catch(e) { console.error('Error in search results listener:', e); }
             });
           } else if (msgType === 'pong') {
             // Keep-alive response
           } else if (msgType === 'new_message' && payload.data) {
+            console.log(`[NotificationContext] Received new_message via Chat WS: id=${payload.data.id}, client_id=${payload.data.client_id}`);
             handleNewMessage(payload.data, payload);
           } else if (msgType === 'messages_read') {
             const otherId = payload.reader_id || payload.data?.reader_id;
@@ -339,16 +367,17 @@ export const NotificationProvider = ({ children }) => {
 
   const sendMessage = React.useCallback((msgData) => {
     const currentState = chatWs.current?.readyState;
+    const payload = msgData.type ? msgData : { type: 'message', ...msgData };
+
     if (chatWs.current && currentState === WebSocket.OPEN) {
-      chatWs.current.send(JSON.stringify({
-        ...msgData
-      }));
+      console.log(`[NotificationContext] Sending message to Chat WS: client_id=${msgData.client_id}`);
+      chatWs.current.send(JSON.stringify(payload));
       return true;
     } else {
-      console.warn(`[NotificationContext] Chat WS not ready (state: ${currentState}), adding to pending queue`);
+      console.warn(`[NotificationContext] Chat WS not ready (state: ${currentState}), adding to pending queue: client_id=${msgData.client_id}`);
       
       // Добавляем в очередь для повторной отправки
-      pendingMessages.current.push(msgData);
+      pendingMessages.current.push(payload);
 
       // If Chat WS is down or connecting, try to reconnect (forcing if stuck)
       storage.getAccessToken().then(tok => { 
@@ -819,6 +848,8 @@ export const NotificationProvider = ({ children }) => {
       sendMessage,
       getHistoryWs,
       onHistoryReceived,
+      onSearchResultsReceived,
+      searchMessagesWs,
       markAsReadWs,
       deleteMessageWs,
       bulkDeleteMessagesWs,

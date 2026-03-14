@@ -12,16 +12,19 @@ const api = axios.create({
 // Интерцептор для добавления Firebase App Check токена
 api.interceptors.request.use(async (config) => {
   try {
-    // Получаем текущий токен App Check
-    const { token } = await getAppCheckToken(false);
-    if (token) {
-      config.headers['X-Firebase-AppCheck'] = token;
+    // Используем модульный API для получения токена (match v22+)
+    const { getToken } = require('@react-native-firebase/app-check');
+    if (typeof getToken === 'function') {
+      const { token } = await getToken(false);
+      if (token) {
+        config.headers['X-Firebase-AppCheck'] = token;
+      }
     }
   } catch (error) {
     // В некоторых средах (например, эмулятор без Play Services) может выдать ошибку
     // Мы не блокируем запрос, если не удалось получить токен, бэкенд сам решит, что делать.
     if (__DEV__) {
-      console.log('[AppCheck] Token acquisition failed:', error.message);
+      console.log('[AppCheck Interceptor] Token acquisition skipped (native broken or no provider):', error.message);
     }
   }
   return config;
@@ -263,6 +266,10 @@ api.interceptors.response.use(
 
     // Если ошибка 401 и это не повторный запрос
     if (error.response?.status === 401 && !originalRequest._retry) {
+      // Игнорируем редирект для некоторых эндпоинтов, чтобы пользователь мог смотреть контент анонимно
+      const ignoredUrls = ['/news/', '/products/'];
+      const isIgnored = ignoredUrls.some(url => originalRequest.url.includes(url));
+
       if (isRefreshing) {
         return new Promise(function(resolve, reject) {
           failedQueue.push({ resolve, reject });
@@ -297,18 +304,26 @@ api.interceptors.response.use(
               throw new Error('No access token in refresh response');
             }
           } else {
-            console.log('[API] No refresh token available, redirecting to login');
+            console.log('[API] No refresh token available');
             await storage.clearTokens();
             setAuthToken(null);
-            navigate('Profile', { screen: 'Login' });
+            
+            if (!isIgnored) {
+              console.log('[API] Redirecting to login');
+              navigate('Profile', { screen: 'Login' });
+            }
             throw new Error('No refresh token available');
           }
         } catch (refreshError) {
-          console.error('[API] Failed to refresh token, redirecting to login:', refreshError);
+          console.error('[API] Failed to refresh token:', refreshError);
           processQueue(refreshError, null);
           await storage.clearTokens();
           setAuthToken(null);
-          navigate('Profile', { screen: 'Login' });
+          
+          if (!isIgnored) {
+             console.log('[API] Redirecting to login');
+             navigate('Profile', { screen: 'Login' });
+          }
           reject(refreshError);
         } finally {
           isRefreshing = false;

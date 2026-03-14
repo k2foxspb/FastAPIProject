@@ -10,7 +10,7 @@ import { theme as themeConstants } from '../constants/theme';
 export default function EditProfileScreen({ route, navigation }) {
   const { theme } = useTheme();
   const colors = themeConstants[theme];
-  const { user } = route.params;
+  const { user, isInitialSetup } = route.params;
   const [email, setEmail] = useState(user.email || '');
   const [phoneNumber, setPhoneNumber] = useState(user.phone_number || '');
   const [firstName, setFirstName] = useState(user.first_name || '');
@@ -58,7 +58,15 @@ export default function EditProfileScreen({ route, navigation }) {
 
       await usersApi.updateMe(formData);
       Alert.alert('Успех', 'Профиль обновлен');
-      navigation.goBack();
+      
+      if (isInitialSetup) {
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'ProfileMain' }],
+        });
+      } else {
+        navigation.goBack();
+      }
     } catch (err) {
       console.error(err);
       Alert.alert('Ошибка', 'Не удалось обновить профиль');

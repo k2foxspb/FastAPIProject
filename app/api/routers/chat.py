@@ -184,6 +184,49 @@ async def websocket_chat_endpoint(
                 
             logger.debug(f"Chat WS received message type '{msg_type}' from user {user_id}")
 
+            if msg_type == "search_messages":
+                other_user_id = message_data.get("other_user_id")
+                query = message_data.get("query", "").lower()
+                if other_user_id and query:
+                    try:
+                        from sqlalchemy import or_
+                        stmt = select(ChatMessage).where(
+                            or_(
+                                and_(ChatMessage.sender_id == user_id, ChatMessage.receiver_id == int(other_user_id)),
+                                and_(ChatMessage.sender_id == int(other_user_id), ChatMessage.receiver_id == user_id)
+                            ),
+                            or_(
+                                func.lower(ChatMessage.message).contains(query),
+                                func.lower(ChatMessage.file_path).contains(query)
+                            )
+                        ).order_by(ChatMessage.timestamp.desc())
+                        
+                        result = await db.execute(stmt)
+                        found_messages = result.scalars().all()
+                        
+                        processed_results = []
+                        for m in found_messages:
+                            m_dict = {
+                                "id": m.id,
+                                "timestamp": m.timestamp.isoformat() if m.timestamp else None,
+                                "message": m.message,
+                                "file_path": m.file_path,
+                                "sender_id": m.sender_id,
+                                "receiver_id": m.receiver_id,
+                                "message_type": m.message_type
+                            }
+                            processed_results.append(m_dict)
+                            
+                        await websocket.send_json({
+                            "type": "search_results",
+                            "other_user_id": int(other_user_id),
+                            "query": query,
+                            "data": processed_results
+                        })
+                    except Exception as e:
+                        logger.error(f"WS search_messages error: {e}")
+                continue
+                
             if msg_type == "mark_read":
                 other_id = message_data.get("other_id")
                 if other_id:

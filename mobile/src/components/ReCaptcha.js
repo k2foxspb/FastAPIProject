@@ -27,15 +27,19 @@ const ReCaptcha = forwardRef(({ onVerify, action = 'LOGIN' }, ref) => {
       <body>
         <script>
           function executeRecaptcha() {
+            console.log('JS: executeRecaptcha called');
             grecaptcha.enterprise.ready(function() {
+              console.log('JS: reCAPTCHA enterprise ready');
               grecaptcha.enterprise.execute('${siteKey}', { action: '${action}' })
                 .then(function(token) {
+                  console.log('JS: Token generated successfully');
                   window.ReactNativeWebView.postMessage(JSON.stringify({
                     type: 'token',
                     token: token
                   }));
                 })
                 .catch(function(error) {
+                  console.log('JS: Token generation error: ' + error.message);
                   window.ReactNativeWebView.postMessage(JSON.stringify({
                     type: 'error',
                     error: error.message
