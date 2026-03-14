@@ -207,12 +207,15 @@ export default function LoginScreen({navigation}) {
             }
 
             console.log('Attempting custom backend phone auth for:', formattedPhone);
-            await usersApi.requestPhoneCode(formattedPhone);
+            const response = await usersApi.requestPhoneCode(formattedPhone);
+            const debugCode = response.data?.debug_code;
+            
             setConfirm({ phone: formattedPhone }); // Имитируем объект confirmation
-            console.log('Code requested successfully via backend');
+            console.log('Code requested successfully via backend, debug code:', debugCode);
+            
             Alert.alert(
                 'Код подтверждения', 
-                'Вам поступит звонок. Введите последние 4 цифры номера (или код из SMS, если звонок не пройдет).'
+                `Ожидаемый код: ${debugCode || 'не получен'}. \nВам поступит звонок. Введите эти цифры или код из номера телефона.`
             );
         } catch (error) {
             console.error('Phone Auth Error:', error);
