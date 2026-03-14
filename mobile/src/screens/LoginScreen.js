@@ -207,17 +207,13 @@ export default function LoginScreen({navigation}) {
             }
 
             console.log('Attempting custom backend phone auth for:', formattedPhone);
-            const response = await usersApi.requestPhoneCode(formattedPhone);
-            console.log('Full response from requestPhoneCode:', JSON.stringify(response.data, null, 2));
-            
-            const debugCode = response.data?.debug_code;
-            
+            await usersApi.requestPhoneCode(formattedPhone);
             setConfirm({ phone: formattedPhone }); // Имитируем объект confirmation
-            console.log('Code requested successfully via backend, debug code:', debugCode);
+            console.log('Code requested successfully via backend');
             
             Alert.alert(
                 'Код подтверждения', 
-                `Ожидаемый код: ${debugCode || 'НЕ ПОЛУЧЕН'}. \nВам поступит звонок. Введите эти цифры (или код из номера телефона).`
+                'Вам поступит звонок. Введите последние 4 цифры номера этого звонка.'
             );
         } catch (error) {
             console.error('Phone Auth Error:', error);
@@ -237,7 +233,6 @@ export default function LoginScreen({navigation}) {
 
         try {
             setLoading(true);
-            console.log(`Verifying code for phone: [${confirm?.phone}], code: [${code}]`);
             const res = await usersApi.verifyPhoneCode(confirm.phone, code);
             console.log('Verification success, handling login...');
             

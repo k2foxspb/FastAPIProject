@@ -318,7 +318,6 @@ class RefreshTokenRequest(BaseModel):
 class PhoneCodeResponse(BaseModel):
     message: str
     phone: str
-    debug_code: Optional[str] = None
 
 
 class FCMTokenUpdate(BaseModel):

@@ -689,8 +689,7 @@ async def request_phone_code(
         logger.error(f"[Auth] Redis error: {e}. Falling back to memory cache.")
 
     # Отправка через SMS-провайдеров
-    # ВАЖНО: При звонке-пароле (call=1) в mes передаем ТОЛЬКО цифры кода. 
-    # Никакого лишнего текста, иначе провайдер может неверно подобрать номер для звонка.
+    # Для звонка-пароля (call=1) в mes передаем ТОЛЬКО цифры кода.
     message_sms = f"Код подтверждения: {code}"
     sent = False
 
@@ -698,7 +697,6 @@ async def request_phone_code(
     if SMS_RU_API_KEY and not sent:
         try:
             async with httpx.AsyncClient() as client:
-                # В SMS.RU есть Call Password (дешевле)
                 res = await client.get(
                     "https://sms.ru/code/call",
                     params={
@@ -710,96 +708,54 @@ async def request_phone_code(
                 )
                 data = res.json()
                 if data.get("status") == "OK":
-                    # SMS.RU сам генерирует код и возвращает его
                     code = str(data.get("code"))
                     _phone_code_cache[clean_phone] = code
                     try:
                         r = aioredis.Redis(host=REDIS_HOST, port=int(REDIS_PORT), db=1)
                         await r.setex(redis_key, 600, code)
                     except: pass
-                    logger.info(f"[Auth] Flash call sent via SMS.RU to {clean_phone}. Code updated to: {code}")
+                    logger.info(f"[Auth] Flash call sent via SMS.RU to {clean_phone}")
                     sent = True
-                else:
-                    logger.error(f"[Auth] SMS.RU Call error: {data}. Trying standard SMS...")
-                    # Fallback to SMS if Call fails
-                    res = await client.get(
-                        "https://sms.ru/sms/send",
-                        params={
-                            "api_id": SMS_RU_API_KEY,
-                            "to": clean_phone,
-                            "msg": message_sms,
-                            "json": 1
-                        }
-                    )
-                    if res.json().get("status") == "OK":
-                        sent = True
         except Exception as e:
             logger.error(f"[Auth] SMS.RU exception: {e}")
 
-    # 2. Пробуем SMS-Center (Flash Call или SMS)
+    # 2. Пробуем SMS-Center (Flash Call)
     if SMS_CENTER_LOGIN and SMS_CENTER_PASSWORD and not sent:
         try:
             async with httpx.AsyncClient() as client:
-                # МЫ САМИ ГЕНЕРИРУЕМ КОД и просим SMSC.RU позвонить с номера, оканчивающегося на него.
-                # mes - наш 4-значный код.
-                # call=1 - флаг звонка.
-                # Для этого в SMSC.RU должна быть включена услуга "Звонок-пароль".
                 res = await client.get(
                     "https://smsc.ru/sys/send.php",
                     params={
                         "login": SMS_CENTER_LOGIN,
                         "psw": SMS_CENTER_PASSWORD,
                         "phones": clean_phone,
-                        "mes": code, # НАШ КОД (например, 4681)
-                        "call": 1,    # Флаг звонка
-                        "fmt": 3      # JSON
+                        "mes": "code", # Просим SMSC сгенерировать код самому
+                        "call": 1,     # Флаг звонка
+                        "fmt": 3       # JSON
                     },
                     timeout=10.0
                 )
                 data = res.json()
-                logger.debug(f"[Auth] SMSC.RU full response (our code {code}): {data}")
-                
-                if "error" not in data:
-                    # ВАЖНО: SMSC.RU может всё равно сгенерировать свой код, если наш не подходит.
-                    # Если в ответе есть поле "code", значит провайдер ПЕРЕОПРЕДЕЛИЛ наш код своим.
-                    smsc_code = data.get("code")
-                    if smsc_code:
-                        code = str(smsc_code)
-                        _phone_code_cache[clean_phone] = code
-                        try:
-                            r = aioredis.Redis(host=REDIS_HOST, port=int(REDIS_PORT), db=1)
-                            await r.setex(redis_key, 600, code)
-                        except: pass
-                        logger.info(f"[Auth] Flash Call sent via SMS-Center. SMSC OVERRIDDEN CODE: {code}")
-                    else:
-                        logger.info(f"[Auth] Flash Call request successful via SMS-Center. Our code {code} should be used.")
+                smsc_generated_code = data.get("code")
+                if "error" not in data and smsc_generated_code:
+                    code = str(smsc_generated_code)
+                    _phone_code_cache[clean_phone] = code
+                    try:
+                        r = aioredis.Redis(host=REDIS_HOST, port=int(REDIS_PORT), db=1)
+                        await r.setex(redis_key, 600, code)
+                    except: pass
+                    logger.info(f"[Auth] Flash Call sent via SMSC.RU to {clean_phone}")
                     sent = True
                 else:
-                    logger.error(f"[Auth] SMS-Center Call error: {data}. Trying standard SMS fallback...")
-                    # Fallback to standard SMS
-                    res = await client.get(
-                        "https://smsc.ru/sys/send.php",
-                        params={
-                            "login": SMS_CENTER_LOGIN,
-                            "psw": SMS_CENTER_PASSWORD,
-                            "phones": clean_phone,
-                            "mes": message_sms,
-                            "fmt": 3
-                        }
-                    )
-                    if "error" not in res.json():
-                        sent = True
-                        logger.info(f"[Auth] SMS sent via SMS-Center fallback to {clean_phone}")
+                    logger.error(f"[Auth] SMS-Center Flash Call failed. Data: {data}")
         except Exception as e:
             logger.error(f"[Auth] SMS-Center exception: {e}")
 
     if not sent:
-        # Имитация отправки SMS для отладки, если провайдеры не настроены или упали
-        logger.warning(f"[Auth] No SMS provider worked. Simulation mode for {clean_phone}. Code: {code}")
-        print(f"\n[SMS SIMULATION] To: {clean_phone}, Message: {message_sms}\n")
-        return {"message": f"Code generated (SIMULATION mode). Code: {code}", "phone": clean_phone, "debug_code": code}
+        logger.warning(f"[Auth] No SMS provider worked for {clean_phone}. Simulation mode.")
+        return {"message": "Verification code (SIMULATION mode)", "phone": clean_phone}
     
-    return {"message": "Code sent successfully", "phone": clean_phone, "debug_code": code}
+    return {"message": "Verification call sent successfully", "phone": clean_phone}
 
 
 @router.post("/verify-phone-code", response_model=TokenResponse)
@@ -815,7 +771,6 @@ async def verify_phone_code(
     
     # Нормализация номера телефона (только цифры)
     clean_phone = "".join(filter(str.isdigit, phone))
-    # ВАЖНО: Мы нормализуем 8... в 7... для единообразия
     if clean_phone.startswith('8') and len(clean_phone) == 11:
         clean_phone = '7' + clean_phone[1:]
     
@@ -825,43 +780,30 @@ async def verify_phone_code(
     
     is_valid = False
     
-    # 0. Проверяем супер-коды
-    if code in ["0000", "1234", "123456", "9950"]:
-        is_valid = True
-        logger.info(f"[Auth] SUPER-CODE {code} used for {clean_phone}")
-
     # 1. Проверяем в Redis
-    stored_code_str = "None"
-    if not is_valid:
-        try:
-            r = aioredis.Redis(host=REDIS_HOST, port=int(REDIS_PORT), db=1)
-            stored_code = await r.get(redis_key)
-            if stored_code:
-                stored_code_str = stored_code.decode()
-                logger.info(f"[Auth] Redis verify for {clean_phone}: input={code}, stored={stored_code_str}")
-                if stored_code_str == code:
-                    is_valid = True
-                    await r.delete(redis_key)
-            else:
-                logger.warning(f"[Auth] Redis key {redis_key} not found for {clean_phone}")
-        except Exception as e:
-            logger.error(f"[Auth] Redis error during verification: {e}")
+    try:
+        r = aioredis.Redis(host=REDIS_HOST, port=int(REDIS_PORT), db=1)
+        stored_code = await r.get(redis_key)
+        if stored_code:
+            stored_code_str = stored_code.decode()
+            if stored_code_str == code:
+                is_valid = True
+                await r.delete(redis_key)
+    except Exception as e:
+        logger.error(f"[Auth] Redis error: {e}")
 
-    # 2. Проверяем в локальном кэше памяти (как последний шанс)
-    memory_code = _phone_code_cache.get(clean_phone)
+    # 2. Проверяем в локальном кэше памяти (fallback)
     if not is_valid:
+        memory_code = _phone_code_cache.get(clean_phone)
         if memory_code and memory_code == code:
             is_valid = True
-            logger.info(f"[Auth] Memory cache match for {clean_phone}: {code}")
             del _phone_code_cache[clean_phone]
 
     if not is_valid:
-        error_msg = f"Invalid or expired verification code. Expected: [Redis:{stored_code_str}, Mem:{memory_code}], Got: [{code}] for phone [{clean_phone}]"
-        logger.warning(f"[Auth] Verification failed for {clean_phone}: {error_msg}")
-        # Возвращаем РАСШИРЕННУЮ ошибку для отладки пользователем прямо в приложении
+        logger.warning(f"[Auth] Verification failed for {clean_phone}")
         raise HTTPException(
             status_code=400, 
-            detail=error_msg
+            detail="Неверный или истекший код подтверждения"
         )
 
     # Ищем пользователя по номеру телефона
