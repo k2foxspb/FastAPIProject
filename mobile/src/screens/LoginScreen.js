@@ -225,8 +225,8 @@ export default function LoginScreen({navigation}) {
     };
 
     const confirmCode = async () => {
-        if (!code || code.length < 6) {
-            Alert.alert('Ошибка', 'Введите 6-значный код');
+        if (!code || code.length < 4) {
+            Alert.alert('Ошибка', 'Введите код подтверждения (4 или 6 цифр)');
             return;
         }
 
@@ -489,7 +489,7 @@ export default function LoginScreen({navigation}) {
                                           style={{marginRight: 12}}/>
                                 <TextInput
                                     style={[styles.input, {color: colors.text}]}
-                                    placeholder="Код из SMS"
+                                    placeholder="Код подтверждения"
                                     placeholderTextColor={colors.textSecondary + '80'}
                                     keyboardType="number-pad"
                                     value={code}

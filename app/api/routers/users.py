@@ -1,6 +1,7 @@
 import asyncio
 import jwt
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Request
+from fastapi.responses import HTMLResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete, or_, and_, literal, update
 from fastapi.security import OAuth2PasswordRequestForm
@@ -57,6 +58,59 @@ from app.utils import storage
 from sqlalchemy.orm import selectinload
 
 router = APIRouter(prefix="/users", tags=["users"])
+
+
+@router.get("/verify-email", response_class=HTMLResponse)
+async def verify_email_bridge(request: Request):
+    """
+    Эндпоинт-мост для перенаправления в мобильное приложение.
+    Если Android App Links не сработали и ссылка открылась в браузере,
+    эта страница попытается открыть приложение через кастомную схему.
+    """
+    full_url = str(request.url)
+    # Заменяем https://fokin.fun/users/verify-email на fokinfun://verify-email
+    deeplink = full_url.replace(str(request.base_url) + "users/", "fokinfun://")
+    
+    # Если в URL нет параметров (хотя они должны быть от Firebase), 
+    # убеждаемся что схема правильная
+    if "fokinfun://" not in deeplink:
+        deeplink = "fokinfun://verify-email?" + request.url.query
+
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Переход в приложение...</title>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <style>
+            body {{ font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; background-color: #f0f2f5; }}
+            .card {{ background: white; padding: 2rem; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); text-align: center; max-width: 90%; }}
+            .btn {{ display: inline-block; background-color: #007bff; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; margin-top: 20px; font-weight: bold; }}
+            .loader {{ border: 4px solid #f3f3f3; border-top: 4px solid #3498db; border-radius: 50%; width: 40px; height: 40px; animation: spin 2s linear infinite; margin: 20px auto; }}
+            @keyframes spin {{ 0% {{ transform: rotate(0deg); }} 100% {{ transform: rotate(360deg); }} }}
+        </style>
+    </head>
+    <body>
+        <div class="card">
+            <h2>Открываем FastAPI...</h2>
+            <div class="loader"></div>
+            <p>Если приложение не открылось автоматически, нажмите кнопку ниже:</p>
+            <a href="{deeplink}" class="btn">Открыть приложение</a>
+        </div>
+        <script>
+            // Пытаемся выполнить редирект сразу
+            window.location.href = "{deeplink}";
+            
+            // Если через 2 секунды мы все еще тут, возможно стоит напомнить пользователю
+            setTimeout(function() {{
+                console.log("Приложение не открылось автоматически");
+            }}, 2000);
+        </script>
+    </body>
+    </html>
+    """
+    return HTMLResponse(content=html_content)
 
 
 @router.get("/firebase-config", response_model=FirebaseConfigResponse)
@@ -744,8 +798,8 @@ async def verify_phone_code(
         raise HTTPException(status_code=500, detail="Internal server error (storage)")
 
     if not is_valid:
-        # Для удобства тестирования, если код 123456, пропускаем
-        if code == "123456":
+        # Для удобства тестирования, если код 123456 или 1234, пропускаем
+        if code in ["123456", "1234"]:
             is_valid = True
         else:
             raise HTTPException(status_code=400, detail="Invalid or expired verification code")

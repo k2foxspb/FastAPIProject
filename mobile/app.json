@@ -99,8 +99,38 @@
             },
             {
               "scheme": "https",
+              "host": "fokin.fun",
+              "pathPrefix": "/__/auth/action"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        },
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
               "host": "fastapi-f628e.firebaseapp.com",
               "pathPrefix": "/__/auth/links"
+            },
+            {
+              "scheme": "https",
+              "host": "fastapi-f628e.firebaseapp.com",
+              "pathPrefix": "/__/auth/action"
+            },
+            {
+              "scheme": "https",
+              "host": "fastapi-f628e.firebaseapp.com",
+              "pathPrefix": "/verify-email"
+            },
+            {
+              "scheme": "https",
+              "host": "fastapi-f628e.firebaseapp.com",
+              "pathPrefix": "/login"
             }
           ],
           "category": [
