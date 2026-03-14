@@ -30,8 +30,6 @@ protected_routers = [
     (cart.router, ["cart"]),
     (orders.router, ["orders"]),
     (payments.router, ["payments"]),
-    (notifications.router, ["websocket"]),
-    (chat.router, ["chat"]),
     (tasks.router, ["tasks"]),
     (admin.router, ["admin"]),
     (news.router, ["news"]),
@@ -40,7 +38,10 @@ protected_routers = [
 for router, tags in protected_routers:
     api_router.include_router(router, tags=tags, dependencies=[Depends(verify_app_check)])
 
-# Регистрация без защиты (для отладки)
+# Регистрация без защиты App Check (для WebSockets и отладки)
+# WebSockets не могут отправлять кастомные заголовки во время рукопожатия
+api_router.include_router(notifications.router, tags=["websocket"])
+api_router.include_router(chat.router, tags=["chat"])
 api_router.include_router(testing.router, tags=["testing"])
 
 __all__ = ["api_router"]

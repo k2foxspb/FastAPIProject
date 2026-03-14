@@ -1,6 +1,6 @@
 import 'expo-dev-client';
-import firebase from '@react-native-firebase/app';
-import messaging from '@react-native-firebase/messaging';
+import { getApps, initializeApp } from '@react-native-firebase/app';
+import { setBackgroundMessageHandler } from '@react-native-firebase/messaging';
 import notifee, { EventType } from '@notifee/react-native';
 import { Platform } from 'react-native';
 import { registerRootComponent } from 'expo';
@@ -10,13 +10,13 @@ import { registerRootComponent } from 'expo';
 // как можно раньше, ДО регистрации основного компонента и даже до импорта App.js.
 
 console.log(`[Entry] index.js execution started, Platform: ${Platform.OS}`);
-console.log(`[Entry] Firebase apps initialized: ${firebase.apps.length}`);
+console.log(`[Entry] Firebase apps initialized: ${getApps().length}`);
 
 if (Platform.OS === 'android') {
   // Гарантированная инициализация Firebase для Headless JS
-  if (firebase.apps.length === 0) {
+  if (getApps().length === 0) {
     try {
-      firebase.initializeApp({
+      initializeApp({
         apiKey: "AIzaSyAwKCJuxsxfnY6aloE5lnDn-triTVBswxE",
         appId: "1:176773891332:android:01174694c19132ed0ffc51",
         projectId: "fastapi-f628e",
@@ -43,14 +43,8 @@ if (Platform.OS === 'android') {
 
   try {
     // Вызываем setBackgroundMessageHandler ПРЯМО ЗДЕСЬ, максимально рано.
-    // Пробуем разные способы получения messaging для надежности
-    const msgInstance = messaging();
-    if (msgInstance && typeof msgInstance.setBackgroundMessageHandler === 'function') {
-      msgInstance.setBackgroundMessageHandler(fcmBackgroundHandler);
-      console.log('[Entry] FCM Background handler registered SUCCESSFULLY via messaging()');
-    } else {
-      console.warn('[Entry] setBackgroundMessageHandler is not a function on messaging() instance');
-    }
+    setBackgroundMessageHandler(fcmBackgroundHandler);
+    console.log('[Entry] FCM Background handler registered SUCCESSFULLY');
     
     // НЕ регистрируем AppRegistry.registerHeadlessTask вручную, так как 
     // RNFirebase v12+ делает это автоматически при вызове setBackgroundMessageHandler.

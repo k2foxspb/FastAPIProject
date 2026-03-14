@@ -1,7 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { getShadow } from '../utils/shadowStyles';
 import { View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator, Animated, Dimensions, TextInput, KeyboardAvoidingView, Platform, Image } from 'react-native';
-import auth from '@react-native-firebase/auth';
+import auth, { 
+  getApp, 
+  getApps, 
+  initializeApp,
+  signInWithPhoneNumber,
+  isSignInWithEmailLink,
+  signInWithEmailLink,
+  sendSignInLinkToEmail
+} from '@react-native-firebase/auth';
 import * as Linking from 'expo-linking';
 import { usersApi, setAuthToken } from '../api';
 import { API_BASE_URL } from '../constants';
@@ -143,7 +151,7 @@ export default function LoginScreen({ navigation }) {
         }
       }
 
-      const confirmation = await auth().signInWithPhoneNumber(formattedPhone);
+      const confirmation = await signInWithPhoneNumber(auth(), formattedPhone);
       setConfirm(confirmation);
       console.log(confirmation);
     } catch (error) {
@@ -197,7 +205,7 @@ export default function LoginScreen({ navigation }) {
       };
 
       const authInstance = auth();
-      await authInstance.sendSignInLinkToEmail(trimmedEmail, actionCodeSettings);
+      await sendSignInLinkToEmail(authInstance, trimmedEmail, actionCodeSettings);
       await storage.saveItem('email_for_sign_in', trimmedEmail);
       Alert.alert('Ссылка отправлена', 'Проверьте свою почту для завершения входа');
     } catch (error) {
@@ -211,7 +219,7 @@ export default function LoginScreen({ navigation }) {
   const handleSignInLink = async (link) => {
     if (!link) return;
 
-    if (auth().isSignInWithEmailLink(link)) {
+    if (isSignInWithEmailLink(auth(), link)) {
       try {
         setLoading(true);
         let storedEmail = await storage.getItem('email_for_sign_in');
@@ -226,7 +234,7 @@ export default function LoginScreen({ navigation }) {
           return;
         }
 
-        const result = await auth().signInWithEmailLink(storedEmail, link);
+        const result = await signInWithEmailLink(auth(), storedEmail, link);
         await handleAfterLogin(result.user);
         await storage.removeItem('email_for_sign_in');
       } catch (error) {

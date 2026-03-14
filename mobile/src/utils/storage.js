@@ -64,7 +64,11 @@ export const storage = {
 
   saveItem: async (key, value) => {
     try {
-      await AsyncStorage.setItem(key, value);
+      if (value === null || value === undefined) {
+        await AsyncStorage.removeItem(key);
+      } else {
+        await AsyncStorage.setItem(key, value);
+      }
     } catch (e) {
       console.error(`Error saving item ${key}`, e);
     }

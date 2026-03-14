@@ -341,7 +341,6 @@ export const NotificationProvider = ({ children }) => {
     const currentState = chatWs.current?.readyState;
     if (chatWs.current && currentState === WebSocket.OPEN) {
       chatWs.current.send(JSON.stringify({
-        type: 'message',
         ...msgData
       }));
       return true;

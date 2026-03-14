@@ -1,7 +1,8 @@
 import axios from 'axios';
-import appCheck from '@react-native-firebase/app-check';
+import { getToken as getAppCheckToken } from '@react-native-firebase/app-check';
 import { API_BASE_URL } from '../constants';
 import { storage } from '../utils/storage';
+import { navigate } from '../navigation/NavigationService';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -12,7 +13,7 @@ const api = axios.create({
 api.interceptors.request.use(async (config) => {
   try {
     // Получаем текущий токен App Check
-    const { token } = await appCheck().getToken();
+    const { token } = await getAppCheckToken(false);
     if (token) {
       config.headers['X-Firebase-AppCheck'] = token;
     }
@@ -296,13 +297,18 @@ api.interceptors.response.use(
               throw new Error('No access token in refresh response');
             }
           } else {
+            console.log('[API] No refresh token available, redirecting to login');
+            await storage.clearTokens();
+            setAuthToken(null);
+            navigate('Profile', { screen: 'Login' });
             throw new Error('No refresh token available');
           }
         } catch (refreshError) {
-          console.error('[API] Failed to refresh token:', refreshError);
+          console.error('[API] Failed to refresh token, redirecting to login:', refreshError);
           processQueue(refreshError, null);
           await storage.clearTokens();
           setAuthToken(null);
+          navigate('Profile', { screen: 'Login' });
           reject(refreshError);
         } finally {
           isRefreshing = false;

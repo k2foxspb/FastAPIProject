@@ -1,8 +1,18 @@
 import { Alert, Platform, Vibration, Linking, NativeModules } from 'react-native';
 import Constants from 'expo-constants';
-import messaging from '@react-native-firebase/messaging';
+import {
+  requestPermission,
+  onMessage,
+  onTokenRefresh,
+  onNotificationOpenedApp,
+  getInitialNotification,
+  unregisterDeviceForRemoteMessages,
+  deleteToken,
+  getToken,
+  registerDeviceForRemoteMessages,
+  getAPNSToken
+} from '@react-native-firebase/messaging';
 import notifee from '@notifee/react-native';
-import firebase from '@react-native-firebase/app';
 
 import { usersApi, chatApi, setAuthToken } from '../api';
 import { storage } from './storage';
@@ -19,55 +29,33 @@ const isExpoGo =
   Constants.executionEnvironment === 'storeClient' ||
   (Constants.executionEnvironment == null && Constants.appOwnership === 'expo');
 
-// Helper to get messaging instance safely
-export const getMessaging = async () => {
-  if (Platform.OS === 'web') return null;
+// Helper to check if messaging is available safely
+export const isMessagingAvailable = async () => {
+  if (Platform.OS === 'web') return false;
   if (isExpoGo) {
     lastMessagingUnavailableReason = 'expo_go';
-    return null;
+    return false;
   }
   if (nativeMessagingBroken) {
     lastMessagingUnavailableReason = 'native_module_broken';
-    return null;
+    return false;
   }
 
   try {
-    // 1. Попытка получить инстанс через стандартный импорт
-    let msgInstance = null;
-    try {
-      msgInstance = messaging();
-    } catch (e) {
-      console.log('[FCM] messaging() call failed, trying fallback...');
-    }
-
-    // 2. Если не вышло, пробуем через firebase.messaging()
-    if (!msgInstance) {
-      try {
-        msgInstance = firebase.messaging();
-      } catch (e) {
-        console.log('[FCM] firebase.messaging() call failed');
-      }
-    }
-
-    if (!msgInstance) {
-      nativeMessagingBroken = true;
-      lastMessagingUnavailableReason = 'no_messaging_instance';
-      return null;
-    }
-
-    // 3. Проверка наличия методов (защита от "пустого" нативного модуля)
-    if (typeof msgInstance.getToken !== 'function') {
-      console.error('[FCM] getToken is not a function on messaging instance');
+    // В модульном API мы не вызываем messaging() как функцию для проверки.
+    // Но мы можем проверить наличие необходимых функций.
+    if (typeof onMessage !== 'function') {
+      console.error('[FCM] messaging methods (onMessage) are not functions');
       nativeMessagingBroken = true;
       lastMessagingUnavailableReason = 'missing_methods';
-      return null;
+      return false;
     }
 
-    return msgInstance;
+    return true;
   } catch (e) {
-    console.error('[FCM] Error in getMessaging:', e);
+    console.error('[FCM] Error in isMessagingAvailable:', e);
     lastMessagingUnavailableReason = `exception:${e.message}`;
-    return null;
+    return false;
   }
 };
 
@@ -79,15 +67,15 @@ export function getLastMessagingUnavailableReason() {
 export async function resetFcmToken() {
   if (Platform.OS === 'web') return false;
   try {
-    const msg = await getMessaging();
-    if (!msg) return false;
+    const available = await isMessagingAvailable();
+    if (!available) return false;
 
     console.log('[FCM] Force resetting FCM token...');
     
     // 0. Unregister from remote messages first
     try {
       if (Platform.OS === 'android') {
-        await msg.unregisterDeviceForRemoteMessages();
+        await unregisterDeviceForRemoteMessages();
         console.log('[FCM] Device unregistered from remote messages');
       }
     } catch (e) {
@@ -95,12 +83,8 @@ export async function resetFcmToken() {
     }
 
     // 1. Delete the current token from Firebase
-    if (typeof msg.deleteToken === 'function') {
-      await msg.deleteToken();
-      console.log('[FCM] Token deleted from Firebase');
-    } else {
-      console.warn('[FCM] deleteToken not available, skipping');
-    }
+    await deleteToken();
+    console.log('[FCM] Token deleted from Firebase');
 
     // 2. Clear from local storage
     await storage.saveItem('fcm_token', null);
@@ -110,7 +94,7 @@ export async function resetFcmToken() {
     await new Promise(resolve => setTimeout(resolve, 1000));
 
     // 4. Get a new one
-    const newToken = await msg.getToken();
+    const newToken = await getToken();
     if (newToken) {
       console.log('[FCM] New token generated after reset:', newToken.substring(0, 15) + '...');
       await storage.saveItem('fcm_token', newToken);
@@ -128,11 +112,11 @@ export async function resetFcmToken() {
 export async function requestUserPermission() {
   if (Platform.OS === 'web') return false;
   try {
-    const msg = await getMessaging();
-    if (!msg) return false;
+    const available = await isMessagingAvailable();
+    if (!available) return false;
 
     // IOS/FCM permission
-    const authStatus = await msg.requestPermission();
+    const authStatus = await requestPermission();
     // 1 = AUTHORIZED, 2 = PROVISIONAL
     const enabled = authStatus === 1 || authStatus === 2;
 
@@ -165,8 +149,8 @@ export async function requestUserPermission() {
 export async function setupCloudMessaging(onNotificationReceived = null) {
   if (Platform.OS === 'web') return;
   try {
-    const msg = await getMessaging();
-    if (!msg) {
+    const available = await isMessagingAvailable();
+    if (!available) {
       console.log('Messaging not available during setupCloudMessaging, will skip for now.');
       return;
     }
@@ -205,7 +189,7 @@ export async function setupCloudMessaging(onNotificationReceived = null) {
     }
 
     // Обработка уведомлений, когда приложение на переднем переднем плане (onMessage)
-    const unsubscribeMessaging = msg.onMessage(async remoteMessage => {
+    const unsubscribeMessaging = onMessage(async remoteMessage => {
       console.log('[FCM] Foreground message (onMessage) received!');
       console.log('[FCM] MessageId:', remoteMessage?.messageId);
       console.log('[FCM] Data keys:', Object.keys(remoteMessage?.data || {}));
@@ -243,7 +227,7 @@ export async function setupCloudMessaging(onNotificationReceived = null) {
     });
 
     // Обработка обновления токена
-    msg.onTokenRefresh(token => {
+    onTokenRefresh(token => {
       console.log('FCM Token refreshed:', token);
       storage.saveItem('fcm_token', token);
       updateServerFcmToken(token);
@@ -287,26 +271,22 @@ export async function setupCloudMessaging(onNotificationReceived = null) {
     };
 
     // FCM fallbacks (на случай если Notifee не перехватил)
-    if (msg && typeof msg.onNotificationOpenedApp === 'function') {
-      msg.onNotificationOpenedApp(remoteMessage => {
-        console.log('Notification opened from background (FCM):', remoteMessage?.notification);
-        openFromNotification(remoteMessage);
-      });
-    }
+    const unsubscribeNotificationOpened = onNotificationOpenedApp(remoteMessage => {
+      console.log('Notification opened from background (FCM):', remoteMessage?.notification);
+      openFromNotification(remoteMessage);
+    });
 
-    if (msg && typeof msg.getInitialNotification === 'function') {
-      try {
-        msg.getInitialNotification().then(remoteMessage => {
-          if (remoteMessage) {
-            console.log('Initial notification (FCM):', remoteMessage?.notification);
-            setTimeout(() => openFromNotification(remoteMessage), 500);
-          }
-        }).catch(e => {
-          console.warn('[FCM] getInitialNotification async error:', e.message);
-        });
-      } catch (e) {
-        console.warn('[FCM] getInitialNotification sync error:', e.message);
-      }
+    try {
+      getInitialNotification().then(remoteMessage => {
+        if (remoteMessage) {
+          console.log('Initial notification (FCM):', remoteMessage?.notification);
+          setTimeout(() => openFromNotification(remoteMessage), 500);
+        }
+      }).catch(e => {
+        console.warn('[FCM] getInitialNotification async error:', e.message);
+      });
+    } catch (e) {
+      console.warn('[FCM] getInitialNotification sync error:', e.message);
     }
 
     // Обработка начального уведомления Notifee (если приложение было закрыто)
@@ -320,6 +300,7 @@ export async function setupCloudMessaging(onNotificationReceived = null) {
     return () => {
       unsubscribeForeground();
       unsubscribeMessaging();
+      unsubscribeNotificationOpened();
     };
   } catch (error) {
     console.error('Firebase messaging setup failed:', error);
@@ -329,8 +310,8 @@ export async function setupCloudMessaging(onNotificationReceived = null) {
 export async function getFcmToken() {
   if (Platform.OS === 'web') return null;
   try {
-    const msg = await getMessaging();
-    if (!msg) {
+    const available = await isMessagingAvailable();
+    if (!available) {
       const reason = lastMessagingUnavailableReason || 'unknown';
       console.log(`[FCM] Messaging not available (reason=${reason})`);
       return null;
@@ -338,9 +319,9 @@ export async function getFcmToken() {
     
     // Register for remote notifications on both platforms
     try {
-      if ((Platform.OS === 'ios' || Platform.OS === 'android') && typeof msg.registerDeviceForRemoteMessages === 'function') {
+      if (Platform.OS === 'ios' || Platform.OS === 'android') {
         console.log(`[FCM] Registering device for remote messages (${Platform.OS})...`);
-        await msg.registerDeviceForRemoteMessages();
+        await registerDeviceForRemoteMessages();
         console.log(`[FCM] Device registered successfully (${Platform.OS})`);
       }
     } catch (e) {
@@ -348,8 +329,8 @@ export async function getFcmToken() {
     }
 
     // iOS-specific: Additional APNs token check
-    if (Platform.OS === 'ios' && typeof msg.getAPNSToken === 'function') {
-      const apnsToken = await msg.getAPNSToken();
+    if (Platform.OS === 'ios') {
+      const apnsToken = await getAPNSToken();
       if (!apnsToken) {
         console.warn('[FCM] APNs token is null. Push notifications might not work on iOS simulator or if not configured.');
       } else {
@@ -357,16 +338,11 @@ export async function getFcmToken() {
       }
     }
 
-    console.log('[FCM] Calling msg.getToken()...');
+    console.log('[FCM] Calling getToken()...');
     let token = null;
     try {
       // Use a timeout for getToken to prevent hanging
-      let tokenPromise = null;
-      if (typeof msg.getToken === 'function') {
-        tokenPromise = msg.getToken();
-      } else {
-        throw new Error('getToken method missing');
-      }
+      const tokenPromise = getToken();
 
       const timeoutPromise = new Promise((_, reject) => 
         setTimeout(() => reject(new Error('getToken timeout (15s)')), 15000)
@@ -380,16 +356,12 @@ export async function getFcmToken() {
         console.error('[FCM] CRITICAL NATIVE ERROR: Native module is incomplete. REBUILD REQUIRED (npx expo run:android).');
         nativeMessagingBroken = true;
       }
-      // If regular getToken fails, try with senderId as fallback
+      // If regular getToken() fails, try with default token fetch
       try {
-        const senderId = "176773891332"; 
-        
-        if (typeof msg.getToken === 'function') {
-          console.log(`[FCM] Attempting getToken with explicit senderId: ${senderId}`);
-          token = await msg.getToken(senderId);
-        }
+        console.log('[FCM] Attempting getToken() again...');
+        token = await getToken();
       } catch (e2) {
-        console.error(`[FCM] getToken with senderId also failed: ${e2.message}`);
+        console.error(`[FCM] getToken() second attempt failed: ${e2.message}`);
       }
       
       if (!token) throw e;
