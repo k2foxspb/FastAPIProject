@@ -741,22 +741,34 @@ async def request_phone_code(
         try:
             async with httpx.AsyncClient() as client:
                 # В SMSC.RU используем звонок-пароль (стоимость ~0.3-0.9 руб)
-                # ПЕРЕДАЕМ ТОЛЬКО ЦИФРЫ КОДА В mes
+                # Чтобы SMSC сам сгенерировал код, передаем mes=code
+                # Тогда в ответе придет JSON с полем "code"
                 res = await client.get(
                     "https://smsc.ru/sys/send.php",
                     params={
                         "login": SMS_CENTER_LOGIN,
                         "psw": SMS_CENTER_PASSWORD,
                         "phones": clean_phone,
-                        "mes": code, # ТОЛЬКО ЦИФРЫ!
-                        "call": 1,    # Флаг звонка
-                        "fmt": 3      # JSON
+                        "mes": "code", # Просим сгенерировать код сам провайдер!
+                        "call": 1,     # Флаг звонка
+                        "fmt": 3       # JSON
                     },
                     timeout=10.0
                 )
                 data = res.json()
                 if "error" not in data:
-                    logger.info(f"[Auth] Flash Call request successful via SMS-Center to {clean_phone}. Code used: {code}")
+                    # Если провайдер вернул свой сгенерированный код, используем его!
+                    generated_code = str(data.get("code"))
+                    if generated_code and generated_code != "None":
+                        code = generated_code
+                        _phone_code_cache[clean_phone] = code
+                        try:
+                            r = aioredis.Redis(host=REDIS_HOST, port=int(REDIS_PORT), db=1)
+                            await r.setex(redis_key, 600, code)
+                        except: pass
+                        logger.info(f"[Auth] Flash Call sent via SMS-Center. SMSC GENERATED CODE: {code}")
+                    else:
+                        logger.info(f"[Auth] Flash Call request successful via SMS-Center to {clean_phone}. Our code used: {code}")
                     sent = True
                 else:
                     logger.error(f"[Auth] SMS-Center Call error: {data}. Trying standard SMS...")
@@ -767,7 +779,7 @@ async def request_phone_code(
                             "login": SMS_CENTER_LOGIN,
                             "psw": SMS_CENTER_PASSWORD,
                             "phones": clean_phone,
-                            "mes": message_sms, # ТУТ МОЖНО ТЕКСТ
+                            "mes": message_sms,
                             "fmt": 3
                         }
                     )
