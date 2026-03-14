@@ -315,6 +315,11 @@ class RequestCodeRequest(BaseModel):
 class RefreshTokenRequest(BaseModel):
     refresh_token: str
 
+class PhoneCodeResponse(BaseModel):
+    message: str
+    phone: str
+    debug_code: Optional[str] = None
+
 
 class FCMTokenUpdate(BaseModel):
     fcm_token: str
