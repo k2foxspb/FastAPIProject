@@ -609,8 +609,8 @@ async def request_phone_code(
     # Очистка номера (оставляем только цифры)
     clean_phone = "".join(filter(str.isdigit, phone))
     
-    # Генерируем 6-значный код
-    code = str(secrets.randbelow(900000) + 100000)
+    # Генерируем 4-значный код (дешевле и стандартнее для звонков)
+    code = str(secrets.randbelow(9000) + 1000)
     
     from app.core.config import (
         REDIS_HOST, REDIS_PORT, SMS_RU_API_KEY, 
@@ -630,48 +630,82 @@ async def request_phone_code(
     message = f"Код подтверждения: {code}"
     sent = False
 
-    # 1. Пробуем SMS.RU
+    # 1. Пробуем SMS.RU (Flash Call или SMS)
     if SMS_RU_API_KEY and not sent:
         try:
             async with httpx.AsyncClient() as client:
+                # В SMS.RU есть Call Password (дешевле)
                 res = await client.get(
-                    "https://sms.ru/sms/send",
+                    "https://sms.ru/code/call",
                     params={
                         "api_id": SMS_RU_API_KEY,
-                        "to": clean_phone,
-                        "msg": message,
+                        "phone": clean_phone,
                         "json": 1
                     }
                 )
                 data = res.json()
                 if data.get("status") == "OK":
-                    logger.info(f"SMS sent via SMS.RU to {phone}")
+                    # SMS.RU сам генерирует код и возвращает его
+                    code = str(data.get("code"))
+                    r.setex(f"phone_code:{phone}", 300, code)
+                    logger.info(f"Flash call sent via SMS.RU to {phone}. Code: {code}")
                     sent = True
                 else:
-                    logger.error(f"SMS.RU error: {data}")
+                    logger.error(f"SMS.RU Call error: {data}. Trying standard SMS...")
+                    # Fallback to SMS if Call fails
+                    res = await client.get(
+                        "https://sms.ru/sms/send",
+                        params={
+                            "api_id": SMS_RU_API_KEY,
+                            "to": clean_phone,
+                            "msg": message,
+                            "json": 1
+                        }
+                    )
+                    if res.json().get("status") == "OK":
+                        sent = True
         except Exception as e:
             logger.error(f"SMS.RU exception: {e}")
 
-    # 2. Пробуем SMS-Center (fallback или основной если SMS.RU не настроен)
+    # 2. Пробуем SMS-Center (Flash Call или SMS)
     if SMS_CENTER_LOGIN and SMS_CENTER_PASSWORD and not sent:
         try:
             async with httpx.AsyncClient() as client:
+                # В SMSC.RU используем звонок-пароль (стоимость ~0.3-0.9 руб)
+                # Вызов метода send.php с параметром call=1
+                # mes - это сообщение, которое будет "продиктовано" (если голос) или 
+                # просто для логов, код будет в последних цифрах входящего номера.
+                # Но проще использовать встроенный генератор SMSC для звонка:
                 res = await client.get(
                     "https://smsc.ru/sys/send.php",
                     params={
                         "login": SMS_CENTER_LOGIN,
                         "psw": SMS_CENTER_PASSWORD,
                         "phones": clean_phone,
-                        "mes": message,
-                        "fmt": 3 # JSON
+                        "mes": code, # Передаем наш сгенерированный код
+                        "call": 1,    # Флаг звонка
+                        "fmt": 3      # JSON
                     }
                 )
                 data = res.json()
                 if "error" not in data:
-                    logger.info(f"SMS sent via SMS-Center to {phone}")
+                    logger.info(f"Flash Call sent via SMS-Center to {phone}")
                     sent = True
                 else:
-                    logger.error(f"SMS-Center error: {data}")
+                    logger.error(f"SMS-Center Call error: {data}. Trying standard SMS...")
+                    # Fallback to standard SMS
+                    res = await client.get(
+                        "https://smsc.ru/sys/send.php",
+                        params={
+                            "login": SMS_CENTER_LOGIN,
+                            "psw": SMS_CENTER_PASSWORD,
+                            "phones": clean_phone,
+                            "mes": message,
+                            "fmt": 3
+                        }
+                    )
+                    if "error" not in res.json():
+                        sent = True
         except Exception as e:
             logger.error(f"SMS-Center exception: {e}")
 

@@ -210,7 +210,10 @@ export default function LoginScreen({navigation}) {
             await usersApi.requestPhoneCode(formattedPhone);
             setConfirm({ phone: formattedPhone }); // Имитируем объект confirmation
             console.log('Code requested successfully via backend');
-            Alert.alert('Код отправлен', 'Мы отправили код подтверждения на ваш номер.');
+            Alert.alert(
+                'Код подтверждения', 
+                'Вам поступит звонок. Введите последние 4 цифры номера (или код из SMS, если звонок не пройдет).'
+            );
         } catch (error) {
             console.error('Phone Auth Error:', error);
             const detail = error.response?.data?.detail;
