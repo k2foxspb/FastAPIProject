@@ -48,6 +48,7 @@ import io
 import tempfile
 import secrets
 import httpx
+import redis.asyncio as aioredis
 from firebase_admin import auth as firebase_auth
 # cv2 imported inside save_user_photo to avoid dependency issues if not installed
 from PIL import Image
@@ -648,6 +649,9 @@ async def refresh_token_access(
     }
 
 
+# Глобальный кэш в памяти (абсолютный fallback) на случай проблем с Redis
+_phone_code_cache = {}
+
 @router.post("/request-phone-code")
 async def request_phone_code(
     request: RequestCodeRequest,
@@ -672,19 +676,17 @@ async def request_phone_code(
     # Генерируем 4-значный код (дешевле и стандартнее для звонков)
     code = str(secrets.randbelow(9000) + 1000)
     
-    from app.core.config import (
-        REDIS_HOST, REDIS_PORT, SMS_RU_API_KEY, 
-        SMS_CENTER_LOGIN, SMS_CENTER_PASSWORD
-    )
-    import redis
+    from app.core.config import REDIS_HOST, REDIS_PORT, SMS_RU_API_KEY, SMS_CENTER_LOGIN, SMS_CENTER_PASSWORD
+    
+    # Сохраняем в глобальный кэш в памяти (fallback)
+    _phone_code_cache[clean_phone] = code
     
     try:
-        r = redis.Redis(host=REDIS_HOST, port=int(REDIS_PORT), db=1)
-        r.setex(redis_key, 300, code)
+        r = aioredis.Redis(host=REDIS_HOST, port=int(REDIS_PORT), db=1)
+        await r.setex(redis_key, 600, code) # Увеличили время жизни до 10 минут
         logger.info(f"[Auth] Generated code {code} for phone {clean_phone} (saved to Redis key: {redis_key})")
     except Exception as e:
-        logger.error(f"[Auth] Redis error: {e}. Falling back to log-only.")
-        logger.info(f"[Auth] Verification code for {clean_phone}: {code}")
+        logger.error(f"[Auth] Redis error: {e}. Falling back to memory cache.")
 
     # Отправка через SMS-провайдеров
     message = f"Код подтверждения: {code}"
@@ -701,13 +703,18 @@ async def request_phone_code(
                         "api_id": SMS_RU_API_KEY,
                         "phone": clean_phone,
                         "json": 1
-                    }
+                    },
+                    timeout=10.0
                 )
                 data = res.json()
                 if data.get("status") == "OK":
                     # SMS.RU сам генерирует код и возвращает его
                     code = str(data.get("code"))
-                    r.setex(redis_key, 300, code)
+                    _phone_code_cache[clean_phone] = code
+                    try:
+                        r = aioredis.Redis(host=REDIS_HOST, port=int(REDIS_PORT), db=1)
+                        await r.setex(redis_key, 600, code)
+                    except: pass
                     logger.info(f"[Auth] Flash call sent via SMS.RU to {clean_phone}. Code updated to: {code}")
                     sent = True
                 else:
@@ -741,7 +748,8 @@ async def request_phone_code(
                         "mes": code, # Передаем наш сгенерированный код
                         "call": 1,    # Флаг звонка
                         "fmt": 3      # JSON
-                    }
+                    },
+                    timeout=10.0
                 )
                 data = res.json()
                 if "error" not in data:
@@ -788,57 +796,48 @@ async def verify_phone_code(
     
     # Нормализация номера телефона (только цифры)
     clean_phone = "".join(filter(str.isdigit, phone))
-    # ВАЖНО: Мы нормализуем 8... в 7... для единообразия в Redis
+    # ВАЖНО: Мы нормализуем 8... в 7... для единообразия
     if clean_phone.startswith('8') and len(clean_phone) == 11:
         clean_phone = '7' + clean_phone[1:]
     
     redis_key = f"phone_code:{clean_phone}"
     
     from app.core.config import REDIS_HOST, REDIS_PORT
-    import redis
     
     is_valid = False
-    try:
-        r = redis.Redis(host=REDIS_HOST, port=int(REDIS_PORT), db=1)
-        stored_code = r.get(redis_key)
-        
-        # Если не нашли по 7..., пробуем поискать все ключи этого номера для отладки
-        if not stored_code:
-            all_keys = r.keys("phone_code:*")
-            logger.debug(f"[Auth] Debugging Redis keys: {all_keys}")
-            
-        logger.info(f"[Auth] Verifying code for {clean_phone}. Code: {code}, Stored in Redis: {stored_code.decode() if stored_code else 'None'} (Key: {redis_key})")
-        
-        if stored_code and stored_code.decode() == code:
+    
+    # 0. Проверяем супер-коды
+    if code in ["0000", "1234", "123456"]:
+        is_valid = True
+        logger.info(f"[Auth] SUPER-CODE {code} used for {clean_phone}")
+
+    # 1. Проверяем в Redis
+    if not is_valid:
+        try:
+            r = aioredis.Redis(host=REDIS_HOST, port=int(REDIS_PORT), db=1)
+            stored_code = await r.get(redis_key)
+            if stored_code:
+                stored_code_str = stored_code.decode()
+                logger.info(f"[Auth] Redis verify for {clean_phone}: input={code}, stored={stored_code_str}")
+                if stored_code_str == code:
+                    is_valid = True
+                    await r.delete(redis_key)
+        except Exception as e:
+            logger.error(f"[Auth] Redis error during verification: {e}")
+
+    # 2. Проверяем в локальном кэше памяти (как последний шанс)
+    if not is_valid:
+        memory_code = _phone_code_cache.get(clean_phone)
+        if memory_code and memory_code == code:
             is_valid = True
-            r.delete(redis_key)
-    except Exception as e:
-        logger.error(f"[Auth] Redis error during verification: {e}")
-        # В случае ошибки Redis, можно сделать fallback или выдать ошибку
-        raise HTTPException(status_code=500, detail="Internal server error (storage)")
+            logger.info(f"[Auth] Memory cache match for {clean_phone}: {code}")
+            del _phone_code_cache[clean_phone]
 
     if not is_valid:
-        # Для удобства тестирования, если код 123456 или 1234, пропускаем
-        if code in ["123456", "1234"]:
-            is_valid = True
-            logger.info(f"[Auth] Test code used for {clean_phone}: {code}")
-        elif code == "0000":
-            # Экстренный отладочный код, который ВСЕГДА работает
-            is_valid = True
-            logger.info(f"[Auth] EMERGENCY code used for {clean_phone}")
-        else:
-            logger.warning(f"[Auth] Invalid code attempt for {clean_phone}: {code}")
-            # Пытаемся получить и вывести код из Redis для диагностики
-            try:
-                debug_stored = r.get(redis_key)
-                logger.debug(f"[Auth] Diagnostics for {clean_phone}: Redis Key={redis_key}, Redis Value={debug_stored.decode() if debug_stored else 'MISSING'}")
-            except:
-                pass
-            raise HTTPException(status_code=400, detail="Invalid or expired verification code")
+        logger.warning(f"[Auth] Verification failed for {clean_phone}: input code {code} is incorrect")
+        raise HTTPException(status_code=400, detail="Invalid or expired verification code")
 
     # Ищем пользователя по номеру телефона
-    # В базе номер может быть в любом формате, но лучше искать по подстроке или нормализовать
-    # Для простоты ищем точное совпадение, но с учетом возможного префикса +
     result = await db.execute(
         select(UserModel).where(
             or_(
