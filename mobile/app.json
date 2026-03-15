@@ -90,6 +90,31 @@
             {
               "scheme": "https",
               "host": "fokin.fun",
+              "pathPrefix": "/users/verify-email"
+            },
+            {
+              "scheme": "https",
+              "host": "fokin.fun",
+              "pathPrefix": "/news"
+            },
+            {
+              "scheme": "https",
+              "host": "fokin.fun",
+              "pathPrefix": "/product"
+            },
+            {
+              "scheme": "https",
+              "host": "fokin.fun",
+              "pathPrefix": "/user"
+            },
+            {
+              "scheme": "https",
+              "host": "fokin.fun",
+              "pathPrefix": "/chat"
+            },
+            {
+              "scheme": "https",
+              "host": "fokin.fun",
               "pathPrefix": "/login"
             },
             {
@@ -126,6 +151,11 @@
               "scheme": "https",
               "host": "fastapi-f628e.firebaseapp.com",
               "pathPrefix": "/verify-email"
+            },
+            {
+              "scheme": "https",
+              "host": "fastapi-f628e.firebaseapp.com",
+              "pathPrefix": "/users/verify-email"
             },
             {
               "scheme": "https",

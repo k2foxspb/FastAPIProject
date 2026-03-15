@@ -79,6 +79,17 @@ export default function NewsDetailScreen({ route, navigation }) {
   }
 
   const handleReaction = async (type) => {
+    if (!currentUser) {
+      Alert.alert(
+        'Авторизация',
+        'Войдите в аккаунт, чтобы ставить реакции',
+        [
+          { text: 'Отмена', style: 'cancel' },
+          { text: 'Войти', onPress: () => navigation.navigate('Profile', { screen: 'Login' }) }
+        ]
+      );
+      return;
+    }
     try {
       const newReaction = news.my_reaction === type ? 0 : type;
       await newsApi.reactToNews(newsId, newReaction);
@@ -116,6 +127,18 @@ export default function NewsDetailScreen({ route, navigation }) {
 
   const submitComment = async () => {
     if (!newComment.trim() || isSubmittingComment) return;
+    
+    if (!currentUser) {
+      Alert.alert(
+        'Авторизация',
+        'Войдите в аккаунт, чтобы оставлять комментарии',
+        [
+          { text: 'Отмена', style: 'cancel' },
+          { text: 'Войти', onPress: () => navigation.navigate('Profile', { screen: 'Login' }) }
+        ]
+      );
+      return;
+    }
     
     try {
       setIsSubmittingComment(true);
@@ -164,6 +187,17 @@ export default function NewsDetailScreen({ route, navigation }) {
   };
 
   const handleCommentReaction = async (commentId, type) => {
+    if (!currentUser) {
+      Alert.alert(
+        'Авторизация',
+        'Войдите в аккаунт, чтобы ставить реакции',
+        [
+          { text: 'Отмена', style: 'cancel' },
+          { text: 'Войти', onPress: () => navigation.navigate('Profile', { screen: 'Login' }) }
+        ]
+      );
+      return;
+    }
     try {
       const comment = comments.find(c => c.id === commentId);
       if (!comment) return;

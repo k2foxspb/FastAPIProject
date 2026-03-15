@@ -39,6 +39,10 @@ export function parseNotificationData(data) {
 export async function ensureNotificationChannel() {
   if (Platform.OS !== 'android') return 'default';
   try {
+    if (!notifee || typeof notifee.createChannel !== 'function') {
+      console.log('[Notifee] createChannel not available, using default');
+      return 'default';
+    }
     const channelId = await notifee.createChannel({
       id: 'messages',
       name: 'Сообщения',
@@ -56,6 +60,12 @@ export async function ensureNotificationChannel() {
 export async function displayBundledMessage(remoteMessage) {
   try {
     console.log(`[Notifee] displayBundledMessage called for messageId: ${remoteMessage?.messageId}`);
+    
+    if (!notifee || typeof notifee.displayNotification !== 'function') {
+      console.error('[Notifee] cannot display notification: notifee.displayNotification is missing');
+      return;
+    }
+
     const data = remoteMessage?.data || {};
     const { type, senderId, senderName, newsId, notifTitle, notifBody, senderAvatar } = parseNotificationData(data);
     
@@ -86,6 +96,8 @@ export async function displayBundledMessage(remoteMessage) {
     }
 
     const channelId = await ensureNotificationChannel();
+    console.log(`[Notifee] Using channel: ${channelId}`);
+    
     const groupId = senderId ? `group_sender_${senderId}` : (newsId ? `group_news_${newsId}` : 'group_general');
 
     const actions = [];
@@ -103,6 +115,7 @@ export async function displayBundledMessage(remoteMessage) {
 
     // На Android для чата используем MessagingStyle - это гарантирует кнопки один раз и список сообщений
     if (Platform.OS === 'android' && type === 'new_message' && senderId) {
+      console.log('[Notifee] Using Android MessagingStyle for sender:', senderId);
       const messagesKey = `notif_messages_${senderId}`;
       let storedMsgs = [];
       try {
@@ -215,6 +228,7 @@ export async function displayBundledMessage(remoteMessage) {
 async function cancelGroup(groupId, senderId) {
   if (!groupId && !senderId) return;
   try {
+    if (!notifee || typeof notifee.getDisplayedNotifications !== 'function') return;
     const displayed = await notifee.getDisplayedNotifications();
     for (const item of displayed) {
       const android = item.notification.android;

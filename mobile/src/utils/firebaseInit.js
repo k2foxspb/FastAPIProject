@@ -1,7 +1,6 @@
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import { getApp, getApps, initializeApp } from '@react-native-firebase/app';
-import { initializeAppCheck } from '@react-native-firebase/app-check';
 
 // Переменная для хранения статуса инициализации
 let isInitializing = false;
@@ -11,6 +10,7 @@ let initPromise = null;
 const setupAppCheck = () => {
   try {
     // Используем современный модульный API Firebase (v22+)
+    const { initializeAppCheck } = require('@react-native-firebase/app-check');
     initializeAppCheck(undefined, {
       provider: 'playIntegrity',
       isTokenAutoRefreshEnabled: true,
@@ -27,10 +27,8 @@ const initializeFirebase = async () => {
   
   // Expo Go doesn't support @react-native-firebase/messaging.
   // IMPORTANT: `appOwnership === 'expo'` can also be true for Dev Client / development builds,
-  // so we primarily rely on `executionEnvironment === 'storeClient'` (Expo Go).
-  const isExpoGo =
-    Constants.executionEnvironment === 'storeClient' ||
-    (Constants.executionEnvironment == null && Constants.appOwnership === 'expo');
+  // where FCM DOES work. So we ONLY block if explicitly in 'storeClient' (Expo Go).
+  const isExpoGo = Constants.executionEnvironment === 'storeClient';
   if (isExpoGo) {
     if (__DEV__) {
       console.warn(

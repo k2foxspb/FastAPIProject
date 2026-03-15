@@ -18,7 +18,7 @@ function AppContent() {
   const { theme } = useTheme();
 
   const linking = {
-    prefixes: [Linking.createURL('/'), 'fokinfun://'],
+    prefixes: [Linking.createURL('/'), 'fokinfun://', 'https://fokin.fun', 'https://fastapi-f628e.firebaseapp.com'],
     config: {
       screens: {
         Feed: {
@@ -40,6 +40,18 @@ function AppContent() {
         Profile: {
           screens: {
             Login: 'login',
+            VerifyEmail: {
+              path: 'verify-email',
+              exact: false,
+            },
+            VerifyEmailBridge: {
+              path: 'users/verify-email',
+              exact: false,
+            },
+            FirebaseAction: {
+              path: '__/auth/action',
+              exact: false,
+            }
           },
         },
       },

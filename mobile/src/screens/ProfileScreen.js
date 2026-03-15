@@ -176,6 +176,8 @@ export default function ProfileScreen({ navigation }) {
       });
 
       const fetchProfile = async () => {
+        if (loadingUser) return;
+        
         try {
           // Запрашиваем разрешения при входе в профиль
           requestAllAppPermissions();
@@ -183,8 +185,8 @@ export default function ProfileScreen({ navigation }) {
           // Проверяем токен
           const token = await storage.getAccessToken();
           if (!token) {
-            console.log('[ProfileScreen] No token found, redirecting to Login');
-            handleLogout();
+            console.log('[ProfileScreen] No token found, showing login screen');
+            navigation.replace('Login');
             return;
           }
 
@@ -206,7 +208,10 @@ export default function ProfileScreen({ navigation }) {
         } catch (err) {
           const status = err?.response?.status;
           if (status === 401) {
-            handleLogout();
+            await storage.clearTokens();
+            setAuthToken(null);
+            disconnect();
+            navigation.replace('Login');
           } else {
             setError('Не удалось загрузить профиль');
             console.log(err);

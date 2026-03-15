@@ -34,8 +34,13 @@ if (Platform.OS === 'android') {
   const fcmBackgroundHandler = async (remoteMessage) => {
     console.log(`[Entry] FCM Background message received: ${remoteMessage?.messageId}`);
     try {
+      // Прямой вызов без require, если возможно, или через require внутри
       const { displayBundledMessage } = require('./src/utils/notificationUtils');
-      await displayBundledMessage(remoteMessage);
+      if (typeof displayBundledMessage === 'function') {
+        await displayBundledMessage(remoteMessage);
+      } else {
+        console.error('[Entry] displayBundledMessage is not a function');
+      }
     } catch (err) {
       console.error('[Entry] Error in FCM background handler:', err);
     }

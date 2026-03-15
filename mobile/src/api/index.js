@@ -13,11 +13,15 @@ const api = axios.create({
 api.interceptors.request.use(async (config) => {
   try {
     // Используем модульный API для получения токена (match v22+)
-    const { getToken } = require('@react-native-firebase/app-check');
-    if (typeof getToken === 'function') {
-      const { token } = await getToken(false);
-      if (token) {
-        config.headers['X-Firebase-AppCheck'] = token;
+    const { getAppCheck, getToken } = require('@react-native-firebase/app-check');
+    if (typeof getToken === 'function' && typeof getAppCheck === 'function') {
+      const appCheck = getAppCheck();
+      if (appCheck) {
+        const response = await getToken(appCheck, false);
+        const token = response?.token;
+        if (token) {
+          config.headers['X-Firebase-AppCheck'] = token;
+        }
       }
     }
   } catch (error) {
@@ -271,6 +275,13 @@ api.interceptors.response.use(
       // Игнорируем редирект для некоторых эндпоинтов, чтобы пользователь мог смотреть контент анонимно
       const ignoredUrls = ['/news/', '/products/'];
       const isIgnored = ignoredUrls.some(url => originalRequest.url.includes(url));
+
+      // Если URL в списке игнорируемых и у нас нет refresh токена, просто возвращаем ошибку без редиректа
+      const refreshToken = await storage.getRefreshToken();
+      if (isIgnored && !refreshToken) {
+        console.log(`[API] 401 for ignored URL ${originalRequest.url} and no refresh token, skipping redirect`);
+        return Promise.reject(error);
+      }
 
       if (isRefreshing) {
         return new Promise(function(resolve, reject) {

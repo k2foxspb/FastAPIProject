@@ -38,7 +38,7 @@ export default function FeedScreen({ navigation }) {
       const promises = [
         productsApi.getProducts().catch(() => ({ data: { items: [] } })),
         newsApi.getNews().catch(() => ({ data: [] })),
-        cartApi.getCart().catch(() => ({ data: { items: [] } }))
+        currentUser ? cartApi.getCart().catch(() => ({ data: { items: [] } })) : Promise.resolve({ data: { items: [] } })
       ];
 
       // Используем currentUser из контекста
@@ -55,7 +55,7 @@ export default function FeedScreen({ navigation }) {
         headerRight: () => (
           <TouchableOpacity 
             style={{ marginRight: 15 }} 
-            onPress={() => navigation.navigate('Cart')}
+            onPress={() => currentUser ? navigation.navigate('Cart') : navigation.navigate('Profile', { screen: 'Login' })}
           >
             <View>
               <Icon name="cart-outline" size={24} color={colors.text} />
@@ -69,7 +69,7 @@ export default function FeedScreen({ navigation }) {
         ),
       });
 
-      let productsData = productsRes.data.items || productsRes.data;
+      let productsData = productsRes.data.items || productsRes.data || [];
       if (userResData) {
         setUser(userResData);
         // Если это продавец, админ или владелец, загружаем ИХ товары отдельно, чтобы увидеть pending
@@ -90,15 +90,17 @@ export default function FeedScreen({ navigation }) {
             console.log('Failed to load seller products', sellerErr);
           }
         }
+      } else {
+        setUser(null);
       }
       setProducts(productsData);
-      setNews(newsRes.data);
+      setNews(newsRes.data || []);
     } catch (err) {
-      console.log(err);
+      console.log('[FeedScreen] loadData error:', err);
     } finally {
       setLoading(false);
     }
-  }, [currentUser, loadingUser]);
+  }, [currentUser, loadingUser, colors.text, colors.primary, navigation]);
 
   useFocusEffect(
     useCallback(() => {

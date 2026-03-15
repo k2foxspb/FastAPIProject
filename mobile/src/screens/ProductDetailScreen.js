@@ -60,8 +60,15 @@ export default function ProductDetailScreen({ route, navigation }) {
   }, [loadData]);
 
   const handleSubmitReview = async () => {
-    if (!user) {
-      Alert.alert('Ошибка', 'Для того чтобы оставить отзыв, необходимо войти в систему');
+    if (!currentUser) {
+      Alert.alert(
+        'Авторизация',
+        'Войдите в аккаунт, чтобы оставить отзыв',
+        [
+          { text: 'Отмена', style: 'cancel' },
+          { text: 'Войти', onPress: () => navigation.navigate('Profile', { screen: 'Login' }) }
+        ]
+      );
       return;
     }
     if (comment.trim().length < 5) {
@@ -89,6 +96,17 @@ export default function ProductDetailScreen({ route, navigation }) {
   };
 
   const handleAddToCart = async () => {
+    if (!currentUser) {
+      Alert.alert(
+        'Авторизация',
+        'Войдите в аккаунт, чтобы добавить товар в корзину',
+        [
+          { text: 'Отмена', style: 'cancel' },
+          { text: 'Войти', onPress: () => navigation.navigate('Profile', { screen: 'Login' }) }
+        ]
+      );
+      return;
+    }
     try {
       await cartApi.addItem(productId, 1);
       Alert.alert('Успех', 'Товар добавлен в корзину');
@@ -98,6 +116,17 @@ export default function ProductDetailScreen({ route, navigation }) {
   };
 
   const handleReviewReaction = async (reviewId, type) => {
+    if (!currentUser) {
+      Alert.alert(
+        'Авторизация',
+        'Войдите в аккаунт, чтобы ставить реакции',
+        [
+          { text: 'Отмена', style: 'cancel' },
+          { text: 'Войти', onPress: () => navigation.navigate('Profile', { screen: 'Login' }) }
+        ]
+      );
+      return;
+    }
     try {
       const review = reviews.find(r => r.id === reviewId);
       if (!review) return;

@@ -37,7 +37,7 @@ import ReCaptcha from '../components/ReCaptcha';
 
 const {width} = Dimensions.get('window');
 
-export default function LoginScreen({navigation}) {
+export default function LoginScreen({navigation, route}) {
     const {theme} = useTheme();
     const colors = themeConstants[theme];
     const [loading, setLoading] = useState(false);
@@ -78,6 +78,12 @@ export default function LoginScreen({navigation}) {
             })
         ]).start();
 
+        // Проверка параметров из route (Deep Linking через React Navigation)
+        const isVerificationRoute = ['VerifyEmail', 'VerifyEmailBridge', 'FirebaseVerify', 'FirebaseAction'].includes(route.name);
+        if (isVerificationRoute) {
+            console.log(`[LoginScreen] Handling ${route.name} route with params:`, route.params);
+        }
+
         // Обработка входящей ссылки для входа по email
         const handleInitialLink = async () => {
             const initialUrl = await Linking.getInitialURL();
@@ -97,6 +103,22 @@ export default function LoginScreen({navigation}) {
 
         return () => subscription.remove();
     }, []);
+
+    // Добавляем эффект для отслеживания изменений route.params (когда приложение уже открыто)
+    useEffect(() => {
+        if (route.params?.apiKey && route.params?.oobCode) {
+            console.log('[LoginScreen] Detected Firebase params in route:', route.params);
+            // Восстанавливаем URL из параметров для Firebase SDK.
+            // Нам нужен оригинальный домен Firebase или подтвержденный домен fokin.fun
+            const host = route.params.continueUrl?.includes('fokin.fun') ? 'fokin.fun' : 'fastapi-f628e.firebaseapp.com';
+            const url = `https://${host}/__/auth/action?apiKey=${route.params.apiKey}&oobCode=${route.params.oobCode}&mode=${route.params.mode || 'signIn'}&lang=${route.params.lang || 'en'}`;
+            console.log('[LoginScreen] Reconstructed URL:', url);
+            handleSignInLink(url);
+        } else if (route.params?.email && route.name === 'VerifyEmailBridge') {
+             // Случай когда пришло с нашего моста и у нас есть только email
+             console.log('[LoginScreen] Received email from bridge, but no Firebase tokens. Waiting for Firebase URL...');
+        }
+    }, [route.params, route.name]);
 
     const handleAfterLogin = async (user, recaptchaToken = null) => {
         console.log('handleAfterLogin called for user:', user?.uid, 'with recaptchaToken:', recaptchaToken ? 'PRESENT' : 'MISSING');
@@ -213,7 +235,7 @@ export default function LoginScreen({navigation}) {
             
             Alert.alert(
                 'Код подтверждения', 
-                'Вам поступит звонок. Введите последние 4 цифры номера этого звонка.'
+                'Вам поступит звонок. Введите 4 цифры кода который вам скажут.'
             );
         } catch (error) {
             console.error('Phone Auth Error:', error);
@@ -275,16 +297,13 @@ export default function LoginScreen({navigation}) {
             await storage.saveItem('email_for_sign_in', trimmedEmail);
 
             const actionCodeSettings = {
-                url: `https://fokin.fun/verify-email?email=${encodeURIComponent(trimmedEmail)}&ts=${Date.now()}`,
+                url: `https://fokin.fun/users/verify-email?email=${encodeURIComponent(trimmedEmail)}&ts=${Date.now()}`,
                 handleCodeInApp: true,
                 android: {
                     packageName: 'com.k2foxspb.fokinfun',
                     installApp: true,
                 },
                 ios: {
-                    bundleId: 'com.k2foxspb.fokinfun',
-                },
-                iOS: {
                     bundleId: 'com.k2foxspb.fokinfun',
                 },
             };
@@ -315,7 +334,32 @@ export default function LoginScreen({navigation}) {
 
         try {
             const authInstance = getAuth();
-            if (isSignInWithEmailLink(authInstance, link)) {
+            
+            // Если ссылка имеет кастомную схему, пробуем превратить ее в HTTPS Firebase URL для SDK
+            let effectiveLink = link;
+            if (link.startsWith('fokinfun://') && link.includes('apiKey=') && link.includes('oobCode=')) {
+                console.log('Converting custom scheme link to HTTPS for Firebase SDK...');
+                try {
+                    // Парсим вручную, так как new URL может не поддерживать кастомные схемы
+                    const queryPart = link.split('?')[1];
+                    if (queryPart) {
+                        const params = new URLSearchParams(queryPart);
+                        const apiKey = params.get('apiKey');
+                        const oobCode = params.get('oobCode');
+                        const continueUrl = params.get('continueUrl');
+                        const mode = params.get('mode') || 'signIn';
+                        const lang = params.get('lang') || 'en';
+                        
+                        const host = continueUrl?.includes('fokin.fun') ? 'fokin.fun' : 'fastapi-f628e.firebaseapp.com';
+                        effectiveLink = `https://${host}/__/auth/action?apiKey=${apiKey}&oobCode=${oobCode}&mode=${mode}&lang=${lang}`;
+                        console.log('Using effectiveLink:', effectiveLink);
+                    }
+                } catch (e) {
+                    console.log('Failed to parse custom scheme link:', e);
+                }
+            }
+
+            if (isSignInWithEmailLink(authInstance, effectiveLink)) {
                 console.log('Link IS a sign-in email link');
                 setLoading(true);
                 
@@ -327,7 +371,7 @@ export default function LoginScreen({navigation}) {
                     try {
                         console.log('Storage is empty, parsing email from link...');
                         // 1. Пытаемся декодировать URL несколько раз (Firebase часто вкладывает один URL в другой)
-                        let currentLink = link;
+                        let currentLink = effectiveLink;
                         for (let i = 0; i < 3; i++) {
                             currentLink = decodeURIComponent(currentLink);
                             console.log(`Decoding level ${i + 1}:`, currentLink);
@@ -359,7 +403,7 @@ export default function LoginScreen({navigation}) {
                 }
 
                 console.log('Calling signInWithEmailLink with email:', storedEmail);
-                const result = await signInWithEmailLink(authInstance, storedEmail, link);
+                const result = await signInWithEmailLink(authInstance, storedEmail, effectiveLink);
                 console.log('Sign in with email link SUCCESS:', result.user.uid);
                 await handleAfterLogin(result.user);
                 await storage.removeItem('email_for_sign_in');

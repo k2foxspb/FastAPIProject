@@ -870,12 +870,33 @@ export default function ChatScreen({ route, navigation }) {
               m.client_id && m.client_id === pm.client_id
             )));
             
-            const result = [...actualPending, ...fromNotifications, ...payload.data];
-            // Сортируем по ID (или дате), так как смешивание может нарушить порядок
-            // result.sort((a, b) => (b.id || 0) - (a.id || 0)); // sorting removed to avoid unexpected shifts if IDs are not reliable
-            return result;
+            const rawResult = [...actualPending, ...fromNotifications, ...payload.data];
+            
+            // Финальная дедупликация (на случай гонок или дубликатов от сервера)
+            const uniqueMessages = [];
+            const seenIds = new Set();
+            const seenClientIds = new Set();
+            
+            for (const m of rawResult) {
+              const mid = m.id;
+              const cid = m.client_id;
+              
+              // Если есть ID, проверяем по нему. Если нет (только client_id), проверяем по client_id.
+              if (mid && seenIds.has(mid)) continue;
+              if (cid && seenClientIds.has(cid)) continue;
+              
+              if (mid) seenIds.add(mid);
+              if (cid) seenClientIds.add(cid);
+              uniqueMessages.push(m);
+            }
+            
+            return uniqueMessages;
           } else {
-            const newMsgs = payload.data.filter(m => !prev.find(pm => pm.id === m.id));
+            // При подгрузке старой истории фильтруем только те, которых еще нет в стейте
+            const newMsgs = payload.data.filter((m, idx) => 
+              !prev.find(pm => pm.id === m.id) &&
+              payload.data.findIndex(im => im.id === m.id) === idx
+            );
             return [...prev, ...newMsgs];
           }
         });
@@ -2593,7 +2614,7 @@ export default function ChatScreen({ route, navigation }) {
         ref={chatFlatListRef}
         data={messages}
         extraData={[messages.length, currentUserId, selectedIds.length, theme, userId, viewableItems]}
-        keyExtractor={(item) => (item.id || Math.random()).toString()}
+        keyExtractor={(item) => `msg_${item.id || item.client_id || Math.random()}`}
         renderItem={renderMessageItem}
         onEndReached={loadMoreMessages}
         onEndReachedThreshold={0.1}

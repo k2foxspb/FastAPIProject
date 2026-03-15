@@ -668,13 +668,16 @@ export const NotificationProvider = ({ children }) => {
       if (token) {
         connect(token);
         // Принудительно синхронизируем FCM токен при запуске, 
-        // так как сервер мог его удалить из-за ошибки NotRegistered
-        try {
-          const { updateServerFcmToken } = require('../utils/notifications');
-          updateServerFcmToken(null, true);
-        } catch (e) {
-          console.log('[NotificationContext] Failed to sync FCM token on start:', e.message);
-        }
+        // так как сервер мог его удалить из-за ошибки NotRegistered.
+        // Используем задержку, чтобы не нагружать старт приложения и дать время нативным модулям прогрузиться.
+        setTimeout(() => {
+          try {
+            const { updateServerFcmToken } = require('../utils/notifications');
+            updateServerFcmToken(null, true);
+          } catch (e) {
+            console.log('[NotificationContext] Failed to sync FCM token on start:', e.message);
+          }
+        }, 5000);
       }
     });
   }, [connect]);
