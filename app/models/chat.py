@@ -8,8 +8,8 @@ class ChatMessage(Base):
     __tablename__ = "chat_messages"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    sender_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
-    receiver_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
+    sender_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    receiver_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     message: Mapped[str] = mapped_column(String, nullable=True)
     file_path: Mapped[str] = mapped_column(String, nullable=True)
     message_type: Mapped[str] = mapped_column(String, default="text") # text, image, file

@@ -61,7 +61,7 @@ class AdminPermission(Base):
     __tablename__ = "admin_permissions"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    admin_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    admin_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     model_name: Mapped[str] = mapped_column(String, nullable=False)  # Название модели, к которой разрешен доступ
 
     admin: Mapped["User"] = relationship("User", back_populates="admin_permissions")
@@ -71,7 +71,7 @@ class PhotoAlbum(Base):
     __tablename__ = "photo_albums"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     title: Mapped[str] = mapped_column(String, nullable=False)
     description: Mapped[str | None] = mapped_column(String, nullable=True)
     privacy: Mapped[str] = mapped_column(String, default="public")  # "public", "friends", "private"
@@ -87,8 +87,8 @@ class UserPhoto(Base):
     __tablename__ = "user_photos"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
-    album_id: Mapped[int | None] = mapped_column(ForeignKey("photo_albums.id"), nullable=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    album_id: Mapped[int | None] = mapped_column(ForeignKey("photo_albums.id", ondelete="CASCADE"), nullable=True)
     image_url: Mapped[str] = mapped_column(String, nullable=False)
     preview_url: Mapped[str] = mapped_column(String, nullable=False)
     description: Mapped[str | None] = mapped_column(String, nullable=True)
@@ -105,8 +105,8 @@ class Friendship(Base):
     __tablename__ = "friendships"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
-    friend_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    friend_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     status: Mapped[str] = mapped_column(String, default="pending")  # "pending", "accepted"
     deleted_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
@@ -120,8 +120,8 @@ class UserPhotoComment(Base):
     __tablename__ = "user_photo_comments"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
-    photo_id: Mapped[int] = mapped_column(ForeignKey("user_photos.id"), nullable=False)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    photo_id: Mapped[int] = mapped_column(ForeignKey("user_photos.id", ondelete="CASCADE"), nullable=False)
     comment: Mapped[str] = mapped_column(String, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
@@ -166,8 +166,8 @@ class PhotoAlbumComment(Base):
     __tablename__ = "photo_album_comments"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
-    album_id: Mapped[int] = mapped_column(ForeignKey("photo_albums.id"), nullable=False)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    album_id: Mapped[int] = mapped_column(ForeignKey("photo_albums.id", ondelete="CASCADE"), nullable=False)
     comment: Mapped[str] = mapped_column(String, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 

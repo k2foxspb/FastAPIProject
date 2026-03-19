@@ -20,8 +20,8 @@ class Reviews(Base):
     grade: Mapped[int] = mapped_column(Integer)
     is_active: Mapped[bool] = mapped_column(Boolean)
 
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
-    product_id: Mapped[int] = mapped_column(ForeignKey("products.id"))
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    product_id: Mapped[int] = mapped_column(ForeignKey("products.id", ondelete="CASCADE"), nullable=False)
 
     user: Mapped["User"] = relationship("User", back_populates="reviews")
     product: Mapped["Product"] = relationship("Product", back_populates="review")
