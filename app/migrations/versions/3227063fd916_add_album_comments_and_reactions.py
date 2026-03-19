@@ -50,49 +50,47 @@ def upgrade() -> None:
     sa.PrimaryKeyConstraint('id', name=op.f('pk_photo_album_comment_reactions'))
     )
     with op.batch_alter_table('admin_permissions', schema=None) as batch_op:
-        batch_op.drop_constraint(None, type_='foreignkey')
+        batch_op.drop_constraint('admin_permissions_admin_id_fkey', type_='foreignkey')
         batch_op.create_foreign_key(batch_op.f('fk_admin_permissions_admin_id_users'), 'users', ['admin_id'], ['id'], ondelete='CASCADE')
 
     with op.batch_alter_table('chat_messages', schema=None) as batch_op:
-        batch_op.drop_constraint(None, type_='foreignkey')
-        batch_op.drop_constraint(None, type_='foreignkey')
+        batch_op.drop_constraint('chat_messages_receiver_id_fkey', type_='foreignkey')
+        batch_op.drop_constraint('chat_messages_sender_id_fkey', type_='foreignkey')
         batch_op.create_foreign_key(batch_op.f('fk_chat_messages_receiver_id_users'), 'users', ['receiver_id'], ['id'], ondelete='CASCADE')
         batch_op.create_foreign_key(batch_op.f('fk_chat_messages_sender_id_users'), 'users', ['sender_id'], ['id'], ondelete='CASCADE')
 
     with op.batch_alter_table('friendships', schema=None) as batch_op:
-        batch_op.drop_constraint(None, type_='foreignkey')
-        batch_op.drop_constraint(None, type_='foreignkey')
+        batch_op.drop_constraint('friendships_user_id_fkey', type_='foreignkey')
+        batch_op.drop_constraint('friendships_friend_id_fkey', type_='foreignkey')
         batch_op.create_foreign_key(batch_op.f('fk_friendships_user_id_users'), 'users', ['user_id'], ['id'], ondelete='CASCADE')
         batch_op.create_foreign_key(batch_op.f('fk_friendships_friend_id_users'), 'users', ['friend_id'], ['id'], ondelete='CASCADE')
 
-    with op.batch_alter_table('orders', schema=None) as batch_op:
-        batch_op.create_unique_constraint(batch_op.f('uq_orders_payment_id'), ['payment_id'])
 
     with op.batch_alter_table('photo_albums', schema=None) as batch_op:
-        batch_op.drop_constraint(None, type_='foreignkey')
+        batch_op.drop_constraint('photo_albums_user_id_fkey', type_='foreignkey')
         batch_op.create_foreign_key(batch_op.f('fk_photo_albums_user_id_users'), 'users', ['user_id'], ['id'], ondelete='CASCADE')
 
     with op.batch_alter_table('reviews', schema=None) as batch_op:
-        batch_op.drop_constraint(None, type_='foreignkey')
-        batch_op.drop_constraint(None, type_='foreignkey')
+        batch_op.drop_constraint('reviews_product_id_fkey', type_='foreignkey')
+        batch_op.drop_constraint('reviews_user_id_fkey', type_='foreignkey')
         batch_op.create_foreign_key(batch_op.f('fk_reviews_product_id_products'), 'products', ['product_id'], ['id'], ondelete='CASCADE')
         batch_op.create_foreign_key(batch_op.f('fk_reviews_user_id_users'), 'users', ['user_id'], ['id'], ondelete='CASCADE')
 
     with op.batch_alter_table('user_photo_comments', schema=None) as batch_op:
-        batch_op.drop_constraint(None, type_='foreignkey')
-        batch_op.drop_constraint(None, type_='foreignkey')
+        batch_op.drop_constraint('user_photo_comments_user_id_fkey', type_='foreignkey')
+        batch_op.drop_constraint('user_photo_comments_photo_id_fkey', type_='foreignkey')
         batch_op.create_foreign_key(batch_op.f('fk_user_photo_comments_user_id_users'), 'users', ['user_id'], ['id'], ondelete='CASCADE')
         batch_op.create_foreign_key(batch_op.f('fk_user_photo_comments_photo_id_user_photos'), 'user_photos', ['photo_id'], ['id'], ondelete='CASCADE')
 
     with op.batch_alter_table('user_photo_reactions', schema=None) as batch_op:
-        batch_op.drop_constraint(None, type_='foreignkey')
-        batch_op.drop_constraint(None, type_='foreignkey')
+        batch_op.drop_constraint('user_photo_reactions_photo_id_fkey', type_='foreignkey')
+        batch_op.drop_constraint('user_photo_reactions_user_id_fkey', type_='foreignkey')
         batch_op.create_foreign_key(batch_op.f('fk_user_photo_reactions_photo_id_user_photos'), 'user_photos', ['photo_id'], ['id'], ondelete='CASCADE')
         batch_op.create_foreign_key(batch_op.f('fk_user_photo_reactions_user_id_users'), 'users', ['user_id'], ['id'], ondelete='CASCADE')
 
     with op.batch_alter_table('user_photos', schema=None) as batch_op:
-        batch_op.drop_constraint(None, type_='foreignkey')
-        batch_op.drop_constraint(None, type_='foreignkey')
+        batch_op.drop_constraint('user_photos_album_id_fkey', type_='foreignkey')
+        batch_op.drop_constraint('user_photos_user_id_fkey', type_='foreignkey')
         batch_op.create_foreign_key(batch_op.f('fk_user_photos_album_id_photo_albums'), 'photo_albums', ['album_id'], ['id'], ondelete='CASCADE')
         batch_op.create_foreign_key(batch_op.f('fk_user_photos_user_id_users'), 'users', ['user_id'], ['id'], ondelete='CASCADE')
 
@@ -130,8 +128,6 @@ def downgrade() -> None:
         batch_op.drop_constraint(batch_op.f('fk_photo_albums_user_id_users'), type_='foreignkey')
         batch_op.create_foreign_key(None, 'users', ['user_id'], ['id'])
 
-    with op.batch_alter_table('orders', schema=None) as batch_op:
-        batch_op.drop_constraint(batch_op.f('uq_orders_payment_id'), type_='unique')
 
     with op.batch_alter_table('friendships', schema=None) as batch_op:
         batch_op.drop_constraint(batch_op.f('fk_friendships_friend_id_users'), type_='foreignkey')
