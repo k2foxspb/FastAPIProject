@@ -264,8 +264,14 @@ async def websocket_chat_endpoint(
                 continue
 
             if msg_type == "delete_message":
-                message_id = message_data.get("message_id")
-                if message_id:
+                message_id_raw = message_data.get("message_id")
+                if message_id_raw:
+                    try:
+                        message_id = int(message_id_raw)
+                    except (ValueError, TypeError):
+                        logger.warning(f"Invalid message_id format in WS delete: {message_id_raw}")
+                        continue
+                        
                     result = await db.execute(select(ChatMessage).where(ChatMessage.id == message_id))
                     message = result.scalar_one_or_none()
 
@@ -279,18 +285,41 @@ async def websocket_chat_endpoint(
                             file_path = message.file_path
 
                             if is_sender:
-                                await db.delete(message)
+                                # Вместо физического удаления используем soft delete для обоих сторон
+                                # Это позволяет избежать проблем с reply_to_id и ссылочной целостностью
+                                message.deleted_by_sender = True
+                                message.deleted_by_receiver = True
+                                logger.info(f"WS: Message {message_id} soft-deleted for all by sender {user_id}")
                             else:
                                 message.deleted_by_receiver = True
+                                logger.info(f"WS: Message {message_id} soft-deleted for receiver {user_id}")
                             
                             await db.commit()
 
+                            # Если удалено отправителем ("для всех") и есть файл — удаляем его физически
                             if is_sender and file_path:
                                 try:
+                                    # Очищаем контент сообщения, чтобы он не занимал место и не светился в логах
+                                    message.message = "[Сообщение удалено]"
+                                    message.file_path = None
+                                    await db.commit()
+                                    
                                     root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-                                    abs_path = os.path.join(root_dir, file_path.lstrip("/"))
-                                    if os.path.exists(abs_path):
-                                        os.remove(abs_path)
+                                    # Если это JSON список (media_group), удаляем все файлы
+                                    if message.message_type == "media_group":
+                                        try:
+                                            attachments = json.loads(file_path)
+                                            for att in attachments:
+                                                att_path = att.get("file_path")
+                                                if att_path:
+                                                    abs_path = os.path.join(root_dir, att_path.lstrip("/"))
+                                                    if os.path.exists(abs_path):
+                                                        os.remove(abs_path)
+                                        except: pass
+                                    else:
+                                        abs_path = os.path.join(root_dir, file_path.lstrip("/"))
+                                        if os.path.exists(abs_path):
+                                            os.remove(abs_path)
                                 except Exception as e:
                                     logger.error(f"Error deleting chat file via WS: {e}")
 
@@ -319,8 +348,14 @@ async def websocket_chat_endpoint(
                 continue
 
             if msg_type == "bulk_delete":
-                message_ids = message_data.get("message_ids", [])
-                if message_ids:
+                message_ids_raw = message_data.get("message_ids", [])
+                if message_ids_raw:
+                    try:
+                        message_ids = [int(mid) for mid in message_ids_raw]
+                    except (ValueError, TypeError):
+                        logger.warning(f"Invalid message_ids format in WS bulk delete")
+                        continue
+                        
                     result = await db.execute(
                         select(ChatMessage).where(
                             ChatMessage.id.in_(message_ids),
@@ -344,12 +379,29 @@ async def websocket_chat_endpoint(
                             m_is_sender = m_sender_id == user_id
                             
                             if m_is_sender:
-                                await db.delete(msg)
+                                # Soft delete для всех
+                                msg.deleted_by_sender = True
+                                msg.deleted_by_receiver = True
                                 if m_file_path:
                                     try:
-                                        m_abs_path = os.path.join(root_dir, m_file_path.lstrip("/"))
-                                        if os.path.exists(m_abs_path):
-                                            os.remove(m_abs_path)
+                                        msg.message = "[Сообщение удалено]"
+                                        msg.file_path = None
+                                        
+                                        # Если это JSON список (media_group), удаляем все файлы
+                                        if msg.message_type == "media_group":
+                                            try:
+                                                attachments = json.loads(m_file_path)
+                                                for att in attachments:
+                                                    att_path = att.get("file_path")
+                                                    if att_path:
+                                                        abs_path = os.path.join(root_dir, att_path.lstrip("/"))
+                                                        if os.path.exists(abs_path):
+                                                            os.remove(abs_path)
+                                            except: pass
+                                        else:
+                                            m_abs_path = os.path.join(root_dir, m_file_path.lstrip("/"))
+                                            if os.path.exists(m_abs_path):
+                                                os.remove(m_abs_path)
                                     except Exception as e:
                                         logger.error(f"Error bulk deleting chat file via WS: {e}")
                             else:
@@ -726,11 +778,17 @@ async def get_dialogs(
     if user_id is None:
         raise HTTPException(status_code=401, detail="Invalid token")
 
-    # Находим всех собеседников
+    # Находим всех собеседников, с которыми есть активные (не удаленные) сообщения
     # Сначала те, кому мы писали
-    sent_to = select(ChatMessage.receiver_id).where(ChatMessage.sender_id == user_id)
+    sent_to = select(ChatMessage.receiver_id).where(
+        ChatMessage.sender_id == user_id, 
+        ChatMessage.deleted_by_sender == False
+    )
     # Потом те, кто нам писал
-    received_from = select(ChatMessage.sender_id).where(ChatMessage.receiver_id == user_id)
+    received_from = select(ChatMessage.sender_id).where(
+        ChatMessage.receiver_id == user_id, 
+        ChatMessage.deleted_by_receiver == False
+    )
     
     # Объединяем id собеседников и убираем дубликаты
     partners_query = sent_to.union(received_from)
@@ -757,6 +815,7 @@ async def get_dialogs(
             ).order_by(ChatMessage.timestamp.desc()).limit(1)
         )
         last_msg = last_msg_res.scalar_one_or_none()
+        if not last_msg: continue # Если нет видимых сообщений, не показываем диалог
         
         # Кол-во непрочитанных от этого пользователя
         unread_res = await db.execute(
@@ -801,7 +860,8 @@ async def mark_messages_as_read(
         .where(
             ChatMessage.sender_id == other_user_id,
             ChatMessage.receiver_id == user_id,
-            ChatMessage.is_read == 0
+            ChatMessage.is_read == 0,
+            ChatMessage.deleted_by_receiver == False
         )
         .values(is_read=1)
     )
@@ -854,22 +914,40 @@ async def delete_message(
     file_path = message.file_path
 
     if is_sender:
-        # Если удаляет отправитель — удаляем для всех (физически)
-        await db.delete(message)
-    else:
-        # Если удаляет получатель — помечаем удаленным только для него
+        # Soft delete для обоих сторон (удаление "для всех")
+        message.deleted_by_sender = True
         message.deleted_by_receiver = True
+        logger.info(f"API: Message {message_id} soft-deleted for all by sender {user_id}")
+    else:
+        # Удаление только для себя (получателя)
+        message.deleted_by_receiver = True
+        logger.info(f"API: Message {message_id} soft-deleted for receiver {user_id}")
     
     await db.commit()
 
-    # Если был файл и сообщение удалено физически, удаляем файл
+    # Если удаляет отправитель ("для всех") и есть файл — удаляем его физически
     if is_sender and file_path:
         try:
-            # Превращаем относительный путь в абсолютный
+            # Очищаем контент
+            message.message = "[Сообщение удалено]"
+            message.file_path = None
+            await db.commit()
+
             root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-            abs_path = os.path.join(root_dir, file_path.lstrip("/"))
-            if os.path.exists(abs_path):
-                os.remove(abs_path)
+            if message.message_type == "media_group":
+                try:
+                    attachments = json.loads(file_path)
+                    for att in attachments:
+                        att_path = att.get("file_path")
+                        if att_path:
+                            abs_path = os.path.join(root_dir, att_path.lstrip("/"))
+                            if os.path.exists(abs_path):
+                                os.remove(abs_path)
+                except: pass
+            else:
+                abs_path = os.path.join(root_dir, file_path.lstrip("/"))
+                if os.path.exists(abs_path):
+                    os.remove(abs_path)
         except Exception as e:
             logger.error(f"Error deleting chat file: {e}")
 
@@ -931,13 +1009,29 @@ async def bulk_delete_messages(
         is_sender = sender_id == user_id
         
         if is_sender:
-            await db.delete(msg)
+            # Soft delete для всех
+            msg.deleted_by_sender = True
+            msg.deleted_by_receiver = True
             # Удаляем файлы
             if file_path:
                 try:
-                    abs_path = os.path.join(root_dir, file_path.lstrip("/"))
-                    if os.path.exists(abs_path):
-                        os.remove(abs_path)
+                    msg.message = "[Сообщение удалено]"
+                    msg.file_path = None
+                    # Если это JSON список (media_group), удаляем все файлы
+                    if msg.message_type == "media_group":
+                        try:
+                            attachments = json.loads(file_path)
+                            for att in attachments:
+                                att_path = att.get("file_path")
+                                if att_path:
+                                    abs_path = os.path.join(root_dir, att_path.lstrip("/"))
+                                    if os.path.exists(abs_path):
+                                        os.remove(abs_path)
+                        except: pass
+                    else:
+                        abs_path = os.path.join(root_dir, file_path.lstrip("/"))
+                        if os.path.exists(abs_path):
+                            os.remove(abs_path)
                 except Exception as e:
                     logger.error(f"Error deleting chat file: {e}")
         else:

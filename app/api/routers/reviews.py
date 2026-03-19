@@ -133,10 +133,11 @@ async def create_review(review: CreateReview,
                         db: AsyncSession = Depends(get_async_db),
                         current_buyer: UserModel = Depends(get_current_buyer)
                         ):
-    product = await db.scalars(select(ProductModel)
+    product = await db.execute(select(ProductModel)
+                                      .options(selectinload(ProductModel.seller))
                                       .where(ProductModel.id == review.product_id)
                                       .where(ProductModel.is_active == True))
-    product_result = product.first()
+    product_result = product.scalar_one_or_none()
     if not product_result:
         raise HTTPException(status_code=400, detail="Product not exist")
     review_query = await db.scalars(select(ReviewModel)
@@ -168,16 +169,27 @@ async def create_review(review: CreateReview,
     await db.refresh(product_result)
 
     # Отправка уведомления продавцу о новом отзыве
-    await manager.send_personal_message(
-        {
-            "type": "new_review",
-            "product_id": product_result.id,
-            "product_name": product_result.name,
-            "rating": review.grade,
-            "comment": review.comment
-        },
-        product_result.seller_id
-    )
+    msg = {
+        "type": "new_review",
+        "product_id": product_result.id,
+        "product_name": product_result.name,
+        "rating": review.grade,
+        "comment": review.comment,
+        "sender_id": current_buyer.id,
+        "sender_name": f"{current_buyer.first_name} {current_buyer.last_name}" if current_buyer.first_name else current_buyer.email
+    }
+    
+    asyncio.create_task(manager.send_personal_message(msg, product_result.seller_id))
+
+    if product_result.seller and product_result.seller.fcm_token:
+        asyncio.create_task(send_fcm_notification(
+            token=product_result.seller.fcm_token,
+            title="Новый отзыв о товаре",
+            body=f"{msg['sender_name']} оценил(а) ваш товар '{product_result.name}' на {review.grade} звезд",
+            data=msg,
+            sender_id=current_buyer.id,
+            sender_avatar=current_buyer.avatar_url
+        ))
 
     return db_review
 

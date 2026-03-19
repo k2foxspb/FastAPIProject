@@ -228,7 +228,7 @@ export default function ChatScreen({ route, navigation }) {
 
             // Проверка на дубликаты (по id или client_id)
             const exists = prev.some(m => 
-              (msg.id && m.id === msg.id) || 
+              (msg.id && String(m.id) === String(msg.id)) || 
               (msg.client_id && m.client_id === msg.client_id && m.status !== 'pending')
             );
             
@@ -768,8 +768,8 @@ export default function ChatScreen({ route, navigation }) {
           const msgId = lastNotify.message_id || lastNotify.data?.id;
           if (msgId) {
             setMessages(prev => {
-              if (prev.find(m => m.id === msgId)) {
-                return prev.filter(m => m.id !== msgId);
+              if (prev.find(m => String(m.id) === String(msgId))) {
+                return prev.filter(m => String(m.id) !== String(msgId));
               }
               return prev;
             });
@@ -878,8 +878,8 @@ export default function ChatScreen({ route, navigation }) {
             const seenClientIds = new Set();
             
             for (const m of rawResult) {
-              const mid = m.id;
-              const cid = m.client_id;
+              const mid = m.id ? String(m.id) : null;
+              const cid = m.client_id ? String(m.client_id) : null;
               
               // Если есть ID, проверяем по нему. Если нет (только client_id), проверяем по client_id.
               if (mid && seenIds.has(mid)) continue;
@@ -894,8 +894,8 @@ export default function ChatScreen({ route, navigation }) {
           } else {
             // При подгрузке старой истории фильтруем только те, которых еще нет в стейте
             const newMsgs = payload.data.filter((m, idx) => 
-              !prev.find(pm => pm.id === m.id) &&
-              payload.data.findIndex(im => im.id === m.id) === idx
+              !prev.find(pm => String(pm.id) === String(m.id)) &&
+              payload.data.findIndex(im => String(im.id) === String(m.id)) === idx
             );
             return [...prev, ...newMsgs];
           }
@@ -1032,7 +1032,7 @@ export default function ChatScreen({ route, navigation }) {
         console.log(`[ChatScreen] Loaded ${res.data.length} more messages via API. Skip was ${skip}`);
         if (res.data.length > 0) {
           setMessages(prev => {
-             const newMsgs = res.data.filter(m => !prev.find(pm => pm.id === m.id));
+             const newMsgs = res.data.filter(m => !prev.find(pm => String(pm.id) === String(m.id)));
              return [...prev, ...newMsgs];
           });
           setSkip(prev => prev + res.data.length);
@@ -2427,7 +2427,7 @@ export default function ChatScreen({ route, navigation }) {
               }
 
               // Локально обновляем список сообщений
-              setMessages(prev => prev.filter(m => m.id !== messageId));
+              setMessages(prev => prev.filter(m => String(m.id) !== String(messageId)));
               setSkip(prev => Math.max(0, prev - 1));
             } catch (error) {
               console.error('Failed to delete message', error);
@@ -2472,7 +2472,8 @@ export default function ChatScreen({ route, navigation }) {
 
               // Локально обновляем список сообщений, чтобы чат сразу отразил удаление
               const removedCount = selectedIds.length;
-              setMessages(prev => prev.filter(m => !selectedIds.includes(m.id)));
+              const idsToDelete = selectedIds.map(id => String(id));
+              setMessages(prev => prev.filter(m => !idsToDelete.includes(String(m.id))));
               setSkip(prev => Math.max(0, prev - removedCount));
 
               setSelectionMode(false);
@@ -2614,7 +2615,7 @@ export default function ChatScreen({ route, navigation }) {
         ref={chatFlatListRef}
         data={messages}
         extraData={[messages.length, currentUserId, selectedIds.length, theme, userId, viewableItems]}
-        keyExtractor={(item) => `msg_${item.id || item.client_id || Math.random()}`}
+        keyExtractor={(item) => `msg_${item.id !== undefined && item.id !== null ? String(item.id) : (item.client_id || Math.random())}`}
         renderItem={renderMessageItem}
         onEndReached={loadMoreMessages}
         onEndReachedThreshold={0.1}

@@ -186,6 +186,75 @@ class PhotoAlbumUpdate(BaseModel):
     description: str | None = None
     privacy: str | None = None
 
+class PhotoAlbumCommentBase(BaseModel):
+    comment: str = Field(min_length=1)
+
+class PhotoAlbumCommentCreate(PhotoAlbumCommentBase):
+    pass
+
+class PhotoAlbumComment(PhotoAlbumCommentBase):
+    id: int
+    user_id: int
+    album_id: int
+    created_at: datetime
+    first_name: str | None = None
+    last_name: str | None = None
+    avatar_url: str | None = None
+    likes_count: int = 0
+    dislikes_count: int = 0
+    my_reaction: int | None = None
+    liked_by: list[ReactorInfo] = []
+    disliked_by: list[ReactorInfo] = []
+    model_config = ConfigDict(from_attributes=True)
+
+    @classmethod
+    def model_validate(cls, obj, **kwargs):
+        try:
+            if isinstance(obj, dict):
+                return cls(**obj)
+            
+            data = {
+                "id": int(getattr(obj, "id", 0)),
+                "user_id": int(getattr(obj, "user_id", 0)),
+                "album_id": int(getattr(obj, "album_id", 0)),
+                "comment": str(getattr(obj, "comment", "")),
+                "created_at": getattr(obj, "created_at", None),
+                "first_name": None,
+                "last_name": None,
+                "avatar_url": None,
+                "likes_count": int(getattr(obj, "likes_count", 0)),
+                "dislikes_count": int(getattr(obj, "dislikes_count", 0)),
+                "my_reaction": getattr(obj, "my_reaction", None),
+                "liked_by": [],
+                "disliked_by": []
+            }
+            
+            if hasattr(obj, "user") and obj.user:
+                data["first_name"] = obj.user.first_name
+                data["last_name"] = obj.user.last_name
+                data["avatar_url"] = obj.user.avatar_url
+            
+            obj_dict = getattr(obj, "__dict__", {})
+            if "reactions" in obj_dict:
+                reactions = obj_dict["reactions"]
+                data["liked_by"] = [r.user for r in reactions if r.reaction_type == 1 and "user" in getattr(r, "__dict__", {}) and r.user is not None]
+                data["disliked_by"] = [r.user for r in reactions if r.reaction_type == -1 and "user" in getattr(r, "__dict__", {}) and r.user is not None]
+                
+                if data["likes_count"] == 0:
+                    data["likes_count"] = len(data["liked_by"])
+                if data["dislikes_count"] == 0:
+                    data["dislikes_count"] = len(data["disliked_by"])
+
+            return cls(**data)
+        except Exception:
+            return cls(
+                id=int(getattr(obj, "id", 0)),
+                user_id=int(getattr(obj, "user_id", 0)),
+                album_id=int(getattr(obj, "album_id", 0)),
+                comment=str(getattr(obj, "comment", "Error")),
+                created_at=getattr(obj, "created_at", datetime.utcnow())
+            )
+
 class PhotoAlbum(PhotoAlbumBase):
     id: int
     user_id: int
@@ -195,6 +264,13 @@ class PhotoAlbum(PhotoAlbumBase):
     # Для превью альбома (последняя фотография)
     album_preview_url: str | None = None
     
+    likes_count: int = 0
+    dislikes_count: int = 0
+    my_reaction: int | None = None
+    liked_by: list[ReactorInfo] = []
+    disliked_by: list[ReactorInfo] = []
+    comments_count: int = 0
+
     model_config = ConfigDict(from_attributes=True)
 
     @classmethod
@@ -209,14 +285,18 @@ class PhotoAlbum(PhotoAlbumBase):
                     "privacy": obj.get("privacy", "public"),
                     "created_at": obj.get("created_at"),
                     "photos": obj.get("photos", []),
-                    "album_preview_url": obj.get("album_preview_url")
+                    "album_preview_url": obj.get("album_preview_url"),
+                    "likes_count": obj.get("likes_count", 0),
+                    "dislikes_count": obj.get("dislikes_count", 0),
+                    "my_reaction": obj.get("my_reaction"),
+                    "liked_by": obj.get("liked_by", []),
+                    "disliked_by": obj.get("disliked_by", []),
+                    "comments_count": obj.get("comments_count", 0)
                 }
-                # Ensure photos are also validated if they are dicts
                 if data["photos"] and isinstance(data["photos"][0], dict):
                     data["photos"] = [UserPhoto.model_validate(p) for p in data["photos"]]
                 return cls(**data)
                 
-            # Базовые поля
             data = {
                 "id": int(getattr(obj, "id", 0)),
                 "user_id": int(getattr(obj, "user_id", 0)),
@@ -225,16 +305,19 @@ class PhotoAlbum(PhotoAlbumBase):
                 "privacy": str(getattr(obj, "privacy", "public")),
                 "created_at": getattr(obj, "created_at", None),
                 "photos": [],
-                "album_preview_url": None
+                "album_preview_url": None,
+                "likes_count": int(getattr(obj, "likes_count", 0)),
+                "dislikes_count": int(getattr(obj, "dislikes_count", 0)),
+                "my_reaction": getattr(obj, "my_reaction", None),
+                "liked_by": [],
+                "disliked_by": [],
+                "comments_count": int(getattr(obj, "comments_count", 0))
             }
             
-            # Пытаемся достать фото из __dict__ напрямую, чтобы не триггерить lazy load
             obj_dict = getattr(obj, "__dict__", {})
             if "photos" in obj_dict:
                 photos = obj_dict["photos"]
                 data["photos"] = [UserPhoto.model_validate(p) for p in photos] if photos else []
-                
-                # Set preview url from the latest photo
                 if data["photos"]:
                     valid_for_preview = [p for p in data["photos"] if p.created_at is not None]
                     if valid_for_preview:
@@ -242,9 +325,18 @@ class PhotoAlbum(PhotoAlbumBase):
                         data["album_preview_url"] = sorted_photos[0].preview_url
                     else:
                         data["album_preview_url"] = data["photos"][0].preview_url
-            
+
+            if "reactions" in obj_dict:
+                reactions = obj_dict["reactions"]
+                data["liked_by"] = [r.user for r in reactions if r.reaction_type == 1 and "user" in getattr(r, "__dict__", {}) and r.user is not None]
+                data["disliked_by"] = [r.user for r in reactions if r.reaction_type == -1 and "user" in getattr(r, "__dict__", {}) and r.user is not None]
+                if data["likes_count"] == 0:
+                    data["likes_count"] = len(data["liked_by"])
+                if data["dislikes_count"] == 0:
+                    data["dislikes_count"] = len(data["disliked_by"])
+
             return cls(**data)
-        except Exception as e:
+        except Exception:
             return cls(
                 id=int(getattr(obj, "id", 0)),
                 user_id=int(getattr(obj, "user_id", 0)),

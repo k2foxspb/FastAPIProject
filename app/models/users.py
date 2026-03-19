@@ -38,6 +38,8 @@ class User(Base):
     photo_comments: Mapped[list["UserPhotoComment"]] = relationship("UserPhotoComment", back_populates="user", cascade="all, delete-orphan")
     photo_reactions: Mapped[list["UserPhotoReaction"]] = relationship("UserPhotoReaction", back_populates="user", cascade="all, delete-orphan")
     albums: Mapped[list["PhotoAlbum"]] = relationship("PhotoAlbum", back_populates="user", cascade="all, delete-orphan")
+    album_comments: Mapped[list["PhotoAlbumComment"]] = relationship("PhotoAlbumComment", back_populates="user", cascade="all, delete-orphan")
+    album_reactions: Mapped[list["PhotoAlbumReaction"]] = relationship("PhotoAlbumReaction", back_populates="user", cascade="all, delete-orphan")
     admin_permissions: Mapped[list["AdminPermission"]] = relationship("AdminPermission", back_populates="admin", cascade="all, delete-orphan")
 
     # Friends relationships
@@ -77,6 +79,8 @@ class PhotoAlbum(Base):
 
     user: Mapped["User"] = relationship("User", back_populates="albums")
     photos: Mapped[list["UserPhoto"]] = relationship("UserPhoto", back_populates="album", cascade="all, delete-orphan")
+    comments: Mapped[list["PhotoAlbumComment"]] = relationship("PhotoAlbumComment", back_populates="album", cascade="all, delete-orphan")
+    reactions: Mapped[list["PhotoAlbumReaction"]] = relationship("PhotoAlbumReaction", back_populates="album", cascade="all, delete-orphan")
 
 
 class UserPhoto(Base):
@@ -157,6 +161,41 @@ class AppVersion(Base):
     version: Mapped[str] = mapped_column(String, nullable=False)
     file_path: Mapped[str] = mapped_column(String, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+class PhotoAlbumComment(Base):
+    __tablename__ = "photo_album_comments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    album_id: Mapped[int] = mapped_column(ForeignKey("photo_albums.id"), nullable=False)
+    comment: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    user: Mapped["User"] = relationship("User", back_populates="album_comments")
+    album: Mapped["PhotoAlbum"] = relationship("PhotoAlbum", back_populates="comments")
+    reactions: Mapped[list["PhotoAlbumCommentReaction"]] = relationship("PhotoAlbumCommentReaction", back_populates="comment", cascade="all, delete-orphan")
+
+class PhotoAlbumReaction(Base):
+    __tablename__ = "photo_album_reactions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    album_id: Mapped[int] = mapped_column(ForeignKey("photo_albums.id", ondelete="CASCADE"), nullable=False)
+    reaction_type: Mapped[int] = mapped_column(Integer, nullable=False)  # 1 for like, -1 for dislike
+
+    user: Mapped["User"] = relationship("User", back_populates="album_reactions")
+    album: Mapped["PhotoAlbum"] = relationship("PhotoAlbum", back_populates="reactions")
+
+class PhotoAlbumCommentReaction(Base):
+    __tablename__ = "photo_album_comment_reactions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    comment_id: Mapped[int] = mapped_column(ForeignKey("photo_album_comments.id", ondelete="CASCADE"), nullable=False)
+    reaction_type: Mapped[int] = mapped_column(Integer, nullable=False)  # 1 for like, -1 for dislike
+
+    user: Mapped["User"] = relationship("User")
+    comment: Mapped["PhotoAlbumComment"] = relationship("PhotoAlbumComment", back_populates="reactions")
 
 
 

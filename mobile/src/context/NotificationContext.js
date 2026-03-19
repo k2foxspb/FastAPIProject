@@ -118,13 +118,13 @@ export const NotificationProvider = ({ children }) => {
         let history = cached ? JSON.parse(cached) : [];
         // Проверяем, нет ли уже такого сообщения по id или client_id
         const exists = history.some(m => 
-          (message.id && m.id === message.id) || 
+          (message.id && String(m.id) === String(message.id)) || 
           (isFromMe && message.client_id && m.client_id === message.client_id)
         );
         if (!exists) {
           history = [message, ...history].slice(0, 50); // Храним последние 50 сообщений
           await storage.saveItem(cacheKey, JSON.stringify(history));
-        } else if (isFromMe && message.id && message.client_id && !history.find(m => m.id === message.id)) {
+        } else if (isFromMe && message.id && message.client_id && !history.find(m => String(m.id) === String(message.id))) {
            // Если наше сообщение пришло с ID, но в кэше было только с client_id, обновляем
            history = history.map(m => (m.client_id && m.client_id === message.client_id) ? message : m);
            await storage.saveItem(cacheKey, JSON.stringify(history));
@@ -176,7 +176,7 @@ export const NotificationProvider = ({ children }) => {
 
     setNotifications(prev => {
       if (prev.some(n => n.type === 'new_message' && (
-        (message.id && n.data?.id === message.id) || 
+        (message.id && String(n.data?.id) === String(message.id)) || 
         (isFromMe && message.client_id && n.data?.client_id === message.client_id)
       ))) {
         return prev;
@@ -608,7 +608,7 @@ export const NotificationProvider = ({ children }) => {
         }
 
         setNotifications((prev) => {
-          if (payload.type === 'new_message' && prev.some(n => n.type === 'new_message' && n.data?.id === payload.data?.id)) {
+          if (payload.type === 'new_message' && prev.some(n => n.type === 'new_message' && String(n.data?.id) === String(payload.data?.id))) {
             return prev;
           }
           return [payload, ...prev];

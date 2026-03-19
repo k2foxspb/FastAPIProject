@@ -12,13 +12,17 @@ from app.models.users import (
     PhotoAlbum as PhotoAlbumModel, 
     UserPhoto as UserPhotoModel,
     Friendship as FriendshipModel,
-    UserPhotoComment as UserPhotoCommentModel,
-    UserPhotoReaction as UserPhotoReactionModel,
-    UserPhotoCommentReaction as UserPhotoCommentReactionModel
+    UserPhotoComment as UserPhotoCommentModel, 
+    UserPhotoReaction as UserPhotoReactionModel, 
+    UserPhotoCommentReaction as UserPhotoCommentReactionModel,
+    PhotoAlbumReaction as PhotoAlbumReactionModel,
+    PhotoAlbumComment as PhotoAlbumCommentModel,
+    PhotoAlbumCommentReaction as PhotoAlbumCommentReactionModel
 )
 from app.schemas.users import (
     UserCreate, UserUpdate, User as UserSchema, RefreshTokenRequest, 
     PhotoAlbumCreate, PhotoAlbumUpdate, PhotoAlbum as PhotoAlbumSchema, 
+    PhotoAlbumCommentCreate, PhotoAlbumComment as PhotoAlbumCommentSchema,
     UserPhotoCreate, UserPhotoUpdate, UserPhoto as UserPhotoSchema,
     FCMTokenUpdate, BulkDeletePhotosRequest, Friendship as FriendshipSchema,
     UserPhotoComment as UserPhotoCommentSchema, UserPhotoCommentCreate,
@@ -315,7 +319,9 @@ async def get_me(
     result = await db.execute(
         select(UserModel).where(UserModel.id == current_user.id).options(
             selectinload(UserModel.photos).selectinload(UserPhotoModel.reactions).selectinload(UserPhotoReactionModel.user),
-            selectinload(UserModel.albums).selectinload(PhotoAlbumModel.photos).selectinload(UserPhotoModel.reactions).selectinload(UserPhotoReactionModel.user)
+            selectinload(UserModel.albums).selectinload(PhotoAlbumModel.photos).selectinload(UserPhotoModel.reactions).selectinload(UserPhotoReactionModel.user),
+            selectinload(UserModel.albums).selectinload(PhotoAlbumModel.reactions).selectinload(PhotoAlbumReactionModel.user),
+            selectinload(UserModel.albums).selectinload(PhotoAlbumModel.comments)
         )
     )
     user = result.scalar_one_or_none()
@@ -1068,7 +1074,9 @@ async def get_my_albums(
     """
     result = await db.execute(
         select(PhotoAlbumModel).where(PhotoAlbumModel.user_id == current_user.id).options(
-            selectinload(PhotoAlbumModel.photos)
+            selectinload(PhotoAlbumModel.photos),
+            selectinload(PhotoAlbumModel.reactions).selectinload(PhotoAlbumReactionModel.user),
+            selectinload(PhotoAlbumModel.comments)
         )
     )
     albums = result.scalars().all()
@@ -1089,9 +1097,24 @@ async def get_album(
     """
     Возвращает информацию о конкретном альбоме.
     """
+    # Статистика реакций
+    likes_count_sub = select(func.count(PhotoAlbumReactionModel.id)).where(
+        PhotoAlbumReactionModel.album_id == album_id, PhotoAlbumReactionModel.reaction_type == 1
+    ).scalar_subquery()
+    dislikes_count_sub = select(func.count(PhotoAlbumReactionModel.id)).where(
+        PhotoAlbumReactionModel.album_id == album_id, PhotoAlbumReactionModel.reaction_type == -1
+    ).scalar_subquery()
+    comments_count_sub = select(func.count(PhotoAlbumCommentModel.id)).where(
+        PhotoAlbumCommentModel.album_id == album_id
+    ).scalar_subquery()
+    my_reaction_sub = select(PhotoAlbumReactionModel.reaction_type).where(
+        PhotoAlbumReactionModel.album_id == album_id, PhotoAlbumReactionModel.user_id == current_user.id
+    ).scalar_subquery()
+
     result = await db.execute(
         select(PhotoAlbumModel).where(PhotoAlbumModel.id == album_id).options(
-            selectinload(PhotoAlbumModel.photos)
+            selectinload(PhotoAlbumModel.photos),
+            selectinload(PhotoAlbumModel.reactions).selectinload(PhotoAlbumReactionModel.user)
         )
     )
     album = result.scalar_one_or_none()
@@ -1106,7 +1129,290 @@ async def get_album(
         # Filter photos inside album
         album.photos = [p for p in album.photos if can_view_content(album.user_id, current_user.id, p.privacy, friendship_status)]
 
+    album.likes_count = await db.scalar(likes_count_sub)
+    album.dislikes_count = await db.scalar(dislikes_count_sub)
+    album.comments_count = await db.scalar(comments_count_sub)
+    album.my_reaction = await db.scalar(my_reaction_sub)
+
     return album
+
+
+@router.post("/albums/{album_id}/react")
+async def react_to_album(
+    album_id: int,
+    reaction_type: int, # 1 for like, -1 for dislike, 0 to remove
+    current_user: UserModel = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """Поставить лайк или дизлайк альбому."""
+    if reaction_type not in [1, -1, 0]:
+        raise HTTPException(status_code=400, detail="Invalid reaction type")
+
+    # Проверяем существование альбома (загружаем с владельцем для уведомлений)
+    album_res = await db.execute(
+        select(PhotoAlbumModel)
+        .options(selectinload(PhotoAlbumModel.user))
+        .where(PhotoAlbumModel.id == album_id)
+    )
+    album_obj = album_res.scalar_one_or_none()
+    if not album_obj:
+        raise HTTPException(status_code=404, detail="Album not found")
+
+    # Ищем существующую реакцию
+    res = await db.execute(
+        select(PhotoAlbumReactionModel).where(
+            PhotoAlbumReactionModel.album_id == album_id,
+            PhotoAlbumReactionModel.user_id == current_user.id
+        )
+    )
+    existing_reaction = res.scalar_one_or_none()
+
+    if reaction_type == 0:
+        if existing_reaction:
+            await db.delete(existing_reaction)
+    else:
+        if existing_reaction:
+            existing_reaction.reaction_type = reaction_type
+        else:
+            new_reaction = PhotoAlbumReactionModel(
+                album_id=album_id,
+                user_id=current_user.id,
+                reaction_type=reaction_type
+            )
+            db.add(new_reaction)
+    
+    await db.commit()
+
+    # Уведомление владельцу
+    if album_obj.user_id != current_user.id and reaction_type != 0:
+        action = "лайк" if reaction_type == 1 else "дизлайк"
+        msg = {
+            "type": "album_reaction",
+            "album_id": album_id,
+            "reaction_type": reaction_type,
+            "sender_id": current_user.id,
+            "sender_name": f"{current_user.first_name} {current_user.last_name}" if current_user.first_name else current_user.email,
+            "message": f"поставил {action} вашему альбому \"{album_obj.title}\""
+        }
+        asyncio.create_task(notification_manager.send_personal_message(msg, album_obj.user_id))
+        
+        if album_obj.user.fcm_token:
+             asyncio.create_task(send_fcm_notification(
+                token=album_obj.user.fcm_token,
+                title="Новая реакция",
+                body=f"{msg['sender_name']} {msg['message']}",
+                data=msg,
+                sender_id=current_user.id,
+                sender_avatar=current_user.avatar_url
+            ))
+
+    return {"status": "ok"}
+
+
+@router.get("/albums/{album_id}/comments", response_model=list[PhotoAlbumCommentSchema])
+async def get_album_comments(
+    album_id: int,
+    db: AsyncSession = Depends(get_async_db),
+    current_user: UserModel = Depends(get_current_user)
+):
+    """Получить список комментариев к альбому с реакциями."""
+    from sqlalchemy import func
+    # Проверяем доступ к альбому
+    album_res = await db.execute(select(PhotoAlbumModel).where(PhotoAlbumModel.id == album_id))
+    album = album_res.scalar_one_or_none()
+    if not album:
+        raise HTTPException(status_code=404, detail="Album not found")
+    
+    if album.user_id != current_user.id:
+        friendship_status = await get_friendship_status(current_user.id, album.user_id, db)
+        if not can_view_content(album.user_id, current_user.id, album.privacy, friendship_status):
+            raise HTTPException(status_code=403, detail="Access denied")
+
+    # Подзапросы для лайков и дизлайков комментария
+    likes_sub = select(
+        PhotoAlbumCommentReactionModel.comment_id,
+        func.count(PhotoAlbumCommentReactionModel.id).label("count")
+    ).where(PhotoAlbumCommentReactionModel.reaction_type == 1).group_by(PhotoAlbumCommentReactionModel.comment_id).subquery()
+
+    dislikes_sub = select(
+        PhotoAlbumCommentReactionModel.comment_id,
+        func.count(PhotoAlbumCommentReactionModel.id).label("count")
+    ).where(PhotoAlbumCommentReactionModel.reaction_type == -1).group_by(PhotoAlbumCommentReactionModel.comment_id).subquery()
+
+    my_reaction_sub = select(
+        PhotoAlbumCommentReactionModel.comment_id,
+        PhotoAlbumCommentReactionModel.reaction_type
+    ).where(PhotoAlbumCommentReactionModel.user_id == current_user.id).subquery()
+
+    query = select(
+        PhotoAlbumCommentModel,
+        func.coalesce(likes_sub.c.count, 0).label("likes_count"),
+        func.coalesce(dislikes_sub.c.count, 0).label("dislikes_count"),
+        func.coalesce(my_reaction_sub.c.reaction_type, None).label("my_reaction")
+    ).outerjoin(likes_sub, PhotoAlbumCommentModel.id == likes_sub.c.comment_id)\
+     .outerjoin(dislikes_sub, PhotoAlbumCommentModel.id == dislikes_sub.c.comment_id)\
+     .outerjoin(my_reaction_sub, PhotoAlbumCommentModel.id == my_reaction_sub.c.comment_id)\
+     .where(PhotoAlbumCommentModel.album_id == album_id)\
+     .options(
+         selectinload(PhotoAlbumCommentModel.user),
+         selectinload(PhotoAlbumCommentModel.reactions).selectinload(PhotoAlbumCommentReactionModel.user)
+     )\
+     .order_by(PhotoAlbumCommentModel.created_at.asc())
+
+    res = await db.execute(query)
+    rows = res.all()
+    
+    response = []
+    for row in rows:
+        c = row[0]
+        comment_dict = PhotoAlbumCommentSchema.model_validate(c).model_dump()
+        comment_dict["likes_count"] = row[1]
+        comment_dict["dislikes_count"] = row[2]
+        comment_dict["my_reaction"] = row[3]
+        
+        # Популируем liked_by и disliked_by
+        comment_dict["liked_by"] = [ReactorInfo.model_validate(r.user).model_dump() for r in c.reactions if r.reaction_type == 1]
+        comment_dict["disliked_by"] = [ReactorInfo.model_validate(r.user).model_dump() for r in c.reactions if r.reaction_type == -1]
+        
+        response.append(comment_dict)
+        
+    return response
+
+
+@router.post("/albums/{album_id}/comments", response_model=PhotoAlbumCommentSchema)
+async def add_album_comment(
+    album_id: int,
+    comment_data: PhotoAlbumCommentCreate,
+    current_user: UserModel = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """Добавить комментарий к альбому."""
+    album_res = await db.execute(
+        select(PhotoAlbumModel)
+        .options(selectinload(PhotoAlbumModel.user))
+        .where(PhotoAlbumModel.id == album_id)
+    )
+    album = album_res.scalar_one_or_none()
+    if not album:
+        raise HTTPException(status_code=404, detail="Album not found")
+    
+    # Проверка доступа
+    if album.user_id != current_user.id:
+        friendship_status = await get_friendship_status(current_user.id, album.user_id, db)
+        if not can_view_content(album.user_id, current_user.id, album.privacy, friendship_status):
+            raise HTTPException(status_code=403, detail="Access denied")
+
+    new_comment = PhotoAlbumCommentModel(
+        album_id=album_id,
+        user_id=current_user.id,
+        comment=comment_data.comment
+    )
+    db.add(new_comment)
+    await db.commit()
+    await db.refresh(new_comment)
+    
+    # Уведомление владельцу альбома
+    if album.user_id != current_user.id:
+        msg = {
+            "type": "album_comment",
+            "album_id": album_id,
+            "comment_id": new_comment.id,
+            "sender_id": current_user.id,
+            "sender_name": f"{current_user.first_name} {current_user.last_name}" if current_user.first_name else current_user.email,
+            "message": f"прокомментировал ваш альбом \"{album.title}\": {new_comment.comment[:50]}..."
+        }
+        asyncio.create_task(notification_manager.send_personal_message(msg, album.user_id))
+        
+        if album.user.fcm_token:
+             asyncio.create_task(send_fcm_notification(
+                token=album.user.fcm_token,
+                title="Новый комментарий к альбому",
+                body=f"{msg['sender_name']} {msg['message']}",
+                data=msg,
+                sender_id=current_user.id,
+                sender_avatar=current_user.avatar_url
+            ))
+
+    res = PhotoAlbumCommentSchema.model_validate(new_comment).model_dump()
+    res["first_name"] = current_user.first_name
+    res["last_name"] = current_user.last_name
+    res["avatar_url"] = current_user.avatar_url
+    return res
+
+
+@router.post("/albums/comments/{comment_id}/react")
+async def react_to_album_comment(
+    comment_id: int,
+    reaction_type: int, # 1 for like, -1 for dislike, 0 to remove
+    current_user: UserModel = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """Поставить лайк или дизлайк комментарию к альбому."""
+    if reaction_type not in [1, -1, 0]:
+        raise HTTPException(status_code=400, detail="Invalid reaction type")
+
+    # Проверяем существование комментария
+    comment_res = await db.execute(
+        select(PhotoAlbumCommentModel)
+        .options(selectinload(PhotoAlbumCommentModel.user))
+        .where(PhotoAlbumCommentModel.id == comment_id)
+    )
+    comment_obj = comment_res.scalar_one_or_none()
+    if not comment_obj:
+        raise HTTPException(status_code=404, detail="Comment not found")
+
+    # Ищем существующую реакцию
+    reaction_res = await db.execute(
+        select(PhotoAlbumCommentReactionModel).where(
+            PhotoAlbumCommentReactionModel.comment_id == comment_id,
+            PhotoAlbumCommentReactionModel.user_id == current_user.id
+        )
+    )
+    db_reaction = reaction_res.scalar_one_or_none()
+
+    if reaction_type == 0:
+        if db_reaction:
+            await db.delete(db_reaction)
+            await db.commit()
+            return {"status": "removed"}
+        return {"status": "not_found"}
+    
+    if db_reaction:
+        db_reaction.reaction_type = reaction_type
+    else:
+        new_reaction = PhotoAlbumCommentReactionModel(
+            comment_id=comment_id,
+            user_id=current_user.id,
+            reaction_type=reaction_type
+        )
+        db.add(new_reaction)
+    
+    await db.commit()
+
+    # Уведомление владельцу комментария
+    if comment_obj.user_id != current_user.id:
+        action = "лайк" if reaction_type == 1 else "дизлайк"
+        msg = {
+            "type": "album_comment_reaction",
+            "comment_id": comment_id,
+            "reaction_type": reaction_type,
+            "sender_id": current_user.id,
+            "sender_name": f"{current_user.first_name} {current_user.last_name}" if current_user.first_name else current_user.email,
+            "message": f"поставил {action} вашему комментарию к альбому: {comment_obj.comment[:50]}..."
+        }
+        asyncio.create_task(notification_manager.send_personal_message(msg, comment_obj.user_id))
+        
+        if comment_obj.user.fcm_token:
+             asyncio.create_task(send_fcm_notification(
+                token=comment_obj.user.fcm_token,
+                title="Реакция на ваш комментарий",
+                body=f"{msg['sender_name']} {msg['message']}",
+                data=msg,
+                sender_id=current_user.id,
+                sender_avatar=current_user.avatar_url
+            ))
+
+    return {"status": "ok", "reaction_type": reaction_type}
 
 
 @router.patch("/albums/{album_id}", response_model=PhotoAlbumSchema)
@@ -1908,7 +2214,9 @@ async def get_user_profile(
     result = await db.execute(
         select(UserModel).where(UserModel.id == user_id, UserModel.is_active == True).options(
             selectinload(UserModel.photos).selectinload(UserPhotoModel.reactions).selectinload(UserPhotoReactionModel.user),
-            selectinload(UserModel.albums).selectinload(PhotoAlbumModel.photos).selectinload(UserPhotoModel.reactions).selectinload(UserPhotoReactionModel.user)
+            selectinload(UserModel.albums).selectinload(PhotoAlbumModel.photos).selectinload(UserPhotoModel.reactions).selectinload(UserPhotoReactionModel.user),
+            selectinload(UserModel.albums).selectinload(PhotoAlbumModel.reactions).selectinload(PhotoAlbumReactionModel.user),
+            selectinload(UserModel.albums).selectinload(PhotoAlbumModel.comments)
         )
     )
     user = result.scalar_one_or_none()
