@@ -62,18 +62,29 @@ def upgrade() -> None:
     # Helper function to drop constraint if it exists
     def drop_constraint_safe(table_name, constraint_name, batch_op, columns=None):
         fks = inspector.get_foreign_keys(table_name)
-        # Try by name first
+        # 1. Try by provided name first
         for fk in fks:
             if fk['name'] == constraint_name:
+                print(f"Dropping constraint {constraint_name} on table {table_name} by name")
                 batch_op.drop_constraint(constraint_name, type_='foreignkey')
                 return True
-        # Try by columns if name didn't match
+        # 2. Try by columns if name didn't match or was None
         if columns:
             for fk in fks:
                 if set(fk['constrained_columns']) == set(columns):
-                    if fk['name']:
-                        batch_op.drop_constraint(fk['name'], type_='foreignkey')
+                    actual_name = fk['name']
+                    if actual_name:
+                        print(f"Dropping constraint {actual_name} on table {table_name} by columns {columns}")
+                        batch_op.drop_constraint(actual_name, type_='foreignkey')
                         return True
+                    else:
+                        print(f"Found matching constraint on table {table_name} by columns {columns} but it has no name (SQLite?)")
+                        # In SQLite batch mode, if we are redefining the table, 
+                        # we don't necessarily need to call drop_constraint if it has no name,
+                        # because we will redefine the columns and FKs in the new table anyway.
+                        # But to be safe, we can try to drop by columns if Alembic supports it.
+                        pass
+        print(f"Constraint {constraint_name} not found on table {table_name} (tried name and columns)")
         return False
 
     with op.batch_alter_table('admin_permissions', schema=None) as batch_op:

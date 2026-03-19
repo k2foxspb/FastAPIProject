@@ -18,8 +18,8 @@ depends_on = None
 def upgrade() -> None:
     # Use batch_alter_table for better compatibility across SQLite/PostgreSQL
     with op.batch_alter_table('chat_messages', schema=None) as batch_op:
-        # server_default as text, will be removed after for PostgreSQL
-        batch_op.add_column(sa.Column('is_uploading', sa.Boolean(), nullable=False, server_default=sa.text('0')))
+        # server_default as false, will be removed after for PostgreSQL
+        batch_op.add_column(sa.Column('is_uploading', sa.Boolean(), nullable=False, server_default=sa.false()))
         batch_op.add_column(sa.Column('upload_id', sa.String(), nullable=True))
 
     # Drop server_default for PostgreSQL so future inserts rely on application defaults

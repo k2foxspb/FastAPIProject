@@ -24,6 +24,24 @@ target_metadata = Base.metadata
 
 # Override sqlalchemy.url with the one from our config
 from app.core.config import DATABASE_URL
+# Mask password for logging
+masked_url = DATABASE_URL
+if "@" in masked_url:
+    parts = masked_url.split("@")
+    pre_at = parts[0]
+    if ":" in pre_at:
+        auth_parts = pre_at.split(":")
+        if len(auth_parts) > 2:
+            masked_url = f"{auth_parts[0]}:{auth_parts[1]}:***@{parts[1]}"
+        elif len(auth_parts) == 2:
+            # handle case like postgresql://user:pass
+            if "//" in auth_parts[0]:
+                masked_url = f"{auth_parts[0]}:***@{parts[1]}"
+            else:
+                masked_url = f"{auth_parts[0]}:***@{parts[1]}"
+    else:
+        masked_url = f"***@{parts[1]}"
+print(f"Using DATABASE_URL: {masked_url}")
 config.set_main_option("sqlalchemy.url", DATABASE_URL)
 
 def run_migrations_offline() -> None:
@@ -84,10 +102,14 @@ async def run_migrations_online() -> None:
             await connectable.dispose()
             return
         except Exception as e:
+            import traceback
             if attempt < max_retries:
                 print(f"Migration attempt {attempt} failed: {e}. Retrying in {retry_delay}s...")
+                traceback.print_exc()
                 await asyncio.sleep(retry_delay)
             else:
+                print(f"Migration attempt {attempt} failed: {e}. No more retries.")
+                traceback.print_exc()
                 await connectable.dispose()
                 raise e
 
