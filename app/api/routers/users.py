@@ -1098,18 +1098,18 @@ async def get_album(
     Возвращает информацию о конкретном альбоме.
     """
     # Статистика реакций
-    likes_count_sub = select(func.count(PhotoAlbumReactionModel.id)).where(
+    likes_count_stmt = select(func.count(PhotoAlbumReactionModel.id)).where(
         PhotoAlbumReactionModel.album_id == album_id, PhotoAlbumReactionModel.reaction_type == 1
-    ).scalar_subquery()
-    dislikes_count_sub = select(func.count(PhotoAlbumReactionModel.id)).where(
+    )
+    dislikes_count_stmt = select(func.count(PhotoAlbumReactionModel.id)).where(
         PhotoAlbumReactionModel.album_id == album_id, PhotoAlbumReactionModel.reaction_type == -1
-    ).scalar_subquery()
-    comments_count_sub = select(func.count(PhotoAlbumCommentModel.id)).where(
+    )
+    comments_count_stmt = select(func.count(PhotoAlbumCommentModel.id)).where(
         PhotoAlbumCommentModel.album_id == album_id
-    ).scalar_subquery()
-    my_reaction_sub = select(PhotoAlbumReactionModel.reaction_type).where(
+    )
+    my_reaction_stmt = select(PhotoAlbumReactionModel.reaction_type).where(
         PhotoAlbumReactionModel.album_id == album_id, PhotoAlbumReactionModel.user_id == current_user.id
-    ).scalar_subquery()
+    )
 
     result = await db.execute(
         select(PhotoAlbumModel).where(PhotoAlbumModel.id == album_id).options(
@@ -1129,10 +1129,10 @@ async def get_album(
         # Filter photos inside album
         album.photos = [p for p in album.photos if can_view_content(album.user_id, current_user.id, p.privacy, friendship_status)]
 
-    album.likes_count = await db.scalar(likes_count_sub)
-    album.dislikes_count = await db.scalar(dislikes_count_sub)
-    album.comments_count = await db.scalar(comments_count_sub)
-    album.my_reaction = await db.scalar(my_reaction_sub)
+    album.likes_count = await db.scalar(likes_count_stmt) or 0
+    album.dislikes_count = await db.scalar(dislikes_count_stmt) or 0
+    album.comments_count = await db.scalar(comments_count_stmt) or 0
+    album.my_reaction = await db.scalar(my_reaction_stmt)
 
     return album
 

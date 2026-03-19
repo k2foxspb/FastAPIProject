@@ -167,6 +167,14 @@ class UserPhoto(UserPhotoBase):
                 # Убеждаемся, что реакции загружены вместе с пользователями
                 data["liked_by"] = [r.user for r in reactions if r.reaction_type == 1 and "user" in getattr(r, "__dict__", {}) and r.user is not None]
                 data["disliked_by"] = [r.user for r in reactions if r.reaction_type == -1 and "user" in getattr(r, "__dict__", {}) and r.user is not None]
+                if data["likes_count"] == 0:
+                    data["likes_count"] = len(data["liked_by"])
+                if data["dislikes_count"] == 0:
+                    data["dislikes_count"] = len(data["disliked_by"])
+            
+            if "comments" in obj_dict:
+                if data["comments_count"] == 0:
+                    data["comments_count"] = len(obj_dict["comments"])
             
             return cls(**data)
         except Exception as e:
@@ -334,6 +342,10 @@ class PhotoAlbum(PhotoAlbumBase):
                     data["likes_count"] = len(data["liked_by"])
                 if data["dislikes_count"] == 0:
                     data["dislikes_count"] = len(data["disliked_by"])
+            
+            if "comments" in obj_dict:
+                if data["comments_count"] == 0:
+                    data["comments_count"] = len(obj_dict["comments"])
 
             return cls(**data)
         except Exception:
