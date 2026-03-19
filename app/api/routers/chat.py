@@ -1327,6 +1327,67 @@ async def get_upload_status(
         "is_completed": bool(session.is_completed)
     }
 
+@router.post("/upload/cancel/{upload_id}")
+async def cancel_upload_api(
+    upload_id: str,
+    db: AsyncSession = Depends(get_async_db),
+    current_user: UserModel = Depends(get_current_user)
+):
+    user_id = current_user.id
+    logger.info(f"Chat API: User {user_id} cancelled upload {upload_id}")
+    
+    # 1. Удаляем сессию загрузки
+    session_stmt = select(FileUploadSession).where(FileUploadSession.id == upload_id)
+    res_session = await db.execute(session_stmt)
+    session = res_session.scalar_one_or_none()
+    
+    if session and session.user_id == user_id:
+        # Удаляем временный файл
+        root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        temp_dir = os.path.join(root_dir, "media", "temp")
+        file_path = os.path.join(temp_dir, f"{upload_id}_{session.filename}")
+        if os.path.exists(file_path):
+            try:
+                os.remove(file_path)
+            except Exception as e:
+                logger.error(f"Failed to delete temp file on upload cancel: {e}")
+                
+        await db.delete(session)
+    
+    # 2. Ищем placeholder сообщение
+    msg_stmt = select(ChatMessage).where(
+        ChatMessage.upload_id == upload_id,
+        ChatMessage.sender_id == user_id
+    )
+    res_msg = await db.execute(msg_stmt)
+    ph_msg = res_msg.scalar_one_or_none()
+    
+    if ph_msg:
+        msg_id = ph_msg.id
+        receiver_id = ph_msg.receiver_id
+        await db.delete(ph_msg)
+        await db.commit()
+        
+        # Уведомляем участников через WebSocket
+        delete_event = {
+            "type": "message_deleted",
+            "data": {
+                "message_id": msg_id,
+                "upload_id": upload_id
+            }
+        }
+        await asyncio.gather(
+            manager.send_personal_message(delete_event, user_id),
+            manager.send_personal_message(delete_event, receiver_id),
+            notifications_manager.send_personal_message(delete_event, user_id),
+            notifications_manager.send_personal_message(delete_event, receiver_id),
+            return_exceptions=True
+        )
+    else:
+        await db.commit()
+        
+    return {"status": "ok", "message": "Upload cancelled"}
+
 @router.post("/upload/chunk/{upload_id}")
 async def upload_chunk(
     upload_id: str,
