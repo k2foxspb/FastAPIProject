@@ -3,7 +3,7 @@ import jwt
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Request
 from fastapi.responses import HTMLResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, delete, or_, and_, literal, update
+from sqlalchemy import select, delete, or_, and_, literal, update, func
 from fastapi.security import OAuth2PasswordRequestForm
 
 from app.core.config import SECRET_KEY, ALGORITHM, MOBILE_DEEPLINK
@@ -1712,7 +1712,7 @@ async def get_photo(
     """
     Возвращает информацию о конкретной фотографии с лайками и комментариями.
     """
-    from sqlalchemy import func
+
     
     # Запросы для лайков и дизлайков
     likes_sub = select(
