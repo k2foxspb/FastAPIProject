@@ -328,6 +328,14 @@ export const NotificationProvider = ({ children }) => {
           } else if (msgType === 'new_message' && payload.data) {
             console.log(`[NotificationContext] Received new_message via Chat WS: id=${payload.data.id}, client_id=${payload.data.client_id}`);
             handleNewMessage(payload.data, payload);
+          } else if (msgType === 'upload_progress' && payload.data) {
+            // Прокидываем событие дальше, чтобы экраны могли обновить прогресс
+            setNotifications(prev => [payload, ...prev]);
+          } else if (msgType === 'message_updated' && payload.data) {
+            // Прокидываем событие обновления сообщения
+            setNotifications(prev => [payload, ...prev]);
+            console.log(`[NotificationContext] Received new_message via Chat WS: id=${payload.data.id}, client_id=${payload.data.client_id}`);
+            handleNewMessage(payload.data, payload);
           } else if (msgType === 'messages_read') {
             const otherId = payload.reader_id || payload.data?.reader_id;
             if (otherId) {

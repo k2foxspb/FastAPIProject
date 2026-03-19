@@ -20,6 +20,8 @@ class ChatMessage(Base):
     reply_to_id: Mapped[int] = mapped_column(Integer, ForeignKey("chat_messages.id"), nullable=True)
     deleted_by_sender: Mapped[bool] = mapped_column(Boolean, default=False)
     deleted_by_receiver: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_uploading: Mapped[bool] = mapped_column(Boolean, default=False)
+    upload_id: Mapped[str] = mapped_column(String, nullable=True)
 
     sender = relationship("User", foreign_keys=[sender_id])
     receiver = relationship("User", foreign_keys=[receiver_id])

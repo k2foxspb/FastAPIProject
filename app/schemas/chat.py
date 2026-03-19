@@ -11,6 +11,8 @@ class ChatMessageBase(BaseModel):
     client_id: Optional[str] = None # Для оптимистичных обновлений
     duration: Optional[float] = None # Длительность аудио/видео в секундах
     reply_to_id: Optional[int] = None
+    is_uploading: bool = False
+    upload_id: Optional[str] = None
 
 class ChatMessageCreate(ChatMessageBase):
     pass
@@ -33,6 +35,8 @@ class ChatMessageResponse(ChatMessageBase):
     timestamp: datetime
     is_read: int
     reply_to: Optional[ChatMessageReply] = None
+    is_uploading: bool = False
+    upload_id: Optional[str] = None
 
     class Config:
         from_attributes = True

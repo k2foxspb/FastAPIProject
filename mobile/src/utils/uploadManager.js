@@ -219,12 +219,18 @@ export const uploadManager = {
       
       formData.append('offset', offset.toString());
 
+      const headers = {
+        'Accept': 'application/json',
+      };
+      
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
       const res = await fetch(uploadUrl, {
         method: 'POST',
         body: formData,
-        headers: {
-          'Accept': 'application/json',
-        },
+        headers: headers,
         signal: signal
       });
 

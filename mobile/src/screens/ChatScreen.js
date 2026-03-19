@@ -27,7 +27,11 @@ import { formatStatus, formatName, formatFileSize, parseISODate, formatMessageTi
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { setRecordingAudioMode } from '../utils/audioSettings';
 
-function VideoUploadPlaceholder({ progressPercent, activeUploadId, uri }) {
+function VideoUploadPlaceholder({ progressPercent, activeUploadId, uri, loaded, total }) {
+  const progressText = (loaded !== undefined && total !== undefined && total > 0) 
+    ? `${formatFileSize(loaded)} / ${formatFileSize(total)}` 
+    : `${progressPercent}%`;
+    
   return (
     <View style={{ width: 200, height: 150, borderRadius: 10, backgroundColor: '#1a1a1a', overflow: 'hidden' }}>
       {uri && (
@@ -61,7 +65,7 @@ function VideoUploadPlaceholder({ progressPercent, activeUploadId, uri }) {
           alignItems: 'center',
         }}>
           <ActivityIndicator size="small" color="#fff" style={{ marginRight: 8 }} />
-          <Text style={{ color: '#fff', fontWeight: 'bold' }}>{progressPercent}%</Text>
+          <Text style={{ color: '#fff', fontWeight: 'bold' }}>{progressText}</Text>
         </View>
         <TouchableOpacity
           style={{
@@ -213,6 +217,11 @@ export default function ChatScreen({ route, navigation }) {
         const otherId = isFromMe ? Number(msg.receiver_id) : Number(msg.sender_id);
 
         if (Number(otherId) === Number(userId)) {
+          // Не добавляем в список собственные плейсхолдеры загрузки, у нас для этого есть локальный индикатор
+          if ((latest.type === 'new_message' || latest.type === 'message') && msg?.is_uploading && isFromMe) {
+            console.log('[ChatScreen] Skipping own upload placeholder message');
+            return;
+          }
           console.log('[ChatScreen] New real-time message received from notifications:', msg.id || msg.client_id, 'type:', latest.type);
           setMessages(prev => {
             // Если это наше сообщение (есть client_id), ищем его в pending и обновляем
@@ -242,6 +251,22 @@ export default function ChatScreen({ route, navigation }) {
       }
     }
   }, [notifications, userId, currentUserId]);
+
+  // Отслеживаем прогресс загрузки и завершение (message_updated) от Chat WS
+  useEffect(() => {
+    if (!notifications || notifications.length === 0) return;
+    const latest = notifications[0];
+    if (latest.type === 'upload_progress' && latest.data) {
+      const { message_id, progress, offset, total } = latest.data;
+      setMessages(prev => prev.map(m => (String(m.id) === String(message_id) 
+        ? { ...m, is_uploading: true, upload_progress: progress, upload_offset: offset, upload_total: total } 
+        : m
+      )));
+    } else if (latest.type === 'message_updated' && latest.data) {
+      const up = latest.data;
+      setMessages(prev => prev.map(m => (String(m.id) === String(up.id) ? { ...m, file_path: up.file_path, message_type: up.message_type, is_uploading: false, upload_progress: undefined } : m)));
+    }
+  }, [notifications]);
   const videoPlayerRef = useRef(null);
   const chatFlatListRef = useRef(null);
   const recordingOptions = useMemo(() => RecordingPresets.HIGH_QUALITY, []);
@@ -1298,7 +1323,13 @@ export default function ChatScreen({ route, navigation }) {
               asset.name,
               asset.mimeType,
               userId,
-              (uid) => setActiveUploadId(uid)
+              (uid) => { 
+                              setActiveUploadId(uid);
+                              try {
+                                const mt = (asset?.mimeType || '').startsWith('image/') ? 'image' : ((asset?.mimeType || '').startsWith('video/') ? 'video' : ((asset?.mimeType || '').startsWith('audio/') ? 'voice' : 'file'));
+                                sendMessageWs({ type: 'upload_started', receiver_id: userId, message_type: mt, upload_id: uid });
+                              } catch (e) { console.warn('Failed to send upload_started WS', e); }
+                            }
             );
 
             if (res && res.status === 'completed') {
@@ -1397,7 +1428,7 @@ export default function ChatScreen({ route, navigation }) {
               fileName, 
               asset.mimeType,
               userId,
-              (upload_id) => setActiveUploadId(upload_id)
+              (upload_id) => { setActiveUploadId(upload_id); try { const mt = (asset?.mimeType || '').startsWith('image/') ? 'image' : ((asset?.mimeType || '').startsWith('video/') ? 'video' : ((asset?.mimeType || '').startsWith('audio/') ? 'voice' : 'file')); sendMessageWs({ type: 'upload_started', receiver_id: userId, message_type: mt, upload_id: upload_id }); } catch (e) { console.warn('Failed to send upload_started WS', e); } }
             );
             
             if (res && res.status === 'completed') {
@@ -1478,9 +1509,11 @@ export default function ChatScreen({ route, navigation }) {
         (id) => {
           currentUploadId = id;
           setActiveUploadId(id);
-          uploadManager.subscribe(id, ({ progress, status }) => {
+          try { sendMessageWs({ type: 'upload_started', receiver_id: userId, message_type: 'video', upload_id: id }); } catch (e) { console.warn('Failed to send upload_started WS', e); }
+          uploadManager.subscribe(id, ({ progress, status, loaded, total }) => {
             if (status === 'uploading' || status === 'completed') {
               setUploadingProgress(progress);
+              if (loaded !== undefined) setUploadingData(prev => ({ ...prev, loaded, total }));
             } else if (status === 'error' || status === 'cancelled') {
               setUploadingProgress(null);
               setActiveUploadId(null);
@@ -1917,7 +1950,7 @@ export default function ChatScreen({ route, navigation }) {
         fileName, 
         mimeType,
         userId,
-        (upload_id) => setActiveUploadId(upload_id)
+        (upload_id) => { setActiveUploadId(upload_id); try { sendMessageWs({ type: 'upload_started', receiver_id: userId, message_type: 'voice', upload_id: upload_id }); } catch (e) { console.warn('Failed to send upload_started WS', e); } }
       );
       setRecordedUri(null);
       setRecordingDuration(0);
@@ -2023,7 +2056,11 @@ export default function ChatScreen({ route, navigation }) {
                   alignItems: 'center'
                 }}>
                   <ActivityIndicator size="small" color="#fff" style={{ marginRight: 8 }} />
-                  <Text style={{ color: '#fff', fontWeight: 'bold' }}>{progressPercent}%</Text>
+                  <Text style={{ color: '#fff', fontWeight: 'bold' }}>
+                    {uploadingData.loaded !== undefined && uploadingData.total !== undefined && uploadingData.total > 0
+                      ? `${formatFileSize(uploadingData.loaded)} / ${formatFileSize(uploadingData.total)}` 
+                      : `${progressPercent}%`}
+                  </Text>
                 </View>
                 <TouchableOpacity
                   style={{
@@ -2050,6 +2087,8 @@ export default function ChatScreen({ route, navigation }) {
               progressPercent={progressPercent}
               activeUploadId={activeUploadId}
               uri={uploadingData.uri}
+              loaded={uploadingData.loaded}
+              total={uploadingData.total}
             />
           ) : (
             <View style={{ padding: 10 }}>
@@ -2076,7 +2115,11 @@ export default function ChatScreen({ route, navigation }) {
               <View style={{ height: 4, backgroundColor: 'rgba(255,255,255,0.3)', borderRadius: 2, overflow: 'hidden', width: 150 }}>
                 <View style={{ height: '100%', backgroundColor: '#fff', width: `${progressPercent}%` }} />
               </View>
-              <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 10, marginTop: 4, textAlign: 'right' }}>{progressPercent}%</Text>
+              <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 10, marginTop: 4, textAlign: 'right' }}>
+                {uploadingData.loaded !== undefined && uploadingData.total !== undefined && uploadingData.total > 0
+                  ? `${formatFileSize(uploadingData.loaded)} / ${formatFileSize(uploadingData.total)}` 
+                  : `${progressPercent}%`}
+              </Text>
             </View>
           )}
           <View style={styles.messageFooter}>
@@ -2126,6 +2169,27 @@ export default function ChatScreen({ route, navigation }) {
     const isReceived = Number(item.sender_id) === Number(userId);
     const isOwner = Number(item.sender_id) === Number(currentUserId);
     const isSelected = selectedIds.includes(item.id);
+
+    // Входящий (и исходящий) плейсхолдер загрузки для собеседника
+    if (item?.is_uploading && !item?.file_path) {
+      const progressPercent = Math.round(((item.upload_progress || 0) * 100));
+      const progressText = (item.upload_offset !== undefined && item.upload_total !== undefined && item.upload_total > 0)
+        ? `${formatFileSize(item.upload_offset)} / ${formatFileSize(item.upload_total)}`
+        : (progressPercent > 0 ? `${progressPercent}%` : '');
+
+      return (
+        <View style={[styles.messageWrapper, isReceived ? styles.receivedWrapper : styles.sentWrapper]}>
+          <View style={[styles.messageBubble, isReceived ? styles.receivedBubble : styles.sentBubble]}> 
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <ActivityIndicator size="small" color={isReceived ? colors.text : '#fff'} />
+              <Text style={[styles.messageText, isReceived ? { color: colors.text } : { color: '#fff' }, { marginLeft: 8 }]}>
+                Загрузка файла... {progressText}
+              </Text>
+            </View>
+          </View>
+        </View>
+      );
+    }
 
     // Группировка: если предыдущее сообщение от того же отправителя и разница во времени менее 2 минут
     const prevMsg = messages[index + 1]; // Помним, что FlatList inverted

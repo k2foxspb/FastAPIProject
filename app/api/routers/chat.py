@@ -23,7 +23,7 @@ from app.schemas.chat import (
 )
 from app.api.routers.notifications import manager as notifications_manager
 from app.core.fcm import send_fcm_notification
-from app.core.auth import get_current_user
+from app.core.auth import get_current_user, get_current_user_optional
 from loguru import logger
 from app.utils import storage
 
@@ -429,6 +429,87 @@ async def websocket_chat_endpoint(
                         await db.commit()
                 continue
 
+            if msg_type == "upload_started":
+                receiver_id_raw = message_data.get("receiver_id")
+                upload_id = message_data.get("upload_id")
+                message_type = message_data.get("message_type", "file")
+                client_id = message_data.get("client_id")
+                duration = message_data.get("duration")
+                reply_to_id = message_data.get("reply_to_id")
+                if receiver_id_raw and upload_id:
+                    try:
+                        receiver_id = int(receiver_id_raw)
+                    except (ValueError, TypeError):
+                        logger.warning(f"Invalid receiver_id format in WS upload_started: {receiver_id_raw}")
+                        continue
+
+                    # Создаем placeholder-сообщение с признаком загрузки
+                    new_msg = ChatMessage(
+                        sender_id=user_id,
+                        receiver_id=receiver_id,
+                        message=None,
+                        file_path=None,
+                        message_type=message_type,
+                        client_id=client_id,
+                        duration=duration,
+                        reply_to_id=reply_to_id,
+                        is_uploading=True,
+                        upload_id=upload_id
+                    )
+                    db.add(new_msg)
+                    await db.commit()
+                    await db.refresh(new_msg)
+
+                    # Готовим данные отвечаемого сообщения, если оно есть
+                    reply_to_data = None
+                    if reply_to_id:
+                        try:
+                            reply_res = await db.execute(
+                                select(ChatMessage, UserModel.first_name, UserModel.last_name)
+                                .join(UserModel, ChatMessage.sender_id == UserModel.id)
+                                .where(ChatMessage.id == reply_to_id)
+                            )
+                            reply_row = reply_res.first()
+                            if reply_row:
+                                r_msg, r_fname, r_lname = reply_row
+                                reply_to_data = {
+                                    "id": r_msg.id,
+                                    "message": r_msg.message,
+                                    "message_type": r_msg.message_type,
+                                    "sender_id": r_msg.sender_id,
+                                    "sender_name": f"{r_fname} {r_lname}".strip() or "Пользователь"
+                                }
+                        except Exception as e:
+                            logger.error(f"Error fetching reply_to message (upload_started): {e}")
+
+                    response_data = {
+                        "id": new_msg.id,
+                        "client_id": client_id,
+                        "sender_id": user_id,
+                        "sender_name": sender_name,
+                        "receiver_id": receiver_id,
+                        "message": None,
+                        "file_path": None,
+                        "message_type": message_type,
+                        "duration": duration,
+                        "reply_to_id": reply_to_id,
+                        "reply_to": reply_to_data,
+                        "timestamp": new_msg.timestamp.isoformat(),
+                        "is_read": 0,
+                        "is_uploading": True,
+                        "upload_id": upload_id
+                    }
+
+                    chat_event = {"type": "new_message", "data": response_data}
+                    await asyncio.gather(
+                        manager.send_personal_message(chat_event, receiver_id),
+                        manager.send_personal_message(chat_event, user_id),
+                        notifications_manager.send_personal_message(chat_event, receiver_id),
+                        notifications_manager.send_personal_message(chat_event, user_id),
+                        return_exceptions=True
+                    )
+                continue
+
             # Стандартная отправка сообщения
             receiver_id_raw = message_data.get("receiver_id")
             content = message_data.get("message")
@@ -742,6 +823,8 @@ async def get_chat_history(
             "timestamp": m.timestamp,
             "is_read": m.is_read,
             "reply_to_id": m.reply_to_id,
+            "is_uploading": getattr(m, 'is_uploading', False),
+            "upload_id": getattr(m, 'upload_id', None),
         }
         
         if m.reply_to:
@@ -1194,11 +1277,20 @@ async def upload_chunk(
     upload_id: str,
     offset: Optional[int] = Form(None),
     q_offset: Optional[int] = Query(None),
+    q_token: Optional[str] = Query(None),
     chunk: Optional[UploadFile] = File(None),
     db: AsyncSession = Depends(get_async_db),
-    current_user: UserModel = Depends(get_current_user)
+    current_user: Optional[UserModel] = Depends(get_current_user_optional)
 ):
     logger.debug(f"upload_chunk called for {upload_id}")
+    
+    # Пытаемся получить пользователя из q_token, если он не был получен из заголовка (Depends)
+    if not current_user and q_token:
+        current_user = await get_user_from_token(q_token, db)
+        
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
     user_id = current_user.id
     actual_offset = offset if offset is not None else q_offset
 
@@ -1238,6 +1330,34 @@ async def upload_chunk(
         content = await chunk.read()
         f.write(content)
         session.offset += len(content)
+
+    # Отправляем прогресс по WebSocket, если есть placeholder-сообщение
+    try:
+        res_msg = await db.execute(
+            select(ChatMessage).where(
+                ChatMessage.upload_id == upload_id,
+                ChatMessage.sender_id == user_id
+            )
+        )
+        ph_msg = res_msg.scalar_one_or_none()
+        if ph_msg:
+            progress_payload = {
+                "type": "upload_progress",
+                "data": {
+                    "upload_id": upload_id,
+                    "message_id": ph_msg.id,
+                    "offset": session.offset,
+                    "total": session.file_size,
+                    "progress": float(session.offset) / float(session.file_size) if session.file_size else 0.0
+                }
+            }
+            await asyncio.gather(
+                manager.send_personal_message(progress_payload, user_id),
+                manager.send_personal_message(progress_payload, ph_msg.receiver_id),
+                return_exceptions=True
+            )
+    except Exception as e:
+        logger.error(f"upload_progress send failed: {e}")
     
     if session.offset >= session.file_size:
         session.is_completed = True
@@ -1273,6 +1393,38 @@ async def upload_chunk(
         except Exception:
             pass
             
+        # Пытаемся обновить placeholder-сообщение и отправить событие обновления
+        try:
+            res_msg2 = await db.execute(
+                select(ChatMessage).where(
+                    ChatMessage.upload_id == upload_id,
+                    ChatMessage.sender_id == user_id
+                )
+            )
+            upd_msg = res_msg2.scalar_one_or_none()
+            if upd_msg:
+                upd_msg.file_path = url
+                upd_msg.message_type = message_type
+                upd_msg.is_uploading = False
+                await db.commit()
+                update_event = {"type": "message_updated", "data": {
+                    "id": upd_msg.id,
+                    "file_path": url,
+                    "message_type": message_type,
+                    "is_uploading": False,
+                    "upload_id": upload_id
+                }}
+                await asyncio.gather(
+                    manager.send_personal_message(update_event, user_id),
+                    manager.send_personal_message(update_event, upd_msg.receiver_id),
+                    notifications_manager.send_personal_message(update_event, upd_msg.receiver_id),
+                    notifications_manager.send_personal_message(update_event, user_id),
+                    return_exceptions=True
+                )
+        except Exception as e:
+            logger.error(f"message_updated send failed: {e}")
+            await db.rollback()
+        
         await db.commit()
         return {
             "status": "completed",
