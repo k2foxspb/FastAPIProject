@@ -23,7 +23,8 @@ from app.schemas.users import (
     FCMTokenUpdate, BulkDeletePhotosRequest, Friendship as FriendshipSchema,
     UserPhotoComment as UserPhotoCommentSchema, UserPhotoCommentCreate,
     TokenResponse, FirebaseConfigResponse, VerifyCodeRequest, ResendCodeRequest,
-    GoogleAuthRequest, FirebaseAuthRequest, RequestCodeRequest, PhoneCodeResponse
+    GoogleAuthRequest, FirebaseAuthRequest, RequestCodeRequest, PhoneCodeResponse,
+    ReactorInfo
 )
 from app.schemas.news import News as NewsSchema, NewsComment as NewsCommentSchema
 from app.schemas.reviews import Review as ReviewSchema
@@ -1424,7 +1425,11 @@ async def get_photo(
         func.count(UserPhotoCommentModel.id)
     ).where(UserPhotoCommentModel.photo_id == photo_id)
 
-    result = await db.execute(select(UserPhotoModel).where(UserPhotoModel.id == photo_id))
+    result = await db.execute(
+        select(UserPhotoModel)
+        .options(selectinload(UserPhotoModel.reactions).selectinload(UserPhotoReactionModel.user))
+        .where(UserPhotoModel.id == photo_id)
+    )
     photo = result.scalar_one_or_none()
     if not photo:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Photo not found")
@@ -1439,6 +1444,10 @@ async def get_photo(
     photo.dislikes_count = await db.scalar(dislikes_sub)
     photo.my_reaction = await db.scalar(my_reaction_sub)
     photo.comments_count = await db.scalar(comments_count_sub)
+    
+    # Популируем liked_by и disliked_by
+    photo.liked_by = [r.user for r in photo.reactions if r.reaction_type == 1]
+    photo.disliked_by = [r.user for r in photo.reactions if r.reaction_type == -1]
 
     return photo
 
@@ -1454,9 +1463,14 @@ async def react_to_photo(
     if reaction_type not in [1, -1, 0]:
         raise HTTPException(status_code=400, detail="Invalid reaction type")
 
-    # Проверяем существование фото
-    photo_res = await db.execute(select(UserPhotoModel.id).where(UserPhotoModel.id == photo_id))
-    if not photo_res.scalar_one_or_none():
+    # Проверяем существование фото (загружаем с владельцем для уведомлений)
+    photo_res = await db.execute(
+        select(UserPhotoModel)
+        .options(selectinload(UserPhotoModel.user))
+        .where(UserPhotoModel.id == photo_id)
+    )
+    photo_obj = photo_res.scalar_one_or_none()
+    if not photo_obj:
         raise HTTPException(status_code=404, detail="Photo not found")
 
     # Ищем существующую реакцию
@@ -1483,6 +1497,30 @@ async def react_to_photo(
             db.add(new_reaction)
     
     await db.commit()
+
+    # Уведомление владельцу
+    if photo_obj.user_id != current_user.id and reaction_type != 0:
+        action = "лайк" if reaction_type == 1 else "дизлайк"
+        msg = {
+            "type": "photo_reaction",
+            "photo_id": photo_id,
+            "reaction_type": reaction_type,
+            "sender_id": current_user.id,
+            "sender_name": f"{current_user.first_name} {current_user.last_name}" if current_user.first_name else current_user.email,
+            "message": f"поставил {action} вашему фото"
+        }
+        asyncio.create_task(notification_manager.send_personal_message(msg, photo_obj.user_id))
+        
+        if photo_obj.user.fcm_token:
+             asyncio.create_task(send_fcm_notification(
+                token=photo_obj.user.fcm_token,
+                title="Новая реакция",
+                body=f"{msg['sender_name']} {msg['message']}",
+                data=msg,
+                sender_id=current_user.id,
+                sender_avatar=current_user.avatar_url
+            ))
+
     return {"status": "ok"}
 
 
@@ -1530,7 +1568,10 @@ async def get_photo_comments(
      .outerjoin(dislikes_sub, UserPhotoCommentModel.id == dislikes_sub.c.comment_id)\
      .outerjoin(my_reaction_sub, UserPhotoCommentModel.id == my_reaction_sub.c.comment_id)\
      .where(UserPhotoCommentModel.photo_id == photo_id)\
-     .options(selectinload(UserPhotoCommentModel.user))\
+     .options(
+         selectinload(UserPhotoCommentModel.user),
+         selectinload(UserPhotoCommentModel.reactions).selectinload(UserPhotoCommentReactionModel.user)
+     )\
      .order_by(UserPhotoCommentModel.created_at.asc())
     
     result = await db.execute(query)
@@ -1545,6 +1586,11 @@ async def get_photo_comments(
         comment_dict["likes_count"] = row[1]
         comment_dict["dislikes_count"] = row[2]
         comment_dict["my_reaction"] = row[3]
+        
+        # Популируем liked_by и disliked_by
+        comment_dict["liked_by"] = [ReactorInfo.model_validate(r.user).model_dump() for r in c.reactions if r.reaction_type == 1]
+        comment_dict["disliked_by"] = [ReactorInfo.model_validate(r.user).model_dump() for r in c.reactions if r.reaction_type == -1]
+        
         response.append(comment_dict)
         
     return response
@@ -1560,9 +1606,14 @@ async def react_to_photo_comment(
     if reaction_type not in [1, -1, 0]:
         raise HTTPException(status_code=400, detail="Invalid reaction type")
 
-    # Проверяем существование комментария
-    comment_res = await db.execute(select(UserPhotoCommentModel.id).where(UserPhotoCommentModel.id == comment_id))
-    if not comment_res.scalar_one_or_none():
+    # Проверяем существование комментария (загружаем с автором для уведомлений)
+    comment_res = await db.execute(
+        select(UserPhotoCommentModel)
+        .options(selectinload(UserPhotoCommentModel.user))
+        .where(UserPhotoCommentModel.id == comment_id)
+    )
+    comment_obj = comment_res.scalar_one_or_none()
+    if not comment_obj:
         raise HTTPException(status_code=404, detail="Comment not found")
 
     # Ищем существующую реакцию
@@ -1592,6 +1643,30 @@ async def react_to_photo_comment(
         db.add(new_reaction)
     
     await db.commit()
+
+    # Уведомление владельцу комментария
+    if comment_obj.user_id != current_user.id:
+        action = "лайк" if reaction_type == 1 else "дизлайк"
+        msg = {
+            "type": "photo_comment_reaction",
+            "comment_id": comment_id,
+            "reaction_type": reaction_type,
+            "sender_id": current_user.id,
+            "sender_name": f"{current_user.first_name} {current_user.last_name}" if current_user.first_name else current_user.email,
+            "message": f"поставил {action} вашему комментарию к фото: {comment_obj.comment[:50]}..."
+        }
+        asyncio.create_task(notification_manager.send_personal_message(msg, comment_obj.user_id))
+        
+        if comment_obj.user.fcm_token:
+             asyncio.create_task(send_fcm_notification(
+                token=comment_obj.user.fcm_token,
+                title="Реакция на ваш комментарий",
+                body=f"{msg['sender_name']} {msg['message']}",
+                data=msg,
+                sender_id=current_user.id,
+                sender_avatar=current_user.avatar_url
+            ))
+
     return {"status": "ok", "reaction_type": reaction_type}
 
 
@@ -1603,7 +1678,11 @@ async def add_photo_comment(
     db: AsyncSession = Depends(get_async_db)
 ):
     """Добавить комментарий к фотографии."""
-    photo_res = await db.execute(select(UserPhotoModel).where(UserPhotoModel.id == photo_id))
+    photo_res = await db.execute(
+        select(UserPhotoModel)
+        .options(selectinload(UserPhotoModel.user))
+        .where(UserPhotoModel.id == photo_id)
+    )
     photo = photo_res.scalar_one_or_none()
     if not photo:
         raise HTTPException(status_code=404, detail="Photo not found")
@@ -1623,6 +1702,28 @@ async def add_photo_comment(
     await db.commit()
     await db.refresh(new_comment)
     
+    # Уведомление владельцу фото
+    if photo.user_id != current_user.id:
+        msg = {
+            "type": "photo_comment",
+            "photo_id": photo_id,
+            "comment_id": new_comment.id,
+            "sender_id": current_user.id,
+            "sender_name": f"{current_user.first_name} {current_user.last_name}" if current_user.first_name else current_user.email,
+            "message": f"прокомментировал ваше фото: {new_comment.comment[:50]}..."
+        }
+        asyncio.create_task(notification_manager.send_personal_message(msg, photo.user_id))
+        
+        if photo.user.fcm_token:
+             asyncio.create_task(send_fcm_notification(
+                token=photo.user.fcm_token,
+                title="Новый комментарий к фото",
+                body=f"{msg['sender_name']} {msg['message']}",
+                data=msg,
+                sender_id=current_user.id,
+                sender_avatar=current_user.avatar_url
+            ))
+
     res = UserPhotoCommentSchema.model_validate(new_comment).model_dump()
     res["first_name"] = current_user.first_name
     res["last_name"] = current_user.last_name

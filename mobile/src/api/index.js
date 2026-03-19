@@ -10,25 +10,31 @@ const api = axios.create({
 });
 
 // Интерцептор для добавления Firebase App Check токена
+let appCheckRef = null;
+let getTokenFn = null;
+
 api.interceptors.request.use(async (config) => {
   try {
-    // Используем модульный API для получения токена (match v22+)
-    const { getAppCheck, getToken } = require('@react-native-firebase/app-check');
-    if (typeof getToken === 'function' && typeof getAppCheck === 'function') {
-      const appCheck = getAppCheck();
-      if (appCheck) {
-        const response = await getToken(appCheck, false);
-        const token = response?.token;
-        if (token) {
-          config.headers['X-Firebase-AppCheck'] = token;
-        }
+    // Импортируем модули один раз (v22+)
+    if (!getTokenFn) {
+      const { getAppCheck, getToken } = require('@react-native-firebase/app-check');
+      if (typeof getAppCheck === 'function' && typeof getToken === 'function') {
+        appCheckRef = getAppCheck();
+        getTokenFn = getToken;
+      }
+    }
+
+    if (getTokenFn && appCheckRef) {
+      // Использование false (forceRefresh=false) позволяет Firebase SDK возвращать кэшированный токен, что очень быстро.
+      const response = await getTokenFn(appCheckRef, false);
+      const token = response?.token;
+      if (token) {
+        config.headers['X-Firebase-AppCheck'] = token;
       }
     }
   } catch (error) {
-    // В некоторых средах (например, эмулятор без Play Services) может выдать ошибку
-    // Мы не блокируем запрос, если не удалось получить токен, бэкенд сам решит, что делать.
     if (__DEV__) {
-      console.log('[AppCheck Interceptor] Token acquisition skipped (native broken or no provider):', error.message);
+      console.log('[AppCheck Interceptor] Token acquisition skipped:', error.message);
     }
   }
   return config;

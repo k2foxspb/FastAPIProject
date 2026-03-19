@@ -17,7 +17,7 @@ from app.api.routers.notifications import manager as notification_manager
 from app.core.fcm import send_fcm_notification
 from app.models.users import User as UserModel, AppVersion as AppVersionModel, Friendship as FriendshipModel
 from app.schemas.news import News as NewsSchema, NewsCreate, NewsUpdate, NewsComment as NewsCommentSchema, NewsCommentCreate
-from app.schemas.users import AppVersionResponse
+from app.schemas.users import AppVersionResponse, ReactorInfo
 
 router = APIRouter(prefix="/news", tags=["news"])
 
@@ -454,7 +454,13 @@ async def get_news_detail(
         NewsReactionModel.reaction_type
     ).where(NewsReactionModel.news_id == news_id, NewsReactionModel.user_id == current_user.id) if current_user else None
 
-    result = await db.execute(select(NewsModel).options(selectinload(NewsModel.images), selectinload(NewsModel.author)).where(NewsModel.id == news_id))
+    result = await db.execute(
+        select(NewsModel).options(
+            selectinload(NewsModel.images), 
+            selectinload(NewsModel.author),
+            selectinload(NewsModel.reactions).selectinload(NewsReactionModel.user)
+        ).where(NewsModel.id == news_id)
+    )
     news = result.scalar_one_or_none()
     if not news:
         raise HTTPException(status_code=404, detail="News not found")
@@ -464,6 +470,10 @@ async def get_news_detail(
     news.dislikes_count = await db.scalar(dislikes_sub)
     news.comments_count = await db.scalar(comments_count_sub)
     news.my_reaction = await db.scalar(my_reaction_sub) if my_reaction_sub is not None else None
+
+    # Популируем liked_by и disliked_by
+    news.liked_by = [r.user for r in news.reactions if r.reaction_type == 1]
+    news.disliked_by = [r.user for r in news.reactions if r.reaction_type == -1]
     
     if news.author:
         news.author_first_name = news.author.first_name
@@ -483,9 +493,14 @@ async def react_to_news(
     if reaction_type not in [1, -1, 0]:
         raise HTTPException(status_code=400, detail="Invalid reaction type")
 
-    # Проверяем существование новости
-    news_res = await db.execute(select(NewsModel.id).where(NewsModel.id == news_id))
-    if not news_res.scalar_one_or_none():
+    # Проверяем существование новости (загружаем с автором для уведомлений)
+    news_res = await db.execute(
+        select(NewsModel)
+        .options(selectinload(NewsModel.author))
+        .where(NewsModel.id == news_id)
+    )
+    news_obj = news_res.scalar_one_or_none()
+    if not news_obj:
         raise HTTPException(status_code=404, detail="News not found")
 
     # Ищем существующую реакцию
@@ -515,6 +530,30 @@ async def react_to_news(
         db.add(new_reaction)
     
     await db.commit()
+
+    # Уведомление владельцу
+    if news_obj.author_id != current_user.id:
+        action = "лайк" if reaction_type == 1 else "дизлайк"
+        msg = {
+            "type": "news_reaction",
+            "news_id": news_id,
+            "reaction_type": reaction_type,
+            "sender_id": current_user.id,
+            "sender_name": f"{current_user.first_name} {current_user.last_name}" if current_user.first_name else current_user.email,
+            "message": f"поставил {action} вашей новости \"{news_obj.title}\""
+        }
+        asyncio.create_task(notification_manager.send_personal_message(msg, news_obj.author_id))
+        
+        if news_obj.author.fcm_token:
+             asyncio.create_task(send_fcm_notification(
+                token=news_obj.author.fcm_token,
+                title=f"Новая реакция",
+                body=f"{msg['sender_name']} {msg['message']}",
+                data=msg,
+                sender_id=current_user.id,
+                sender_avatar=current_user.avatar_url
+            ))
+
     return {"status": "ok", "reaction_type": reaction_type}
 
 @router.get("/{news_id}/comments", response_model=list[NewsCommentSchema])
@@ -547,7 +586,10 @@ async def get_news_comments(
     ).outerjoin(likes_sub, NewsCommentModel.id == likes_sub.c.comment_id)\
      .outerjoin(dislikes_sub, NewsCommentModel.id == dislikes_sub.c.comment_id)\
      .where(NewsCommentModel.news_id == news_id)\
-     .options(selectinload(NewsCommentModel.user))\
+     .options(
+         selectinload(NewsCommentModel.user),
+         selectinload(NewsCommentModel.reactions).selectinload(NewsCommentReactionModel.user)
+     )\
      .order_by(NewsCommentModel.created_at.asc())
 
     if current_user:
@@ -573,6 +615,11 @@ async def get_news_comments(
         comment_dict["likes_count"] = row[1]
         comment_dict["dislikes_count"] = row[2]
         comment_dict["my_reaction"] = row[3]
+        
+        # Популируем liked_by и disliked_by
+        comment_dict["liked_by"] = [ReactorInfo.model_validate(r.user).model_dump() for r in c.reactions if r.reaction_type == 1]
+        comment_dict["disliked_by"] = [ReactorInfo.model_validate(r.user).model_dump() for r in c.reactions if r.reaction_type == -1]
+        
         response.append(comment_dict)
         
     return response
@@ -588,9 +635,14 @@ async def react_to_news_comment(
     if reaction_type not in [1, -1, 0]:
         raise HTTPException(status_code=400, detail="Invalid reaction type")
 
-    # Проверяем существование комментария
-    comment_res = await db.execute(select(NewsCommentModel.id).where(NewsCommentModel.id == comment_id))
-    if not comment_res.scalar_one_or_none():
+    # Проверяем существование комментария (загружаем с автором для уведомлений)
+    comment_res = await db.execute(
+        select(NewsCommentModel)
+        .options(selectinload(NewsCommentModel.user))
+        .where(NewsCommentModel.id == comment_id)
+    )
+    comment_obj = comment_res.scalar_one_or_none()
+    if not comment_obj:
         raise HTTPException(status_code=404, detail="Comment not found")
 
     # Ищем существующую реакцию
@@ -620,6 +672,30 @@ async def react_to_news_comment(
         db.add(new_reaction)
     
     await db.commit()
+
+    # Уведомление владельцу комментария
+    if comment_obj.user_id != current_user.id:
+        action = "лайк" if reaction_type == 1 else "дизлайк"
+        msg = {
+            "type": "comment_reaction",
+            "comment_id": comment_id,
+            "reaction_type": reaction_type,
+            "sender_id": current_user.id,
+            "sender_name": f"{current_user.first_name} {current_user.last_name}" if current_user.first_name else current_user.email,
+            "message": f"поставил {action} вашему комментарию: {comment_obj.comment[:50]}..."
+        }
+        asyncio.create_task(notification_manager.send_personal_message(msg, comment_obj.user_id))
+        
+        if comment_obj.user.fcm_token:
+             asyncio.create_task(send_fcm_notification(
+                token=comment_obj.user.fcm_token,
+                title="Реакция на ваш комментарий",
+                body=f"{msg['sender_name']} {msg['message']}",
+                data=msg,
+                sender_id=current_user.id,
+                sender_avatar=current_user.avatar_url
+            ))
+
     return {"status": "ok", "reaction_type": reaction_type}
 
 @router.post("/{news_id}/comments", response_model=NewsCommentSchema)
@@ -630,8 +706,13 @@ async def add_news_comment(
     db: AsyncSession = Depends(get_async_db)
 ):
     """Добавить комментарий к новости."""
-    news_res = await db.execute(select(NewsModel.id).where(NewsModel.id == news_id))
-    if not news_res.scalar_one_or_none():
+    news_res = await db.execute(
+        select(NewsModel)
+        .options(selectinload(NewsModel.author))
+        .where(NewsModel.id == news_id)
+    )
+    news_obj = news_res.scalar_one_or_none()
+    if not news_obj:
         raise HTTPException(status_code=404, detail="News not found")
 
     new_comment = NewsCommentModel(
@@ -643,6 +724,28 @@ async def add_news_comment(
     await db.commit()
     await db.refresh(new_comment)
     
+    # Уведомление владельцу новости
+    if news_obj.author_id != current_user.id:
+        msg = {
+            "type": "news_comment",
+            "news_id": news_id,
+            "comment_id": new_comment.id,
+            "sender_id": current_user.id,
+            "sender_name": f"{current_user.first_name} {current_user.last_name}" if current_user.first_name else current_user.email,
+            "message": f"прокомментировал вашу новость \"{news_obj.title}\": {new_comment.comment[:50]}..."
+        }
+        asyncio.create_task(notification_manager.send_personal_message(msg, news_obj.author_id))
+        
+        if news_obj.author.fcm_token:
+             asyncio.create_task(send_fcm_notification(
+                token=news_obj.author.fcm_token,
+                title="Новый комментарий",
+                body=f"{msg['sender_name']} {msg['message']}",
+                data=msg,
+                sender_id=current_user.id,
+                sender_avatar=current_user.avatar_url
+            ))
+
     # Загружаем со связью пользователя для ответа
     result = await db.execute(
         select(NewsCommentModel).options(selectinload(NewsCommentModel.user)).where(NewsCommentModel.id == new_comment.id)

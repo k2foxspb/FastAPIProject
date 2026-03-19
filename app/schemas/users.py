@@ -17,6 +17,13 @@ class UserUpdate(BaseModel):
     first_name: str | None = None
     last_name: str | None = None
 
+class ReactorInfo(BaseModel):
+    id: int
+    first_name: str | None = None
+    last_name: str | None = None
+    avatar_url: str | None = None
+    model_config = ConfigDict(from_attributes=True)
+
 
 class UserPhotoBase(BaseModel):
     image_url: str
@@ -53,7 +60,8 @@ class UserPhotoComment(UserPhotoCommentBase):
     likes_count: int = 0
     dislikes_count: int = 0
     my_reaction: int | None = None
-
+    liked_by: list[ReactorInfo] = []
+    disliked_by: list[ReactorInfo] = []
     model_config = ConfigDict(from_attributes=True)
 
 class UserPhoto(UserPhotoBase):
@@ -63,6 +71,8 @@ class UserPhoto(UserPhotoBase):
     dislikes_count: int = 0
     my_reaction: int | None = None
     comments_count: int = 0
+    liked_by: list[ReactorInfo] = []
+    disliked_by: list[ReactorInfo] = []
     model_config = ConfigDict(from_attributes=True)
 
     @classmethod

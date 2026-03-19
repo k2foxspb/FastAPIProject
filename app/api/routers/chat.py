@@ -23,6 +23,7 @@ from app.schemas.chat import (
 )
 from app.api.routers.notifications import manager as notifications_manager
 from app.core.fcm import send_fcm_notification
+from app.core.auth import get_current_user
 from loguru import logger
 from app.utils import storage
 
@@ -78,16 +79,19 @@ async def get_user_from_token(token: str, db: AsyncSession):
         user_id = payload.get("id")
         email = payload.get("sub")
         
-        if user_id:
-            return int(user_id)
-        
-        if email:
-            # Fallback to lookup by email if id is missing
-            result = await db.execute(select(UserModel.id).where(UserModel.email == email))
-            return result.scalar_one_or_none()
+        if not user_id and not email:
+            return None
             
-        return None
-    except jwt.PyJWTError:
+        # Всегда проверяем существование и активность пользователя в БД
+        query = select(UserModel.id).where(UserModel.is_active == True)
+        if user_id:
+            query = query.where(UserModel.id == int(user_id))
+        else:
+            query = query.where(UserModel.email == email)
+            
+        result = await db.execute(query)
+        return result.scalar_one_or_none()
+    except Exception:
         return None
 
 @router.websocket("/ws/{token}")
@@ -531,10 +535,10 @@ async def websocket_chat_endpoint(
 @router.post("/message", response_model=ChatMessageResponse)
 async def send_message_api(
     msg_in: ChatMessageCreate,
-    token: str,
-    db: AsyncSession = Depends(get_async_db)
+    db: AsyncSession = Depends(get_async_db),
+    current_user: UserModel = Depends(get_current_user)
 ):
-    user_id = await get_user_from_token(token, db)
+    user_id = current_user.id
     if user_id is None:
         raise HTTPException(status_code=401, detail="Invalid token")
     
@@ -651,12 +655,12 @@ async def send_message_api(
 @router.get("/history/{other_user_id}", response_model=List[ChatMessageResponse])
 async def get_chat_history(
     other_user_id: int,
-    token: str,
     limit: int = 15,
     skip: int = 0,
-    db: AsyncSession = Depends(get_async_db)
+    db: AsyncSession = Depends(get_async_db),
+    current_user: UserModel = Depends(get_current_user)
 ):
-    user_id = await get_user_from_token(token, db)
+    user_id = current_user.id
     if user_id is None:
         return []
 
@@ -715,10 +719,10 @@ async def get_chat_history(
 
 @router.get("/dialogs", response_model=List[DialogResponse])
 async def get_dialogs(
-    token: str,
-    db: AsyncSession = Depends(get_async_db)
+    db: AsyncSession = Depends(get_async_db),
+    current_user: UserModel = Depends(get_current_user)
 ):
-    user_id = await get_user_from_token(token, db)
+    user_id = current_user.id
     if user_id is None:
         raise HTTPException(status_code=401, detail="Invalid token")
 
@@ -785,10 +789,10 @@ async def get_dialogs(
 @router.post("/mark-as-read/{other_user_id}")
 async def mark_messages_as_read(
     other_user_id: int,
-    token: str,
-    db: AsyncSession = Depends(get_async_db)
+    db: AsyncSession = Depends(get_async_db),
+    current_user: UserModel = Depends(get_current_user)
 ):
-    user_id = await get_user_from_token(token, db)
+    user_id = current_user.id
     if user_id is None:
         raise HTTPException(status_code=401, detail="Invalid token")
 
@@ -825,10 +829,10 @@ async def mark_messages_as_read(
 @router.delete("/message/{message_id}")
 async def delete_message(
     message_id: int,
-    token: str,
-    db: AsyncSession = Depends(get_async_db)
+    db: AsyncSession = Depends(get_async_db),
+    current_user: UserModel = Depends(get_current_user)
 ):
-    user_id = await get_user_from_token(token, db)
+    user_id = current_user.id
     if user_id is None:
         raise HTTPException(status_code=401, detail="Invalid token")
 
@@ -894,10 +898,10 @@ async def delete_message(
 @router.post("/messages/bulk-delete")
 async def bulk_delete_messages(
     request: BulkDeleteMessagesRequest,
-    token: str,
-    db: AsyncSession = Depends(get_async_db)
+    db: AsyncSession = Depends(get_async_db),
+    current_user: UserModel = Depends(get_current_user)
 ):
-    user_id = await get_user_from_token(token, db)
+    user_id = current_user.id
     if user_id is None:
         raise HTTPException(status_code=401, detail="Invalid token")
 
@@ -1020,11 +1024,11 @@ async def upload_chat_file(
 @router.post("/upload/init", response_model=UploadSessionResponse)
 async def init_upload(
     req: UploadInitRequest,
-    token: str,
-    db: AsyncSession = Depends(get_async_db)
+    db: AsyncSession = Depends(get_async_db),
+    current_user: UserModel = Depends(get_current_user)
 ):
     try:
-        user_id = await get_user_from_token(token, db)
+        user_id = current_user.id
         if user_id is None:
             raise HTTPException(status_code=401, detail="Invalid token")
         
@@ -1048,10 +1052,10 @@ async def init_upload(
 
 @router.get("/upload/active", response_model=List[dict])
 async def get_active_uploads(
-    token: str,
-    db: AsyncSession = Depends(get_async_db)
+    db: AsyncSession = Depends(get_async_db),
+    current_user: UserModel = Depends(get_current_user)
 ):
-    user_id = await get_user_from_token(token, db)
+    user_id = current_user.id
     if user_id is None:
         raise HTTPException(status_code=401, detail="Invalid token")
         
@@ -1075,10 +1079,10 @@ async def get_active_uploads(
 @router.get("/upload/status/{upload_id}", response_model=UploadStatusResponse)
 async def get_upload_status(
     upload_id: str,
-    token: str,
-    db: AsyncSession = Depends(get_async_db)
+    db: AsyncSession = Depends(get_async_db),
+    current_user: UserModel = Depends(get_current_user)
 ):
-    user_id = await get_user_from_token(token, db)
+    user_id = current_user.id
     if user_id is None:
         raise HTTPException(status_code=401, detail="Invalid token")
         
@@ -1097,26 +1101,15 @@ async def get_upload_status(
 @router.post("/upload/chunk/{upload_id}")
 async def upload_chunk(
     upload_id: str,
-    token: Optional[str] = Form(None),
     offset: Optional[int] = Form(None),
     q_offset: Optional[int] = Query(None),
-    q_token: Optional[str] = Query(None),
     chunk: Optional[UploadFile] = File(None),
-    db: AsyncSession = Depends(get_async_db)
+    db: AsyncSession = Depends(get_async_db),
+    current_user: UserModel = Depends(get_current_user)
 ):
     logger.debug(f"upload_chunk called for {upload_id}")
-    logger.debug(f"Params: offset={offset}, q_offset={q_offset}, token={token[:10] if token else None}, q_token={q_token[:10] if q_token else None}")
-    
-    # Support token and offset from multiple sources for maximum resilience
-    actual_token = token or q_token
+    user_id = current_user.id
     actual_offset = offset if offset is not None else q_offset
-    
-    if actual_token is None:
-        logger.debug("Missing token")
-        raise HTTPException(status_code=401, detail="Missing token")
-    
-    # Clean token (remove potential quotes)
-    actual_token = actual_token.strip().strip('"').strip("'")
 
     if actual_offset is None:
         logger.debug("Missing offset")
@@ -1126,13 +1119,9 @@ async def upload_chunk(
         logger.debug("Missing chunk file")
         # Log all fields for debugging
         return {"status": "error", "message": "Missing chunk", "debug_received_params": {
-            "offset": offset, "q_offset": q_offset, "token_provided": bool(actual_token)
+            "offset": offset, "q_offset": q_offset
         }}
 
-    user_id = await get_user_from_token(actual_token, db)
-    if user_id is None:
-        raise HTTPException(status_code=401, detail="Invalid token")
-        
     res = await db.execute(select(FileUploadSession).where(FileUploadSession.id == upload_id))
     session = res.scalar_one_or_none()
     

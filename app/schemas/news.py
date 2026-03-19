@@ -1,5 +1,6 @@
 from datetime import datetime
 from pydantic import Field, BaseModel, ConfigDict
+from app.schemas.users import ReactorInfo
 
 class NewsCreate(BaseModel):
     title: str = Field(min_length=3, max_length=200)
@@ -33,6 +34,8 @@ class NewsComment(BaseModel):
     likes_count: int = 0
     dislikes_count: int = 0
     my_reaction: int | None = None
+    liked_by: list[ReactorInfo] = []
+    disliked_by: list[ReactorInfo] = []
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -54,5 +57,7 @@ class News(BaseModel):
     author_first_name: str | None = None
     author_last_name: str | None = None
     author_avatar_url: str | None = None
+    liked_by: list[ReactorInfo] = []
+    disliked_by: list[ReactorInfo] = []
 
     model_config = ConfigDict(from_attributes=True)

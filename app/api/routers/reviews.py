@@ -1,8 +1,9 @@
+import asyncio
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select, update
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import joinedload, selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_buyer, get_current_user
@@ -12,6 +13,7 @@ from app.models.users import User as UserModel
 from app.models.products import Product as ProductModel
 from app.schemas.reviews import Review as ReviewSchema, Review, CreateReview
 from app.api.routers.notifications import manager
+from app.core.fcm import send_fcm_notification
 
 router = APIRouter(
     prefix="/reviews",
@@ -29,9 +31,14 @@ async def react_to_review(
     if reaction_type not in [1, -1, 0]:
         raise HTTPException(status_code=400, detail="Invalid reaction type")
 
-    # Проверяем существование отзыва
-    review_res = await db.execute(select(ReviewModel.id).where(ReviewModel.id == review_id))
-    if not review_res.scalar_one_or_none():
+    # Проверяем существование отзыва (загружаем с автором для уведомлений)
+    review_res = await db.execute(
+        select(ReviewModel)
+        .options(selectinload(ReviewModel.user))
+        .where(ReviewModel.id == review_id)
+    )
+    review_obj = review_res.scalar_one_or_none()
+    if not review_obj:
         raise HTTPException(status_code=404, detail="Review not found")
 
     # Ищем существующую реакцию
@@ -61,6 +68,30 @@ async def react_to_review(
         db.add(new_reaction)
     
     await db.commit()
+
+    # Уведомление владельцу отзыва
+    if review_obj.user_id != current_user.id:
+        action = "лайк" if reaction_type == 1 else "дизлайк"
+        msg = {
+            "type": "review_reaction",
+            "review_id": review_id,
+            "reaction_type": reaction_type,
+            "sender_id": current_user.id,
+            "sender_name": f"{current_user.first_name} {current_user.last_name}" if current_user.first_name else current_user.email,
+            "message": f"поставил {action} вашему отзыву: {review_obj.comment[:50]}..."
+        }
+        await manager.send_personal_message(msg, review_obj.user_id)
+        
+        if review_obj.user.fcm_token:
+             asyncio.create_task(send_fcm_notification(
+                token=review_obj.user.fcm_token,
+                title="Реакция на ваш отзыв",
+                body=f"{msg['sender_name']} {msg['message']}",
+                data=msg,
+                sender_id=current_user.id,
+                sender_avatar=current_user.avatar_url
+            ))
+
     return {"status": "ok", "reaction_type": reaction_type}
 
 @router.get("", response_model=list[ReviewSchema])
