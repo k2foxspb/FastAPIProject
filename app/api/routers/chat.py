@@ -83,7 +83,7 @@ async def get_user_from_token(token: str, db: AsyncSession):
             return None
             
         # Всегда проверяем существование и активность пользователя в БД
-        query = select(UserModel.id).where(UserModel.is_active == True)
+        query = select(UserModel).where(UserModel.is_active == True)
         if user_id:
             query = query.where(UserModel.id == int(user_id))
         else:
@@ -106,21 +106,19 @@ async def websocket_chat_endpoint(
     # Clean token (remove potential quotes if passed incorrectly)
     token = token.strip().strip('"').strip("'")
 
-    user_id = await get_user_from_token(token, db)
-    if user_id is None:
+    user = await get_user_from_token(token, db)
+    if user is None:
         logger.warning(f"Chat WS rejected: invalid token {token[:10]}...")
         await websocket.close(code=4003)
         return
-
-    # Using our custom connect that doesn't call accept() again
+        
+    user_id = user.id
     await manager.connect(websocket, user_id)
 
     # Fetch sender info once for the session
-    sender_result = await db.execute(select(UserModel.first_name, UserModel.last_name, UserModel.avatar_url).where(UserModel.id == user_id))
-    sender_row = sender_result.first()
-    sender_name = f"{sender_row.first_name} {sender_row.last_name}".strip() if sender_row and (sender_row.first_name or sender_row.last_name) else "Пользователь"
+    sender_name = f"{user.first_name} {user.last_name}".strip() if (user.first_name or user.last_name) else "Пользователь"
     if not sender_name: sender_name = "Пользователь"
-    sender_avatar = sender_row.avatar_url if sender_row else None
+    sender_avatar = user.avatar_url
 
     try:
         while True:
@@ -141,7 +139,7 @@ async def websocket_chat_endpoint(
             if msg_type == "get_dialogs":
                 from app.api.routers.chat import get_dialogs as fetch_dialogs_api
                 try:
-                    dialogs_list = await fetch_dialogs_api(token=token, db=db)
+                    dialogs_list = await fetch_dialogs_api(db=db, current_user=user)
                     # Конвертируем datetime в ISO формат для JSON
                     processed_dialogs = []
                     for d in dialogs_list:
@@ -166,7 +164,7 @@ async def websocket_chat_endpoint(
                 if other_user_id:
                     from app.api.routers.chat import get_chat_history as fetch_history_api
                     try:
-                        history = await fetch_history_api(other_user_id=int(other_user_id), token=token, limit=limit, skip=skip, db=db)
+                        history = await fetch_history_api(other_user_id=int(other_user_id), limit=limit, skip=skip, db=db, current_user=user)
                         # Конвертируем datetime в ISO формат для JSON
                         processed_history = []
                         for m in history:
@@ -193,7 +191,6 @@ async def websocket_chat_endpoint(
                 query = message_data.get("query", "").lower()
                 if other_user_id and query:
                     try:
-                        from sqlalchemy import or_
                         stmt = select(ChatMessage).where(
                             or_(
                                 and_(ChatMessage.sender_id == user_id, ChatMessage.receiver_id == int(other_user_id)),
