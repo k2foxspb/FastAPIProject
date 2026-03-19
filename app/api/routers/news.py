@@ -170,7 +170,10 @@ async def get_news(
     ).outerjoin(likes_sub, NewsModel.id == likes_sub.c.news_id)\
      .outerjoin(dislikes_sub, NewsModel.id == dislikes_sub.c.news_id)\
      .outerjoin(comments_sub, NewsModel.id == comments_sub.c.news_id)\
-     .options(selectinload(NewsModel.author))
+     .options(
+         selectinload(NewsModel.author),
+         selectinload(NewsModel.reactions).selectinload(NewsReactionModel.user)
+     )
 
     # Если пользователь авторизован, добавляем его реакцию
     if current_user:
@@ -202,6 +205,9 @@ async def get_news(
             news_obj.author_first_name = news_obj.author.first_name
             news_obj.author_last_name = news_obj.author.last_name
             news_obj.author_avatar_url = news_obj.author.avatar_url
+        
+        news_obj.liked_by = [r.user for r in news_obj.reactions if r.reaction_type == 1]
+        news_obj.disliked_by = [r.user for r in news_obj.reactions if r.reaction_type == -1]
             
         news_list.append(news_obj)
     return news_list
@@ -239,7 +245,10 @@ async def get_user_news(
      .outerjoin(dislikes_sub, NewsModel.id == dislikes_sub.c.news_id)\
      .outerjoin(comments_sub, NewsModel.id == comments_sub.c.news_id)\
      .where(NewsModel.author_id == user_id)\
-     .options(selectinload(NewsModel.author))
+     .options(
+         selectinload(NewsModel.author),
+         selectinload(NewsModel.reactions).selectinload(NewsReactionModel.user)
+     )
 
     # Если пользователь авторизован, добавляем его реакцию
     if current_user:
@@ -274,6 +283,9 @@ async def get_user_news(
             news_obj.author_first_name = news_obj.author.first_name
             news_obj.author_last_name = news_obj.author.last_name
             news_obj.author_avatar_url = news_obj.author.avatar_url
+        
+        news_obj.liked_by = [r.user for r in news_obj.reactions if r.reaction_type == 1]
+        news_obj.disliked_by = [r.user for r in news_obj.reactions if r.reaction_type == -1]
             
         news_list.append(news_obj)
     return news_list

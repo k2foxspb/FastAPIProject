@@ -2,11 +2,11 @@ import asyncio
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select, update
+from sqlalchemy import select, update, func
 from sqlalchemy.orm import joinedload, selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import get_current_buyer, get_current_user
+from app.core.auth import get_current_buyer, get_current_user, get_current_user_optional
 from app.api.dependencies import get_async_db
 from app.models.reviews import Reviews as ReviewModel, ReviewReaction as ReviewReactionModel
 from app.models.users import User as UserModel
@@ -95,17 +95,35 @@ async def react_to_review(
     return {"status": "ok", "reaction_type": reaction_type}
 
 @router.get("", response_model=list[ReviewSchema])
-async def get_review(db: AsyncSession = Depends(get_async_db)):
+async def get_review(
+    db: AsyncSession = Depends(get_async_db),
+    current_user: Optional[UserModel] = Depends(get_current_user_optional)
+):
     result = await db.execute(
         select(ReviewModel)
-        .options(joinedload(ReviewModel.user))
+        .options(
+            joinedload(ReviewModel.user),
+            selectinload(ReviewModel.reactions).selectinload(ReviewReactionModel.user)
+        )
         .where(ReviewModel.is_active == True)
     )
-    reviews = result.scalars().all()
+    reviews = result.scalars().unique().all()
     for r in reviews:
         r.first_name = r.user.first_name
         r.last_name = r.user.last_name
         r.avatar_url = r.user.avatar_url
+        
+        r.likes_count = sum(1 for re in r.reactions if re.reaction_type == 1)
+        r.dislikes_count = sum(1 for re in r.reactions if re.reaction_type == -1)
+        
+        if current_user:
+            r.my_reaction = next((re.reaction_type for re in r.reactions if re.user_id == current_user.id), None)
+        else:
+            r.my_reaction = None
+            
+        r.liked_by = [re.user for re in r.reactions if re.reaction_type == 1]
+        r.disliked_by = [re.user for re in r.reactions if re.reaction_type == -1]
+        
     return reviews
 
 @router.post('', response_model=Review)

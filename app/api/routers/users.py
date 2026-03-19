@@ -230,8 +230,8 @@ async def get_users(
     Возвращает список всех активных пользователей.
     """
     query = select(UserModel).where(UserModel.is_active == True).options(
-        selectinload(UserModel.photos),
-        selectinload(UserModel.albums).selectinload(PhotoAlbumModel.photos),
+        selectinload(UserModel.photos).selectinload(UserPhotoModel.reactions).selectinload(UserPhotoReactionModel.user),
+        selectinload(UserModel.albums).selectinload(PhotoAlbumModel.photos).selectinload(UserPhotoModel.reactions).selectinload(UserPhotoReactionModel.user),
         selectinload(UserModel.sent_friend_requests),
         selectinload(UserModel.received_friend_requests)
     )
@@ -314,8 +314,8 @@ async def get_me(
     # Загружаем фотографии и альбомы пользователя
     result = await db.execute(
         select(UserModel).where(UserModel.id == current_user.id).options(
-            selectinload(UserModel.photos),
-            selectinload(UserModel.albums).selectinload(PhotoAlbumModel.photos)
+            selectinload(UserModel.photos).selectinload(UserPhotoModel.reactions).selectinload(UserPhotoReactionModel.user),
+            selectinload(UserModel.albums).selectinload(PhotoAlbumModel.photos).selectinload(UserPhotoModel.reactions).selectinload(UserPhotoReactionModel.user)
         )
     )
     user = result.scalar_one_or_none()
@@ -1907,8 +1907,8 @@ async def get_user_profile(
     """
     result = await db.execute(
         select(UserModel).where(UserModel.id == user_id, UserModel.is_active == True).options(
-            selectinload(UserModel.photos),
-            selectinload(UserModel.albums).selectinload(PhotoAlbumModel.photos)
+            selectinload(UserModel.photos).selectinload(UserPhotoModel.reactions).selectinload(UserPhotoReactionModel.user),
+            selectinload(UserModel.albums).selectinload(PhotoAlbumModel.photos).selectinload(UserPhotoModel.reactions).selectinload(UserPhotoReactionModel.user)
         )
     )
     user = result.scalar_one_or_none()

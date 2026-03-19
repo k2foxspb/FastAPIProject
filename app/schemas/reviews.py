@@ -2,6 +2,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field, ConfigDict
 from typing import Optional
+from app.schemas.users import ReactorInfo
 
 
 class Review(BaseModel):
@@ -17,6 +18,8 @@ class Review(BaseModel):
     likes_count: int = 0
     dislikes_count: int = 0
     my_reaction: int | None = None
+    liked_by: list[ReactorInfo] = []
+    disliked_by: list[ReactorInfo] = []
 
     model_config = ConfigDict(from_attributes=True)
 

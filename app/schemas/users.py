@@ -64,6 +64,51 @@ class UserPhotoComment(UserPhotoCommentBase):
     disliked_by: list[ReactorInfo] = []
     model_config = ConfigDict(from_attributes=True)
 
+    @classmethod
+    def model_validate(cls, obj, **kwargs):
+        try:
+            if isinstance(obj, dict):
+                return cls(**obj)
+            
+            data = {
+                "id": int(getattr(obj, "id", 0)),
+                "user_id": int(getattr(obj, "user_id", 0)),
+                "photo_id": int(getattr(obj, "photo_id", 0)),
+                "comment": str(getattr(obj, "comment", "")),
+                "created_at": getattr(obj, "created_at", None),
+                "first_name": None,
+                "last_name": None,
+                "avatar_url": None,
+                "likes_count": int(getattr(obj, "likes_count", 0)),
+                "dislikes_count": int(getattr(obj, "dislikes_count", 0)),
+                "my_reaction": getattr(obj, "my_reaction", None),
+                "liked_by": [],
+                "disliked_by": []
+            }
+            
+            # Пользователь
+            if hasattr(obj, "user") and obj.user:
+                data["first_name"] = obj.user.first_name
+                data["last_name"] = obj.user.last_name
+                data["avatar_url"] = obj.user.avatar_url
+            
+            # Реакции
+            obj_dict = getattr(obj, "__dict__", {})
+            if "reactions" in obj_dict:
+                reactions = obj_dict["reactions"]
+                data["liked_by"] = [r.user for r in reactions if r.reaction_type == 1 and hasattr(r, 'user') and r.user is not None]
+                data["disliked_by"] = [r.user for r in reactions if r.reaction_type == -1 and hasattr(r, 'user') and r.user is not None]
+                
+                # Если счетчики не заданы вручную, считаем их из реакций
+                if data["likes_count"] == 0:
+                    data["likes_count"] = len(data["liked_by"])
+                if data["dislikes_count"] == 0:
+                    data["dislikes_count"] = len(data["disliked_by"])
+
+            return cls(**data)
+        except Exception as e:
+            raise e
+
 class UserPhoto(UserPhotoBase):
     id: int
     created_at: datetime | None = None
@@ -92,6 +137,8 @@ class UserPhoto(UserPhotoBase):
                     "dislikes_count": obj.get("dislikes_count", 0),
                     "my_reaction": obj.get("my_reaction"),
                     "comments_count": obj.get("comments_count", 0),
+                    "liked_by": obj.get("liked_by", []),
+                    "disliked_by": obj.get("disliked_by", [])
                 }
                 return cls(**data)
             
@@ -108,7 +155,18 @@ class UserPhoto(UserPhotoBase):
                 "dislikes_count": int(getattr(obj, "dislikes_count", 0)),
                 "my_reaction": getattr(obj, "my_reaction", None),
                 "comments_count": int(getattr(obj, "comments_count", 0)),
+                "liked_by": [],
+                "disliked_by": []
             }
+
+            # Пытаемся достать реакции из __dict__ напрямую, чтобы не триггерить lazy load
+            obj_dict = getattr(obj, "__dict__", {})
+            if "reactions" in obj_dict:
+                reactions = obj_dict["reactions"]
+                # Убеждаемся, что реакции загружены вместе с пользователями
+                data["liked_by"] = [r.user for r in reactions if r.reaction_type == 1 and hasattr(r, 'user') and r.user is not None]
+                data["disliked_by"] = [r.user for r in reactions if r.reaction_type == -1 and hasattr(r, 'user') and r.user is not None]
+            
             return cls(**data)
         except Exception as e:
             raise e
