@@ -82,7 +82,8 @@ async def get_latest_app_version(db: AsyncSession = Depends(get_async_db)):
     return version
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
-MEDIA_ROOT = BASE_DIR / "app" / "media" / "news"
+# Используем путь, соответствующий тому, что в app/main.py и app/api/routers/users.py
+MEDIA_ROOT = BASE_DIR / "media" / "news"
 MEDIA_ROOT.mkdir(parents=True, exist_ok=True)
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp"}
 # Allow up to 10 MB to avoid crashes/timeouts on common mobile photos; reject bigger early
@@ -206,8 +207,9 @@ async def get_news(
             news_obj.author_last_name = news_obj.author.last_name
             news_obj.author_avatar_url = news_obj.author.avatar_url
         
-        news_obj.liked_by = [r.user for r in news_obj.reactions if r.reaction_type == 1]
-        news_obj.disliked_by = [r.user for r in news_obj.reactions if r.reaction_type == -1]
+        # Безопасное получение списка реакторов (только если подгружены)
+        news_obj.liked_by = [r.user for r in getattr(news_obj, "reactions", []) if r.reaction_type == 1 and "user" in getattr(r, "__dict__", {}) and r.user is not None]
+        news_obj.disliked_by = [r.user for r in getattr(news_obj, "reactions", []) if r.reaction_type == -1 and "user" in getattr(r, "__dict__", {}) and r.user is not None]
             
         news_list.append(news_obj)
     return news_list
@@ -284,8 +286,9 @@ async def get_user_news(
             news_obj.author_last_name = news_obj.author.last_name
             news_obj.author_avatar_url = news_obj.author.avatar_url
         
-        news_obj.liked_by = [r.user for r in news_obj.reactions if r.reaction_type == 1]
-        news_obj.disliked_by = [r.user for r in news_obj.reactions if r.reaction_type == -1]
+        # Безопасное получение списка реакторов (только если подгружены)
+        news_obj.liked_by = [r.user for r in getattr(news_obj, "reactions", []) if r.reaction_type == 1 and "user" in getattr(r, "__dict__", {}) and r.user is not None]
+        news_obj.disliked_by = [r.user for r in getattr(news_obj, "reactions", []) if r.reaction_type == -1 and "user" in getattr(r, "__dict__", {}) and r.user is not None]
             
         news_list.append(news_obj)
     return news_list
@@ -483,9 +486,9 @@ async def get_news_detail(
     news.comments_count = await db.scalar(comments_count_sub)
     news.my_reaction = await db.scalar(my_reaction_sub) if my_reaction_sub is not None else None
 
-    # Популируем liked_by и disliked_by
-    news.liked_by = [r.user for r in news.reactions if r.reaction_type == 1]
-    news.disliked_by = [r.user for r in news.reactions if r.reaction_type == -1]
+    # Популируем liked_by и disliked_by безопасно
+    news.liked_by = [r.user for r in getattr(news, "reactions", []) if r.reaction_type == 1 and "user" in getattr(r, "__dict__", {}) and r.user is not None]
+    news.disliked_by = [r.user for r in getattr(news, "reactions", []) if r.reaction_type == -1 and "user" in getattr(r, "__dict__", {}) and r.user is not None]
     
     if news.author:
         news.author_first_name = news.author.first_name
@@ -628,9 +631,9 @@ async def get_news_comments(
         comment_dict["dislikes_count"] = row[2]
         comment_dict["my_reaction"] = row[3]
         
-        # Популируем liked_by и disliked_by
-        comment_dict["liked_by"] = [ReactorInfo.model_validate(r.user).model_dump() for r in c.reactions if r.reaction_type == 1]
-        comment_dict["disliked_by"] = [ReactorInfo.model_validate(r.user).model_dump() for r in c.reactions if r.reaction_type == -1]
+        # Популируем liked_by и disliked_by безопасно
+        comment_dict["liked_by"] = [ReactorInfo.model_validate(r.user).model_dump() for r in getattr(c, "reactions", []) if r.reaction_type == 1 and "user" in getattr(r, "__dict__", {}) and r.user is not None]
+        comment_dict["disliked_by"] = [ReactorInfo.model_validate(r.user).model_dump() for r in getattr(c, "reactions", []) if r.reaction_type == -1 and "user" in getattr(r, "__dict__", {}) and r.user is not None]
         
         response.append(comment_dict)
         

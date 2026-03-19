@@ -96,8 +96,9 @@ class UserPhotoComment(UserPhotoCommentBase):
             obj_dict = getattr(obj, "__dict__", {})
             if "reactions" in obj_dict:
                 reactions = obj_dict["reactions"]
-                data["liked_by"] = [r.user for r in reactions if r.reaction_type == 1 and hasattr(r, 'user') and r.user is not None]
-                data["disliked_by"] = [r.user for r in reactions if r.reaction_type == -1 and hasattr(r, 'user') and r.user is not None]
+                # Убеждаемся, что реакции загружены вместе с пользователями, проверяя __dict__ каждой реакции
+                data["liked_by"] = [r.user for r in reactions if r.reaction_type == 1 and "user" in getattr(r, "__dict__", {}) and r.user is not None]
+                data["disliked_by"] = [r.user for r in reactions if r.reaction_type == -1 and "user" in getattr(r, "__dict__", {}) and r.user is not None]
                 
                 # Если счетчики не заданы вручную, считаем их из реакций
                 if data["likes_count"] == 0:
@@ -164,8 +165,8 @@ class UserPhoto(UserPhotoBase):
             if "reactions" in obj_dict:
                 reactions = obj_dict["reactions"]
                 # Убеждаемся, что реакции загружены вместе с пользователями
-                data["liked_by"] = [r.user for r in reactions if r.reaction_type == 1 and hasattr(r, 'user') and r.user is not None]
-                data["disliked_by"] = [r.user for r in reactions if r.reaction_type == -1 and hasattr(r, 'user') and r.user is not None]
+                data["liked_by"] = [r.user for r in reactions if r.reaction_type == 1 and "user" in getattr(r, "__dict__", {}) and r.user is not None]
+                data["disliked_by"] = [r.user for r in reactions if r.reaction_type == -1 and "user" in getattr(r, "__dict__", {}) and r.user is not None]
             
             return cls(**data)
         except Exception as e:

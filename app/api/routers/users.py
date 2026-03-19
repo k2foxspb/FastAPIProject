@@ -302,7 +302,7 @@ async def get_users(
     return [UserSchema.model_validate(u) for u in users]
 
 
-@router.get("/me")
+@router.get("/me", response_model=UserSchema)
 async def get_me(
     app_version: str | None = None,
     current_user: UserModel = Depends(get_current_user), 
@@ -366,7 +366,7 @@ async def get_me(
     except Exception as _e:
         pass
     
-    return user
+    return UserSchema.model_validate(user)
 
 
 @router.patch("/me", response_model=UserSchema)

@@ -122,8 +122,9 @@ async def get_review(
         else:
             r.my_reaction = None
             
-        r.liked_by = [re.user for re in r.reactions if re.reaction_type == 1]
-        r.disliked_by = [re.user for re in r.reactions if re.reaction_type == -1]
+        # Безопасно подгружаем информацию о тех кто поставил реакции
+        r.liked_by = [re.user for re in getattr(r, "reactions", []) if re.reaction_type == 1 and "user" in getattr(re, "__dict__", {}) and re.user is not None]
+        r.disliked_by = [re.user for re in getattr(r, "reactions", []) if re.reaction_type == -1 and "user" in getattr(re, "__dict__", {}) and re.user is not None]
         
     return reviews
 
