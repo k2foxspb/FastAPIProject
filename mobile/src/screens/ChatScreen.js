@@ -192,6 +192,7 @@ export default function ChatScreen({ route, navigation }) {
   const [inputMode, setInputMode] = useState('audio'); // 'audio' or 'video'
   const [isVideoRecording, setIsVideoRecording] = useState(false);
   const [pendingVideoNoteUri, setPendingVideoNoteUri] = useState(null);
+  const [pendingVideoNoteDuration, setPendingVideoNoteDuration] = useState(0);
   const cameraRef = useRef(null);
   const [recordedUri, setRecordedUri] = useState(null);
   const [recordingDuration, setRecordingDuration] = useState(0);
@@ -231,10 +232,12 @@ export default function ChatScreen({ route, navigation }) {
 
         if (Number(otherId) === Number(userId)) {
           // Не добавляем в список собственные плейсхолдеры загрузки, у нас для этого есть локальный индикатор
-          if ((latest.type === 'new_message' || latest.type === 'message') && msg?.is_uploading && isFromMe) {
-            console.log('[ChatScreen] Skipping own upload placeholder message');
-            return;
-          }
+          // Но мы их больше не скипаем, чтобы они сразу появлялись в списке сообщений
+          // и корректно обновлялись через message_updated.
+          // if ((latest.type === 'new_message' || latest.type === 'message') && msg?.is_uploading && isFromMe) {
+          //   console.log('[ChatScreen] Skipping own upload placeholder message');
+          //   return;
+          // }
           console.log('[ChatScreen] New real-time message received from notifications:', msg.id || msg.client_id, 'type:', latest.type);
           setMessages(prev => {
             // Если это наше сообщение (есть client_id), ищем его в pending и обновляем
@@ -284,7 +287,21 @@ export default function ChatScreen({ route, navigation }) {
         )));
       } else if (notify.type === 'message_updated' && notify.data) {
         const up = notify.data;
-        setMessages(prev => prev.map(m => (String(m.id) === String(up.id) ? { ...m, file_path: up.file_path, message_type: up.message_type, is_uploading: false, upload_progress: undefined } : m)));
+        setMessages(prev => {
+          const idx = prev.findIndex(m => String(m.id) === String(up.id));
+          if (idx !== -1) {
+            return prev.map(m => (String(m.id) === String(up.id) ? { ...m, ...up, is_uploading: false, upload_progress: undefined } : m));
+          } else {
+            // Если сообщения нет в списке (например, было скипнуто как собственный плейсхолдер), добавляем его
+            const cidIdx = up.client_id ? prev.findIndex(m => m.client_id === up.client_id) : -1;
+            if (cidIdx !== -1) {
+              const newMsgs = [...prev];
+              newMsgs[cidIdx] = { ...up, is_uploading: false };
+              return newMsgs;
+            }
+            return [up, ...prev];
+          }
+        });
       }
     });
 
@@ -1390,11 +1407,13 @@ export default function ChatScreen({ route, navigation }) {
         const clientId = `c_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         
         for (const asset of assets) {
+          const mt = (asset?.mimeType || '').startsWith('image/') ? 'image' : ((asset?.mimeType || '').startsWith('video/') ? 'video' : ((asset?.mimeType || '').startsWith('audio/') ? 'voice' : 'file'));
           setUploadingData({ 
             loaded: 0, 
             total: asset.size || 0, 
             uri: asset.uri, 
-            mimeType: asset.mimeType 
+            mimeType: asset.mimeType,
+            type: mt
           });
           setUploadingProgress(0);
           
@@ -1407,12 +1426,11 @@ export default function ChatScreen({ route, navigation }) {
               (uid) => { 
                 setActiveUploadId(uid);
                 try {
-                  const mt = (asset?.mimeType || '').startsWith('image/') ? 'image' : ((asset?.mimeType || '').startsWith('video/') ? 'video' : ((asset?.mimeType || '').startsWith('audio/') ? 'voice' : 'file'));
                   sendMessageWs({ type: 'upload_started', receiver_id: userId, message_type: mt, upload_id: uid, client_id: clientId });
                 } catch (e) { console.warn('Failed to send upload_started WS', e); }
               },
               {}, // apiOptions
-              { clientId, hasPlaceholder: true }
+              { clientId, hasPlaceholder: true, type: mt, messageType: mt }
             );
 
             if (res && res.status === 'completed') {
@@ -1457,12 +1475,15 @@ export default function ChatScreen({ route, navigation }) {
       console.error('Document picking failed', error);
       Alert.alert('Ошибка', 'Произошла ошибка при выборе или загрузке документа');
     } finally {
-      setBatchMode(false);
-      setAutoSendOnUpload(true);
-      setUploadingProgress(null);
-      setActiveUploadId(null);
-      setBatchTotal(0);
-      setAttachmentsLocalCount(0);
+      setTimeout(() => {
+        if (!isMounted.current) return;
+        setBatchMode(false);
+        setAutoSendOnUpload(true);
+        setUploadingProgress(null);
+        setActiveUploadId(null);
+        setBatchTotal(0);
+        setAttachmentsLocalCount(0);
+      }, 1000);
     }
   };
 
@@ -1497,11 +1518,13 @@ export default function ChatScreen({ route, navigation }) {
 
         for (const asset of assets) {
           const fileName = asset.uri.split('/').pop();
+          const mt = (asset?.mimeType || '').startsWith('image/') ? 'image' : ((asset?.mimeType || '').startsWith('video/') ? 'video' : ((asset?.mimeType || '').startsWith('audio/') ? 'voice' : 'file'));
           setUploadingData({ 
             loaded: 0, 
             total: asset.fileSize || asset.size || 0, 
             uri: asset.uri, 
-            mimeType: asset.mimeType 
+            mimeType: asset.mimeType,
+            type: mt
           });
           setUploadingProgress(0);
           
@@ -1511,9 +1534,16 @@ export default function ChatScreen({ route, navigation }) {
               fileName, 
               asset.mimeType,
               userId,
-              (upload_id) => { setActiveUploadId(upload_id); try { const mt = (asset?.mimeType || '').startsWith('image/') ? 'image' : ((asset?.mimeType || '').startsWith('video/') ? 'video' : ((asset?.mimeType || '').startsWith('audio/') ? 'voice' : 'file')); sendMessageWs({ type: 'upload_started', receiver_id: userId, message_type: mt, upload_id: upload_id, client_id: clientId }); } catch (e) { console.warn('Failed to send upload_started WS', e); } },
+              (upload_id) => { 
+                setActiveUploadId(upload_id); 
+                try { 
+                  sendMessageWs({ type: 'upload_started', receiver_id: userId, message_type: mt, upload_id: upload_id, client_id: clientId }); 
+                } catch (e) { 
+                  console.warn('Failed to send upload_started WS', e); 
+                } 
+              },
               {}, // apiOptions
-              { clientId, hasPlaceholder: true }
+              { clientId, hasPlaceholder: true, type: mt, messageType: mt }
             );
             
             if (res && res.status === 'completed') {
@@ -1558,23 +1588,27 @@ export default function ChatScreen({ route, navigation }) {
       console.error('Upload or picking failed', error);
       Alert.alert('Ошибка', 'Произошла ошибка при выборе или загрузке файла');
     } finally {
-      setBatchMode(false);
-      setAutoSendOnUpload(true);
-      setBatchAttachments([]);
-      setBatchTotal(0);
-      setAttachmentsLocalCount(0);
-      setUploadingProgress(null);
-      setActiveUploadId(null);
+      setTimeout(() => {
+        if (!isMounted.current) return;
+        setBatchMode(false);
+        setAutoSendOnUpload(true);
+        setBatchAttachments([]);
+        setBatchTotal(0);
+        setAttachmentsLocalCount(0);
+        setUploadingProgress(null);
+        setActiveUploadId(null);
+      }, 1000);
     }
   };
 
 
-  const handleSendVideoNote = async (uri) => {
+  const handleSendVideoNote = async (uri, durationMs = 0) => {
     if (!uri) return;
     isVideoNoteUploadRef.current = true;
     try {
       const filename = `video_note_${Date.now()}.mp4`;
       let currentUploadId = null;
+      const duration = durationMs ? Math.round(durationMs / 1000) : 0;
 
       // Устанавливаем данные для плейсхолдера
       setUploadingData({
@@ -1582,12 +1616,14 @@ export default function ChatScreen({ route, navigation }) {
         mimeType: 'video/mp4',
         type: 'video_note',
         loaded: 0,
-        total: 100
+        total: 100,
+        duration: duration
       });
+      setUploadingProgress(0);
 
       const clientId = `c_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-      const uploadResult = await uploadManager.uploadFileResumable(
+      await uploadManager.uploadFileResumable(
         uri,
         filename,
         'video/mp4',
@@ -1595,37 +1631,32 @@ export default function ChatScreen({ route, navigation }) {
         (id) => {
           currentUploadId = id;
           setActiveUploadId(id);
-          try { sendMessageWs({ type: 'upload_started', receiver_id: userId, message_type: 'video_note', upload_id: id, client_id: clientId }); } catch (e) { console.warn('Failed to send upload_started WS', e); }
-          uploadManager.subscribe(id, ({ progress, status, loaded, total }) => {
-            if (status === 'uploading' || status === 'completed') {
-              setUploadingProgress(progress);
-              if (loaded !== undefined) setUploadingData(prev => ({ ...prev, loaded, total }));
-            } else if (status === 'error' || status === 'cancelled') {
-              setUploadingProgress(null);
-              setActiveUploadId(null);
-            }
-          });
+          try { 
+            sendMessageWs({ 
+              type: 'upload_started', 
+              receiver_id: userId, 
+              message_type: 'video_note', 
+              upload_id: id, 
+              client_id: clientId,
+              duration: duration
+            }); 
+          } catch (e) { 
+            console.warn('Failed to send upload_started WS', e); 
+          }
         },
         {}, // apiOptions
-        { clientId, hasPlaceholder: true, isVideoNote: true }
+        { clientId, hasPlaceholder: true, isVideoNote: true, type: 'video_note', messageType: 'video_note', duration }
       );
-
-      if (uploadResult && (uploadResult.file_path || uploadResult.result?.file_path)) {
-        const filePath = uploadResult.file_path || uploadResult.result?.file_path;
-        sendMessageWs({
-          receiver_id: userId,
-          message: null,
-          file_path: filePath,
-          message_type: 'video_note'
-        });
-      }
     } catch (err) {
       console.error('[ChatScreen] handleSendVideoNote error:', err);
       Alert.alert('Ошибка', 'Не удалось отправить видеосообщение');
     } finally {
-      isVideoNoteUploadRef.current = false;
-      setUploadingProgress(null);
-      setActiveUploadId(null);
+      setTimeout(() => {
+        if (!isMounted.current) return;
+        isVideoNoteUploadRef.current = false;
+        setUploadingProgress(null);
+        setActiveUploadId(null);
+      }, 1000);
     }
   };
 
@@ -1667,6 +1698,7 @@ export default function ChatScreen({ route, navigation }) {
             if (video && video.uri) {
               if (duration >= 500) {
                 setPendingVideoNoteUri(video.uri);
+                setPendingVideoNoteDuration(duration);
               } else {
                 console.log('[ChatScreen] Video note too short, discarding...');
               }
@@ -2031,18 +2063,34 @@ export default function ChatScreen({ route, navigation }) {
     try {
       const fileName = `voice_${Date.now()}.m4a`;
       const mimeType = 'audio/m4a';
-      setUploadingData({ loaded: 0, total: 0, uri: uri, mimeType: mimeType });
-      
+      const duration = Math.round(recordingDuration / 1000);
+      setUploadingData({ loaded: 0, total: 0, uri: uri, mimeType: mimeType, type: 'voice', duration });
+      setUploadingProgress(0);
+
       const clientId = `c_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      
+
       await uploadManager.uploadFileResumable(
-        uri, 
-        fileName, 
+        uri,
+        fileName,
         mimeType,
         userId,
-        (upload_id) => { setActiveUploadId(upload_id); try { sendMessageWs({ type: 'upload_started', receiver_id: userId, message_type: 'voice', upload_id: upload_id, client_id: clientId }); } catch (e) { console.warn('Failed to send upload_started WS', e); } },
+        (upload_id) => {
+          setActiveUploadId(upload_id);
+          try {
+            sendMessageWs({
+              type: 'upload_started',
+              receiver_id: userId,
+              message_type: 'voice',
+              upload_id: upload_id,
+              client_id: clientId,
+              duration: duration
+            });
+          } catch (e) {
+            console.warn('Failed to send upload_started WS', e);
+          }
+        },
         {}, // apiOptions
-        { clientId, hasPlaceholder: true }
+        { clientId, hasPlaceholder: true, type: 'voice', messageType: 'voice', duration }
       );
       setRecordedUri(null);
       setRecordingDuration(0);
@@ -2050,7 +2098,10 @@ export default function ChatScreen({ route, navigation }) {
       console.error('Voice upload failed', error);
       Alert.alert('Ошибка', 'Не удалось загрузить голосовое сообщение');
     } finally {
-      setUploadingProgress(null);
+      setTimeout(() => {
+        if (!isMounted.current) return;
+        setUploadingProgress(null);
+      }, 1000);
     }
   };
 
@@ -2192,7 +2243,7 @@ export default function ChatScreen({ route, navigation }) {
                   color="#fff" 
                 />
                 <Text style={{ color: '#fff', marginLeft: 10, fontWeight: '500', flex: 1 }}>
-                  {progressPercent >= 100 ? "Обработка..." : (uploadingData.mimeType?.startsWith('audio/') || uploadingData.mimeType?.startsWith('image/') || uploadingData.mimeType?.startsWith('video/') ? "" : "Загрузка файла...")}
+                  {progressPercent >= 100 ? "Обработка..." : (uploadingData.type === 'voice' || (uploadingData.mimeType || '').startsWith('audio/') ? "Голосовое сообщение" : "Загрузка файла...")}
                 </Text>
                 <TouchableOpacity
                   style={{
@@ -2784,7 +2835,7 @@ export default function ChatScreen({ route, navigation }) {
       <FlatList
         ref={chatFlatListRef}
         data={messages}
-        extraData={[messages.length, currentUserId, selectedIds.length, theme, userId, viewableItems]}
+        extraData={[messages.length, currentUserId, selectedIds.length, theme, userId, viewableItems, uploadingProgress, uploadingData, activeUploadId]}
         keyExtractor={(item) => `msg_${item.id !== undefined && item.id !== null ? String(item.id) : (item.client_id || Math.random())}`}
         renderItem={renderMessageItem}
         onEndReached={loadMoreMessages}
@@ -3102,7 +3153,7 @@ export default function ChatScreen({ route, navigation }) {
                 <MaterialIcons name="videocam" size={20} color={colors.primary} />
                 <Text style={[styles.recordingTimeText, { color: colors.text }]}>Видеосообщение</Text>
               </View>
-              <TouchableOpacity onPress={() => { handleSendVideoNote(pendingVideoNoteUri); setPendingVideoNoteUri(null); }} style={[styles.sendButton, { marginRight: 10 }]}>
+              <TouchableOpacity onPress={() => { handleSendVideoNote(pendingVideoNoteUri, pendingVideoNoteDuration); setPendingVideoNoteUri(null); setPendingVideoNoteDuration(0); }} style={[styles.sendButton, { marginRight: 10 }]}>
                 <MaterialIcons name="send" size={24} color={colors.primary} />
               </TouchableOpacity>
             </View>

@@ -115,7 +115,11 @@ export const uploadManager = {
     const initRes = await api.initUpload({
       filename: fileName,
       file_size: fileSize,
-      mime_type: mimeType
+      mime_type: mimeType,
+      receiver_id: receiverId,
+      client_id: extraMeta?.clientId,
+      message_type: extraMeta?.messageType,
+      duration: extraMeta?.duration
     }, token);
 
     const { upload_id } = initRes.data;
