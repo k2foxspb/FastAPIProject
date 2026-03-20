@@ -1,7 +1,22 @@
-import React, { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, FlatList, Image, TouchableOpacity, Alert, TextInput, ScrollView, Switch, Platform } from 'react-native';
+import React, { useState, useCallback, useEffect } from 'react';
+import { 
+  View, 
+  Text, 
+  StyleSheet, 
+  FlatList, 
+  Image, 
+  TouchableOpacity, 
+  Alert, 
+  TextInput, 
+  ScrollView, 
+  Switch, 
+  Platform,
+  ActivityIndicator,
+  KeyboardAvoidingView
+} from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
+import * as Haptics from 'expo-haptics';
 import { usersApi } from '../api';
 import { Ionicons as Icon } from '@expo/vector-icons';
 import { getFullUrl } from '../utils/urlHelper';
@@ -18,6 +33,10 @@ export default function AlbumDetailScreen({ route, navigation }) {
   const [description, setDescription] = useState('');
   const [privacy, setPrivacy] = useState('public');
   const [loading, setLoading] = useState(true);
+  const [comments, setComments] = useState([]);
+  const [newComment, setNewComment] = useState('');
+  const [isSubmittingComment, setIsSubmittingComment] = useState(false);
+  const [showComments, setShowComments] = useState(false);
 
   const fetchAlbum = useCallback(async () => {
     try {
@@ -26,6 +45,7 @@ export default function AlbumDetailScreen({ route, navigation }) {
       setTitle(res.data.title);
       setDescription(res.data.description || '');
       setPrivacy(res.data.privacy || 'public');
+      loadComments();
     } catch (err) {
       Alert.alert('Ошибка', 'Не удалось загрузить данные альбома');
       navigation.goBack();
@@ -33,6 +53,110 @@ export default function AlbumDetailScreen({ route, navigation }) {
       setLoading(false);
     }
   }, [albumId, navigation]);
+
+  const loadComments = async () => {
+    try {
+      const res = await usersApi.getAlbumComments(albumId);
+      setComments(res.data);
+    } catch (err) {
+      console.error('Error loading comments:', err);
+    }
+  };
+
+  const handleReaction = async (type) => {
+    if (!album) return;
+    try {
+      const newReaction = album.my_reaction === type ? 0 : type;
+      if (newReaction !== 0) {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      } else {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      }
+
+      await usersApi.reactToAlbum(albumId, newReaction);
+      
+      const updatedAlbum = { ...album };
+      let likes = updatedAlbum.likes_count || 0;
+      let dislikes = updatedAlbum.dislikes_count || 0;
+      
+      if (updatedAlbum.my_reaction === 1) likes--;
+      if (updatedAlbum.my_reaction === -1) dislikes--;
+      
+      if (newReaction === 1) likes++;
+      if (newReaction === -1) dislikes++;
+      
+      updatedAlbum.my_reaction = newReaction;
+      updatedAlbum.likes_count = likes;
+      updatedAlbum.dislikes_count = dislikes;
+      setAlbum(updatedAlbum);
+    } catch (err) {
+      Alert.alert('Ошибка', 'Не удалось отправить реакцию');
+    }
+  };
+
+  const submitComment = async () => {
+    if (!newComment.trim() || isSubmittingComment) return;
+    try {
+      setIsSubmittingComment(true);
+      const res = await usersApi.addAlbumComment(albumId, newComment.trim());
+      setComments(prev => [...prev, res.data]);
+      setNewComment('');
+      
+      const updatedAlbum = { ...album };
+      updatedAlbum.comments_count = (updatedAlbum.comments_count || 0) + 1;
+      setAlbum(updatedAlbum);
+    } catch (err) {
+      Alert.alert('Ошибка', 'Не удалось добавить комментарий');
+    } finally {
+      setIsSubmittingComment(false);
+    }
+  };
+
+  const deleteComment = (commentId) => {
+    Alert.alert('Удаление', 'Вы уверены, что хотите удалить комментарий?', [
+      { text: 'Отмена', style: 'cancel' },
+      { 
+        text: 'Удалить', 
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await usersApi.deleteAlbumComment(commentId);
+            setComments(comments.filter(c => c.id !== commentId));
+            const updatedAlbum = { ...album };
+            updatedAlbum.comments_count = Math.max(0, (updatedAlbum.comments_count || 0) - 1);
+            setAlbum(updatedAlbum);
+          } catch (err) {
+            Alert.alert('Ошибка', 'Не удалось удалить комментарий');
+          }
+        }
+      }
+    ]);
+  };
+
+  const handleCommentReaction = async (commentId, type) => {
+    try {
+      const comment = comments.find(c => c.id === commentId);
+      if (!comment) return;
+      const newReaction = comment.my_reaction === type ? 0 : type;
+      if (newReaction !== 0) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      await usersApi.reactToAlbumComment(commentId, newReaction);
+      
+      setComments(prev => prev.map(c => {
+        if (c.id === commentId) {
+          let likes = c.likes_count || 0;
+          let dislikes = c.dislikes_count || 0;
+          if (c.my_reaction === 1) likes--;
+          if (c.my_reaction === -1) dislikes--;
+          if (newReaction === 1) likes++;
+          if (newReaction === -1) dislikes++;
+          return { ...c, my_reaction: newReaction, likes_count: likes, dislikes_count: dislikes };
+        }
+        return c;
+      }));
+    } catch (err) {
+      Alert.alert('Ошибка', 'Не удалось отправить реакцию');
+    }
+  };
 
   useFocusEffect(
     useCallback(() => {
@@ -82,8 +206,13 @@ export default function AlbumDetailScreen({ route, navigation }) {
   }
 
   return (
-    <ScrollView style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.header, { borderBottomColor: colors.border }]}>
+    <KeyboardAvoidingView 
+      style={{ flex: 1, backgroundColor: colors.background }}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+    >
+      <ScrollView style={[styles.container, { backgroundColor: colors.background }]}>
+        <View style={[styles.header, { borderBottomColor: colors.border }]}>
         {isEditing ? (
           <View style={styles.editForm}>
             <TextInput
@@ -161,6 +290,31 @@ export default function AlbumDetailScreen({ route, navigation }) {
               <Text style={[styles.privateText, { color: colors.textSecondary }]}>
                 {album.privacy === 'private' ? 'Только мне' : (album.privacy === 'friends' ? 'Друзьям' : 'Всем')}
               </Text>
+            </View>
+            <View style={styles.albumReactions}>
+              <TouchableOpacity 
+                style={[styles.reactionButton, album.my_reaction === 1 && { backgroundColor: colors.error + '20' }]} 
+                onPress={() => handleReaction(1)}
+              >
+                <Icon name={album.my_reaction === 1 ? "heart" : "heart-outline"} size={22} color={album.my_reaction === 1 ? colors.error : colors.textSecondary} />
+                <Text style={[styles.reactionText, { color: colors.textSecondary }]}>{album.likes_count || 0}</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={[styles.reactionButton, { marginLeft: 15 }, album.my_reaction === -1 && { backgroundColor: colors.primary + '20' }]} 
+                onPress={() => handleReaction(-1)}
+              >
+                <Icon name={album.my_reaction === -1 ? "thumbs-down" : "thumbs-down-outline"} size={22} color={album.my_reaction === -1 ? colors.primary : colors.textSecondary} />
+                <Text style={[styles.reactionText, { color: colors.textSecondary }]}>{album.dislikes_count || 0}</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={[styles.reactionButton, { marginLeft: 15 }]} 
+                onPress={() => setShowComments(!showComments)}
+              >
+                <Icon name="chatbubble-outline" size={20} color={colors.textSecondary} />
+                <Text style={[styles.reactionText, { color: colors.textSecondary }]}>{album.comments_count || 0}</Text>
+              </TouchableOpacity>
             </View>
           </View>
         )}
@@ -246,7 +400,88 @@ export default function AlbumDetailScreen({ route, navigation }) {
           )}
         </View>
       </View>
+
+      {showComments && (
+        <View style={[styles.commentsSection, { backgroundColor: colors.surface, borderTopColor: colors.border }]}>
+          <Text style={[styles.sectionTitle, { color: colors.text, paddingHorizontal: 0 }]}>Комментарии</Text>
+          {comments.length === 0 ? (
+            <Text style={[styles.emptyComments, { color: colors.textSecondary }]}>Нет комментариев</Text>
+          ) : (
+            comments.map(item => (
+              <View key={item.id} style={styles.commentItem}>
+                <Image 
+                  source={{ uri: getFullUrl(item.avatar_url) || 'https://via.placeholder.com/30' }} 
+                  style={styles.commentAvatar} 
+                />
+                <View style={styles.commentContent}>
+                  <View style={styles.commentHeader}>
+                    <Text style={[styles.commentUser, { color: colors.text }]}>
+                      {item.first_name ? `${item.first_name} ${item.last_name || ''}` : `Пользователь #${item.user_id}`}
+                    </Text>
+                    {(isOwner || item.user_id === album.user_id) && (
+                      <TouchableOpacity onPress={() => deleteComment(item.id)}>
+                        <Icon name="trash-outline" size={14} color={colors.error} />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                  <Text style={[styles.commentText, { color: colors.text }]}>{item.comment}</Text>
+                  
+                  <View style={styles.commentReactions}>
+                    <TouchableOpacity 
+                      onPress={() => handleCommentReaction(item.id, 1)}
+                      style={styles.commentReactionButton}
+                    >
+                      <Icon 
+                        name={item.my_reaction === 1 ? "heart" : "heart-outline"} 
+                        size={14} 
+                        color={item.my_reaction === 1 ? colors.error : colors.textSecondary} 
+                      />
+                      <Text style={[styles.commentReactionText, { color: colors.textSecondary }]}>{item.likes_count || 0}</Text>
+                    </TouchableOpacity>
+                    
+                    <TouchableOpacity 
+                      onPress={() => handleCommentReaction(item.id, -1)}
+                      style={[styles.commentReactionButton, { marginLeft: 15 }]}
+                    >
+                      <Icon 
+                        name={item.my_reaction === -1 ? "thumbs-down" : "thumbs-down-outline"} 
+                        size={14} 
+                        color={item.my_reaction === -1 ? colors.primary : colors.textSecondary} 
+                      />
+                      <Text style={[styles.commentReactionText, { color: colors.textSecondary }]}>{item.dislikes_count || 0}</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </View>
+            ))
+          )}
+        </View>
+      )}
     </ScrollView>
+    {showComments && (
+      <View style={[styles.commentInputContainer, { backgroundColor: colors.background, borderTopColor: colors.border, paddingBottom: Platform.OS === 'ios' ? 30 : 5 }]}>
+        <TextInput
+          style={[styles.commentInput, { color: colors.text }]}
+          placeholder="Ваш комментарий..."
+          placeholderTextColor={colors.textSecondary}
+          value={newComment}
+          onChangeText={setNewComment}
+          multiline
+        />
+        <TouchableOpacity 
+          onPress={submitComment} 
+          disabled={!newComment.trim() || isSubmittingComment}
+          style={styles.sendButton}
+        >
+          {isSubmittingComment ? (
+            <ActivityIndicator size="small" color={colors.primary} />
+          ) : (
+            <Icon name="send" size={24} color={newComment.trim() ? colors.primary : colors.textSecondary} />
+          )}
+        </TouchableOpacity>
+      </View>
+    )}
+    </KeyboardAvoidingView>
   );
 }
 
@@ -304,5 +539,87 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.5)',
     borderRadius: 10,
     padding: 2,
+  },
+  albumReactions: { 
+    flexDirection: 'row', 
+    marginTop: 15, 
+    alignItems: 'center' 
+  },
+  reactionButton: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    padding: 8, 
+    borderRadius: 12, 
+    backgroundColor: 'rgba(0,0,0,0.05)' 
+  },
+  reactionText: { 
+    marginLeft: 6, 
+    fontWeight: 'bold', 
+    fontSize: 14 
+  },
+  commentsSection: { 
+    padding: 20, 
+    borderTopWidth: 1, 
+    paddingBottom: 40 
+  },
+  commentItem: { 
+    flexDirection: 'row', 
+    marginBottom: 15 
+  },
+  commentAvatar: { 
+    width: 32, 
+    height: 32, 
+    borderRadius: 16, 
+    marginRight: 10 
+  },
+  commentContent: { 
+    flex: 1 
+  },
+  commentHeader: { 
+    flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    alignItems: 'center' 
+  },
+  commentUser: { 
+    fontSize: 14, 
+    fontWeight: 'bold' 
+  },
+  commentText: { 
+    fontSize: 15, 
+    marginTop: 2, 
+    lineHeight: 20 
+  },
+  commentReactions: { 
+    flexDirection: 'row', 
+    marginTop: 6 
+  },
+  commentReactionButton: { 
+    flexDirection: 'row', 
+    alignItems: 'center' 
+  },
+  commentReactionText: { 
+    fontSize: 12, 
+    marginLeft: 4 
+  },
+  emptyComments: { 
+    textAlign: 'center', 
+    marginVertical: 20, 
+    fontSize: 14 
+  },
+  commentInputContainer: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    paddingHorizontal: 15,
+    paddingVertical: 5,
+    borderTopWidth: 1,
+  },
+  commentInput: { 
+    flex: 1, 
+    paddingVertical: 10, 
+    maxHeight: 100 
+  },
+  sendButton: { 
+    padding: 5, 
+    marginLeft: 5 
   },
 });

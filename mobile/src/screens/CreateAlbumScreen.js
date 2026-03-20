@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, StyleSheet, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, TextInput, StyleSheet, TouchableOpacity, Alert, KeyboardAvoidingView, Platform } from 'react-native';
 import { usersApi } from '../api';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
@@ -31,8 +31,17 @@ export default function CreateAlbumScreen({ navigation }) {
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <Text style={[styles.label, { color: colors.text }]}>Название альбома</Text>
+    <KeyboardAvoidingView 
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      style={{ flex: 1 }}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+    >
+      <ScrollView 
+        style={[styles.container, { backgroundColor: colors.background }]}
+        contentContainerStyle={{ flexGrow: 1 }}
+        showsVerticalScrollIndicator={false}
+      >
+        <Text style={[styles.label, { color: colors.text }]}>Название альбома</Text>
       <TextInput
         style={[styles.input, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]}
         value={title}
@@ -86,7 +95,8 @@ export default function CreateAlbumScreen({ navigation }) {
       >
         <Text style={styles.buttonText}>{loading ? 'Создание...' : 'Создать альбом'}</Text>
       </TouchableOpacity>
-    </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 

@@ -1,5 +1,19 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, Image, ScrollView, TouchableOpacity, FlatList, ActivityIndicator, Alert, TextInput, Dimensions } from 'react-native';
+import { 
+  View, 
+  Text, 
+  StyleSheet, 
+  Image, 
+  ScrollView, 
+  TouchableOpacity, 
+  FlatList, 
+  ActivityIndicator, 
+  Alert, 
+  TextInput, 
+  Dimensions, 
+  Platform, 
+  KeyboardAvoidingView 
+} from 'react-native';
 import { productsApi, usersApi, cartApi } from '../api';
 import { getFullUrl } from '../utils/urlHelper';
 import { useTheme } from '../context/ThemeContext';
@@ -235,8 +249,13 @@ export default function ProductDetailScreen({ route, navigation }) {
   );
 
   return (
-    <ScrollView style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={styles.imageContainer}>
+    <KeyboardAvoidingView 
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      style={{ flex: 1 }}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+    >
+      <ScrollView style={[styles.container, { backgroundColor: colors.background }]}>
+        <View style={styles.imageContainer}>
         <FlatList
           data={allImages}
           horizontal
@@ -350,6 +369,40 @@ export default function ProductDetailScreen({ route, navigation }) {
         />
       </View>
     </ScrollView>
+
+      {user?.role === 'buyer' && (
+        <View style={[styles.stickyAddReview, { backgroundColor: colors.surface, borderTopColor: colors.border }]}>
+          <View style={styles.stickyReviewRow}>
+            <View style={styles.ratingPickerMini}>
+              {[1, 2, 3, 4, 5].map(s => (
+                <TouchableOpacity key={s} onPress={() => setRating(s)}>
+                  <Icon name={s <= rating ? "star" : "star-outline"} size={22} color="#FFD700" />
+                </TouchableOpacity>
+              ))}
+            </View>
+            <TextInput
+              style={[styles.stickyCommentInput, { color: colors.text, backgroundColor: colors.background, borderColor: colors.border }]}
+              placeholder="Ваш отзыв..."
+              placeholderTextColor={colors.textSecondary}
+              multiline
+              value={comment}
+              onChangeText={setComment}
+            />
+            <TouchableOpacity 
+              style={[styles.stickySubmitButton, { backgroundColor: colors.primary }]}
+              onPress={handleSubmitReview}
+              disabled={submittingReview || !comment.trim()}
+            >
+              {submittingReview ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <Icon name="send" size={20} color="#fff" />
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+    </KeyboardAvoidingView>
   );
 }
 
@@ -392,10 +445,34 @@ const styles = StyleSheet.create({
   commentReactionButton: { flexDirection: 'row', alignItems: 'center' },
   commentReactionText: { marginLeft: 4, fontSize: 12 },
   emptyText: { textAlign: 'center', marginTop: 10 },
-  addReview: { margin: 20, padding: 15, borderRadius: 12, borderWidth: 1 },
-  addReviewTitle: { fontSize: 16, fontWeight: 'bold', marginBottom: 10 },
-  ratingPicker: { flexDirection: 'row', justifyContent: 'center', marginBottom: 15 },
-  commentInput: { borderWidth: 1, borderRadius: 8, padding: 10, height: 80, textAlignVertical: 'top', marginBottom: 15 },
-  submitButton: { padding: 12, borderRadius: 8, alignItems: 'center' },
-  submitButtonText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
+  stickyAddReview: { 
+    padding: 10, 
+    borderTopWidth: 1,
+    paddingBottom: Platform.OS === 'ios' ? 30 : 10
+  },
+  stickyReviewRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  ratingPickerMini: {
+    flexDirection: 'row',
+    marginRight: 10,
+  },
+  stickyCommentInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 20,
+    paddingHorizontal: 15,
+    paddingVertical: 8,
+    maxHeight: 100,
+    fontSize: 14,
+  },
+  stickySubmitButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 10,
+  },
 });

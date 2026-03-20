@@ -443,20 +443,46 @@ async def websocket_chat_endpoint(
                         logger.warning(f"Invalid receiver_id format in WS upload_started: {receiver_id_raw}")
                         continue
 
-                    # Создаем placeholder-сообщение с признаком загрузки
-                    new_msg = ChatMessage(
-                        sender_id=user_id,
-                        receiver_id=receiver_id,
-                        message=None,
-                        file_path=None,
-                        message_type=message_type,
-                        client_id=client_id,
-                        duration=duration,
-                        reply_to_id=reply_to_id,
-                        is_uploading=True,
-                        upload_id=upload_id
-                    )
-                    db.add(new_msg)
+                    # Проверяем, есть ли уже плейсхолдер с таким client_id (для группы медиа)
+                    existing_msg = None
+                    if client_id:
+                        res_existing = await db.execute(
+                            select(ChatMessage).where(
+                                ChatMessage.client_id == client_id,
+                                ChatMessage.sender_id == user_id,
+                                ChatMessage.is_uploading == True
+                            )
+                        )
+                        existing_msg = res_existing.scalars().first()
+
+                    if existing_msg:
+                        # Обновляем существующий placeholder
+                        logger.debug(f"Updating existing placeholder message {existing_msg.id} for upload_started")
+                        existing_msg.upload_id = upload_id
+                        # Если новый тип более специфичный чем file, обновляем
+                        if message_type != "file" or existing_msg.message_type == "text":
+                            existing_msg.message_type = message_type
+                        if duration:
+                            existing_msg.duration = duration
+                        if reply_to_id:
+                            existing_msg.reply_to_id = reply_to_id
+                        new_msg = existing_msg
+                    else:
+                        # Создаем placeholder-сообщение с признаком загрузки
+                        new_msg = ChatMessage(
+                            sender_id=user_id,
+                            receiver_id=receiver_id,
+                            message=None,
+                            file_path=None,
+                            message_type=message_type,
+                            client_id=client_id,
+                            duration=duration,
+                            reply_to_id=reply_to_id,
+                            is_uploading=True,
+                            upload_id=upload_id
+                        )
+                        db.add(new_msg)
+                    
                     await db.commit()
                     await db.refresh(new_msg)
 

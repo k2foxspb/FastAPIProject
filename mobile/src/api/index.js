@@ -89,6 +89,11 @@ export const usersApi = {
   createAlbum: (data) => api.post('/users/albums', data),
   updateAlbum: (id, data) => api.patch(`/users/albums/${id}`, data),
   deleteAlbum: (id) => api.delete(`/users/albums/${id}`),
+  reactToAlbum: (albumId, reactionType) => api.post(`/users/albums/${albumId}/react`, null, { params: { reaction_type: reactionType } }),
+  getAlbumComments: (albumId) => api.get(`/users/albums/${albumId}/comments`),
+  addAlbumComment: (albumId, comment) => api.post(`/users/albums/${albumId}/comments`, { comment }),
+  deleteAlbumComment: (commentId) => api.delete(`/users/albums/comments/${commentId}`),
+  reactToAlbumComment: (commentId, reactionType) => api.post(`/users/albums/comments/${commentId}/react`, null, { params: { reaction_type: reactionType } }),
 
   // Фотографии
   getPhoto: (id) => api.get(`/users/photos/${id}`),

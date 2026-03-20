@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Alert, ActivityIndicator, Image, Modal, FlatList, TouchableWithoutFeedback } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Alert, ActivityIndicator, Image, Modal, FlatList, TouchableWithoutFeedback, KeyboardAvoidingView, Platform } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { productsApi, usersApi } from '../api';
 import { useTheme } from '../context/ThemeContext';
@@ -224,7 +224,12 @@ export default function EditProductScreen({ route, navigation }) {
   };
 
   return (
-    <ScrollView style={[styles.container, { backgroundColor: colors.background }]}>
+    <KeyboardAvoidingView 
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      style={{ flex: 1 }}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+    >
+      <ScrollView style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={styles.form}>
         <Text style={[styles.label, { color: colors.text }]}>Фотографии товара</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.imagesScroll}>
@@ -423,7 +428,8 @@ export default function EditProductScreen({ route, navigation }) {
           </TouchableOpacity>
         )}
       </View>
-    </ScrollView>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 

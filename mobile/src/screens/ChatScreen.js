@@ -2112,8 +2112,14 @@ export default function ChatScreen({ route, navigation }) {
           ) : (
             <View style={{ padding: 10 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
-                <MaterialIcons name="insert-drive-file" size={24} color="#fff" />
-                <Text style={{ color: '#fff', marginLeft: 10, fontWeight: '500', flex: 1 }}>Загрузка файла...</Text>
+                <MaterialIcons 
+                  name={uploadingData.mimeType?.startsWith('audio/') ? "mic" : "insert-drive-file"} 
+                  size={24} 
+                  color="#fff" 
+                />
+                <Text style={{ color: '#fff', marginLeft: 10, fontWeight: '500', flex: 1 }}>
+                  {uploadingData.mimeType?.startsWith('audio/') ? "" : "Загрузка файла..."}
+                </Text>
                 <TouchableOpacity
                   style={{
                     width: 26,
@@ -2191,6 +2197,9 @@ export default function ChatScreen({ route, navigation }) {
 
     // Входящий (и исходящий) плейсхолдер загрузки для собеседника
     if (item?.is_uploading && !item?.file_path) {
+      // Скрываем дубликат плейсхолдера для отправителя, если у него есть локальный индикатор
+      if (!isReceived && uploadingProgress !== null) return null;
+
       const progressPercent = Math.round(((item.upload_progress || 0) * 100));
       const progressText = (item.upload_offset !== undefined && item.upload_total !== undefined && item.upload_total > 0)
         ? `${formatFileSize(item.upload_offset)} / ${formatFileSize(item.upload_total)}`
@@ -2202,7 +2211,7 @@ export default function ChatScreen({ route, navigation }) {
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
               <ActivityIndicator size="small" color={isReceived ? colors.text : '#fff'} />
               <Text style={[styles.messageText, isReceived ? { color: colors.text } : { color: '#fff' }, { marginLeft: 8 }]}>
-                Загрузка файла... {progressText}
+                {(!isReceived && (isImage || isVideo || isVoice || isVideoNote)) ? "" : "Загрузка файла... "}{progressText}
               </Text>
             </View>
           </View>
@@ -2574,7 +2583,7 @@ export default function ChatScreen({ route, navigation }) {
 
   return (
     <KeyboardAvoidingView 
-      behavior={Platform.OS === 'ios' ? 'padding' : 'padding'} 
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'} 
       style={[styles.container, { backgroundColor: colors.background, flex: 1 }]}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
       enabled={Platform.OS !== 'web'}

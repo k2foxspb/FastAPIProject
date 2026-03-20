@@ -453,6 +453,7 @@ export default function LoginScreen({navigation, route}) {
         <KeyboardAvoidingView
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
             style={[styles.container, {backgroundColor: colors.background}]}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
         >
             <ReCaptcha ref={recaptchaRef} onVerify={handleRecaptchaVerify}/>
             <Animated.View

@@ -240,7 +240,7 @@ export default function NewsDetailScreen({ route, navigation }) {
 
   return (
     <KeyboardAvoidingView 
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={{ flex: 1 }}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
     >
@@ -406,39 +406,39 @@ export default function NewsDetailScreen({ route, navigation }) {
             <Text style={[styles.emptyText, { color: colors.textSecondary }]}>Пока нет комментариев. Будьте первым!</Text>
           )}
 
-          {user ? (
-            <View style={[styles.addCommentContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <TextInput
-                style={[styles.commentInput, { color: colors.text, borderColor: colors.border }]}
-                placeholder="Ваш комментарий..."
-                placeholderTextColor={colors.textSecondary}
-                multiline
-                value={newComment}
-                onChangeText={setNewComment}
-              />
-              <TouchableOpacity 
-                style={[styles.submitButton, { backgroundColor: colors.primary }]}
-                onPress={submitComment}
-                disabled={isSubmittingComment || !newComment.trim()}
-              >
-                {isSubmittingComment ? (
-                  <ActivityIndicator color="#fff" />
-                ) : (
-                  <Icon name="send" size={20} color="#fff" />
-                )}
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <TouchableOpacity 
-              style={[styles.loginPrompt, { backgroundColor: colors.surface, borderColor: colors.border }]}
-              onPress={() => navigation.navigate('Profile')}
-            >
-              <Text style={{ color: colors.primary, fontWeight: 'bold' }}>Войдите, чтобы оставить комментарий</Text>
-            </TouchableOpacity>
-          )}
           <View style={{ height: 40 }} />
         </View>
       </ScrollView>
+      {user ? (
+        <View style={[styles.stickyAddCommentContainer, { backgroundColor: colors.background, borderTopColor: colors.border }]}>
+          <TextInput
+            style={[styles.commentInput, { color: colors.text, backgroundColor: colors.surface, borderColor: colors.border }]}
+            placeholder="Ваш комментарий..."
+            placeholderTextColor={colors.textSecondary}
+            multiline
+            value={newComment}
+            onChangeText={setNewComment}
+          />
+          <TouchableOpacity 
+            style={[styles.submitButton, { backgroundColor: colors.primary }]}
+            onPress={submitComment}
+            disabled={isSubmittingComment || !newComment.trim()}
+          >
+            {isSubmittingComment ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Icon name="send" size={20} color="#fff" />
+            )}
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <TouchableOpacity 
+          style={[styles.stickyLoginPrompt, { backgroundColor: colors.surface, borderTopColor: colors.border }]}
+          onPress={() => navigation.navigate('Profile')}
+        >
+          <Text style={{ color: colors.primary, fontWeight: 'bold' }}>Войдите, чтобы оставить комментарий</Text>
+        </TouchableOpacity>
+      )}
     </KeyboardAvoidingView>
   );
 }
@@ -480,9 +480,17 @@ const styles = StyleSheet.create({
   commentReactions: { flexDirection: 'row', alignItems: 'center' },
   commentReactionButton: { flexDirection: 'row', alignItems: 'center' },
   commentReactionText: { marginLeft: 4, fontSize: 12 },
-  addCommentContainer: { flexDirection: 'row', alignItems: 'center', marginTop: 20, padding: 10, borderRadius: 12, borderWidth: 1 },
-  commentInput: { flex: 1, minHeight: 40, maxHeight: 100, paddingHorizontal: 12, paddingVertical: 8, fontSize: 15 },
-  submitButton: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center', marginLeft: 10 },
-  emptyText: { textAlign: 'center', marginVertical: 20, fontSize: 14, fontStyle: 'italic' },
-  loginPrompt: { padding: 15, borderRadius: 12, borderWidth: 1, alignItems: 'center', marginTop: 20 },
+  stickyAddCommentContainer: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    padding: 10, 
+    borderTopWidth: 1,
+    paddingBottom: Platform.OS === 'ios' ? 30 : 10
+  },
+  stickyLoginPrompt: { 
+    padding: 15, 
+    borderTopWidth: 1, 
+    alignItems: 'center',
+    paddingBottom: Platform.OS === 'ios' ? 25 : 15
+  },
 });

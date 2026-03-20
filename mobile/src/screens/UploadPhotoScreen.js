@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image, TextInput, Alert, ActivityIndicator, Platform, Switch, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Image, TextInput, Alert, ActivityIndicator, Platform, Switch, ScrollView, KeyboardAvoidingView } from 'react-native';
 import { getShadow } from '../utils/shadowStyles';
 import * as ImagePicker from 'expo-image-picker';
 import { usersApi } from '../api';
@@ -91,8 +91,17 @@ export default function UploadPhotoScreen({ route, navigation }) {
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={styles.imagePickerContainer}>
+    <KeyboardAvoidingView 
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      style={{ flex: 1 }}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+    >
+      <ScrollView 
+        style={[styles.container, { backgroundColor: colors.background }]}
+        contentContainerStyle={{ flexGrow: 1 }}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.imagePickerContainer}>
         {images.length > 0 ? (
           <View style={styles.imageListContainer}>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
@@ -185,7 +194,8 @@ export default function UploadPhotoScreen({ route, navigation }) {
           )}
         </TouchableOpacity>
       </View>
-    </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 

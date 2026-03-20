@@ -1415,6 +1415,31 @@ async def react_to_album_comment(
     return {"status": "ok", "reaction_type": reaction_type}
 
 
+@router.delete("/albums/comments/{comment_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_album_comment(
+    comment_id: int,
+    current_user: UserModel = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """Удалить комментарий к альбому."""
+    comment_res = await db.execute(
+        select(PhotoAlbumCommentModel)
+        .options(selectinload(PhotoAlbumCommentModel.album))
+        .where(PhotoAlbumCommentModel.id == comment_id)
+    )
+    comment_obj = comment_res.scalar_one_or_none()
+    if not comment_obj:
+        raise HTTPException(status_code=404, detail="Comment not found")
+    
+    # Удалить может либо автор комментария, либо автор альбома
+    if comment_obj.user_id != current_user.id and comment_obj.album.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    await db.delete(comment_obj)
+    await db.commit()
+    return None
+
+
 @router.patch("/albums/{album_id}", response_model=PhotoAlbumSchema)
 async def update_album(
     album_id: int,

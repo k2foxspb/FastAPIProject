@@ -717,7 +717,6 @@ export async function checkAndRemindPermissions(options = {}) {
 
     // Cross-platform permission check via Notifee
     if (!notifee || typeof notifee.getSettings !== 'function') {
-      console.log('[Notifications] Notifee or getSettings not available, skipping permission reminder');
       return;
     }
     

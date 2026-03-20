@@ -465,8 +465,9 @@ export default function PhotoDetailScreen({ route, navigation }) {
       {/* Описание и реакции (показываются по тапу) */}
       {showDescription && photos[currentIndex] && (
         <KeyboardAvoidingView 
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          style={[styles.descriptionContainer, { backgroundColor: 'rgba(0,0,0,0.8)' }]}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={[styles.descriptionContainer, { backgroundColor: 'rgba(0,0,0,0.85)' }]}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
         >
           <View style={styles.descriptionHeaderRow}>
             <View style={{ flex: 1 }}>
@@ -679,9 +680,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row', 
     alignItems: 'center', 
     marginTop: 10,
-    backgroundColor: 'rgba(255,255,255,0.1)',
+    backgroundColor: 'rgba(255,255,255,0.15)',
     borderRadius: 20,
-    paddingHorizontal: 15
+    paddingHorizontal: 15,
+    marginBottom: Platform.OS === 'ios' ? 15 : 0
   },
   commentInput: { flex: 1, color: '#fff', paddingVertical: 8, maxHeight: 80 },
   sendButton: { padding: 5, marginLeft: 5 },
