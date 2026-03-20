@@ -51,25 +51,22 @@ class ChatManager:
                 pass
 
     async def send_personal_message(self, message: dict, user_id: int):
-        logger.debug(f"ChatManager trying to send message to user {user_id}. Connections: {len(self.active_connections.get(user_id, []))}")
         if user_id in self.active_connections:
+            logger.debug(f"ChatManager: Sending message to user {user_id} (Connections: {len(self.active_connections[user_id])})")
             tasks = [connection.send_json(message) for connection in self.active_connections[user_id]]
             results = await asyncio.gather(*tasks, return_exceptions=True)
             for i, result in enumerate(results):
                 if isinstance(result, Exception):
-                    logger.error(f"ChatManager failed to send to user {user_id}: {result}")
+                    logger.error(f"ChatManager: Failed to send to user {user_id}: {result}")
                     # Remove broken connection
                     try:
                         self.active_connections[user_id].pop(i)
                     except:
                         pass
-                else:
-                    logger.debug(f"ChatManager sent message to user {user_id}: {message.get('id')}")
             
             if user_id in self.active_connections and not self.active_connections[user_id]:
                 del self.active_connections[user_id]
-        else:
-            logger.debug(f"User {user_id} NOT connected to Chat WS")
+        # Skip logging if not connected to avoid log spamming during background uploads
 
 manager = ChatManager()
 
