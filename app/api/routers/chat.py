@@ -1630,7 +1630,11 @@ async def upload_chunk(
                     "file_path": url,
                     "message_type": message_type,
                     "is_uploading": False,
-                    "upload_id": upload_id
+                    "upload_id": upload_id,
+                    "client_id": upd_msg.client_id,
+                    "sender_id": upd_msg.sender_id,
+                    "receiver_id": upd_msg.receiver_id,
+                    "timestamp": upd_msg.timestamp.isoformat() if upd_msg.timestamp else None
                 }}
                 await asyncio.gather(
                     manager.send_personal_message(update_event, user_id),
