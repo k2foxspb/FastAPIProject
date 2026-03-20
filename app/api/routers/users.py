@@ -316,12 +316,11 @@ async def get_me(
     Возвращает информацию о текущем пользователе, включая его альбомы и фотографии.
     """
     # Загружаем фотографии и альбомы пользователя
+    # ОГРАНИЧИВАЕМ количество загружаемых данных для /me
     result = await db.execute(
         select(UserModel).where(UserModel.id == current_user.id).options(
-            selectinload(UserModel.photos).selectinload(UserPhotoModel.reactions).selectinload(UserPhotoReactionModel.user),
-            selectinload(UserModel.albums).selectinload(PhotoAlbumModel.photos).selectinload(UserPhotoModel.reactions).selectinload(UserPhotoReactionModel.user),
-            selectinload(UserModel.albums).selectinload(PhotoAlbumModel.reactions).selectinload(PhotoAlbumReactionModel.user),
-            selectinload(UserModel.albums).selectinload(PhotoAlbumModel.comments)
+            selectinload(UserModel.photos.and_(UserPhotoModel.privacy == 'public')).limit(20),
+            selectinload(UserModel.albums).selectinload(PhotoAlbumModel.photos).limit(5)
         )
     )
     user = result.scalar_one_or_none()
@@ -2238,10 +2237,8 @@ async def get_user_profile(
     """
     result = await db.execute(
         select(UserModel).where(UserModel.id == user_id, UserModel.is_active == True).options(
-            selectinload(UserModel.photos).selectinload(UserPhotoModel.reactions).selectinload(UserPhotoReactionModel.user),
-            selectinload(UserModel.albums).selectinload(PhotoAlbumModel.photos).selectinload(UserPhotoModel.reactions).selectinload(UserPhotoReactionModel.user),
-            selectinload(UserModel.albums).selectinload(PhotoAlbumModel.reactions).selectinload(PhotoAlbumReactionModel.user),
-            selectinload(UserModel.albums).selectinload(PhotoAlbumModel.comments)
+            selectinload(UserModel.photos.and_(UserPhotoModel.privacy == 'public')).limit(20),
+            selectinload(UserModel.albums).selectinload(PhotoAlbumModel.photos).limit(5)
         )
     )
     user = result.scalar_one_or_none()

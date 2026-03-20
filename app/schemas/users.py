@@ -442,25 +442,32 @@ class User(BaseModel):
             # Используем __dict__ напрямую, это самый надежный способ избежать ленивой загрузки
             obj_dict = getattr(obj, "__dict__", {})
             
-            if "photos" in obj_dict:
+            # ВАЖНО: проверяем наличие ключей в __dict__, чтобы не триггерить Lazy Loading 
+            # через getattr(obj, "photos"), если photos не были подгружены в запросе
+            if "photos" in obj_dict and obj_dict["photos"] is not None:
                 photos = obj_dict["photos"]
-                data["photos"] = [UserPhoto.model_validate(p) for p in photos] if photos else []
+                data["photos"] = [UserPhoto.model_validate(p) for p in photos]
             
-            if "albums" in obj_dict:
+            if "albums" in obj_dict and obj_dict["albums"] is not None:
                 albums = obj_dict["albums"]
-                data["albums"] = [PhotoAlbum.model_validate(a) for a in albums] if albums else []
+                data["albums"] = [PhotoAlbum.model_validate(a) for a in albums]
 
-            if "admin_permissions" in obj_dict:
+            if "admin_permissions" in obj_dict and obj_dict["admin_permissions"] is not None:
                 perms = obj_dict["admin_permissions"]
-                data["admin_permissions"] = [AdminPermission.model_validate(p) for p in perms] if perms else []
+                data["admin_permissions"] = [AdminPermission.model_validate(p) for p in perms]
                 
             return cls(**data)
         except Exception as e:
+            from loguru import logger
+            logger.error(f"User validation error: {e}")
+            # Возвращаем объект, но без вложенных данных, если они вызвали ошибку
             return cls(
                 id=int(getattr(obj, "id", 0)),
-                email=str(getattr(obj, "email", "error@validate.err")),
-                first_name="Error",
-                last_name="Validation"
+                email=getattr(obj, "email", None),
+                first_name=getattr(obj, "first_name", "Error"),
+                last_name=getattr(obj, "last_name", "Validation"),
+                role=getattr(obj, "role", "buyer"),
+                avatar_url=getattr(obj, "avatar_url", None)
             )
 
 

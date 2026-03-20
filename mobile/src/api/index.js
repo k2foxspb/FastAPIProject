@@ -6,7 +6,7 @@ import { navigate } from '../navigation/NavigationService';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 15000,
+  timeout: 30000,
 });
 
 // Интерцептор для добавления Firebase App Check токена
