@@ -28,9 +28,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { setRecordingAudioMode } from '../utils/audioSettings';
 
 function VideoUploadPlaceholder({ progressPercent, activeUploadId, uri, loaded, total, onCancel }) {
-  const progressText = (loaded !== undefined && total !== undefined && total > 0) 
+  const isFinished = progressPercent >= 100;
+  const progressText = isFinished ? "Обработка..." : ((loaded !== undefined && total !== undefined && total > 0) 
     ? `${formatFileSize(loaded)} / ${formatFileSize(total)}` 
-    : `${progressPercent}%`;
+    : `${progressPercent}%`);
     
   return (
     <View style={{ width: 200, height: 150, borderRadius: 10, backgroundColor: '#1a1a1a', overflow: 'hidden' }}>
@@ -265,19 +266,29 @@ export default function ChatScreen({ route, navigation }) {
   }, [notifications, userId, currentUserId]);
 
   // Отслеживаем прогресс загрузки и завершение (message_updated) от Chat WS
+  const lastProcessedUploadNotifyRef = useRef(null);
   useEffect(() => {
     if (!notifications || notifications.length === 0) return;
-    const latest = notifications[0];
-    if (latest.type === 'upload_progress' && latest.data) {
-      const { message_id, progress, offset, total } = latest.data;
-      setMessages(prev => prev.map(m => (String(m.id) === String(message_id) 
-        ? { ...m, is_uploading: true, upload_progress: progress, upload_offset: offset, upload_total: total } 
-        : m
-      )));
-    } else if (latest.type === 'message_updated' && latest.data) {
-      const up = latest.data;
-      setMessages(prev => prev.map(m => (String(m.id) === String(up.id) ? { ...m, file_path: up.file_path, message_type: up.message_type, is_uploading: false, upload_progress: undefined } : m)));
-    }
+    
+    const lastIdx = lastProcessedUploadNotifyRef.current 
+      ? notifications.findIndex(n => n === lastProcessedUploadNotifyRef.current)
+      : -1;
+    const newNotifications = lastIdx === -1 ? notifications : notifications.slice(0, lastIdx);
+
+    newNotifications.forEach(notify => {
+      if (notify.type === 'upload_progress' && notify.data) {
+        const { message_id, progress, offset, total } = notify.data;
+        setMessages(prev => prev.map(m => (String(m.id) === String(message_id) 
+          ? { ...m, is_uploading: true, upload_progress: progress, upload_offset: offset, upload_total: total } 
+          : m
+        )));
+      } else if (notify.type === 'message_updated' && notify.data) {
+        const up = notify.data;
+        setMessages(prev => prev.map(m => (String(m.id) === String(up.id) ? { ...m, file_path: up.file_path, message_type: up.message_type, is_uploading: false, upload_progress: undefined } : m)));
+      }
+    });
+
+    lastProcessedUploadNotifyRef.current = notifications[0];
   }, [notifications]);
   const videoPlayerRef = useRef(null);
   const chatFlatListRef = useRef(null);
@@ -912,22 +923,75 @@ export default function ChatScreen({ route, navigation }) {
             const rawResult = [...actualPending, ...fromNotifications, ...payload.data];
             
             // Финальная дедупликация (на случай гонок или дубликатов от сервера)
+            // Приоритет отдаем сообщениям из БД (payload.data), при этом среди них
+            // предпочитаем завершенные сообщения плейсхолдерам с тем же client_id
             const uniqueMessages = [];
             const seenIds = new Set();
-            const seenClientIds = new Set();
+            const seenClientIds = new Map(); // cid -> { index in filteredServerData, is_uploading }
+
+            // 1. Сначала фильтруем саму историю от сервера на случай дублей в базе
+            // (особенно плейсхолдеров, которые могли остаться при пакетной загрузке)
+            const filteredServerData = [];
             
-            for (const m of rawResult) {
-              const mid = m.id ? String(m.id) : null;
+            payload.data.forEach(m => {
+              const mid = (m.id && !String(m.id).startsWith('c_')) ? String(m.id) : null;
               const cid = m.client_id ? String(m.client_id) : null;
               
-              // Если есть ID, проверяем по нему. Если нет (только client_id), проверяем по client_id.
-              if (mid && seenIds.has(mid)) continue;
-              if (cid && seenClientIds.has(cid)) continue;
+              if (mid && seenIds.has(mid)) return;
               
+              if (cid && seenClientIds.has(cid)) {
+                const seen = seenClientIds.get(cid);
+                // Если мы уже видели этот client_id, и текущее сообщение (m) более "полноценное"
+                // (не в процессе загрузки), а предыдущее было плейсхолдером — заменяем его.
+                // История идет от новых к старым, поэтому обычно первое встреченное — актуальнее.
+                // Но в случае плейсхолдеров нам важнее статус завершенности.
+                if (seen.is_uploading && !m.is_uploading) {
+                   filteredServerData[seen.index] = m;
+                   seenClientIds.set(cid, { index: seen.index, is_uploading: false });
+                   if (mid) seenIds.add(mid);
+                }
+                return;
+              }
+
               if (mid) seenIds.add(mid);
-              if (cid) seenClientIds.add(cid);
-              uniqueMessages.push(m);
-            }
+              if (cid) seenClientIds.set(cid, { index: filteredServerData.length, is_uploading: !!m.is_uploading });
+              filteredServerData.push(m);
+            });
+            
+            // Сбрасываем сеты для фильтрации пендингов и нотификаций
+            const finalSeenIds = new Set();
+            const finalSeenClientIds = new Set();
+            filteredServerData.forEach(m => {
+              if (m.id && !String(m.id).startsWith('c_')) finalSeenIds.add(String(m.id));
+              if (m.client_id) finalSeenClientIds.add(String(m.client_id));
+            });
+            
+            // 3. Добавляем в результат в правильном порядке: сначала пендинги, потом нотификации, потом историю
+            // При этом фильтруем пендинги и нотификации, если они уже есть в истории (по id или client_id)
+            
+            const filteredPending = actualPending.filter(m => {
+              const cid = m.client_id ? String(m.client_id) : null;
+              const mid = (m.id && !String(m.id).startsWith('c_')) ? String(m.id) : null;
+              if (mid && finalSeenIds.has(mid)) return false;
+              if (cid && finalSeenClientIds.has(cid)) return false;
+              if (mid) finalSeenIds.add(mid);
+              if (cid) finalSeenClientIds.add(cid);
+              return true;
+            });
+
+            const filteredNotifications = fromNotifications.filter(m => {
+              const cid = m.client_id ? String(m.client_id) : null;
+              const mid = (m.id && !String(m.id).startsWith('c_')) ? String(m.id) : null;
+              if (mid && finalSeenIds.has(mid)) return false;
+              if (cid && finalSeenClientIds.has(cid)) return false;
+              if (mid) finalSeenIds.add(mid);
+              if (cid) finalSeenClientIds.add(cid);
+              return true;
+            });
+
+            uniqueMessages.push(...filteredPending);
+            uniqueMessages.push(...filteredNotifications);
+            uniqueMessages.push(...filteredServerData);
             
             return uniqueMessages;
           } else {
@@ -2118,7 +2182,7 @@ export default function ChatScreen({ route, navigation }) {
                   color="#fff" 
                 />
                 <Text style={{ color: '#fff', marginLeft: 10, fontWeight: '500', flex: 1 }}>
-                  {uploadingData.mimeType?.startsWith('audio/') ? "" : "Загрузка файла..."}
+                  {progressPercent >= 100 ? "Обработка..." : (uploadingData.mimeType?.startsWith('audio/') || uploadingData.mimeType?.startsWith('image/') || uploadingData.mimeType?.startsWith('video/') ? "" : "Загрузка файла...")}
                 </Text>
                 <TouchableOpacity
                   style={{
@@ -2205,13 +2269,17 @@ export default function ChatScreen({ route, navigation }) {
         ? `${formatFileSize(item.upload_offset)} / ${formatFileSize(item.upload_total)}`
         : (progressPercent > 0 ? `${progressPercent}%` : '');
 
+      const isMediaGroup = item.message_type === 'media_group';
+      const isMedia = isImage || isVideo || isVoice || isVideoNote || isMediaGroup;
+
       return (
         <View style={[styles.messageWrapper, isReceived ? styles.receivedWrapper : styles.sentWrapper]}>
           <View style={[styles.messageBubble, isReceived ? styles.receivedBubble : styles.sentBubble]}> 
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
               <ActivityIndicator size="small" color={isReceived ? colors.text : '#fff'} />
               <Text style={[styles.messageText, isReceived ? { color: colors.text } : { color: '#fff' }, { marginLeft: 8 }]}>
-                {(!isReceived && (isImage || isVideo || isVoice || isVideoNote)) ? "" : "Загрузка файла... "}{progressText}
+                {progressPercent >= 100 ? "Обработка..." : (!isReceived && isMedia ? "" : "Загрузка файла... ")}
+                {progressPercent < 100 ? progressText : ""}
               </Text>
             </View>
           </View>

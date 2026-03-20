@@ -976,8 +976,28 @@ async def get_chat_history(
                 item["attachments"] = []
         messages.append(item)
 
+    # Дедупликация по client_id (схлопываем плейсхолдеры и готовые сообщения в истории)
+    # Это предотвращает отображение дубликатов, если плейсхолдер не был удален вовремя
+    unique_messages = []
+    seen_client_ids = {} # client_id -> index in unique_messages
+    
+    for item in messages:
+        cid = item.get("client_id")
+        if cid:
+            if cid in seen_client_ids:
+                idx = seen_client_ids[cid]
+                existing = unique_messages[idx]
+                # Если текущее сообщение (item) более "полноценное" (не в процессе загрузки), 
+                # а ранее встреченное (existing) было плейсхолдером — заменяем его.
+                # Обычно первое встреченное в истории (DESC) — самое новое.
+                if existing.get("is_uploading") and not item.get("is_uploading"):
+                    unique_messages[idx] = item
+                continue
+            seen_client_ids[cid] = len(unique_messages)
+        unique_messages.append(item)
+
     # Возвращаем в обратном хронологическом порядке для FlatList inverted
-    return messages
+    return unique_messages
 
 @router.get("/dialogs", response_model=List[DialogResponse])
 async def get_dialogs(
