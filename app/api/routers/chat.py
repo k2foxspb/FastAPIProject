@@ -4,7 +4,7 @@ import asyncio
 import os
 import uuid
 import io
-from datetime import datetime
+from datetime import datetime, timedelta
 from PIL import Image
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, UploadFile, File, Form, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -443,14 +443,15 @@ async def websocket_chat_endpoint(
                         logger.warning(f"Invalid receiver_id format in WS upload_started: {receiver_id_raw}")
                         continue
 
-                    # Проверяем, есть ли уже плейсхолдер с таким client_id (для группы медиа)
+                    # Проверяем, есть ли уже плейсхолдер с таким client_id и upload_id
                     existing_msg = None
                     if client_id:
                         res_existing = await db.execute(
                             select(ChatMessage).where(
                                 ChatMessage.client_id == client_id,
                                 ChatMessage.sender_id == user_id,
-                                ChatMessage.is_uploading == True
+                                ChatMessage.is_uploading == True,
+                                ChatMessage.upload_id == upload_id
                             )
                         )
                         existing_msg = res_existing.scalars().first()
@@ -624,14 +625,21 @@ async def websocket_chat_endpoint(
                 # Ищем placeholder, если есть client_id
                 existing_msg = None
                 if client_id:
+                    # Ищем любые сообщения с этим client_id, которые являются плейсхолдерами (is_uploading или имеют upload_id)
+                    # Ограничиваем временем (24 часа), чтобы не задеть старые сообщения при повторе client_id
+                    time_limit = datetime.utcnow() - timedelta(hours=24)
                     res_existing = await db.execute(
                         select(ChatMessage).where(
                             ChatMessage.client_id == client_id,
                             ChatMessage.sender_id == user_id,
-                            ChatMessage.is_uploading == True
+                            or_(
+                                ChatMessage.is_uploading == True,
+                                ChatMessage.upload_id.isnot(None)
+                            ),
+                            ChatMessage.timestamp >= time_limit
                         )
                     )
-                    # Если было несколько плейсхолдеров (например, в media_group), берем первый, остальные удалим
+                    # Если было несколько плейсхолдеров (например, для разных файлов в группе), берем первый для обновления, остальные удалим
                     existing_msgs = res_existing.scalars().all()
                     if existing_msgs:
                         existing_msg = existing_msgs[0]
@@ -916,7 +924,15 @@ async def get_chat_history(
                 and_(ChatMessage.sender_id == user_id, ChatMessage.receiver_id == other_user_id, ChatMessage.deleted_by_sender == False),
                 and_(ChatMessage.sender_id == other_user_id, ChatMessage.receiver_id == user_id, ChatMessage.deleted_by_receiver == False)
             )
-        ).order_by(ChatMessage.timestamp.desc())
+        )
+        # Исключаем плейсхолдеры, которые висят слишком долго (вероятно, загрузка прервана)
+        .where(
+            or_(
+                ChatMessage.is_uploading == False,
+                ChatMessage.timestamp >= datetime.utcnow() - timedelta(hours=1)
+            )
+        )
+        .order_by(ChatMessage.timestamp.desc())
         .offset(skip)
         .limit(limit)
     )
@@ -1006,7 +1022,14 @@ async def get_dialogs(
                     and_(ChatMessage.sender_id == user_id, ChatMessage.receiver_id == p_id, ChatMessage.deleted_by_sender == False),
                     and_(ChatMessage.sender_id == p_id, ChatMessage.receiver_id == user_id, ChatMessage.deleted_by_receiver == False)
                 )
-            ).order_by(ChatMessage.timestamp.desc()).limit(1)
+            )
+            .where(
+                or_(
+                    ChatMessage.is_uploading == False,
+                    ChatMessage.timestamp >= datetime.utcnow() - timedelta(hours=1)
+                )
+            )
+            .order_by(ChatMessage.timestamp.desc()).limit(1)
         )
         last_msg = last_msg_res.scalar_one_or_none()
         if not last_msg: continue # Если нет видимых сообщений, не показываем диалог
