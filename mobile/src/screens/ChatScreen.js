@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { getShadow } from '../utils/shadowStyles';
 import { View, Text, FlatList, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, Image, Modal, Pressable, Alert, AppState, StatusBar, Dimensions, Share, Animated, Vibration, Keyboard, PanResponder, ActivityIndicator } from 'react-native';
 import { Swipeable } from 'react-native-gesture-handler';
@@ -27,7 +27,7 @@ import { formatStatus, formatName, formatFileSize, parseISODate, formatMessageTi
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { setRecordingAudioMode } from '../utils/audioSettings';
 
-function VideoUploadPlaceholder({ progressPercent, activeUploadId, uri, loaded, total }) {
+function VideoUploadPlaceholder({ progressPercent, activeUploadId, uri, loaded, total, onCancel }) {
   const progressText = (loaded !== undefined && total !== undefined && total > 0) 
     ? `${formatFileSize(loaded)} / ${formatFileSize(total)}` 
     : `${progressPercent}%`;
@@ -81,7 +81,7 @@ function VideoUploadPlaceholder({ progressPercent, activeUploadId, uri, loaded, 
             justifyContent: 'center',
             alignItems: 'center',
           }}
-          onPress={() => uploadManager.cancelUpload(activeUploadId)}
+          onPress={() => onCancel(activeUploadId)}
         >
           <MaterialIcons name="close" size={16} color="#fff" />
         </TouchableOpacity>
@@ -201,6 +201,18 @@ export default function ChatScreen({ route, navigation }) {
   const LIMIT = 15;
   const lastProcessedNotificationId = useRef(null);
   const lastProcessedMsgId = useRef(null);
+
+  const handleCancelUpload = useCallback((uploadId) => {
+    if (!uploadId) return;
+    console.log('[ChatScreen] Cancelling upload:', uploadId);
+    uploadManager.cancelUpload(uploadId);
+    if (isChatConnected) {
+      sendMessageWs({ type: 'upload_cancelled', upload_id: uploadId });
+    }
+    setUploadingProgress(null);
+    setActiveUploadId(null);
+    setUploadingData({ loaded: 0, total: 0, uri: null, mimeType: null });
+  }, [isChatConnected, sendMessageWs]);
 
   // Слушаем новые уведомления (сообщения) в реальном времени
   useEffect(() => {
@@ -790,13 +802,15 @@ export default function ChatScreen({ route, navigation }) {
             console.log('[ChatScreen] Message not related to this chat, ignoring');
           }
         } else if (notifyType === 'message_deleted') {
-          const msgId = lastNotify.message_id || lastNotify.data?.id;
-          if (msgId) {
+          const msgId = lastNotify.message_id || lastNotify.data?.message_id || lastNotify.data?.id;
+          const uploadId = lastNotify.upload_id || lastNotify.data?.upload_id;
+          if (msgId || uploadId) {
             setMessages(prev => {
-              if (prev.find(m => String(m.id) === String(msgId))) {
-                return prev.filter(m => String(m.id) !== String(msgId));
-              }
-              return prev;
+              return prev.filter(m => {
+                if (msgId && String(m.id) === String(msgId)) return false;
+                if (uploadId && m.upload_id === uploadId) return false;
+                return true;
+              });
             });
             fetchDialogs();
           }
@@ -1307,6 +1321,7 @@ export default function ChatScreen({ route, navigation }) {
         setBatchTotal(assets.length);
         setAttachmentsLocalCount(0);
         const attachmentsLocal = [];
+        const clientId = `c_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         
         for (const asset of assets) {
           setUploadingData({ 
@@ -1324,12 +1339,12 @@ export default function ChatScreen({ route, navigation }) {
               asset.mimeType,
               userId,
               (uid) => { 
-                              setActiveUploadId(uid);
-                              try {
-                                const mt = (asset?.mimeType || '').startsWith('image/') ? 'image' : ((asset?.mimeType || '').startsWith('video/') ? 'video' : ((asset?.mimeType || '').startsWith('audio/') ? 'voice' : 'file'));
-                                sendMessageWs({ type: 'upload_started', receiver_id: userId, message_type: mt, upload_id: uid });
-                              } catch (e) { console.warn('Failed to send upload_started WS', e); }
-                            }
+                setActiveUploadId(uid);
+                try {
+                  const mt = (asset?.mimeType || '').startsWith('image/') ? 'image' : ((asset?.mimeType || '').startsWith('video/') ? 'video' : ((asset?.mimeType || '').startsWith('audio/') ? 'voice' : 'file'));
+                  sendMessageWs({ type: 'upload_started', receiver_id: userId, message_type: mt, upload_id: uid, client_id: clientId });
+                } catch (e) { console.warn('Failed to send upload_started WS', e); }
+              }
             );
 
             if (res && res.status === 'completed') {
@@ -1342,7 +1357,6 @@ export default function ChatScreen({ route, navigation }) {
         }
 
         if (attachmentsLocal.length > 0) {
-          const clientId = `c_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
           const msgData = attachmentsLocal.length === 1 
             ? {
                 receiver_id: userId,
@@ -1411,6 +1425,7 @@ export default function ChatScreen({ route, navigation }) {
         setBatchTotal(assets.length);
         setAttachmentsLocalCount(0);
         const attachmentsLocal = [];
+        const clientId = `c_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
         for (const asset of assets) {
           const fileName = asset.uri.split('/').pop();
@@ -1428,7 +1443,7 @@ export default function ChatScreen({ route, navigation }) {
               fileName, 
               asset.mimeType,
               userId,
-              (upload_id) => { setActiveUploadId(upload_id); try { const mt = (asset?.mimeType || '').startsWith('image/') ? 'image' : ((asset?.mimeType || '').startsWith('video/') ? 'video' : ((asset?.mimeType || '').startsWith('audio/') ? 'voice' : 'file')); sendMessageWs({ type: 'upload_started', receiver_id: userId, message_type: mt, upload_id: upload_id }); } catch (e) { console.warn('Failed to send upload_started WS', e); } }
+              (upload_id) => { setActiveUploadId(upload_id); try { const mt = (asset?.mimeType || '').startsWith('image/') ? 'image' : ((asset?.mimeType || '').startsWith('video/') ? 'video' : ((asset?.mimeType || '').startsWith('audio/') ? 'voice' : 'file')); sendMessageWs({ type: 'upload_started', receiver_id: userId, message_type: mt, upload_id: upload_id, client_id: clientId }); } catch (e) { console.warn('Failed to send upload_started WS', e); } }
             );
             
             if (res && res.status === 'completed') {
@@ -1441,7 +1456,6 @@ export default function ChatScreen({ route, navigation }) {
         }
 
         if (attachmentsLocal.length > 0) {
-          const clientId = `c_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
           const msgData = attachmentsLocal.length === 1 
             ? {
                 receiver_id: userId,
@@ -1501,6 +1515,8 @@ export default function ChatScreen({ route, navigation }) {
         total: 100
       });
 
+      const clientId = `c_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
       const uploadResult = await uploadManager.uploadFileResumable(
         uri,
         filename,
@@ -1509,7 +1525,7 @@ export default function ChatScreen({ route, navigation }) {
         (id) => {
           currentUploadId = id;
           setActiveUploadId(id);
-          try { sendMessageWs({ type: 'upload_started', receiver_id: userId, message_type: 'video', upload_id: id }); } catch (e) { console.warn('Failed to send upload_started WS', e); }
+          try { sendMessageWs({ type: 'upload_started', receiver_id: userId, message_type: 'video', upload_id: id, client_id: clientId }); } catch (e) { console.warn('Failed to send upload_started WS', e); }
           uploadManager.subscribe(id, ({ progress, status, loaded, total }) => {
             if (status === 'uploading' || status === 'completed') {
               setUploadingProgress(progress);
@@ -1945,12 +1961,14 @@ export default function ChatScreen({ route, navigation }) {
       const mimeType = 'audio/m4a';
       setUploadingData({ loaded: 0, total: 0, uri: uri, mimeType: mimeType });
       
+      const clientId = `c_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      
       await uploadManager.uploadFileResumable(
         uri, 
         fileName, 
         mimeType,
         userId,
-        (upload_id) => { setActiveUploadId(upload_id); try { sendMessageWs({ type: 'upload_started', receiver_id: userId, message_type: 'voice', upload_id: upload_id }); } catch (e) { console.warn('Failed to send upload_started WS', e); } }
+        (upload_id) => { setActiveUploadId(upload_id); try { sendMessageWs({ type: 'upload_started', receiver_id: userId, message_type: 'voice', upload_id: upload_id, client_id: clientId }); } catch (e) { console.warn('Failed to send upload_started WS', e); } }
       );
       setRecordedUri(null);
       setRecordingDuration(0);
@@ -2012,7 +2030,7 @@ export default function ChatScreen({ route, navigation }) {
                 justifyContent: 'center',
                 alignItems: 'center',
               }}
-              onPress={() => uploadManager.cancelUpload(activeUploadId)}
+              onPress={() => handleCancelUpload(activeUploadId)}
             >
               <MaterialIcons name="close" size={17} color="#fff" />
             </TouchableOpacity>
@@ -2076,7 +2094,7 @@ export default function ChatScreen({ route, navigation }) {
                     justifyContent: 'center',
                     alignItems: 'center',
                   }}
-                  onPress={() => uploadManager.cancelUpload(activeUploadId)}
+                  onPress={() => handleCancelUpload(activeUploadId)}
                 >
                   <MaterialIcons name="close" size={16} color="#fff" />
                 </TouchableOpacity>
@@ -2089,6 +2107,7 @@ export default function ChatScreen({ route, navigation }) {
               uri={uploadingData.uri}
               loaded={uploadingData.loaded}
               total={uploadingData.total}
+              onCancel={handleCancelUpload}
             />
           ) : (
             <View style={{ padding: 10 }}>
@@ -2107,7 +2126,7 @@ export default function ChatScreen({ route, navigation }) {
                     alignItems: 'center',
                     marginLeft: 8,
                   }}
-                  onPress={() => uploadManager.cancelUpload(activeUploadId)}
+                  onPress={() => handleCancelUpload(activeUploadId)}
                 >
                   <MaterialIcons name="close" size={15} color="#fff" />
                 </TouchableOpacity>
@@ -2666,7 +2685,7 @@ export default function ChatScreen({ route, navigation }) {
             <Text style={{ color: colors.text }}>
               {batchMode ? `Загрузка медиа (${attachmentsLocalCount + 1}/${batchTotal || 1}) - ${Math.round(uploadingProgress * 100)}%` : `Загрузка: ${formatFileSize(uploadingData.loaded)} / ${formatFileSize(uploadingData.total)} (${Math.round(uploadingProgress * 100)}%)`}
             </Text>
-            <TouchableOpacity onPress={() => uploadManager.cancelUpload(activeUploadId)}>
+            <TouchableOpacity onPress={() => handleCancelUpload(activeUploadId)}>
               <MaterialIcons name="cancel" size={24} color={colors.error} />
             </TouchableOpacity>
           </View>

@@ -48,9 +48,18 @@ export const uploadManager = {
   /**
    * Отменить загрузку
    */
-  cancelUpload(uploadId) {
+  async cancelUpload(uploadId) {
     console.log(`[UploadManager] Cancelling upload ${uploadId}`);
     cancelledUploads.add(uploadId);
+
+    // Call server API to cleanup session and placeholder message
+    try {
+      const token = await storage.getAccessToken();
+      if (token) {
+        chatApi.cancelUpload(uploadId, token).catch(() => {});
+      }
+    } catch (e) {}
+
     // Remove persisted info so it won't be resumed on chat re-entry
     storage.removeItem(`upload_info_${uploadId}`).catch(() => {});
     if (abortControllers.has(uploadId)) {

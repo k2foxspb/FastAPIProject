@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { getShadow } from '../utils/shadowStyles';
 import { View, Text, FlatList, StyleSheet, TouchableOpacity, RefreshControl, ActivityIndicator, Alert, Image, Platform, ScrollView } from 'react-native';
 import notifee from '@notifee/react-native';
@@ -26,13 +26,22 @@ export default function FeedScreen({ navigation }) {
   const [user, setUser] = useState(null);
   const [cartItems, setCartItems] = useState([]);
   const [updatingProductId, setUpdatingProductId] = useState(null);
+  const isLoadedRef = useRef(false);
+  const loadingInProgressRef = useRef(false);
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (isRefresh = false) => {
     console.log('[FeedScreen] loadData starting... loadingUser:', loadingUser, 'currentUser:', !!currentUser);
     // Ждем, пока NotificationContext загрузит пользователя, чтобы не дублировать запросы
     if (loadingUser) {
       return;
     }
+
+    if (loadingInProgressRef.current && !isRefresh) {
+      console.log('[FeedScreen] loadData already in progress, skipping');
+      return;
+    }
+
+    loadingInProgressRef.current = true;
 
     try {
       const promises = [
@@ -41,11 +50,16 @@ export default function FeedScreen({ navigation }) {
         currentUser ? cartApi.getCart().catch(() => ({ data: { items: [] } })) : Promise.resolve({ data: { items: [] } })
       ];
 
-      // Используем currentUser из контекста
-      let userResData = currentUser;
+      // Если это продавец, админ или владелец, загружаем ИХ товары параллельно, чтобы увидеть pending
+      let sellerProductsPromise = null;
+      if (currentUser && currentUser.role !== 'buyer') {
+        sellerProductsPromise = productsApi.getProducts({ seller_id: currentUser.id }).catch(() => ({ data: { items: [] } }));
+        promises.push(sellerProductsPromise);
+      }
+
       const results = await Promise.all(promises);
       
-      const [productsRes, newsRes, cartRes] = results;
+      const [productsRes, newsRes, cartRes, sellerProductsRes] = results;
       
       const cartItemsData = cartRes?.data?.items || [];
       setCartItems(cartItemsData);
@@ -70,51 +84,54 @@ export default function FeedScreen({ navigation }) {
       });
 
       let productsData = productsRes.data.items || productsRes.data || [];
-      if (userResData) {
-        setUser(userResData);
-        // Если это продавец, админ или владелец, загружаем ИХ товары отдельно, чтобы увидеть pending
-        if (userResData.role !== 'buyer') {
-          try {
-            const sellerProductsRes = await productsApi.getProducts({ seller_id: userResData.id });
-            const sellerProducts = sellerProductsRes.data.items || sellerProductsRes.data;
-            
-            // Объединяем общие одобренные товары с собственными (включая pending)
-            const combinedProducts = [...productsData];
-            sellerProducts.forEach(sp => {
-              if (!combinedProducts.find(p => p.id === sp.id)) {
-                combinedProducts.push(sp);
-              }
-            });
-            productsData = combinedProducts.sort((a, b) => b.id - a.id);
-          } catch (sellerErr) {
-            console.log('Failed to load seller products', sellerErr);
-          }
+      
+      if (currentUser) {
+        setUser(currentUser);
+        if (sellerProductsRes) {
+          const sellerProducts = sellerProductsRes.data.items || sellerProductsRes.data || [];
+          // Объединяем общие одобренные товары с собственными (включая pending)
+          const combinedProducts = [...productsData];
+          sellerProducts.forEach(sp => {
+            if (!combinedProducts.find(p => p.id === sp.id)) {
+              combinedProducts.push(sp);
+            }
+          });
+          productsData = combinedProducts.sort((a, b) => b.id - a.id);
         }
       } else {
         setUser(null);
       }
       setProducts(productsData);
       setNews(newsRes.data || []);
+      isLoadedRef.current = true;
     } catch (err) {
       console.log('[FeedScreen] loadData error:', err);
     } finally {
       setLoading(false);
+      loadingInProgressRef.current = false;
     }
   }, [currentUser, loadingUser, colors.text, colors.primary, navigation]);
 
   useFocusEffect(
     useCallback(() => {
       console.log('[FeedScreen] Focused, loading data...');
-      loadData();
+      if (!isLoadedRef.current) {
+        loadData();
+      }
+      
       if (Platform.OS !== 'web') {
         notifee.cancelNotification('new_posts').catch(() => {});
       }
+
+      return () => {
+        isLoadedRef.current = false;
+      };
     }, [loadData])
   );
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await loadData();
+    await loadData(true);
     setRefreshing(false);
   };
 

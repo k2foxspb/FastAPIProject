@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react';
 import { Vibration, AppState, Alert } from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
 import Constants from 'expo-constants';
@@ -18,7 +18,7 @@ export const NotificationProvider = ({ children }) => {
   const [historyListeners] = useState(new Set());
   const [searchResultsListeners] = useState(new Set());
 
-  const getHistoryWs = React.useCallback((otherUserId, limit = 15, skip = 0) => {
+  const getHistoryWs = useCallback((otherUserId, limit = 15, skip = 0) => {
     if (chatWs.current && chatWs.current.readyState === WebSocket.OPEN) {
       const payload = {
         type: 'get_history',
@@ -33,17 +33,17 @@ export const NotificationProvider = ({ children }) => {
     return false;
   }, []);
 
-  const onHistoryReceived = React.useCallback((callback) => {
+  const onHistoryReceived = useCallback((callback) => {
     historyListeners.add(callback);
     return () => historyListeners.delete(callback);
   }, [historyListeners]);
 
-  const onSearchResultsReceived = React.useCallback((callback) => {
+  const onSearchResultsReceived = useCallback((callback) => {
     searchResultsListeners.add(callback);
     return () => searchResultsListeners.delete(callback);
   }, [searchResultsListeners]);
 
-  const searchMessagesWs = React.useCallback((otherUserId, query) => {
+  const searchMessagesWs = useCallback((otherUserId, query) => {
     if (chatWs.current && chatWs.current.readyState === WebSocket.OPEN) {
       chatWs.current.send(JSON.stringify({
         type: 'search_messages',
@@ -105,7 +105,7 @@ export const NotificationProvider = ({ children }) => {
     notificationPlayerRef.current = notificationPlayer;
   }, [notificationPlayer]);
 
-  const handleNewMessage = React.useCallback(async (message, wrappedNotification) => {
+  const handleNewMessage = useCallback(async (message, wrappedNotification) => {
     const myId = currentUserIdRef.current;
     const isFromMe = Number(message.sender_id) === Number(myId);
     
@@ -194,7 +194,7 @@ export const NotificationProvider = ({ children }) => {
     }
   }, [fetchDialogs, playNotificationSound]);
 
-  const injectExternalNotification = React.useCallback((remoteMessage) => {
+  const injectExternalNotification = useCallback((remoteMessage) => {
     if (!remoteMessage || !remoteMessage.data) return;
     const data = remoteMessage.data;
     const { type, senderId, senderName, notifTitle, notifBody } = parseNotificationData(data);
@@ -217,7 +217,7 @@ export const NotificationProvider = ({ children }) => {
     }
   }, [handleNewMessage]);
 
-  const connectChatWs = React.useCallback((token) => {
+  const connectChatWs = useCallback((token) => {
     if (!token || token === 'null' || token === 'undefined') {
       console.log('[NotificationContext] Skipping Chat WS connect: no token');
       return;
@@ -336,6 +336,8 @@ export const NotificationProvider = ({ children }) => {
             setNotifications(prev => [payload, ...prev]);
             console.log(`[NotificationContext] Received new_message via Chat WS: id=${payload.data.id}, client_id=${payload.data.client_id}`);
             handleNewMessage(payload.data, payload);
+          } else if (msgType === 'message_deleted') {
+            setNotifications(prev => [payload, ...prev]);
           } else if (msgType === 'messages_read') {
             const otherId = payload.reader_id || payload.data?.reader_id;
             if (otherId) {
@@ -373,7 +375,7 @@ export const NotificationProvider = ({ children }) => {
     }
   }, []);
 
-  const sendMessage = React.useCallback((msgData) => {
+  const sendMessage = useCallback((msgData) => {
     const currentState = chatWs.current?.readyState;
     const payload = msgData.type ? msgData : { type: 'message', ...msgData };
 
@@ -397,7 +399,7 @@ export const NotificationProvider = ({ children }) => {
     }
   }, [connectChatWs]);
 
-  const markAsReadWs = React.useCallback((otherId) => {
+  const markAsReadWs = useCallback((otherId) => {
     if (chatWs.current && chatWs.current.readyState === WebSocket.OPEN) {
       chatWs.current.send(JSON.stringify({
         type: 'mark_read',
@@ -408,7 +410,7 @@ export const NotificationProvider = ({ children }) => {
     return false;
   }, []);
 
-  const deleteMessageWs = React.useCallback((messageId) => {
+  const deleteMessageWs = useCallback((messageId) => {
     if (chatWs.current && chatWs.current.readyState === WebSocket.OPEN) {
       chatWs.current.send(JSON.stringify({
         type: 'delete_message',
@@ -419,7 +421,7 @@ export const NotificationProvider = ({ children }) => {
     return false;
   }, []);
 
-  const bulkDeleteMessagesWs = React.useCallback((messageIds) => {
+  const bulkDeleteMessagesWs = useCallback((messageIds) => {
     if (chatWs.current && chatWs.current.readyState === WebSocket.OPEN) {
       chatWs.current.send(JSON.stringify({
         type: 'bulk_delete',
@@ -430,7 +432,7 @@ export const NotificationProvider = ({ children }) => {
     return false;
   }, []);
 
-  const fetchDialogs = React.useCallback(async () => {
+  const fetchDialogs = useCallback(async () => {
     try {
       const token = await storage.getAccessToken();
       if (!token) return;
@@ -441,7 +443,7 @@ export const NotificationProvider = ({ children }) => {
     }
   }, []);
 
-  const fetchFriendRequestsCount = React.useCallback(async () => {
+  const fetchFriendRequestsCount = useCallback(async () => {
     try {
       const token = await storage.getAccessToken();
       if (!token) return;
@@ -455,7 +457,7 @@ export const NotificationProvider = ({ children }) => {
     }
   }, []);
 
-  const playNotificationSound = React.useCallback(async () => {
+  const playNotificationSound = useCallback(async () => {
     try {
       if (await isWithinQuietHours()) {
         console.log('[NotificationContext] Quiet hours active, skipping sound');
@@ -471,13 +473,13 @@ export const NotificationProvider = ({ children }) => {
     }
   }, []);
 
-  const clearUnread = React.useCallback((userId) => {
+  const clearUnread = useCallback((userId) => {
     setDialogs(prev => prev.map(d => 
       Number(d.user_id) === Number(userId) ? { ...d, unread_count: 0 } : d
     ));
   }, []);
 
-  const connect = React.useCallback((token) => {
+  const connect = useCallback((token) => {
     if (!token || token === 'null' || token === 'undefined') {
       console.log('Skipping WS connect: no token');
       return;
@@ -690,7 +692,7 @@ export const NotificationProvider = ({ children }) => {
     });
   }, [connect]);
 
-  const disconnect = React.useCallback(() => {
+  const disconnect = useCallback(() => {
     shouldReconnect.current = false;
     chatWsShouldReconnect.current = false;
     if (reconnectTimer.current) {
@@ -774,7 +776,7 @@ export const NotificationProvider = ({ children }) => {
     };
   }, [connect, connectChatWs]);
 
-  const loadUser = React.useCallback(async () => {
+  const loadUser = useCallback(async () => {
     setLoadingUser(true);
     try {
       const token = await storage.getAccessToken();
@@ -830,7 +832,7 @@ export const NotificationProvider = ({ children }) => {
     }
   }, [isConnected, fetchDialogs, fetchFriendRequestsCount]);
 
-  const getCachedHistory = React.useCallback(async (otherUserId) => {
+  const getCachedHistory = useCallback(async (otherUserId) => {
     const myId = currentUserIdRef.current;
     if (!myId || !otherUserId) return [];
     try {

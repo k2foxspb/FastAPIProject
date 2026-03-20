@@ -24,6 +24,7 @@ import { displayBundledMessage, handleNotificationResponse, parseNotificationDat
 // Global state to track if native module is broken during session
 let nativeMessagingBroken = false;
 let lastMessagingUnavailableReason = null;
+const activeSyncs = new Set();
 // Expo Go doesn't support @react-native-firebase/messaging.
 // IMPORTANT: `appOwnership === 'expo'` can also be true for Dev Client / development builds,
 // where FCM DOES work. So we ONLY block if explicitly in 'storeClient' (Expo Go).
@@ -653,29 +654,40 @@ export async function updateServerFcmToken(passedToken = null, forceSync = false
       }
     }
 
-    const response = await usersApi.updateFcmToken(token);
-    
-    if (response.data && response.data.status === 'ok') {
-      console.log('[FCM] Token updated on server SUCCESSFULLY:', token.substring(0, 15) + '...');
-      
-      // If server reported that token was empty/cleared, it might have been invalidated due to UnregisteredError.
-      // If we are not already in a forceSync/reset flow, let's trigger a full reset to ensure we have a fresh token.
-      if (response.data.was_cleared && !forceSync && !passedToken) {
-        console.log('[FCM] Server reported token was cleared. Triggering full reset with delay to avoid cycles...');
-        // We don't await to avoid recursion/blocking, it will sync itself after reset.
-        // Add a delay to avoid potential rapid cycles.
-        setTimeout(() => {
-          resetFcmToken().catch(err => console.error('[FCM] Background reset failed:', err));
-        }, 10000);
-      }
+    // Avoid concurrent identical updates
+    if (activeSyncs.has(token)) {
+      console.log('[FCM] Token update already in progress for this token, skipping redundant call.');
+      return { success: true, token, alreadyInProgress: true };
+    }
+    activeSyncs.add(token);
 
-      // Store the last synced token and timestamp to avoid redundant updates
-      await storage.saveItem('last_synced_fcm_token', token);
-      await storage.saveItem('last_fcm_sync_time', new Date().toISOString());
-      return { success: true, token };
-    } else {
-      console.log('[FCM] Token update response:', response.data);
-      return { success: false, error: 'Unexpected server response' };
+    try {
+      const response = await usersApi.updateFcmToken(token);
+      
+      if (response.data && response.data.status === 'ok') {
+        console.log('[FCM] Token updated on server SUCCESSFULLY:', token.substring(0, 15) + '...');
+        
+        // If server reported that token was empty/cleared, it might have been invalidated due to UnregisteredError.
+        // If we are not already in a forceSync/reset flow, let's trigger a full reset to ensure we have a fresh token.
+        if (response.data.was_cleared && !forceSync && !passedToken) {
+          console.log('[FCM] Server reported token was cleared. Triggering full reset with delay to avoid cycles...');
+          // We don't await to avoid recursion/blocking, it will sync itself after reset.
+          // Add a delay to avoid potential rapid cycles.
+          setTimeout(() => {
+            resetFcmToken().catch(err => console.error('[FCM] Background reset failed:', err));
+          }, 10000);
+        }
+
+        // Store the last synced token and timestamp to avoid redundant updates
+        await storage.saveItem('last_synced_fcm_token', token);
+        await storage.saveItem('last_fcm_sync_time', new Date().toISOString());
+        return { success: true, token };
+      } else {
+        console.log('[FCM] Token update response:', response.data);
+        return { success: false, error: 'Unexpected server response' };
+      }
+    } finally {
+      activeSyncs.delete(token);
     }
   } catch (error) {
     if (error.response) {

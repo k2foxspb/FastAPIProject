@@ -595,18 +595,51 @@ async def websocket_chat_endpoint(
                 
                 logger.debug(f"Saving message: type={message_type}, sender={user_id}, receiver={receiver_id}")
                 
-                # Сохраняем в базу
-                new_msg = ChatMessage(
-                    sender_id=user_id,
-                    receiver_id=receiver_id,
-                    message=content,
-                    file_path=file_path,
-                    message_type=message_type,
-                    client_id=client_id,
-                    duration=duration,
-                    reply_to_id=reply_to_id
-                )
-                db.add(new_msg)
+                # Ищем placeholder, если есть client_id
+                existing_msg = None
+                if client_id:
+                    res_existing = await db.execute(
+                        select(ChatMessage).where(
+                            ChatMessage.client_id == client_id,
+                            ChatMessage.sender_id == user_id,
+                            ChatMessage.is_uploading == True
+                        )
+                    )
+                    # Если было несколько плейсхолдеров (например, в media_group), берем первый, остальные удалим
+                    existing_msgs = res_existing.scalars().all()
+                    if existing_msgs:
+                        existing_msg = existing_msgs[0]
+                        if len(existing_msgs) > 1:
+                            for extra_ph in existing_msgs[1:]:
+                                await db.delete(extra_ph)
+                            logger.debug(f"Removed {len(existing_msgs) - 1} extra placeholders for client_id {client_id}")
+
+                if existing_msg:
+                    # Обновляем существующий placeholder
+                    logger.debug(f"Updating existing placeholder message {existing_msg.id} with client_id {client_id}")
+                    existing_msg.message = content
+                    existing_msg.file_path = file_path
+                    existing_msg.message_type = message_type
+                    existing_msg.duration = duration
+                    existing_msg.reply_to_id = reply_to_id
+                    existing_msg.is_uploading = False
+                    existing_msg.upload_id = None
+                    existing_msg.timestamp = datetime.utcnow()
+                    new_msg = existing_msg
+                else:
+                    # Сохраняем в базу новое сообщение
+                    new_msg = ChatMessage(
+                        sender_id=user_id,
+                        receiver_id=receiver_id,
+                        message=content,
+                        file_path=file_path,
+                        message_type=message_type,
+                        client_id=client_id,
+                        duration=duration,
+                        reply_to_id=reply_to_id
+                    )
+                    db.add(new_msg)
+                
                 await db.commit()
                 await db.refresh(new_msg)
 
