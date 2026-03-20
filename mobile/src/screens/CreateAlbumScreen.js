@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, StyleSheet, TouchableOpacity, Alert, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, TextInput, StyleSheet, TouchableOpacity, Alert, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { usersApi } from '../api';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
 
 export default function CreateAlbumScreen({ navigation }) {
+  const insets = useSafeAreaInsets();
   const { theme } = useTheme();
   const colors = themeConstants[theme];
   const [title, setTitle] = useState('');
@@ -32,9 +34,10 @@ export default function CreateAlbumScreen({ navigation }) {
 
   return (
     <KeyboardAvoidingView 
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={{ flex: 1 }}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+      style={{ flex: 1, backgroundColor: colors.background }}
+      behavior="padding" 
+      keyboardVerticalOffset={90}
+      enabled={Platform.OS !== 'web'}
     >
       <ScrollView 
         style={[styles.container, { backgroundColor: colors.background }]}
@@ -87,15 +90,17 @@ export default function CreateAlbumScreen({ navigation }) {
           </TouchableOpacity>
         ))}
       </View>
-
-      <TouchableOpacity 
-        style={[styles.button, { backgroundColor: colors.primary }, loading && styles.disabled]} 
-        onPress={handleCreate}
-        disabled={loading}
-      >
-        <Text style={styles.buttonText}>{loading ? 'Создание...' : 'Создать альбом'}</Text>
-      </TouchableOpacity>
       </ScrollView>
+
+      <View style={[styles.stickyFooter, { backgroundColor: colors.background, borderTopColor: colors.border, paddingBottom: Math.max(insets.bottom, 15) }]}>
+        <TouchableOpacity 
+          style={[styles.button, { backgroundColor: colors.primary }, loading && styles.disabled]} 
+          onPress={handleCreate}
+          disabled={loading}
+        >
+          <Text style={styles.buttonText}>{loading ? 'Создание...' : 'Создать альбом'}</Text>
+        </TouchableOpacity>
+      </View>
     </KeyboardAvoidingView>
   );
 }
@@ -111,6 +116,10 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   textArea: { height: 100, textAlignVertical: 'top' },
+  stickyFooter: {
+    padding: 20,
+    borderTopWidth: 1,
+  },
   privacyContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',

@@ -14,6 +14,7 @@ import {
   Platform, 
   KeyboardAvoidingView 
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { productsApi, usersApi, cartApi } from '../api';
 import { getFullUrl } from '../utils/urlHelper';
 import { useTheme } from '../context/ThemeContext';
@@ -25,6 +26,7 @@ import { useNotifications } from '../context/NotificationContext';
 const { width } = Dimensions.get('window');
 
 export default function ProductDetailScreen({ route, navigation }) {
+  const insets = useSafeAreaInsets();
   const { productId } = route.params;
   const { theme } = useTheme();
   const colors = themeConstants[theme];
@@ -250,9 +252,10 @@ export default function ProductDetailScreen({ route, navigation }) {
 
   return (
     <KeyboardAvoidingView 
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={{ flex: 1 }}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+      style={{ flex: 1, backgroundColor: colors.background }}
+      behavior="padding" 
+      keyboardVerticalOffset={90}
+      enabled={Platform.OS !== 'web'}
     >
       <ScrollView style={[styles.container, { backgroundColor: colors.background }]}>
         <View style={styles.imageContainer}>
@@ -325,37 +328,6 @@ export default function ProductDetailScreen({ route, navigation }) {
       <View style={styles.reviewsContainer}>
         <Text style={[styles.sectionTitle, { color: colors.text, marginHorizontal: 20 }]}>Отзывы ({reviews.length})</Text>
         
-        {user?.role === 'buyer' && (
-          <View style={[styles.addReview, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Text style={[styles.addReviewTitle, { color: colors.text }]}>Оставить отзыв</Text>
-            <View style={styles.ratingPicker}>
-              {[1, 2, 3, 4, 5].map(s => (
-                <TouchableOpacity key={s} onPress={() => setRating(s)}>
-                  <Icon name={s <= rating ? "star" : "star-outline"} size={30} color="#FFD700" />
-                </TouchableOpacity>
-              ))}
-            </View>
-            <TextInput
-              style={[styles.commentInput, { color: colors.text, borderColor: colors.border }]}
-              placeholder="Ваш комментарий..."
-              placeholderTextColor={colors.textSecondary}
-              multiline
-              value={comment}
-              onChangeText={setComment}
-            />
-            <TouchableOpacity 
-              style={[styles.submitButton, { backgroundColor: colors.primary }]}
-              onPress={handleSubmitReview}
-              disabled={submittingReview}
-            >
-              {submittingReview ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.submitButtonText}>Отправить</Text>
-              )}
-            </TouchableOpacity>
-          </View>
-        )}
 
         <FlatList
           data={reviews}
@@ -371,7 +343,7 @@ export default function ProductDetailScreen({ route, navigation }) {
     </ScrollView>
 
       {user?.role === 'buyer' && (
-        <View style={[styles.stickyAddReview, { backgroundColor: colors.surface, borderTopColor: colors.border }]}>
+        <View style={[styles.stickyAddReview, { backgroundColor: colors.surface, borderTopColor: colors.border, paddingBottom: Math.max(insets.bottom, 10) }]}>
           <View style={styles.stickyReviewRow}>
             <View style={styles.ratingPickerMini}>
               {[1, 2, 3, 4, 5].map(s => (
@@ -448,7 +420,6 @@ const styles = StyleSheet.create({
   stickyAddReview: { 
     padding: 10, 
     borderTopWidth: 1,
-    paddingBottom: Platform.OS === 'ios' ? 30 : 10
   },
   stickyReviewRow: {
     flexDirection: 'row',

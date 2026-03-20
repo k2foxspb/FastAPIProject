@@ -15,6 +15,7 @@ import {
   KeyboardAvoidingView,
   Platform
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import * as Haptics from 'expo-haptics';
 import { usersApi } from '../api';
@@ -40,6 +41,7 @@ const VideoItem = ({ uri, style, useNativeControls, shouldPlay }) => {
 };
 
 export default function PhotoDetailScreen({ route, navigation }) {
+  const insets = useSafeAreaInsets();
   const { theme } = useTheme();
   const colors = themeConstants[theme];
   const { photoId, initialPhotos, albumId, isOwner } = route.params;
@@ -387,11 +389,12 @@ export default function PhotoDetailScreen({ route, navigation }) {
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { flex: 1, backgroundColor: '#000' }]}>
       <StatusBar hidden={!showDescription} />
       
       <FlatList
         ref={flatListRef}
+        style={StyleSheet.absoluteFill}
         data={photos}
         renderItem={renderItem}
         keyExtractor={(item) => item.id.toString()}
@@ -426,178 +429,193 @@ export default function PhotoDetailScreen({ route, navigation }) {
         maxToRenderPerBatch={3}
       />
 
-      {/* Верхняя панель управления */}
-      <View style={[
-        styles.header, 
-        (showDescription || selectionMode) ? { backgroundColor: 'rgba(0,0,0,0.8)' } : { backgroundColor: 'transparent' },
-        { zIndex: 50 }
-      ]}>
-        <TouchableOpacity 
-          style={styles.backButton} 
-          onPress={() => selectionMode ? setSelectionMode(false) : navigation.goBack()}
-        >
-          <Icon name={selectionMode ? "close-outline" : "chevron-back"} size={35} color="#fff" />
-        </TouchableOpacity>
-        
-        <Text style={styles.headerTitle}>
-          {selectionMode ? `Выбрано: ${selectedIds.length}` : `${currentIndex + 1} из ${photos.length}`}
-        </Text>
-
-        <View style={styles.headerRight}>
-          {!selectionMode && (
-            <TouchableOpacity onPress={toggleDescription} style={styles.headerButton}>
-              <Icon name={showDescription ? "information-circle" : "information-circle-outline"} size={28} color="#fff" />
-            </TouchableOpacity>
-          )}
-          {isOwner && !selectionMode && (
-            <TouchableOpacity onPress={enterSelectionMode} style={styles.headerButton}>
-              <Icon name="checkbox-outline" size={28} color="#fff" />
-            </TouchableOpacity>
-          )}
-          {selectionMode && (
-            <TouchableOpacity onPress={deletePhotos} disabled={selectedIds.length === 0} style={styles.headerButton}>
-              <Icon name="trash-outline" size={28} color={selectedIds.length > 0 ? "#fff" : "rgba(255,255,255,0.3)"} />
-            </TouchableOpacity>
-          )}
-        </View>
-      </View>
-
-      {/* Описание и реакции (показываются по тапу) */}
-      {showDescription && photos[currentIndex] && (
-        <KeyboardAvoidingView 
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={[styles.descriptionContainer, { backgroundColor: 'rgba(0,0,0,0.85)' }]}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
-        >
-          <View style={styles.descriptionHeaderRow}>
-            <View style={{ flex: 1 }}>
-              <View style={styles.descriptionHeader}>
-                <Text style={styles.descriptionText}>
-                  {photos[currentIndex].description || 'Нет описания'}
-                </Text>
-                {photos[currentIndex].privacy === 'private' && (
-                  <Icon name="lock-closed" size={16} color="#fff" style={{ marginLeft: 8 }} />
-                )}
-                {photos[currentIndex].privacy === 'friends' && (
-                  <Icon name="people" size={16} color="#fff" style={{ marginLeft: 8 }} />
-                )}
-              </View>
-              <Text style={styles.dateText}>
-                {new Date(photos[currentIndex].created_at).toLocaleDateString()}
-              </Text>
-            </View>
-            
-            <View style={styles.reactionsContainer}>
-              <TouchableOpacity 
-                style={[styles.reactionButton, photos[currentIndex].my_reaction === 1 && styles.activeLike]} 
-                onPress={() => handleReaction(1)}
-              >
-                <Icon name={photos[currentIndex].my_reaction === 1 ? "heart" : "heart-outline"} size={24} color={photos[currentIndex].my_reaction === 1 ? colors.error : "#fff"} />
-                <Text style={styles.reactionText}>{photos[currentIndex].likes_count || 0}</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity 
-                style={[styles.reactionButton, { marginLeft: 10 }, photos[currentIndex].my_reaction === -1 && styles.activeDislike]} 
-                onPress={() => handleReaction(-1)}
-              >
-                <Icon name={photos[currentIndex].my_reaction === -1 ? "thumbs-down" : "thumbs-down-outline"} size={24} color={photos[currentIndex].my_reaction === -1 ? colors.primary : "#fff"} />
-                <Text style={styles.reactionText}>{photos[currentIndex].dislikes_count || 0}</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-
+      <KeyboardAvoidingView 
+        style={StyleSheet.absoluteFill}
+        behavior="padding" 
+        keyboardVerticalOffset={90}
+        enabled={Platform.OS !== 'web'}
+        pointerEvents="box-none"
+      >
+        {/* Верхняя панель управления */}
+        <View style={[
+          styles.header, 
+          (showDescription || selectionMode) ? { backgroundColor: 'rgba(0,0,0,0.8)' } : { backgroundColor: 'transparent' },
+          { zIndex: 50 }
+        ]}>
           <TouchableOpacity 
-            style={styles.commentsToggle} 
-            onPress={() => setShowComments(!showComments)}
+            style={styles.backButton} 
+            onPress={() => selectionMode ? setSelectionMode(false) : navigation.goBack()}
           >
-            <Icon name="chatbubble-outline" size={20} color="#fff" />
-            <Text style={styles.commentsToggleText}>
-              Комментарии ({photos[currentIndex].comments_count || 0})
-            </Text>
-            <Icon name={showComments ? "chevron-down" : "chevron-up"} size={20} color="#fff" />
+            <Icon name={selectionMode ? "close-outline" : "chevron-back"} size={35} color="#fff" />
           </TouchableOpacity>
+          
+          <Text style={styles.headerTitle}>
+            {selectionMode ? `Выбрано: ${selectedIds.length}` : `${currentIndex + 1} из ${photos.length}`}
+          </Text>
 
-          {showComments && (
-            <View style={styles.commentsSection}>
-              <FlatList
-                data={comments}
-                keyExtractor={(item) => item.id.toString()}
-                renderItem={({ item }) => (
-                  <View style={styles.commentItem}>
-                    <Image 
-                      source={{ uri: getFullUrl(item.avatar_url) || 'https://via.placeholder.com/30' }} 
-                      style={styles.commentAvatar} 
-                    />
-                    <View style={styles.commentContent}>
-                      <View style={styles.commentHeader}>
-                        <Text style={styles.commentUser}>
-                          {item.first_name ? `${item.first_name} ${item.last_name || ''}` : `Пользователь #${item.user_id}`}
-                        </Text>
-                        {(isOwner || item.user_id === photos[currentIndex].user_id) && (
-                          <TouchableOpacity onPress={() => deleteComment(item.id)}>
-                            <Icon name="trash-outline" size={14} color="#ff4444" />
-                          </TouchableOpacity>
-                        )}
-                      </View>
-                      <Text style={styles.commentText}>{item.comment}</Text>
-                      
-                      <View style={styles.commentReactions}>
-                        <TouchableOpacity 
-                          onPress={() => handleCommentReaction(item.id, 1)}
-                          style={styles.commentReactionButton}
-                        >
-                          <Icon 
-                            name={item.my_reaction === 1 ? "heart" : "heart-outline"} 
-                            size={14} 
-                            color={item.my_reaction === 1 ? "#ff4444" : "#ccc"} 
-                          />
-                          <Text style={styles.commentReactionText}>{item.likes_count || 0}</Text>
-                        </TouchableOpacity>
-                        
-                        <TouchableOpacity 
-                          onPress={() => handleCommentReaction(item.id, -1)}
-                          style={[styles.commentReactionButton, { marginLeft: 15 }]}
-                        >
-                          <Icon 
-                            name={item.my_reaction === -1 ? "thumbs-down" : "thumbs-down-outline"} 
-                            size={14} 
-                            color={item.my_reaction === -1 ? colors.primary : "#ccc"} 
-                          />
-                          <Text style={styles.commentReactionText}>{item.dislikes_count || 0}</Text>
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-                  </View>
-                )}
-                style={{ maxHeight: 200 }}
-                ListEmptyComponent={<Text style={styles.emptyComments}>Нет комментариев</Text>}
-              />
-              
-              <View style={styles.commentInputContainer}>
-                <TextInput
-                  style={styles.commentInput}
-                  placeholder="Ваш комментарий..."
-                  placeholderTextColor="#999"
-                  value={newComment}
-                  onChangeText={setNewComment}
-                  multiline
-                />
-                <TouchableOpacity 
-                  onPress={submitComment} 
-                  disabled={!newComment.trim() || isSubmittingComment}
-                  style={styles.sendButton}
-                >
-                  {isSubmittingComment ? (
-                    <ActivityIndicator size="small" color={colors.primary} />
-                  ) : (
-                    <Icon name="send" size={24} color={newComment.trim() ? colors.primary : "#666"} />
+          <View style={styles.headerRight}>
+            {!selectionMode && (
+              <TouchableOpacity onPress={toggleDescription} style={styles.headerButton}>
+                <Icon name={showDescription ? "information-circle" : "information-circle-outline"} size={28} color="#fff" />
+              </TouchableOpacity>
+            )}
+            {isOwner && !selectionMode && (
+              <TouchableOpacity onPress={enterSelectionMode} style={styles.headerButton}>
+                <Icon name="checkbox-outline" size={28} color="#fff" />
+              </TouchableOpacity>
+            )}
+            {selectionMode && (
+              <TouchableOpacity onPress={deletePhotos} disabled={selectedIds.length === 0} style={styles.headerButton}>
+                <Icon name="trash-outline" size={28} color={selectedIds.length > 0 ? "#fff" : "rgba(255,255,255,0.3)"} />
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+
+        {/* Spacer to push description to bottom */}
+        <View style={{ flex: 1 }} pointerEvents="box-none" />
+
+        {/* Описание и реакции (показываются по тапу) */}
+        {showDescription && photos[currentIndex] && (
+          <View 
+            style={[styles.descriptionContainer, { backgroundColor: 'rgba(0,0,0,0.85)' }]}
+          >
+            <View style={styles.descriptionHeaderRow}>
+              <View style={{ flex: 1 }}>
+                <View style={styles.descriptionHeader}>
+                  <Text style={styles.descriptionText}>
+                    {photos[currentIndex].description || 'Нет описания'}
+                  </Text>
+                  {photos[currentIndex].privacy === 'private' && (
+                    <Icon name="lock-closed" size={16} color="#fff" style={{ marginLeft: 8 }} />
                   )}
+                  {photos[currentIndex].privacy === 'friends' && (
+                    <Icon name="people" size={16} color="#fff" style={{ marginLeft: 8 }} />
+                  )}
+                </View>
+                <Text style={styles.dateText}>
+                  {new Date(photos[currentIndex].created_at).toLocaleDateString()}
+                </Text>
+              </View>
+              
+              <View style={styles.reactionsContainer}>
+                <TouchableOpacity 
+                  style={[styles.reactionButton, photos[currentIndex].my_reaction === 1 && styles.activeLike]} 
+                  onPress={() => handleReaction(1)}
+                >
+                  <Icon name={photos[currentIndex].my_reaction === 1 ? "heart" : "heart-outline"} size={24} color={photos[currentIndex].my_reaction === 1 ? colors.error : "#fff"} />
+                  <Text style={styles.reactionText}>{photos[currentIndex].likes_count || 0}</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity 
+                  style={[styles.reactionButton, { marginLeft: 10 }, photos[currentIndex].my_reaction === -1 && styles.activeDislike]} 
+                  onPress={() => handleReaction(-1)}
+                >
+                  <Icon name={photos[currentIndex].my_reaction === -1 ? "thumbs-down" : "thumbs-down-outline"} size={24} color={photos[currentIndex].my_reaction === -1 ? colors.primary : "#fff"} />
+                  <Text style={styles.reactionText}>{photos[currentIndex].dislikes_count || 0}</Text>
                 </TouchableOpacity>
               </View>
             </View>
-          )}
-        </KeyboardAvoidingView>
-      )}
+
+            <TouchableOpacity 
+              style={styles.commentsToggle} 
+              onPress={() => setShowComments(!showComments)}
+            >
+              <Icon name="chatbubble-outline" size={20} color="#fff" />
+              <Text style={styles.commentsToggleText}>
+                Комментарии ({photos[currentIndex].comments_count || 0})
+              </Text>
+              <Icon name={showComments ? "chevron-down" : "chevron-up"} size={20} color="#fff" />
+            </TouchableOpacity>
+
+            {showComments && (
+              <View style={styles.commentsSection}>
+                <FlatList
+                  data={comments}
+                  keyExtractor={(item) => item.id.toString()}
+                  renderItem={({ item }) => (
+                    <View style={styles.commentItem}>
+                      <Image 
+                        source={{ uri: getFullUrl(item.avatar_url) || 'https://via.placeholder.com/30' }} 
+                        style={styles.commentAvatar} 
+                      />
+                      <View style={styles.commentContent}>
+                        <View style={styles.commentHeader}>
+                          <Text style={styles.commentUser}>
+                            {item.first_name ? `${item.first_name} ${item.last_name || ''}` : `Пользователь #${item.user_id}`}
+                          </Text>
+                          {(isOwner || item.user_id === photos[currentIndex].user_id) && (
+                            <TouchableOpacity onPress={() => deleteComment(item.id)}>
+                              <Icon name="trash-outline" size={14} color="#ff4444" />
+                            </TouchableOpacity>
+                          )}
+                        </View>
+                        <Text style={styles.commentText}>{item.comment}</Text>
+                        
+                        <View style={styles.commentReactions}>
+                          <TouchableOpacity 
+                            onPress={() => handleCommentReaction(item.id, 1)}
+                            style={styles.commentReactionButton}
+                          >
+                            <Icon 
+                              name={item.my_reaction === 1 ? "heart" : "heart-outline"} 
+                              size={14} 
+                              color={item.my_reaction === 1 ? "#ff4444" : "#ccc"} 
+                            />
+                            <Text style={styles.commentReactionText}>{item.likes_count || 0}</Text>
+                          </TouchableOpacity>
+                          
+                          <TouchableOpacity 
+                            onPress={() => handleCommentReaction(item.id, -1)}
+                            style={[styles.commentReactionButton, { marginLeft: 15 }]}
+                          >
+                            <Icon 
+                              name={item.my_reaction === -1 ? "thumbs-down" : "thumbs-down-outline"} 
+                              size={14} 
+                              color={item.my_reaction === -1 ? colors.primary : "#ccc"} 
+                            />
+                            <Text style={styles.commentReactionText}>{item.dislikes_count || 0}</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    </View>
+                  )}
+                  style={{ maxHeight: 200 }}
+                  ListEmptyComponent={<Text style={styles.emptyComments}>Нет комментариев</Text>}
+                />
+              </View>
+            )}
+          </View>
+        )}
+
+        {showDescription && showComments && photos[currentIndex] && (
+          <View style={[styles.commentInputContainer, { backgroundColor: 'rgba(0,0,0,0.9)', paddingBottom: Math.max(insets.bottom, 10) }]}>
+            <TextInput
+              style={styles.commentInput}
+              placeholder="Ваш комментарий..."
+              placeholderTextColor="#999"
+              value={newComment}
+              onChangeText={setNewComment}
+              multiline
+            />
+            <TouchableOpacity 
+              onPress={submitComment} 
+              disabled={!newComment.trim() || isSubmittingComment}
+              style={styles.sendButton}
+            >
+              {isSubmittingComment ? (
+                <ActivityIndicator size="small" color={colors.primary} />
+              ) : (
+                <Icon name="send" size={24} color={newComment.trim() ? colors.primary : "#666"} />
+              )}
+            </TouchableOpacity>
+          </View>
+        )}
+        
+        {/* Add safe area padding if description is shown without comments or if hidden */}
+        {showDescription && !showComments && <View style={{ height: insets.bottom }} />}
+        {!showDescription && <View style={{ height: insets.bottom }} />}
+      </KeyboardAvoidingView>
     </View>
   );
 }
@@ -634,10 +652,6 @@ const styles = StyleSheet.create({
   headerButton: { padding: 5, marginLeft: 15 },
   backButton: { padding: 5 },
   descriptionContainer: { 
-    position: 'absolute', 
-    bottom: 0, 
-    left: 0, 
-    right: 0, 
     padding: 20,
     borderTopLeftRadius: 15,
     borderTopRightRadius: 15
@@ -679,12 +693,19 @@ const styles = StyleSheet.create({
   commentInputContainer: { 
     flexDirection: 'row', 
     alignItems: 'center', 
-    marginTop: 10,
+    paddingHorizontal: 15,
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.1)',
+  },
+  commentInput: { 
+    flex: 1, 
+    color: '#fff', 
+    paddingHorizontal: 15,
+    paddingVertical: 8, 
+    maxHeight: 100,
     backgroundColor: 'rgba(255,255,255,0.15)',
     borderRadius: 20,
-    paddingHorizontal: 15,
-    marginBottom: Platform.OS === 'ios' ? 15 : 0
   },
-  commentInput: { flex: 1, color: '#fff', paddingVertical: 8, maxHeight: 80 },
   sendButton: { padding: 5, marginLeft: 5 },
 });

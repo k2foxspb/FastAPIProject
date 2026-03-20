@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Alert, ActivityIndicator, Image, Modal, FlatList, TouchableWithoutFeedback, KeyboardAvoidingView, Platform } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { productsApi, usersApi } from '../api';
 import { useTheme } from '../context/ThemeContext';
@@ -9,6 +10,7 @@ import { Ionicons as Icon } from '@expo/vector-icons';
 import { useNotifications } from '../context/NotificationContext';
 
 export default function EditProductScreen({ route, navigation }) {
+  const insets = useSafeAreaInsets();
   const { theme } = useTheme();
   const colors = themeConstants[theme];
   const { currentUser } = useNotifications();
@@ -225,9 +227,10 @@ export default function EditProductScreen({ route, navigation }) {
 
   return (
     <KeyboardAvoidingView 
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={{ flex: 1 }}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+      style={{ flex: 1, backgroundColor: colors.background }}
+      behavior="padding" 
+      keyboardVerticalOffset={90}
+      enabled={Platform.OS !== 'web'}
     >
       <ScrollView style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={styles.form}>
@@ -342,38 +345,43 @@ export default function EditProductScreen({ route, navigation }) {
         >
           <TouchableWithoutFeedback onPress={() => setNewCategoryVisible(false)}>
             <View style={styles.modalOverlay}>
-              <TouchableWithoutFeedback>
-                <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
-                  <View style={styles.modalHeader}>
-                    <Text style={[styles.modalTitle, { color: colors.text }]}>Новая категория</Text>
-                    <TouchableOpacity onPress={() => setNewCategoryVisible(false)}>
-                      <Icon name="close" size={24} color={colors.text} />
+              <KeyboardAvoidingView 
+                behavior="padding"
+                style={{ width: '100%', alignItems: 'center' }}
+              >
+                <TouchableWithoutFeedback>
+                  <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
+                    <View style={styles.modalHeader}>
+                      <Text style={[styles.modalTitle, { color: colors.text }]}>Новая категория</Text>
+                      <TouchableOpacity onPress={() => setNewCategoryVisible(false)}>
+                        <Icon name="close" size={24} color={colors.text} />
+                      </TouchableOpacity>
+                    </View>
+                    
+                    <Text style={[styles.label, { color: colors.text }]}>Название категории *</Text>
+                    <TextInput
+                      style={[styles.input, { backgroundColor: colors.card, color: colors.text, borderColor: colors.border }]}
+                      value={newCategoryName}
+                      onChangeText={setNewCategoryName}
+                      placeholder="Минимум 3 символа"
+                      placeholderTextColor={colors.textSecondary}
+                      autoFocus
+                    />
+
+                    <TouchableOpacity 
+                      style={[styles.saveButton, { backgroundColor: colors.primary }]} 
+                      onPress={handleCreateCategory}
+                      disabled={creatingCategory}
+                    >
+                      {creatingCategory ? (
+                        <ActivityIndicator color="#fff" />
+                      ) : (
+                        <Text style={styles.saveButtonText}>Создать</Text>
+                      )}
                     </TouchableOpacity>
                   </View>
-                  
-                  <Text style={[styles.label, { color: colors.text }]}>Название категории *</Text>
-                  <TextInput
-                    style={[styles.input, { backgroundColor: colors.card, color: colors.text, borderColor: colors.border }]}
-                    value={newCategoryName}
-                    onChangeText={setNewCategoryName}
-                    placeholder="Минимум 3 символа"
-                    placeholderTextColor={colors.textSecondary}
-                    autoFocus
-                  />
-
-                  <TouchableOpacity 
-                    style={[styles.saveButton, { backgroundColor: colors.primary }]} 
-                    onPress={handleCreateCategory}
-                    disabled={creatingCategory}
-                  >
-                    {creatingCategory ? (
-                      <ActivityIndicator color="#fff" />
-                    ) : (
-                      <Text style={styles.saveButtonText}>Создать</Text>
-                    )}
-                  </TouchableOpacity>
-                </View>
-              </TouchableWithoutFeedback>
+                </TouchableWithoutFeedback>
+              </KeyboardAvoidingView>
             </View>
           </TouchableWithoutFeedback>
         </Modal>
@@ -409,7 +417,10 @@ export default function EditProductScreen({ route, navigation }) {
           numberOfLines={4}
           textAlignVertical="top"
         />
+      </View>
+      </ScrollView>
 
+      <View style={[styles.stickyFooter, { backgroundColor: colors.background, borderTopColor: colors.border, paddingBottom: Math.max(insets.bottom, 15) }]}>
         <TouchableOpacity 
           style={[styles.saveButton, { backgroundColor: colors.primary }]} 
           onPress={handleSave}
@@ -428,7 +439,6 @@ export default function EditProductScreen({ route, navigation }) {
           </TouchableOpacity>
         )}
       </View>
-      </ScrollView>
     </KeyboardAvoidingView>
   );
 }
@@ -507,6 +517,10 @@ const styles = StyleSheet.create({
     fontWeight: 'bold' 
   },
   textArea: { height: 100 },
+  stickyFooter: {
+    padding: 20,
+    borderTopWidth: 1,
+  },
   saveButton: { padding: 15, borderRadius: 8, alignItems: 'center', marginTop: 10 },
   saveButtonText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
   deleteButton: { padding: 15, borderRadius: 8, alignItems: 'center', marginTop: 10, borderWidth: 1 },

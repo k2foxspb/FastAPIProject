@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, Image, Alert, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { usersApi } from '../api';
 import { getFullUrl } from '../utils/formatters';
@@ -8,6 +9,7 @@ import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
 
 export default function EditProfileScreen({ route, navigation }) {
+  const insets = useSafeAreaInsets();
   const { theme } = useTheme();
   const colors = themeConstants[theme];
   const { user, isInitialSetup } = route.params;
@@ -77,9 +79,10 @@ export default function EditProfileScreen({ route, navigation }) {
 
   return (
     <KeyboardAvoidingView 
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={{ flex: 1 }}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+      style={{ flex: 1, backgroundColor: colors.background }}
+      behavior="padding" 
+      keyboardVerticalOffset={90}
+      enabled={Platform.OS !== 'web'}
     >
       <ScrollView style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={styles.header}>
@@ -133,16 +136,17 @@ export default function EditProfileScreen({ route, navigation }) {
           placeholder="Фамилия"
           placeholderTextColor={colors.textSecondary}
         />
-
-        <TouchableOpacity 
-          style={[styles.saveButton, { backgroundColor: colors.primary }, loading && styles.disabled]} 
-          onPress={handleSave}
-          disabled={loading}
-        >
-          <Text style={styles.saveButtonText}>{loading ? 'Сохранение...' : 'Сохранить изменения'}</Text>
-        </TouchableOpacity>
       </View>
     </ScrollView>
+    <View style={[styles.stickyFooter, { backgroundColor: colors.background, borderTopColor: colors.border, paddingBottom: Math.max(insets.bottom, 10) }]}>
+      <TouchableOpacity 
+        style={[styles.saveButton, { backgroundColor: colors.primary }, loading && styles.disabled]} 
+        onPress={handleSave}
+        disabled={loading}
+      >
+        <Text style={styles.saveButtonText}>{loading ? 'Сохранение...' : 'Сохранить изменения'}</Text>
+      </TouchableOpacity>
+    </View>
     </KeyboardAvoidingView>
   );
 }
@@ -163,6 +167,10 @@ const styles = StyleSheet.create({
     borderWidth: 3,
   },
   form: { padding: 20 },
+  stickyFooter: {
+    padding: 20,
+    borderTopWidth: 1,
+  },
   label: { fontSize: 14, marginBottom: 5, fontWeight: '500' },
   input: {
     borderWidth: 1,

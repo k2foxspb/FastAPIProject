@@ -14,6 +14,7 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
@@ -24,6 +25,7 @@ import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
 
 export default function AlbumDetailScreen({ route, navigation }) {
+  const insets = useSafeAreaInsets();
   const { theme } = useTheme();
   const colors = themeConstants[theme];
   const { albumId, isOwner } = route.params;
@@ -208,8 +210,9 @@ export default function AlbumDetailScreen({ route, navigation }) {
   return (
     <KeyboardAvoidingView 
       style={{ flex: 1, backgroundColor: colors.background }}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+      behavior="padding" 
+      keyboardVerticalOffset={90}
+      enabled={Platform.OS !== 'web'}
     >
       <ScrollView style={[styles.container, { backgroundColor: colors.background }]}>
         <View style={[styles.header, { borderBottomColor: colors.border }]}>
@@ -459,9 +462,9 @@ export default function AlbumDetailScreen({ route, navigation }) {
       )}
     </ScrollView>
     {showComments && (
-      <View style={[styles.commentInputContainer, { backgroundColor: colors.background, borderTopColor: colors.border, paddingBottom: Platform.OS === 'ios' ? 30 : 5 }]}>
+      <View style={[styles.commentInputContainer, { backgroundColor: colors.background, borderTopColor: colors.border, paddingBottom: Math.max(insets.bottom, 10) }]}>
         <TextInput
-          style={[styles.commentInput, { color: colors.text }]}
+          style={[styles.commentInput, { color: colors.text, backgroundColor: colors.surface, borderColor: colors.border }]}
           placeholder="Ваш комментарий..."
           placeholderTextColor={colors.textSecondary}
           value={newComment}
@@ -610,13 +613,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row', 
     alignItems: 'center', 
     paddingHorizontal: 15,
-    paddingVertical: 5,
+    paddingVertical: 8,
     borderTopWidth: 1,
   },
   commentInput: { 
     flex: 1, 
-    paddingVertical: 10, 
-    maxHeight: 100 
+    paddingHorizontal: 15,
+    paddingVertical: 8, 
+    maxHeight: 100,
+    borderRadius: 20,
+    borderWidth: 1,
   },
   sendButton: { 
     padding: 5, 

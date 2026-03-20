@@ -1109,7 +1109,8 @@ export default function ChatScreen({ route, navigation }) {
             loaded: mainUpload.currentOffset, 
             total: mainUpload.fileSize,
             uri: mainUpload.fileUri,
-            mimeType: mainUpload.mimeType
+            mimeType: mainUpload.mimeType,
+            ...mainUpload
           });
         }
       }).catch(err => console.log('[ChatScreen] Failed to check active uploads', err));
@@ -1319,15 +1320,16 @@ export default function ChatScreen({ route, navigation }) {
 
   useEffect(() => {
     if (activeUploadId) {
-      const unsubscribe = uploadManager.subscribe(activeUploadId, ({ progress, status, result, loaded, total }) => {
+      const unsubscribe = uploadManager.subscribe(activeUploadId, ({ progress, status, result, loaded, total, ...extra }) => {
         setUploadingProgress(progress);
-        if (loaded !== undefined) setUploadingData(prev => ({ ...prev, loaded, total }));
+        if (loaded !== undefined) setUploadingData(prev => ({ ...prev, loaded, total, ...extra }));
         
         if (status === 'completed') {
           // Для одиночных голосовых сообщений отправляем здесь
           // Для медиа и документов теперь отправляем вручную в функциях загрузки
-          if (autoSendOnUpload && !batchMode && !isVideoNoteUploadRef.current) { 
-            const clientId = `c_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+          // Если есть hasPlaceholder, значит бэкенд сам обновит сообщение
+          if (autoSendOnUpload && !batchMode && !isVideoNoteUploadRef.current && !extra?.hasPlaceholder) { 
+            const clientId = extra?.clientId || `c_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
             const msgData = {
               receiver_id: userId,
               file_path: result.file_path,
@@ -1408,7 +1410,9 @@ export default function ChatScreen({ route, navigation }) {
                   const mt = (asset?.mimeType || '').startsWith('image/') ? 'image' : ((asset?.mimeType || '').startsWith('video/') ? 'video' : ((asset?.mimeType || '').startsWith('audio/') ? 'voice' : 'file'));
                   sendMessageWs({ type: 'upload_started', receiver_id: userId, message_type: mt, upload_id: uid, client_id: clientId });
                 } catch (e) { console.warn('Failed to send upload_started WS', e); }
-              }
+              },
+              {}, // apiOptions
+              { clientId, hasPlaceholder: true }
             );
 
             if (res && res.status === 'completed') {
@@ -1507,7 +1511,9 @@ export default function ChatScreen({ route, navigation }) {
               fileName, 
               asset.mimeType,
               userId,
-              (upload_id) => { setActiveUploadId(upload_id); try { const mt = (asset?.mimeType || '').startsWith('image/') ? 'image' : ((asset?.mimeType || '').startsWith('video/') ? 'video' : ((asset?.mimeType || '').startsWith('audio/') ? 'voice' : 'file')); sendMessageWs({ type: 'upload_started', receiver_id: userId, message_type: mt, upload_id: upload_id, client_id: clientId }); } catch (e) { console.warn('Failed to send upload_started WS', e); } }
+              (upload_id) => { setActiveUploadId(upload_id); try { const mt = (asset?.mimeType || '').startsWith('image/') ? 'image' : ((asset?.mimeType || '').startsWith('video/') ? 'video' : ((asset?.mimeType || '').startsWith('audio/') ? 'voice' : 'file')); sendMessageWs({ type: 'upload_started', receiver_id: userId, message_type: mt, upload_id: upload_id, client_id: clientId }); } catch (e) { console.warn('Failed to send upload_started WS', e); } },
+              {}, // apiOptions
+              { clientId, hasPlaceholder: true }
             );
             
             if (res && res.status === 'completed') {
@@ -1589,7 +1595,7 @@ export default function ChatScreen({ route, navigation }) {
         (id) => {
           currentUploadId = id;
           setActiveUploadId(id);
-          try { sendMessageWs({ type: 'upload_started', receiver_id: userId, message_type: 'video', upload_id: id, client_id: clientId }); } catch (e) { console.warn('Failed to send upload_started WS', e); }
+          try { sendMessageWs({ type: 'upload_started', receiver_id: userId, message_type: 'video_note', upload_id: id, client_id: clientId }); } catch (e) { console.warn('Failed to send upload_started WS', e); }
           uploadManager.subscribe(id, ({ progress, status, loaded, total }) => {
             if (status === 'uploading' || status === 'completed') {
               setUploadingProgress(progress);
@@ -1599,7 +1605,9 @@ export default function ChatScreen({ route, navigation }) {
               setActiveUploadId(null);
             }
           });
-        }
+        },
+        {}, // apiOptions
+        { clientId, hasPlaceholder: true, isVideoNote: true }
       );
 
       if (uploadResult && (uploadResult.file_path || uploadResult.result?.file_path)) {
@@ -2032,7 +2040,9 @@ export default function ChatScreen({ route, navigation }) {
         fileName, 
         mimeType,
         userId,
-        (upload_id) => { setActiveUploadId(upload_id); try { sendMessageWs({ type: 'upload_started', receiver_id: userId, message_type: 'voice', upload_id: upload_id, client_id: clientId }); } catch (e) { console.warn('Failed to send upload_started WS', e); } }
+        (upload_id) => { setActiveUploadId(upload_id); try { sendMessageWs({ type: 'upload_started', receiver_id: userId, message_type: 'voice', upload_id: upload_id, client_id: clientId }); } catch (e) { console.warn('Failed to send upload_started WS', e); } },
+        {}, // apiOptions
+        { clientId, hasPlaceholder: true }
       );
       setRecordedUri(null);
       setRecordingDuration(0);

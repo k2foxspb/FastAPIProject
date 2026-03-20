@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Alert, ActivityIndicator, Image, KeyboardAvoidingView, Platform } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { RichEditor, RichToolbar, actions } from 'react-native-pell-rich-editor';
 import { newsApi } from '../api';
@@ -8,6 +9,7 @@ import { theme as themeConstants } from '../constants/theme';
 import { Ionicons as Icon } from '@expo/vector-icons';
 
 export default function EditNewsScreen({ route, navigation }) {
+  const insets = useSafeAreaInsets();
   const { theme } = useTheme();
   const colors = themeConstants[theme];
   const newsItem = route.params?.newsItem;
@@ -173,9 +175,10 @@ export default function EditNewsScreen({ route, navigation }) {
 
   return (
     <KeyboardAvoidingView 
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'} 
-      style={{ flex: 1 }}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+      style={{ flex: 1, backgroundColor: colors.background }}
+      behavior="padding" 
+      keyboardVerticalOffset={90}
+      enabled={Platform.OS !== 'web'}
     >
     <ScrollView style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={styles.form}>
@@ -238,25 +241,28 @@ export default function EditNewsScreen({ route, navigation }) {
           />
         </View>
 
-        <TouchableOpacity 
-          style={[styles.saveButton, { backgroundColor: colors.primary }]} 
-          onPress={handleSave}
-          disabled={loading}
-        >
-          {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveButtonText}>Сохранить</Text>}
-        </TouchableOpacity>
-
-        {isEditing && (
-          <TouchableOpacity 
-            style={[styles.deleteButton, { borderColor: colors.error }]} 
-            onPress={handleDelete}
-            disabled={loading}
-          >
-            <Text style={[styles.deleteButtonText, { color: colors.error }]}>Удалить</Text>
-          </TouchableOpacity>
-        )}
       </View>
     </ScrollView>
+
+    <View style={[styles.stickyFooter, { backgroundColor: colors.background, borderTopColor: colors.border, paddingBottom: Math.max(insets.bottom, 15) }]}>
+      <TouchableOpacity 
+        style={[styles.saveButton, { backgroundColor: colors.primary }]} 
+        onPress={handleSave}
+        disabled={loading}
+      >
+        {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveButtonText}>Сохранить</Text>}
+      </TouchableOpacity>
+
+      {isEditing && (
+        <TouchableOpacity 
+          style={[styles.deleteButton, { borderColor: colors.error }]} 
+          onPress={handleDelete}
+          disabled={loading}
+        >
+          <Text style={[styles.deleteButtonText, { color: colors.error }]}>Удалить</Text>
+        </TouchableOpacity>
+      )}
+    </View>
     </KeyboardAvoidingView>
   );
 }
@@ -272,6 +278,10 @@ const styles = StyleSheet.create({
   removeImageBtn: { position: 'absolute', top: -10, right: -10, backgroundColor: '#fff', borderRadius: 12 },
   addImageBtn: { width: 80, height: 80, borderRadius: 8, borderWidth: 1, borderStyle: 'dashed', justifyContent: 'center', alignItems: 'center' },
   editorContainer: { borderWidth: 1, borderRadius: 8, marginBottom: 20, overflow: 'hidden', minHeight: 300 },
+  stickyFooter: {
+    padding: 20,
+    borderTopWidth: 1,
+  },
   richEditor: { flex: 1, minHeight: 250 },
   saveButton: { padding: 15, borderRadius: 8, alignItems: 'center', marginTop: 10 },
   saveButtonText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },

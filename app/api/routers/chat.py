@@ -446,12 +446,18 @@ async def websocket_chat_endpoint(
                     # Проверяем, есть ли уже плейсхолдер с таким client_id и upload_id
                     existing_msg = None
                     if client_id:
+                        # Ищем существующий плейсхолдер по client_id
+                        # Используем ту же логику, что и при сохранении обычного сообщения
+                        time_limit = datetime.utcnow() - timedelta(hours=24)
                         res_existing = await db.execute(
                             select(ChatMessage).where(
                                 ChatMessage.client_id == client_id,
                                 ChatMessage.sender_id == user_id,
-                                ChatMessage.is_uploading == True,
-                                ChatMessage.upload_id == upload_id
+                                or_(
+                                    ChatMessage.is_uploading == True,
+                                    ChatMessage.upload_id.isnot(None)
+                                ),
+                                ChatMessage.timestamp >= time_limit
                             )
                         )
                         existing_msg = res_existing.scalars().first()
@@ -809,19 +815,49 @@ async def send_message_api(
         except Exception:
             file_path = None
     
-    # Сохраняем в базу
-    client_id = msg_in.client_id
+    # Ищем плейсхолдер, если есть client_id
+    existing_msg = None
+    if client_id:
+        time_limit = datetime.utcnow() - timedelta(hours=24)
+        res_existing = await db.execute(
+            select(ChatMessage).where(
+                ChatMessage.client_id == client_id,
+                ChatMessage.sender_id == user_id,
+                or_(
+                    ChatMessage.is_uploading == True,
+                    ChatMessage.upload_id.isnot(None)
+                ),
+                ChatMessage.timestamp >= time_limit
+            )
+        )
+        existing_msg = res_existing.scalars().first()
+
+    if existing_msg:
+        # Обновляем существующий placeholder
+        logger.debug(f"Updating existing placeholder message {existing_msg.id} via API")
+        existing_msg.message = content
+        existing_msg.file_path = file_path
+        # Если новый тип более специфичный, обновляем (но не затираем video_note)
+        if message_type != "file" and existing_msg.message_type != "video_note":
+            existing_msg.message_type = message_type
+        existing_msg.duration = duration
+        existing_msg.is_uploading = False
+        existing_msg.upload_id = None
+        existing_msg.timestamp = datetime.utcnow()
+        new_msg = existing_msg
+    else:
+        # Сохраняем в базу новое сообщение
+        new_msg = ChatMessage(
+            sender_id=user_id,
+            receiver_id=receiver_id,
+            message=content,
+            file_path=file_path,
+            message_type=message_type,
+            client_id=client_id,
+            duration=duration
+        )
+        db.add(new_msg)
     
-    new_msg = ChatMessage(
-        sender_id=user_id,
-        receiver_id=receiver_id,
-        message=content,
-        file_path=file_path,
-        message_type=message_type,
-        client_id=client_id,
-        duration=duration
-    )
-    db.add(new_msg)
     await db.commit()
     await db.refresh(new_msg)
 
@@ -1622,13 +1658,15 @@ async def upload_chunk(
             upd_msg = res_msg2.scalar_one_or_none()
             if upd_msg:
                 upd_msg.file_path = url
-                upd_msg.message_type = message_type
+                # Не меняем тип, если это видео-заметка (кружок)
+                if upd_msg.message_type != "video_note":
+                    upd_msg.message_type = message_type
                 upd_msg.is_uploading = False
                 await db.commit()
                 update_event = {"type": "message_updated", "data": {
                     "id": upd_msg.id,
                     "file_path": url,
-                    "message_type": message_type,
+                    "message_type": upd_msg.message_type,
                     "is_uploading": False,
                     "upload_id": upload_id,
                     "client_id": upd_msg.client_id,

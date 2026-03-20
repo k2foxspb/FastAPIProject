@@ -101,7 +101,7 @@ export const uploadManager = {
   /**
    * Загружает файл по частям с возможностью возобновления
    */
-  async uploadFileResumable(fileUri, fileName, mimeType, receiverId, onInit, apiOptions = {}) {
+  async uploadFileResumable(fileUri, fileName, mimeType, receiverId, onInit, apiOptions = {}, extraMeta = {}) {
     const { 
       api = chatApi, 
       chunkPath = '/chat/upload/chunk/'
@@ -132,15 +132,16 @@ export const uploadManager = {
       fileSize,
       receiverId,
       apiOptions, // Сохраняем настройки API для возобновления
-      startTime: Date.now()
+      startTime: Date.now(),
+      ...extraMeta // Сохраняем clientId, messageType и т.д.
     };
     await storage.saveItem(`upload_info_${upload_id}`, JSON.stringify(uploadInfo));
     
-    const result = await this.runUploadLoop(upload_id, fileUri, 0, fileSize, token, chunkPath);
-    return { ...result, upload_id };
+    const result = await this.runUploadLoop(upload_id, fileUri, 0, fileSize, token, chunkPath, extraMeta);
+    return { ...result, upload_id, ...extraMeta };
   },
 
-  async runUploadLoop(uploadId, fileUri, startOffset, fileSize, token, chunkPath = '/chat/upload/chunk/') {
+  async runUploadLoop(uploadId, fileUri, startOffset, fileSize, token, chunkPath = '/chat/upload/chunk/', extraMeta = {}) {
     if (activeUploads.get(uploadId)) {
       console.log(`[UploadManager] Upload ${uploadId} is already running`);
       return;
@@ -157,7 +158,8 @@ export const uploadManager = {
     // Notify immediately so UI shows the upload indicator before the first chunk is sent
     this.notifyProgress(uploadId, currentOffset / totalSize, 'uploading', null, {
       loaded: currentOffset,
-      total: totalSize
+      total: totalSize,
+      ...extraMeta
     });
 
     try {
@@ -176,9 +178,10 @@ export const uploadManager = {
           await storage.removeItem(`upload_info_${uploadId}`);
           this.notifyProgress(uploadId, 1, 'completed', chunkResult, { 
             loaded: totalSize, 
-            total: totalSize 
+            total: totalSize,
+            ...extraMeta
           });
-          return chunkResult;
+          return { ...chunkResult, ...extraMeta };
         }
         
         currentOffset = Number(chunkResult.offset);
@@ -188,7 +191,8 @@ export const uploadManager = {
 
         this.notifyProgress(uploadId, currentOffset / totalSize, 'uploading', null, {
           loaded: currentOffset,
-          total: totalSize
+          total: totalSize,
+          ...extraMeta
         });
       }
     } catch (error) {
@@ -266,7 +270,7 @@ export const uploadManager = {
   /**
    * Проверяет статус существующей загрузки и продолжает её
    */
-  async resumeUpload(uploadId, fileUri, fileName, receiverId, apiOptions = {}) {
+  async resumeUpload(uploadId, fileUri, fileName, receiverId, apiOptions = {}, extraMeta = {}) {
     const { 
       api = chatApi, 
       chunkPath = '/chat/upload/chunk/'
@@ -278,13 +282,13 @@ export const uploadManager = {
 
     if (is_completed) {
       await storage.removeItem(`upload_info_${uploadId}`);
-      return { status: 'completed' };
+      return { status: 'completed', ...extraMeta };
     }
 
     const fileInfo = await getInfoAsync(fileUri);
     const fileSize = fileInfo.size;
     
-    return this.runUploadLoop(uploadId, fileUri, offset, fileSize, token, chunkPath);
+    return this.runUploadLoop(uploadId, fileUri, offset, fileSize, token, chunkPath, extraMeta);
   },
 
   /**
@@ -313,12 +317,15 @@ export const uploadManager = {
             
             // Если она еще не запущена локально - запускаем
             if (!activeUploads.get(serverUpload.upload_id)) {
+              // Extract extra meta for resume
+              const { upload_id, fileUri, fileName, receiverId: rId, apiOptions, startTime, ...meta } = localInfo;
               this.resumeUpload(
                 serverUpload.upload_id, 
                 localInfo.fileUri, 
                 localInfo.fileName, 
                 localInfo.receiverId,
-                localInfo.apiOptions || {}
+                localInfo.apiOptions || {},
+                meta
               ).catch(err => console.error(`Failed to resume upload ${serverUpload.upload_id}:`, err));
             }
           }

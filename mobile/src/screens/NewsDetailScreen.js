@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, Image, ScrollView, Dimensions, ActivityIndicator, Alert, FlatList, TouchableOpacity, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import notifee from '@notifee/react-native';
 import RenderHTML from 'react-native-render-html';
 import { newsApi, usersApi } from '../api';
@@ -12,6 +13,7 @@ import { useNotifications } from '../context/NotificationContext';
 const { width } = Dimensions.get('window');
 
 export default function NewsDetailScreen({ route, navigation }) {
+  const insets = useSafeAreaInsets();
   const { newsId, newsItem: initialNewsItem } = route.params;
   const { theme } = useTheme();
   const colors = themeConstants[theme];
@@ -240,9 +242,10 @@ export default function NewsDetailScreen({ route, navigation }) {
 
   return (
     <KeyboardAvoidingView 
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={{ flex: 1 }}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+      style={{ flex: 1, backgroundColor: colors.background }}
+      behavior="padding" 
+      keyboardVerticalOffset={90}
+      enabled={Platform.OS !== 'web'}
     >
       <ScrollView style={[styles.container, { backgroundColor: colors.background }]}>
         {allImages.length > 0 && (
@@ -410,7 +413,7 @@ export default function NewsDetailScreen({ route, navigation }) {
         </View>
       </ScrollView>
       {user ? (
-        <View style={[styles.stickyAddCommentContainer, { backgroundColor: colors.background, borderTopColor: colors.border }]}>
+        <View style={[styles.stickyAddCommentContainer, { backgroundColor: colors.background, borderTopColor: colors.border, paddingBottom: Math.max(insets.bottom, 10) }]}>
           <TextInput
             style={[styles.commentInput, { color: colors.text, backgroundColor: colors.surface, borderColor: colors.border }]}
             placeholder="Ваш комментарий..."
@@ -433,7 +436,7 @@ export default function NewsDetailScreen({ route, navigation }) {
         </View>
       ) : (
         <TouchableOpacity 
-          style={[styles.stickyLoginPrompt, { backgroundColor: colors.surface, borderTopColor: colors.border }]}
+          style={[styles.stickyLoginPrompt, { backgroundColor: colors.surface, borderTopColor: colors.border, paddingBottom: Math.max(insets.bottom, 15) }]}
           onPress={() => navigation.navigate('Profile')}
         >
           <Text style={{ color: colors.primary, fontWeight: 'bold' }}>Войдите, чтобы оставить комментарий</Text>
@@ -485,12 +488,26 @@ const styles = StyleSheet.create({
     alignItems: 'center', 
     padding: 10, 
     borderTopWidth: 1,
-    paddingBottom: Platform.OS === 'ios' ? 30 : 10
   },
   stickyLoginPrompt: { 
     padding: 15, 
     borderTopWidth: 1, 
     alignItems: 'center',
-    paddingBottom: Platform.OS === 'ios' ? 25 : 15
+  },
+  commentInput: {
+    flex: 1,
+    borderRadius: 20,
+    paddingHorizontal: 15,
+    paddingVertical: 8,
+    marginRight: 10,
+    maxHeight: 100,
+    borderWidth: 1,
+  },
+  submitButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });
