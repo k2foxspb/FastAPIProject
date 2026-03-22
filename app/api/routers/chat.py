@@ -257,6 +257,17 @@ async def websocket_chat_endpoint(
                     )
                 continue
 
+            if msg_type == "typing":
+                other_user_id = message_data.get("other_user_id")
+                is_typing = message_data.get("is_typing", True)
+                if other_user_id:
+                    await manager.send_personal_message({
+                        "type": "typing",
+                        "user_id": user_id,
+                        "is_typing": is_typing
+                    }, int(other_user_id))
+                continue
+
             if msg_type == "delete_message":
                 message_id_raw = message_data.get("message_id")
                 if message_id_raw:
