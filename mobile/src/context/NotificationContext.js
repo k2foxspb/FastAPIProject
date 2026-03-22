@@ -340,8 +340,8 @@ export const NotificationProvider = ({ children }) => {
             setNotifications(prev => [payload, ...prev]);
           } else if (msgType === 'message_updated' && payload.data) {
             // Прокидываем событие обновления сообщения
-            setNotifications(prev => [payload, ...prev]);
-            console.log(`[NotificationContext] Received new_message via Chat WS: id=${payload.data.id}, client_id=${payload.data.client_id}`);
+            // Мы вызываем handleNewMessage, который внутри добавит уведомление в список notifications
+            console.log(`[NotificationContext] Received message_updated via Chat WS: id=${payload.data.id}, client_id=${payload.data.client_id}`);
             handleNewMessage(payload.data, payload);
           } else if (msgType === 'message_deleted') {
             setNotifications(prev => [payload, ...prev]);

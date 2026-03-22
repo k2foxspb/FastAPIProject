@@ -236,8 +236,7 @@ export default function ChatScreen({ route, navigation }) {
   const isMounted = useRef(true);
   const isVideoNoteUploadRef = useRef(false);
   const LIMIT = 15;
-  const lastProcessedNotificationId = useRef(null);
-  const lastProcessedMsgId = useRef(null);
+  const lastProcessedNotifyRef = useRef(null);
 
   const handleCancelUpload = useCallback((uploadId) => {
     if (!uploadId) return;
@@ -251,97 +250,81 @@ export default function ChatScreen({ route, navigation }) {
     setUploadingData({ loaded: 0, total: 0, uri: null, mimeType: null });
   }, [isChatConnected, sendMessageWs]);
 
-  // Слушаем новые уведомления (сообщения) в реальном времени
+  // Слушаем и обрабатываем входящие уведомления от WS (новые сообщения, прогресс загрузки, обновления)
   useEffect(() => {
-    if (notifications && notifications.length > 0) {
-      const latest = notifications[0];
-      if ((latest.type === 'new_message' || latest.type === 'message') && latest.data) {
-        // Чтобы не обрабатывать одно и то же уведомление дважды при ререндерах
-        const notifId = latest.data.id || latest.data.client_id;
-        if (lastProcessedNotificationId.current === notifId) return;
-        lastProcessedNotificationId.current = notifId;
+    if (!notifications || notifications.length === 0) return;
+    
+    const lastIdx = lastProcessedNotifyRef.current 
+      ? notifications.findIndex(n => n === lastProcessedNotifyRef.current)
+      : -1;
+    const newNotifications = lastIdx === -1 ? notifications : notifications.slice(0, lastIdx);
 
-        const msg = latest.data;
-        const isFromMe = Number(msg.sender_id) === Number(currentUserId);
-        const otherId = isFromMe ? Number(msg.receiver_id) : Number(msg.sender_id);
+    // Обрабатываем уведомления в хронологическом порядке (от старых к новым)
+    [...newNotifications].reverse().forEach(notify => {
+      const data = notify.data;
+      if (!data) return;
+
+      // 1. Новые сообщения
+      if (notify.type === 'new_message' || notify.type === 'message') {
+        const isFromMe = Number(data.sender_id) === Number(currentUserId);
+        const otherId = isFromMe ? Number(data.receiver_id) : Number(data.sender_id);
 
         if (Number(otherId) === Number(userId)) {
-          // Не добавляем в список собственные плейсхолдеры загрузки, у нас для этого есть локальный индикатор
-          // Но мы их больше не скипаем, чтобы они сразу появлялись в списке сообщений
-          // и корректно обновлялись через message_updated.
-          // if ((latest.type === 'new_message' || latest.type === 'message') && msg?.is_uploading && isFromMe) {
-          //   console.log('[ChatScreen] Skipping own upload placeholder message');
-          //   return;
-          // }
-          console.log('[ChatScreen] New real-time message received from notifications:', msg.id || msg.client_id, 'type:', latest.type);
           setMessages(prev => {
             // Если это наше сообщение (есть client_id), ищем его в pending и обновляем
-            if (isFromMe && msg.client_id) {
-              const pendingIdx = prev.findIndex(m => m.client_id === msg.client_id && m.status === 'pending');
+            if (isFromMe && data.client_id) {
+              const pendingIdx = prev.findIndex(m => m.client_id === data.client_id && m.status === 'pending');
               if (pendingIdx !== -1) {
-                console.log('[ChatScreen] Updating pending message to sent:', msg.client_id);
                 const newMsgs = [...prev];
-                newMsgs[pendingIdx] = { ...msg, status: 'sent' };
+                newMsgs[pendingIdx] = { ...data, status: 'sent' };
                 return newMsgs;
               }
             }
 
-            // Проверка на дубликаты (по id или client_id)
+            // Проверка на дубликаты
             const exists = prev.some(m => 
-              (msg.id && String(m.id) === String(msg.id)) || 
-              (msg.client_id && m.client_id === msg.client_id && m.status !== 'pending')
+              (data.id && String(m.id) === String(data.id)) || 
+              (data.client_id && m.client_id === data.client_id && m.status !== 'pending')
             );
             
             if (!exists) {
-              console.log('[ChatScreen] Adding new message to list from real-time:', msg.id || msg.client_id);
-              return [msg, ...prev];
+              return [data, ...prev];
             }
             return prev;
           });
         }
-      }
-    }
-  }, [notifications, userId, currentUserId]);
-
-  // Отслеживаем прогресс загрузки и завершение (message_updated) от Chat WS
-  const lastProcessedUploadNotifyRef = useRef(null);
-  useEffect(() => {
-    if (!notifications || notifications.length === 0) return;
-    
-    const lastIdx = lastProcessedUploadNotifyRef.current 
-      ? notifications.findIndex(n => n === lastProcessedUploadNotifyRef.current)
-      : -1;
-    const newNotifications = lastIdx === -1 ? notifications : notifications.slice(0, lastIdx);
-
-    newNotifications.forEach(notify => {
-      if (notify.type === 'upload_progress' && notify.data) {
-        const { message_id, progress, offset, total } = notify.data;
-        setMessages(prev => prev.map(m => (String(m.id) === String(message_id) 
-          ? { ...m, is_uploading: true, upload_progress: progress, upload_offset: offset, upload_total: total } 
+      } 
+      // 2. Прогресс загрузки
+      else if (notify.type === 'upload_progress') {
+        const { message_id, progress, offset, total } = data;
+        setMessages(prev => prev.map(m => (
+          String(m.id) === String(message_id) && m.is_uploading && !m.file_path
+          ? { ...m, upload_progress: progress, upload_offset: offset, upload_total: total } 
           : m
         )));
-      } else if (notify.type === 'message_updated' && notify.data) {
-        const up = notify.data;
+      } 
+      // 3. Обновление сообщения (завершение загрузки)
+      else if (notify.type === 'message_updated') {
         setMessages(prev => {
-          const idx = prev.findIndex(m => String(m.id) === String(up.id));
+          const idx = prev.findIndex(m => String(m.id) === String(data.id));
           if (idx !== -1) {
-            return prev.map(m => (String(m.id) === String(up.id) ? { ...m, ...up, is_uploading: false, upload_progress: undefined } : m));
+            return prev.map(m => (String(m.id) === String(data.id) ? { ...m, ...data, is_uploading: false, upload_progress: undefined } : m));
           } else {
             // Если сообщения нет в списке (например, было скипнуто как собственный плейсхолдер), добавляем его
-            const cidIdx = up.client_id ? prev.findIndex(m => m.client_id === up.client_id) : -1;
+            const cidIdx = data.client_id ? prev.findIndex(m => m.client_id === data.client_id) : -1;
             if (cidIdx !== -1) {
               const newMsgs = [...prev];
-              newMsgs[cidIdx] = { ...up, is_uploading: false };
+              newMsgs[cidIdx] = { ...data, is_uploading: false };
               return newMsgs;
             }
-            return [up, ...prev];
+            return [data, ...prev];
           }
         });
       }
     });
 
-    lastProcessedUploadNotifyRef.current = notifications[0];
-  }, [notifications]);
+    lastProcessedNotifyRef.current = notifications[0];
+  }, [notifications, userId, currentUserId]);
   const videoPlayerRef = useRef(null);
   const chatFlatListRef = useRef(null);
   const recordingOptions = useMemo(() => RecordingPresets.HIGH_QUALITY, []);
@@ -2191,7 +2174,7 @@ export default function ChatScreen({ route, navigation }) {
           }}>
             <ActivityIndicator size="small" color="#fff" />
             <Text style={[styles.messageText, { color: '#fff', marginLeft: 8, fontSize: 12 }]}>
-              {progressPercent >= 100 ? "Обработка..." : (isVideoNote ? `${progressPercent}%` : "Загрузка... " + progressText)}
+              {progressPercent >= 100 ? "Обработка..." : (isVideoNote ? (progressPercent > 0 ? `${progressPercent}%` : "Загрузка...") : "Загрузка... " + progressText)}
             </Text>
             <TouchableOpacity 
               onPress={() => handleCancelUpload(activeUploadId)}
@@ -2364,7 +2347,7 @@ export default function ChatScreen({ route, navigation }) {
             }}>
               <ActivityIndicator size="small" color={isReceived && !isVideoNote ? colors.text : '#fff'} />
               <Text style={[styles.messageText, (isReceived && !isVideoNote) ? { color: colors.text } : { color: '#fff' }, { marginLeft: 8, fontSize: 12 }]}>
-                {progressPercent >= 100 ? "Обработка..." : (isVideoNote ? `${progressPercent}%` : "Загрузка... " + progressText)}
+                {progressPercent >= 100 ? "Обработка..." : (isVideoNote ? (progressPercent > 0 ? `${progressPercent}%` : "Загрузка...") : "Загрузка... " + progressText)}
               </Text>
             </View>
           </View>
