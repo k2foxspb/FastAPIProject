@@ -13,7 +13,7 @@ import {
   Image,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { createVideoPlayer, VideoView } from 'expo-video';
+import { createVideoPlayer, VideoView, useVideoPlayer } from 'expo-video';
 import * as FileSystem from 'expo-file-system/legacy';
 import { API_BASE_URL } from '../constants';
 
@@ -91,6 +91,42 @@ export default function VideoNoteMessage({ item, isReceived, isParentVisible }) 
 
   const [playUri, setPlayUri] = useState('');
   const [downloading, setDownloading] = useState(false);
+
+  // Inline preview player - only for visible items in the list
+  const inlinePlayer = useVideoPlayer(playUri || remoteUri, (p) => {
+    p.loop = true;
+    p.muted = true;
+  });
+
+  useEffect(() => {
+    if (inlinePlayer) {
+      if (isParentVisible) {
+        inlinePlayer.play();
+      } else {
+        inlinePlayer.pause();
+      }
+    }
+  }, [isParentVisible, inlinePlayer]);
+
+  useEffect(() => {
+    if (inlinePlayer && (playUri || remoteUri)) {
+      inlinePlayer.replaceAsync(playUri || remoteUri);
+      if (isParentVisible) {
+        inlinePlayer.play();
+      }
+    }
+  }, [playUri, remoteUri, inlinePlayer]);
+
+  useEffect(() => {
+    return () => {
+      if (inlinePlayer) {
+        try {
+          inlinePlayer.pause();
+          inlinePlayer.release?.();
+        } catch (e) {}
+      }
+    };
+  }, [inlinePlayer]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -257,8 +293,11 @@ export default function VideoNoteMessage({ item, isReceived, isParentVisible }) 
       setIsPlaying(false);
       setProgress(0);
       setCurrentTime(0);
-      // Release player to free native resources
-      try { player?.release(); } catch (_) {}
+    // Release player to free native resources
+    try { 
+      player?.pause();
+      player?.release?.(); 
+    } catch (_) {}
       playerRef.current = null;
       setModalPlayer(null);
     });
@@ -354,11 +393,12 @@ export default function VideoNoteMessage({ item, isReceived, isParentVisible }) 
       {/* Inline circle — static placeholder, no VideoView/player */}
       <TouchableOpacity onPress={openModal} activeOpacity={0.85} style={styles.inlineContainer}>
         <View style={styles.inlineVideoWrap}>
-          {playUri ? (
-            <Image 
-              source={{ uri: playUri }} 
+          {inlinePlayer ? (
+            <VideoView 
+              player={inlinePlayer} 
               style={StyleSheet.absoluteFill} 
-              resizeMode="cover"
+              contentFit="cover"
+              nativeControls={false}
             />
           ) : (
             <View style={styles.inlinePlaceholder} />

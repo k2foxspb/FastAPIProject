@@ -43,15 +43,29 @@ export default function VoiceMessage({ item, currentUserId, isParentVisible = tr
   }, [isParentVisible, player.playing]);
 
   useEffect(() => {
-    if (audioSource) {
-      player.replace(audioSource);
+    if (audioSource && player) {
       try {
+        if (typeof player.replaceAsync === 'function') {
+          player.replaceAsync(audioSource);
+        } else {
+          player.replace(audioSource);
+        }
         player.setPlaybackRate(playbackRate);
       } catch (e) {
-        console.log('[VoiceMessage] Failed to set playbackRate on source change:', e);
+        console.log('[VoiceMessage] Failed to replace source or set rate:', e);
       }
     }
   }, [audioSource, player]);
+
+  useEffect(() => {
+    return () => {
+      if (player) {
+        try {
+          player.pause();
+        } catch (e) {}
+      }
+    };
+  }, [player]);
 
   useEffect(() => {
     try {

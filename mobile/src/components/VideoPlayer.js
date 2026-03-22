@@ -14,6 +14,7 @@ const VideoPlayer = ({
   onPlayerReady,
 }) => {
   const [playerStatus, setPlayerStatus] = useState('idle');
+  const onPlayerReadyRef = useRef(onPlayerReady);
   const player = useVideoPlayer(uri, (p) => {
     p.loop = isLooping;
     p.muted = isMuted;
@@ -22,7 +23,23 @@ const VideoPlayer = ({
     }
   });
 
-  const onPlayerReadyRef = useRef(onPlayerReady);
+  const lastUriRef = useRef(uri);
+
+  useEffect(() => {
+    if (uri && uri !== lastUriRef.current) {
+      player.replaceAsync(uri).catch(err => console.log('[VideoPlayer] replaceAsync error:', err));
+      lastUriRef.current = uri;
+    }
+  }, [uri, player]);
+
+  useEffect(() => {
+    if (shouldPlay) {
+      if (!isMuted) setPlaybackAudioMode();
+      player.play();
+    } else {
+      player.pause();
+    }
+  }, [shouldPlay, player, isMuted]);
 
   useEffect(() => {
     onPlayerReadyRef.current = onPlayerReady;
@@ -41,15 +58,15 @@ const VideoPlayer = ({
   }, [player]);
 
   useEffect(() => {
-    if (shouldPlay && !isMuted) {
-      setPlaybackAudioMode();
-    }
-    if (shouldPlay) {
-      player.play();
-    } else {
-      player.pause();
-    }
-  }, [shouldPlay, isMuted, player]);
+    return () => {
+      if (player) {
+        try {
+          player.pause();
+          player.release?.();
+        } catch (e) {}
+      }
+    };
+  }, [player]);
 
   useEffect(() => {
     player.muted = isMuted;

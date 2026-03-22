@@ -223,6 +223,18 @@ export default function ChatScreen({ route, navigation }) {
   };
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState([]);
+
+  const toggleSelection = (id) => {
+    setSelectedIds(prev => {
+      if (prev.includes(id)) {
+        const next = prev.filter(x => x !== id);
+        if (next.length === 0) setSelectionMode(false);
+        return next;
+      } else {
+        return [...prev, id];
+      }
+    });
+  };
   const [isRecording, setIsRecording] = useState(false);
   const [inputMode, setInputMode] = useState('audio'); // 'audio' or 'video'
   const [isVideoRecording, setIsVideoRecording] = useState(false);
@@ -263,8 +275,6 @@ export default function ChatScreen({ route, navigation }) {
   const [fullScreenIsPlaying, setFullScreenIsPlaying] = useState(false);
   const [fullScreenPlaybackRate, setFullScreenPlaybackRate] = useState(1);
   const [fullScreenSliderWidth, setFullScreenSliderWidth] = useState(1);
-  const [isVideoNoteModalVisible, setIsVideoNoteModalVisible] = useState(false);
-  const [activeVideoNote, setActiveVideoNote] = useState(null);
   const [isSeekingFullScreen, setIsSeekingFullScreen] = useState(false);
   const [seekingPositionFullScreen, setSeekingPositionFullScreen] = useState(null);
   const recordingDotOpacity = useRef(new Animated.Value(1)).current;
@@ -1903,14 +1913,6 @@ export default function ChatScreen({ route, navigation }) {
     setRecordingDuration(0);
   };
 
-  const [videoNotePosition, setVideoNotePosition] = useState(0);
-  const [videoNoteDuration, setVideoNoteDuration] = useState(0);
-  const [videoNoteIsPlaying, setVideoNoteIsPlaying] = useState(false);
-  const videoNotePlayerRef = useRef(null);
-  const [videoNoteSliderWidth, setVideoNoteSliderWidth] = useState(320);
-  const [isVideoNoteSeeking, setIsVideoNoteSeeking] = useState(false);
-  const [videoNoteSeekingPosition, setVideoNoteSeekingPosition] = useState(null);
-  const videoNoteSubscriptions = useRef([]);
   const [isVideoRecordingTimer, setIsVideoRecordingTimer] = useState(0);
   const videoRecordingInterval = useRef(null);
 
@@ -1935,103 +1937,6 @@ export default function ChatScreen({ route, navigation }) {
     };
   }, [isVideoRecording]);
 
-  const cleanupVideoNoteSubscriptions = () => {
-    videoNoteSubscriptions.current.forEach(sub => {
-      if (sub && typeof sub.remove === 'function') sub.remove();
-    });
-    videoNoteSubscriptions.current = [];
-  };
-
-  const handleVideoNotePlayerReady = (player) => {
-    videoNotePlayerRef.current = player;
-    cleanupVideoNoteSubscriptions();
-    
-    if (player) {
-      try {
-        player.timeUpdateEventInterval = 0.1;
-      } catch (e) {}
-
-      setVideoNotePosition(player.currentTime || 0);
-      setVideoNoteDuration(player.duration || 0);
-      setVideoNoteIsPlaying(!!player.playing);
-
-      const subs = [];
-      if (typeof player.addListener === 'function') {
-        subs.push(player.addListener('timeUpdate', (payload) => {
-          if (isVideoNoteSeeking) return;
-          setVideoNotePosition(payload?.currentTime ?? player.currentTime ?? 0);
-        }));
-        subs.push(player.addListener('sourceLoad', (payload) => {
-          setVideoNoteDuration(payload?.duration ?? player.duration ?? 0);
-        }));
-        subs.push(player.addListener('playingChange', (payload) => {
-          setVideoNoteIsPlaying(!!payload?.isPlaying);
-        }));
-        subs.push(player.addListener('playToEnd', () => {
-          setVideoNoteIsPlaying(false);
-          try { player.currentTime = 0; } catch (e) {}
-        }));
-      }
-      videoNoteSubscriptions.current = subs;
-    }
-  };
-
-  const videoNotePanResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
-      onPanResponderGrant: (evt, gestureState) => {
-        setIsVideoNoteSeeking(true);
-        if (videoNotePlayerRef.current) {
-          try { videoNotePlayerRef.current.pause(); } catch (e) {}
-          setVideoNoteIsPlaying(false);
-        }
-        handleVideoNoteSeek(evt);
-      },
-      onPanResponderMove: (evt, gestureState) => {
-        handleVideoNoteSeek(evt);
-      },
-      onPanResponderRelease: () => {
-        setIsVideoNoteSeeking(false);
-        if (videoNotePlayerRef.current && videoNoteSeekingPosition !== null) {
-          videoNotePlayerRef.current.currentTime = videoNoteSeekingPosition;
-          setVideoNotePosition(videoNoteSeekingPosition);
-          setVideoNoteSeekingPosition(null);
-        }
-      },
-    })
-  ).current;
-
-  const handleVideoNoteSeek = (evt) => {
-    const { locationX } = evt.nativeEvent;
-    const ratio = Math.max(0, Math.min(1, locationX / videoNoteSliderWidth));
-    if (videoNoteDuration > 0) {
-      const nextTime = ratio * videoNoteDuration;
-      setVideoNoteSeekingPosition(nextTime);
-      if (videoNotePlayerRef.current) {
-        try { videoNotePlayerRef.current.currentTime = nextTime; } catch (e) {}
-      }
-    }
-  };
-
-  const handleVideoNoteModalClose = () => {
-    if (videoNotePlayerRef.current) {
-      videoNotePlayerRef.current.pause();
-    }
-    cleanupVideoNoteSubscriptions();
-    setIsVideoNoteModalVisible(false);
-    setActiveVideoNote(null);
-  };
-
-  const handleVideoNoteTogglePlay = () => {
-    if (videoNotePlayerRef.current) {
-      if (videoNoteIsPlaying) {
-        videoNotePlayerRef.current.pause();
-      } else {
-        videoNotePlayerRef.current.play();
-      }
-    }
-  };
 
   const formatRecordingTime = (millis) => {
     const totalSeconds = Math.floor(millis / 1000);
@@ -2336,36 +2241,6 @@ export default function ChatScreen({ route, navigation }) {
       openFullScreen(uri, type);
     };
 
-    const toggleSelection = (id) => {
-      setSelectedIds(prev => 
-        prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
-      );
-    };
-
-    const handleLongPress = () => {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      if (!selectionMode) {
-        setSelectionMode(true);
-        setSelectedIds([item.id]);
-      }
-    };
-
-    const handlePress = () => {
-      if (selectionMode) {
-        toggleSelection(item.id);
-      }
-    };
-
-    const handleVideoNotePress = (item) => {
-      const uri = item?.file_path || item?.video_url || item?.uri;
-      if (uri) {
-        const fullUri = uri.startsWith('http') ? uri : `${API_BASE_URL}${uri.startsWith('/') ? '' : '/'}${uri}`;
-        setActiveVideoNote(fullUri);
-        setVideoNoteIsPlaying(true);
-        setIsVideoNoteModalVisible(true);
-      }
-    };
-
     const renderLeftActions = (progress, dragX) => {
       const scale = dragX.interpolate({
         inputRange: [0, 50, 80],
@@ -2383,6 +2258,20 @@ export default function ChatScreen({ route, navigation }) {
 
     const isCurrentSearchResult = globalSearchResults[currentGlobalSearchIdx]?.id === item.id;
     const isReplyHighlighted = replyHighlightId === item.id;
+
+    const handlePress = () => {
+      if (selectionMode) {
+        toggleSelection(item.id);
+      }
+    };
+
+    const handleLongPress = () => {
+      if (!selectionMode) {
+        setSelectionMode(true);
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      }
+      toggleSelection(item.id);
+    };
 
     return (
       <Swipeable
@@ -2534,7 +2423,7 @@ export default function ChatScreen({ route, navigation }) {
                     onFullScreen={handleFullScreen} 
                     style={{ borderRadius: 12, overflow: 'hidden' }}
                     shouldPlay={viewableItems.includes(item.id)}
-                    isStatic={true}
+                    isStatic={!viewableItems.includes(item.id)}
                   />
                 </View>
               ) : renderMediaPlaceholder(item.message_type, isReceived, item.file_path)
@@ -3020,86 +2909,6 @@ export default function ChatScreen({ route, navigation }) {
         </View>
       </Modal>
 
-      <Modal
-        visible={isVideoNoteModalVisible}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={handleVideoNoteModalClose}
-      >
-        <Pressable 
-          style={styles.videoNoteModalOverlay} 
-          onPress={handleVideoNoteModalClose}
-        >
-          <View style={styles.videoNoteModalContent}>
-            <View 
-              style={styles.videoNoteSliderContainer}
-              onLayout={(e) => setVideoNoteSliderWidth(e.nativeEvent.layout.width || 320)}
-              {...videoNotePanResponder.panHandlers}
-            >
-              <View style={styles.videoNoteModalCircle}>
-                {activeVideoNote && (
-                  <VideoPlayer
-                    uri={activeVideoNote}
-                    style={styles.videoNoteModalVideo}
-                    onClose={handleVideoNoteModalClose}
-                    hideControls={true}
-                    shouldPlay={videoNoteIsPlaying}
-                    isLooping={false}
-                    onPlayerReady={handleVideoNotePlayerReady}
-                  />
-                )}
-                {/* Круговой прогресс */}
-                <View style={styles.videoNoteProgressRing}>
-                   {/* В реальном приложении здесь лучше использовать react-native-svg 
-                       Для имитации кольцевого прогресса без SVG, мы используем 
-                       слайдер снизу и круглую рамку.
-                   */}
-                </View>
-              </View>
-
-              {/* Линейный прогресс под кругом (как альтернатива или дополнение для удобства перемотки) */}
-              <View style={styles.videoNoteProgressBar}>
-                <View style={[
-                  styles.videoNoteProgressFill,
-                  { 
-                    width: `${videoNoteDuration > 0 
-                      ? (((isVideoNoteSeeking ? videoNoteSeekingPosition : videoNotePosition) / videoNoteDuration) * 100).toFixed(2) 
-                      : 0}%` 
-                  }
-                ]} />
-              </View>
-            </View>
-
-            <View style={styles.videoNoteControlsRow}>
-              <Text style={styles.videoNoteTimeText}>
-                {formatMediaTime(isVideoNoteSeeking ? videoNoteSeekingPosition : videoNotePosition)}
-              </Text>
-              
-              <TouchableOpacity 
-                style={styles.videoNotePlayPauseBtn} 
-                onPress={handleVideoNoteTogglePlay}
-              >
-                <MaterialIcons 
-                  name={videoNoteIsPlaying ? "pause" : "play-arrow"} 
-                  size={32} 
-                  color="#fff" 
-                />
-              </TouchableOpacity>
-
-              <Text style={styles.videoNoteTimeText}>
-                {formatMediaTime(videoNoteDuration)}
-              </Text>
-            </View>
-
-            <TouchableOpacity 
-              style={styles.videoNoteModalClose} 
-              onPress={handleVideoNoteModalClose}
-            >
-              <MaterialIcons name="close" size={30} color="#fff" />
-            </TouchableOpacity>
-          </View>
-        </Pressable>
-      </Modal>
 
       {!selectionMode && (
         <View style={[

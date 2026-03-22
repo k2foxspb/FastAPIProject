@@ -85,20 +85,30 @@ const CachedMedia = ({ item, onFullScreen, style, resizeMode = "cover", useNativ
     );
   }
 
-  if (isVideo && isStatic) {
+  if (isVideo && isStatic && !shouldPlay) {
     return (
       <TouchableOpacity
         onPress={() => onFullScreen && onFullScreen(localUri, item.message_type || item.type)}
         style={[styles.thumbnail, style]}
       >
-        <Image
-          source={{ uri: localUri }}
-          style={StyleSheet.absoluteFill}
-          resizeMode={resizeMode}
-        />
-        <View style={styles.playOverlay}>
-          <View style={styles.playButtonCircle}>
-            <MaterialIcons name="play-arrow" size={32} color="#fff" />
+        <View style={StyleSheet.absoluteFill}>
+          {localUri ? (
+            <VideoPlayer 
+              uri={localUri} 
+              shouldPlay={false} 
+              isMuted={true} 
+              style={StyleSheet.absoluteFill}
+              resizeMode={resizeMode}
+            />
+          ) : (
+            <View style={[StyleSheet.absoluteFill, { backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' }]}>
+              <ActivityIndicator color="#fff" />
+            </View>
+          )}
+          <View style={styles.playOverlay}>
+            <View style={styles.playButtonCircle}>
+              <MaterialIcons name="play-arrow" size={32} color="#fff" />
+            </View>
           </View>
         </View>
       </TouchableOpacity>
