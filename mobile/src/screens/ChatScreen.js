@@ -95,7 +95,7 @@ export default function ChatScreen({ route, navigation }) {
   const insets = useSafeAreaInsets();
   const { theme } = useTheme();
   const colors = themeConstants[theme];
-  const { setActiveChatId, fetchDialogs, currentUserId, notifications, connect, dialogs, clearUnread, currentUser, sendMessage: sendMessageWs, markAsReadWs, deleteMessageWs, bulkDeleteMessagesWs, getHistoryWs, onHistoryReceived, onSearchResultsReceived, searchMessagesWs, getCachedHistory, isChatConnected } = useNotifications();
+  const { setActiveChatId, fetchDialogs, currentUserId, notifications, connect, dialogs, clearUnread, currentUser, sendMessage: sendMessageWs, markAsReadWs, deleteMessageWs, bulkDeleteMessagesWs, getHistoryWs, onHistoryReceived, onSearchResultsReceived, searchMessagesWs, getCachedHistory, isChatConnected, typingUsers, sendTypingStatus } = useNotifications();
   const { userId, userName } = route.params;
   const [messages, setMessages] = useState([]);
   const [inputText, setInputText] = useState('');
@@ -104,6 +104,41 @@ export default function ChatScreen({ route, navigation }) {
   const [uploadingProgress, setUploadingProgress] = useState(null);
   const [uploadingData, setUploadingData] = useState({ loaded: 0, total: 0, uri: null, mimeType: null });
   const [activeUploadId, setActiveUploadId] = useState(null);
+  
+  const typingTimerRef = useRef(null);
+  const isCurrentlyTyping = useRef(false);
+
+  useEffect(() => {
+    if (inputText.length > 0) {
+      if (!isCurrentlyTyping.current) {
+        isCurrentlyTyping.current = true;
+        sendTypingStatus(userId, true);
+      }
+      
+      if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+      
+      typingTimerRef.current = setTimeout(() => {
+        isCurrentlyTyping.current = false;
+        sendTypingStatus(userId, false);
+      }, 3000);
+    } else if (isCurrentlyTyping.current) {
+      isCurrentlyTyping.current = false;
+      sendTypingStatus(userId, false);
+      if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+    }
+    
+    return () => {
+      if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+    };
+  }, [inputText, userId, sendTypingStatus]);
+
+  const isPartnerTyping = useMemo(() => {
+    const timestamp = typingUsers[userId];
+    if (!timestamp) return false;
+    // Считаем, что печатает, если последнее событие было меньше 5 секунд назад
+    return (Date.now() - timestamp) < 5000;
+  }, [typingUsers, userId]);
+
   const [fullScreenMedia, setFullScreenMedia] = useState(null); // { index, list }
   const [allMedia, setAllMedia] = useState([]);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -2109,171 +2144,61 @@ export default function ChatScreen({ route, navigation }) {
     if (uploadingProgress === null || !uploadingData.uri) return null;
 
     const progressPercent = Math.round(uploadingProgress * 100);
+    const progressText = (uploadingData.loaded !== undefined && uploadingData.total !== undefined && uploadingData.total > 0)
+        ? `${formatFileSize(uploadingData.loaded)} / ${formatFileSize(uploadingData.total)}`
+        : (progressPercent > 0 ? `${progressPercent}%` : '');
 
-    // Video note — renders like VideoNoteMessage inline (no messageBubble wrapper)
-    if (uploadingData.type === 'video_note') {
-      return (
-        <View style={[styles.messageWrapper, styles.sentWrapper, { opacity: 0.85, marginBottom: 10 }]}>
-          <View style={{ flexDirection: 'column', alignItems: 'flex-end' }}>
-          <View style={{ position: 'relative', width: 170, height: 170 }}>
-            {/* Circle matching VideoNoteMessage inline style */}
-            <View style={{
-              width: 170,
-              height: 170,
-              borderRadius: 85,
-              overflow: 'hidden',
-              backgroundColor: '#1a1a1a',
-              justifyContent: 'center',
-              alignItems: 'center',
-            }}>
-              {uploadingData.uri && (
-                <Image 
-                  source={{ uri: uploadingData.uri }} 
-                  style={StyleSheet.absoluteFill} 
-                  resizeMode="cover"
-                />
-              )}
-              <View style={{ ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'center', alignItems: 'center' }}>
-                <ActivityIndicator size="large" color="#4FC3F7" />
-                <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 13, marginTop: 8 }}>
-                  {progressPercent}%
-                </Text>
-              </View>
-            </View>
-            {/* Cancel button */}
-            <TouchableOpacity
-              style={{
-                position: 'absolute',
-                top: 8,
-                right: 8,
-                width: 30,
-                height: 30,
-                borderRadius: 15,
-                backgroundColor: 'rgba(0,0,0,0.6)',
-                borderWidth: 1,
-                borderColor: 'rgba(255,255,255,0.3)',
-                justifyContent: 'center',
-                alignItems: 'center',
-              }}
-              onPress={() => handleCancelUpload(activeUploadId)}
-            >
-              <MaterialIcons name="close" size={17} color="#fff" />
-            </TouchableOpacity>
-          </View>
-          <Text style={{ color: 'rgba(255,255,255,0.45)', fontSize: 10, alignSelf: 'flex-end', marginTop: 3 }}>
-            Отправка...
-          </Text>
-          </View>
-        </View>
-      );
+    // Определяем тип для плейсхолдера
+    let type = uploadingData.type || 'file';
+    // Если тип уже специфичный (например, video_note), не переопределяем его общим типом видео
+    if (type !== 'video_note') {
+        if (uploadingData.mimeType?.startsWith('image/')) type = 'image';
+        else if (uploadingData.mimeType?.startsWith('video/')) type = 'video';
+        else if (uploadingData.mimeType?.startsWith('audio/') || type === 'voice') type = 'voice';
     }
 
-    // Other types (image, file, voice…) — keep original messageBubble layout
+    const isMediaGroup = type === 'media_group';
+
+    const isVideoNote = type === 'video_note';
+
     return (
-      <View style={[
-        styles.messageWrapper,
-        styles.sentWrapper,
-        { opacity: 0.8, marginBottom: 10 }
-      ]}>
-        <View style={[styles.messageBubble, styles.sent, { backgroundColor: colors.primary }]}>
-          {uploadingData.mimeType?.startsWith('image/') ? (
-            <View>
-              <Image
-                source={{ uri: uploadingData.uri }}
-                style={{ width: 200, height: 150, borderRadius: 10 }}
-                resizeMode="cover"
-              />
-              <View style={{
-                ...StyleSheet.absoluteFillObject,
-                backgroundColor: 'rgba(0,0,0,0.3)',
-                justifyContent: 'center',
-                alignItems: 'center',
-                borderRadius: 10
-              }}>
-                <View style={{
-                  backgroundColor: 'rgba(0,0,0,0.5)',
-                  paddingHorizontal: 12,
-                  paddingVertical: 6,
-                  borderRadius: 15,
-                  flexDirection: 'row',
-                  alignItems: 'center'
-                }}>
-                  <ActivityIndicator size="small" color="#fff" style={{ marginRight: 8 }} />
-                  <Text style={{ color: '#fff', fontWeight: 'bold' }}>
-                    {uploadingData.loaded !== undefined && uploadingData.total !== undefined && uploadingData.total > 0
-                      ? `${formatFileSize(uploadingData.loaded)} / ${formatFileSize(uploadingData.total)}` 
-                      : `${progressPercent}%`}
-                  </Text>
-                </View>
-                <TouchableOpacity
-                  style={{
-                    position: 'absolute',
-                    top: 8,
-                    right: 8,
-                    width: 28,
-                    height: 28,
-                    borderRadius: 14,
-                    backgroundColor: 'rgba(0,0,0,0.6)',
-                    borderWidth: 1,
-                    borderColor: 'rgba(255,255,255,0.3)',
-                    justifyContent: 'center',
-                    alignItems: 'center',
-                  }}
-                  onPress={() => handleCancelUpload(activeUploadId)}
-                >
-                  <MaterialIcons name="close" size={16} color="#fff" />
-                </TouchableOpacity>
-              </View>
+      <View style={[styles.messageWrapper, styles.sentWrapper, { marginBottom: 10 }]}>
+        <View style={[
+            styles.messageBubble, 
+            styles.sent, 
+            { 
+                backgroundColor: isVideoNote ? 'transparent' : colors.primary, 
+                padding: isVideoNote ? 0 : 4,
+                alignItems: isVideoNote ? 'center' : 'stretch'
+            }
+        ]}> 
+          {/* Рендерим плейсхолдеры для медиа в процессе загрузки */}
+          {isMediaGroup && uploadingData.attachments && uploadingData.attachments.map((att, idx) => (
+            <View key={`upload_att_${idx}`} style={{ marginBottom: 4 }}>
+              {renderMediaPlaceholder(att.type, false, att.file_path || att.uri)}
             </View>
-          ) : uploadingData.mimeType?.startsWith('video/') ? (
-            <VideoUploadPlaceholder
-              progressPercent={progressPercent}
-              activeUploadId={activeUploadId}
-              uri={uploadingData.uri}
-              loaded={uploadingData.loaded}
-              total={uploadingData.total}
-              onCancel={handleCancelUpload}
-            />
-          ) : (
-            <View style={{ padding: 10 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
-                <MaterialIcons 
-                  name={uploadingData.mimeType?.startsWith('audio/') ? "mic" : "insert-drive-file"} 
-                  size={24} 
-                  color="#fff" 
-                />
-                <Text style={{ color: '#fff', marginLeft: 10, fontWeight: '500', flex: 1 }}>
-                  {progressPercent >= 100 ? "Обработка..." : (uploadingData.type === 'voice' || (uploadingData.mimeType || '').startsWith('audio/') ? "Голосовое сообщение" : "Загрузка файла...")}
-                </Text>
-                <TouchableOpacity
-                  style={{
-                    width: 26,
-                    height: 26,
-                    borderRadius: 13,
-                    backgroundColor: 'rgba(0,0,0,0.4)',
-                    borderWidth: 1,
-                    borderColor: 'rgba(255,255,255,0.3)',
-                    justifyContent: 'center',
-                    alignItems: 'center',
-                    marginLeft: 8,
-                  }}
-                  onPress={() => handleCancelUpload(activeUploadId)}
-                >
-                  <MaterialIcons name="close" size={15} color="#fff" />
-                </TouchableOpacity>
-              </View>
-              <View style={{ height: 4, backgroundColor: 'rgba(255,255,255,0.3)', borderRadius: 2, overflow: 'hidden', width: 150 }}>
-                <View style={{ height: '100%', backgroundColor: '#fff', width: `${progressPercent}%` }} />
-              </View>
-              <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 10, marginTop: 4, textAlign: 'right' }}>
-                {uploadingData.loaded !== undefined && uploadingData.total !== undefined && uploadingData.total > 0
-                  ? `${formatFileSize(uploadingData.loaded)} / ${formatFileSize(uploadingData.total)}` 
-                  : `${progressPercent}%`}
-              </Text>
-            </View>
-          )}
-          <View style={styles.messageFooter}>
-            <Text style={[styles.messageTime, { color: 'rgba(255,255,255,0.9)' }]}>Отправка...</Text>
+          ))}
+          {!isMediaGroup && renderMediaPlaceholder(type, false, uploadingData.uri)}
+          
+          <View style={{ 
+              flexDirection: 'row', 
+              alignItems: 'center', 
+              padding: 8,
+              backgroundColor: isVideoNote ? 'rgba(0,0,0,0.5)' : 'transparent',
+              borderRadius: isVideoNote ? 20 : 0,
+              marginTop: isVideoNote ? -40 : 0,
+              marginBottom: isVideoNote ? 10 : 0
+          }}>
+            <ActivityIndicator size="small" color="#fff" />
+            <Text style={[styles.messageText, { color: '#fff', marginLeft: 8, fontSize: 12 }]}>
+              {progressPercent >= 100 ? "Обработка..." : (isVideoNote ? `${progressPercent}%` : "Загрузка... " + progressText)}
+            </Text>
+            <TouchableOpacity 
+              onPress={() => handleCancelUpload(activeUploadId)}
+              style={{ marginLeft: 10 }}
+            >
+              <MaterialIcons name="close" size={18} color="#fff" />
+            </TouchableOpacity>
           </View>
         </View>
       </View>
@@ -2310,12 +2235,93 @@ export default function ChatScreen({ route, navigation }) {
     );
   };
 
+  const renderMediaPlaceholder = (type, isReceived, uri = null) => {
+    let iconName = 'insert-drive-file';
+    let label = 'Файл';
+    
+    if (type === 'image') { iconName = 'image'; label = 'Фотография'; }
+    else if (type === 'video') { iconName = 'videocam'; label = 'Видео'; }
+    else if (type === 'voice' || type === 'audio') { iconName = 'mic'; label = 'Голосовое сообщение'; }
+    else if (type === 'video_note') { iconName = 'play-circle-outline'; label = 'Видео-сообщение'; }
+    
+    const isVisual = type === 'image' || type === 'video' || type === 'video_note';
+    const isVideoNote = type === 'video_note';
+
+    if (isVisual) {
+        return (
+            <View style={{
+                width: isVideoNote ? 160 : 200,
+                height: isVideoNote ? 160 : 150,
+                borderRadius: isVideoNote ? 80 : 12,
+                backgroundColor: isReceived ? colors.border + '44' : 'rgba(255,255,255,0.1)',
+                justifyContent: 'center',
+                alignItems: 'center',
+                overflow: 'hidden',
+                margin: 4,
+                borderWidth: 1,
+                borderColor: isReceived ? colors.border : 'rgba(255,255,255,0.2)'
+            }}>
+                {uri ? (
+                    <Image 
+                        source={{ uri }} 
+                        style={StyleSheet.absoluteFill} 
+                        resizeMode="cover"
+                    />
+                ) : (
+                    <View style={{ position: 'absolute', opacity: 0.2 }}>
+                         <MaterialIcons name={iconName} size={isVideoNote ? 100 : 80} color={isReceived ? colors.textSecondary : '#fff'} />
+                    </View>
+                )}
+                {!isVideoNote && (
+                    <View style={{
+                        backgroundColor: 'rgba(0,0,0,0.4)',
+                        paddingHorizontal: 10,
+                        paddingVertical: 5,
+                        borderRadius: 15,
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        borderWidth: 1,
+                        borderColor: 'rgba(255,255,255,0.2)'
+                    }}>
+                        <MaterialIcons name={iconName} size={16} color="#fff" />
+                        <Text style={{ color: '#fff', fontSize: 11, marginLeft: 4, fontWeight: '500' }}>{label}</Text>
+                    </View>
+                )}
+            </View>
+        );
+    }
+
+    return (
+      <View style={{ 
+          backgroundColor: isReceived ? colors.border + '44' : 'rgba(255,255,255,0.1)',
+          flexDirection: 'row',
+          alignItems: 'center',
+          padding: 12,
+          borderRadius: 12,
+          minWidth: 150,
+          margin: 4
+      }}>
+        <MaterialIcons name={iconName} size={24} color={isReceived ? colors.textSecondary : 'rgba(255,255,255,0.7)'} />
+        <Text style={{ 
+          color: isReceived ? colors.textSecondary : 'rgba(255,255,255,0.7)',
+          marginLeft: 8,
+          fontSize: 14
+        }}>
+          {label}
+        </Text>
+      </View>
+    );
+  };
+
   const renderMessageItem = ({ item, index }) => {
     const isImage = item.message_type === 'image';
     const isVideo = item.message_type === 'video';
     const isVoice = item.message_type === 'voice';
+    const isAudio = item.message_type === 'audio';
     const isVideoNote = item.message_type === 'video_note';
     const isFile = item.message_type === 'file';
+    const isMediaGroup = item.message_type === 'media_group';
+    const isMedia = isImage || isVideo || isVoice || isAudio || isVideoNote || isMediaGroup || isFile;
     const isReceived = Number(item.sender_id) === Number(userId);
     const isOwner = Number(item.sender_id) === Number(currentUserId);
     const isSelected = selectedIds.includes(item.id);
@@ -2330,17 +2336,35 @@ export default function ChatScreen({ route, navigation }) {
         ? `${formatFileSize(item.upload_offset)} / ${formatFileSize(item.upload_total)}`
         : (progressPercent > 0 ? `${progressPercent}%` : '');
 
-      const isMediaGroup = item.message_type === 'media_group';
-      const isMedia = isImage || isVideo || isVoice || isVideoNote || isMediaGroup;
-
       return (
         <View style={[styles.messageWrapper, isReceived ? styles.receivedWrapper : styles.sentWrapper]}>
-          <View style={[styles.messageBubble, isReceived ? styles.receivedBubble : styles.sentBubble]}> 
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <ActivityIndicator size="small" color={isReceived ? colors.text : '#fff'} />
-              <Text style={[styles.messageText, isReceived ? { color: colors.text } : { color: '#fff' }, { marginLeft: 8 }]}>
-                {progressPercent >= 100 ? "Обработка..." : (!isReceived && isMedia ? "" : "Загрузка файла... ")}
-                {progressPercent < 100 ? progressText : ""}
+          <View style={[
+            styles.messageBubble, 
+            isReceived 
+              ? [styles.received, { backgroundColor: isVideoNote ? 'transparent' : colors.surface }] 
+              : [styles.sent, { backgroundColor: isVideoNote ? 'transparent' : colors.primary }],
+            { padding: isVideoNote ? 0 : 4, alignItems: isVideoNote ? 'center' : 'stretch' }
+          ]}> 
+            {/* Рендерим плейсхолдеры для медиа в процессе загрузки */}
+            {isMediaGroup && item.attachments && item.attachments.map((att, idx) => (
+              <View key={`upload_att_${idx}`} style={{ marginBottom: 4 }}>
+                {renderMediaPlaceholder(att.type, isReceived, att.file_path)}
+              </View>
+            ))}
+            {!isMediaGroup && isMedia && renderMediaPlaceholder(item.message_type, isReceived, item.file_path)}
+            
+            <View style={{ 
+                flexDirection: 'row', 
+                alignItems: 'center', 
+                padding: 8,
+                backgroundColor: isVideoNote ? 'rgba(0,0,0,0.5)' : 'transparent',
+                borderRadius: isVideoNote ? 20 : 0,
+                marginTop: isVideoNote ? -40 : 0,
+                marginBottom: isVideoNote ? 10 : 0
+            }}>
+              <ActivityIndicator size="small" color={isReceived && !isVideoNote ? colors.text : '#fff'} />
+              <Text style={[styles.messageText, (isReceived && !isVideoNote) ? { color: colors.text } : { color: '#fff' }, { marginLeft: 8, fontSize: 12 }]}>
+                {progressPercent >= 100 ? "Обработка..." : (isVideoNote ? `${progressPercent}%` : "Загрузка... " + progressText)}
               </Text>
             </View>
           </View>
@@ -2498,11 +2522,11 @@ export default function ChatScreen({ route, navigation }) {
             <View style={styles.mediaGridContainer}>
               <View style={styles.mediaGrid}>
                 {item.attachments.map((att, idx) => {
-                  if (!att.file_path || att.type === 'video_note') return null;
-                  const attUri = att.file_path.startsWith('http') ? att.file_path : `${API_BASE_URL}${att.file_path}`;
+                  if (att.type === 'video_note') return null;
+                  const attUri = att.file_path ? (att.file_path.startsWith('http') ? att.file_path : `${API_BASE_URL}${att.file_path}`) : null;
                   
                   // Расчет размеров для сетки
-                  const count = item.attachments.length;
+                  const count = item.attachments.filter(a => a.type !== 'video_note').length;
                   let itemWidth = '100%';
                   let itemHeight = 200;
                   
@@ -2520,6 +2544,14 @@ export default function ChatScreen({ route, navigation }) {
                   } else if (count >= 4) {
                     itemWidth = '49%';
                     itemHeight = 100;
+                  }
+
+                  if (!attUri) {
+                    return (
+                      <View key={`${item.id}_att_${idx}`} style={{ width: itemWidth, height: itemHeight, marginBottom: 4 }}>
+                        {renderMediaPlaceholder(att.type, isReceived, att.file_path)}
+                      </View>
+                    );
                   }
 
                   return (
@@ -2548,30 +2580,36 @@ export default function ChatScreen({ route, navigation }) {
             </View>
           ) : (
             (isImage || isVideo) && (
-              <View style={{ borderRadius: 12, overflow: 'hidden' }}>
-                <CachedMedia 
-                  item={item} 
-                  onFullScreen={handleFullScreen} 
-                  style={{ borderRadius: 12, overflow: 'hidden' }}
-                  shouldPlay={viewableItems.includes(item.id)}
-                  isStatic={true}
-                />
-              </View>
+              item.file_path || item.uri ? (
+                <View style={{ borderRadius: 12, overflow: 'hidden' }}>
+                  <CachedMedia 
+                    item={item} 
+                    onFullScreen={handleFullScreen} 
+                    style={{ borderRadius: 12, overflow: 'hidden' }}
+                    shouldPlay={viewableItems.includes(item.id)}
+                    isStatic={true}
+                  />
+                </View>
+              ) : renderMediaPlaceholder(item.message_type, isReceived, item.file_path)
             )
           )}
           {isVoice && (
-            <VoiceMessage 
-              item={item} 
-              currentUserId={currentUserId} 
-              isParentVisible={viewableItems.includes(item.id)}
-            />
+            item.file_path || item.uri ? (
+              <VoiceMessage 
+                item={item} 
+                currentUserId={currentUserId} 
+                isParentVisible={viewableItems.includes(item.id)}
+              />
+            ) : renderMediaPlaceholder(item.message_type, isReceived, item.file_path)
           )}
           {isVideoNote && (
-            <VideoNoteMessage 
-              item={item} 
-              isReceived={isReceived} 
-              isParentVisible={viewableItems.includes(item.id)}
-            />
+            item.file_path || item.video_url || item.uri ? (
+              <VideoNoteMessage 
+                item={item} 
+                isReceived={isReceived} 
+                isParentVisible={viewableItems.includes(item.id)}
+              />
+            ) : renderMediaPlaceholder(item.message_type, isReceived, item.file_path)
           )}
           {item.attachments && item.attachments.some(att => att.type === 'video_note') && !isVideoNote && (
             item.attachments.filter(att => att.type === 'video_note').map((att, idx) => (
@@ -2795,7 +2833,9 @@ export default function ChatScreen({ route, navigation }) {
               </View>
               <View>
                 <Text style={[styles.headerTitle, { color: colors.text }]}>{formatName(interlocutor) || userName}</Text>
-                {interlocutor && (
+                {isPartnerTyping ? (
+                  <Text style={[styles.headerStatus, { color: colors.primary, fontWeight: 'bold' }]}>печатает...</Text>
+                ) : interlocutor && (
                   <Text style={[styles.headerStatus, { color: colors.textSecondary }]}>
                     {formatStatus(interlocutor.status, interlocutor.last_seen)}
                   </Text>

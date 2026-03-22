@@ -13,6 +13,9 @@ class ChatMessageBase(BaseModel):
     reply_to_id: Optional[int] = None
     is_uploading: bool = False
     upload_id: Optional[str] = None
+    upload_progress: Optional[float] = None
+    upload_offset: Optional[int] = None
+    upload_total: Optional[int] = None
 
 class ChatMessageCreate(ChatMessageBase):
     pass
@@ -37,6 +40,9 @@ class ChatMessageResponse(ChatMessageBase):
     reply_to: Optional[ChatMessageReply] = None
     is_uploading: bool = False
     upload_id: Optional[str] = None
+    upload_progress: Optional[float] = None
+    upload_offset: Optional[int] = None
+    upload_total: Optional[int] = None
 
     class Config:
         from_attributes = True

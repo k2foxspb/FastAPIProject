@@ -961,7 +961,8 @@ async def get_chat_history(
         return []
 
     result = await db.execute(
-        select(ChatMessage)
+        select(ChatMessage, FileUploadSession.offset.label("upload_offset"), FileUploadSession.file_size.label("upload_total"))
+        .outerjoin(FileUploadSession, ChatMessage.upload_id == FileUploadSession.id)
         .options(joinedload(ChatMessage.reply_to).joinedload(ChatMessage.sender))
         .where(
             or_(
@@ -980,11 +981,12 @@ async def get_chat_history(
         .offset(skip)
         .limit(limit)
     )
-    db_messages = result.scalars().all()
+    db_rows = result.all()
 
     # Преобразуем в словари и добавим attachments для media_group
     messages = []
-    for m in db_messages:
+    for row in db_rows:
+        m = row.ChatMessage
         item = {
             "id": m.id,
             "sender_id": m.sender_id,
@@ -999,6 +1001,9 @@ async def get_chat_history(
             "reply_to_id": m.reply_to_id,
             "is_uploading": getattr(m, 'is_uploading', False),
             "upload_id": getattr(m, 'upload_id', None),
+            "upload_offset": row.upload_offset,
+            "upload_total": row.upload_total,
+            "upload_progress": (row.upload_offset / row.upload_total) if row.upload_offset and row.upload_total else 0
         }
         
         if m.reply_to:

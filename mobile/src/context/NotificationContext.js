@@ -86,6 +86,7 @@ export const NotificationProvider = ({ children }) => {
   const chatWsShouldReconnect = useRef(true);
   const chatWsLastToken = useRef(null);
   const chatWsHeartbeatInterval = useRef(null);
+  const [typingUsers, setTypingUsers] = useState({});
 
   useEffect(() => {
     activeChatIdRef.current = activeChatId;
@@ -328,6 +329,12 @@ export const NotificationProvider = ({ children }) => {
           } else if (msgType === 'new_message' && payload.data) {
             console.log(`[NotificationContext] Received new_message via Chat WS: id=${payload.data.id}, client_id=${payload.data.client_id}`);
             handleNewMessage(payload.data, payload);
+          } else if (msgType === 'typing') {
+            console.log(`[NotificationContext] User ${payload.user_id} typing: ${payload.is_typing}`);
+            setTypingUsers(prev => ({
+              ...prev,
+              [payload.user_id]: payload.is_typing ? Date.now() : 0
+            }));
           } else if (msgType === 'upload_progress' && payload.data) {
             // Прокидываем событие дальше, чтобы экраны могли обновить прогресс
             setNotifications(prev => [payload, ...prev]);
@@ -832,6 +839,18 @@ export const NotificationProvider = ({ children }) => {
     }
   }, [isConnected, fetchDialogs, fetchFriendRequestsCount]);
 
+  const sendTypingStatus = useCallback((otherUserId, isTyping) => {
+    if (chatWs.current && chatWs.current.readyState === WebSocket.OPEN) {
+      chatWs.current.send(JSON.stringify({
+        type: 'typing',
+        other_user_id: otherUserId,
+        is_typing: isTyping
+      }));
+      return true;
+    }
+    return false;
+  }, []);
+
   const getCachedHistory = useCallback(async (otherUserId) => {
     const myId = currentUserIdRef.current;
     if (!myId || !otherUserId) return [];
@@ -874,7 +893,9 @@ export const NotificationProvider = ({ children }) => {
       setActiveChatId,
       clearUnread,
       userStatuses,
-      getCachedHistory
+      getCachedHistory,
+      typingUsers,
+      sendTypingStatus
     }}>
       {children}
     </NotificationContext.Provider>
