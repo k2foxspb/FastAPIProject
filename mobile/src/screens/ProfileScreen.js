@@ -233,7 +233,7 @@ export default function ProfileScreen({ navigation }) {
           }).catch(() => {});
         }).catch(() => {});
       }).catch(() => {});
-    }, [navigation, colors.text, loadUser])
+    }, [navigation, colors.text, loadUser, loadingUser])
   );
 
   const toggleQuietHours = async () => {
@@ -269,6 +269,28 @@ export default function ProfileScreen({ navigation }) {
     await storage.saveItem('hidden_update_id', String(id));
     setIsUpdateBannerHidden(true);
   };
+
+  if (error && !user) return (
+    <View style={[styles.container, { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center', padding: 20 }]}>
+      <Icon name="alert-circle-outline" size={64} color={colors.error} />
+      <Text style={[styles.name, { color: colors.text, marginTop: 20, textAlign: 'center' }]}>{error}</Text>
+      <TouchableOpacity 
+        style={[styles.saveButton, { backgroundColor: colors.primary, marginTop: 20, width: '100%' }]}
+        onPress={() => {
+          setError(null);
+          loadUser();
+        }}
+      >
+        <Text style={styles.saveButtonText}>Попробовать снова</Text>
+      </TouchableOpacity>
+      <TouchableOpacity 
+        style={[styles.menuItem, { marginTop: 10, justifyContent: 'center' }]}
+        onPress={handleLogout}
+      >
+        <Text style={[styles.menuItemText, { color: colors.error }]}>Выйти</Text>
+      </TouchableOpacity>
+    </View>
+  );
 
   if (!user) return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>

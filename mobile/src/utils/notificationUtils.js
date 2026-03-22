@@ -1,8 +1,6 @@
 import { Platform } from 'react-native';
 import notifee, { AndroidImportance, AndroidGroupAlertBehavior, EventType, AndroidStyle } from '@notifee/react-native';
-import { chatApi } from '../api';
 import { storage } from './storage';
-import { navigationRef } from '../navigation/NavigationService';
 
 // --- Helpers to extract info from various notification data formats ---
 export function parseNotificationData(data) {
@@ -61,6 +59,21 @@ export async function displayBundledMessage(remoteMessage) {
   try {
     console.log(`[Notifee] displayBundledMessage called for messageId: ${remoteMessage?.messageId}`);
     
+    // Проверка на дублирование: если сообщение пришло И как notification, И как data, 
+    // Android может показать его дважды. Мы используем messageId для отслеживания.
+    if (remoteMessage?.messageId) {
+      const alreadyHandled = await storage.getItem(`handled_msg_${remoteMessage.messageId}`);
+      if (alreadyHandled) {
+        console.log(`[Notifee] Message ${remoteMessage.messageId} already handled, skipping duplicate`);
+        return;
+      }
+      // Помечаем как обработанное на 1 минуту
+      await storage.saveItem(`handled_msg_${remoteMessage.messageId}`, 'true');
+      setTimeout(async () => {
+        try { await storage.removeItem(`handled_msg_${remoteMessage.messageId}`); } catch(e) {}
+      }, 60000);
+    }
+
     if (!notifee || typeof notifee.displayNotification !== 'function') {
       console.error('[Notifee] cannot display notification: notifee.displayNotification is missing');
       return;
@@ -79,6 +92,25 @@ export async function displayBundledMessage(remoteMessage) {
       }
     } catch (err) {
       console.log('[Notifee] Error checking isMe:', err);
+    }
+
+    // Проверка активного чата (чтобы не показывать баннер, если пользователь уже там)
+    let isActiveChatWithSender = false;
+    try {
+      const { navigationRef } = require('../navigation/NavigationService');
+      if (navigationRef && typeof navigationRef.getCurrentRoute === 'function') {
+        const currentRoute = navigationRef.getCurrentRoute();
+        const isChatScreen = currentRoute?.name === 'Chat';
+        const currentChatUserId = currentRoute?.params?.userId ? parseInt(currentRoute.params.userId, 10) : null;
+        isActiveChatWithSender = isChatScreen && senderId && currentChatUserId && Number(currentChatUserId) === Number(senderId);
+      }
+    } catch (e) {
+      console.log('[Notifee] Error checking active chat:', e);
+    }
+
+    if (isActiveChatWithSender) {
+      console.log('[Notifee] In active chat, skipping notification banner');
+      return;
     }
     
     const text = notifBody || data.text || data.message || data.body || remoteMessage?.notification?.body || '';
@@ -142,7 +174,7 @@ export async function displayBundledMessage(remoteMessage) {
           channelId: channelId,
           actions: actions,
           groupId: groupId,
-          smallIcon: 'ic_launcher',
+          smallIcon: 'notification_icon',
           color: '#023c69',
           importance: AndroidImportance.HIGH,
           pressAction: { id: 'default', launchActivity: 'default' },
@@ -162,6 +194,8 @@ export async function displayBundledMessage(remoteMessage) {
         notificationOptions.android.largeIcon = iconUrl;
       }
 
+      // На Android мы используем фиксированный ID для диалога (sender_{id}), 
+      // чтобы новые сообщения в MessagingStyle заменяли старые (обновляли их).
       await notifee.displayNotification(notificationOptions);
     } else {
       // Стандартная группировка для остальных случаев
@@ -180,7 +214,7 @@ export async function displayBundledMessage(remoteMessage) {
           channelId: channelId,
           groupId: groupId,
           groupAlertBehavior: AndroidGroupAlertBehavior.SUMMARY,
-          smallIcon: 'ic_launcher',
+          smallIcon: 'notification_icon',
           color: '#023c69',
           pressAction: { id: 'default', launchActivity: 'default' },
           importance: AndroidImportance.HIGH,
@@ -196,6 +230,8 @@ export async function displayBundledMessage(remoteMessage) {
         notificationOptions.ios.attachments = [{ url: iconUrl }];
       }
 
+      // При использовании Notification+Data в FCM, Notifee заменяет системное 
+      // уведомление, если ID совпадает.
       await notifee.displayNotification(notificationOptions);
 
       if (Platform.OS === 'android') {
@@ -210,7 +246,7 @@ export async function displayBundledMessage(remoteMessage) {
             groupId: groupId,
             groupSummary: true,
             groupAlertBehavior: AndroidGroupAlertBehavior.SUMMARY,
-            smallIcon: 'ic_launcher',
+            smallIcon: 'notification_icon',
             color: '#023c69',
             importance: AndroidImportance.HIGH,
             subText: nameToDisplay,
@@ -245,15 +281,24 @@ async function cancelGroup(groupId, senderId) {
 
 // Вспомогательная функция для ожидания готовности навигации
 async function waitForNavigation() {
-  for (let i = 0; i < 20; i++) { // ждем до 10 секунд (20 * 500ms)
-    if (navigationRef?.isReady?.()) return true;
-    await new Promise(resolve => setTimeout(resolve, 500));
+  try {
+    const { navigationRef } = require('../navigation/NavigationService');
+    if (!navigationRef) return false;
+    for (let i = 0; i < 20; i++) { // ждем до 10 секунд (20 * 500ms)
+      if (navigationRef?.isReady?.()) return true;
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+  } catch (e) {
+    console.log('[Notifee] waitForNavigation error:', e);
   }
   return false;
 }
 
 export async function handleNotificationResponse(event) {
   try {
+    const { navigationRef } = require('../navigation/NavigationService');
+    const { chatApi } = require('../api');
+    
     const { type, detail } = event;
     const notification = detail.notification;
     const actionId = detail.pressAction?.id;
@@ -262,8 +307,8 @@ export async function handleNotificationResponse(event) {
     const input = detail.input || '';
     const groupId = senderId ? `group_sender_${senderId}` : (newsId ? `group_news_${newsId}` : 'group_general');
 
-    // Игнорируем события доставки, чтобы не спамить в логах
-    if (type === EventType.DELIVERED) {
+    // Игнорируем события доставки и смахивания (dismissed), чтобы не спамить в логах
+    if (type === EventType.DELIVERED || type === EventType.DISMISSED) {
       return;
     }
 

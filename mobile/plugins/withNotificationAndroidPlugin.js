@@ -65,6 +65,71 @@ const withNotificationAndroidPlugin = (config) => {
     if (!hasService("app.notifee.core.ForegroundService")) {
       application.service.push({ $: { "android:name": "app.notifee.core.ForegroundService", "android:exported": "false" } });
     }
+    if (!hasService("app.notifee.core.RebootService")) {
+      application.service.push({ $: { "android:name": "app.notifee.core.RebootService", "android:exported": "false" } });
+    }
+
+    // Add ReactNativeFirebaseMessagingService for reliable background handling
+    if (!hasService("io.invertase.firebase.messaging.ReactNativeFirebaseMessagingService")) {
+      application.service.push({
+        $: {
+          "android:name": "io.invertase.firebase.messaging.ReactNativeFirebaseMessagingService",
+          "android:exported": "false",
+        },
+        "intent-filter": [
+          {
+            action: [
+              {
+                $: {
+                  "android:name": "com.google.firebase.MESSAGING_EVENT",
+                },
+              },
+            ],
+          },
+        ],
+      });
+    }
+
+    // Add Notifee Event Receiver (optional but helps for some event delivery)
+    if (!hasReceiver("io.invertase.notifee.NotifeeEventReceiver")) {
+      application.receiver.push({
+        $: {
+          "android:name": "io.invertase.notifee.NotifeeEventReceiver",
+          "android:exported": "false",
+        },
+        "intent-filter": [
+          {
+            action: [
+              {
+                $: {
+                  "android:name": "io.invertase.notifee.intent.action.PACKAGE_REPLACED",
+                },
+              },
+              {
+                $: {
+                  "android:name": "android.intent.action.BOOT_COMPLETED",
+                },
+              },
+              {
+                $: {
+                  "android:name": "android.intent.action.MY_PACKAGE_REPLACED",
+                },
+              },
+              {
+                $: {
+                  "android:name": "android.intent.action.QUICKBOOT_POWERON",
+                },
+              },
+              {
+                $: {
+                  "android:name": "com.htc.intent.action.QUICKBOOT_POWERON",
+                },
+              },
+            ],
+          },
+        ],
+      });
+    }
 
     return config;
   });

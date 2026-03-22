@@ -319,8 +319,8 @@ async def get_me(
     # ОГРАНИЧИВАЕМ количество загружаемых данных для /me
     result = await db.execute(
         select(UserModel).where(UserModel.id == current_user.id).options(
-            selectinload(UserModel.photos.and_(UserPhotoModel.privacy == 'public')).limit(20),
-            selectinload(UserModel.albums).selectinload(PhotoAlbumModel.photos).limit(5)
+            selectinload(UserModel.photos.and_(UserPhotoModel.privacy == 'public')),
+            selectinload(UserModel.albums).selectinload(PhotoAlbumModel.photos)
         )
     )
     user = result.scalar_one_or_none()

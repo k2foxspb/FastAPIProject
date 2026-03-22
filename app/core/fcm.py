@@ -158,18 +158,23 @@ async def send_fcm_notification(
         logger.debug(f"FCM: Preparing message. Token: {token[:15]}... | Tag: {notif_tag} | Data: {fcm_data}")
 
         # Настройки для Android: высокая приоритетность для пробуждения (Headless JS).
-        # ВАЖНО: Мы НЕ используем 'notification' объект для Android в Background,
-        # так как это заставляет ОС Android показывать стандартное уведомление без кнопок
-        # и НЕ вызывает наш JS-обработчик setBackgroundMessageHandler.
-        # Вместо этого мы шлем только 'data', что пробуждает Headless JS,
-        # и уже в JS мы рисуем кастомное уведомление с кнопками через Notifee (displayNotification).
+        # Мы используем И Notification И Data для Android.
+        # Notification гарантирует, что шторка появится, если Headless JS не успел проснуться.
+        # Data позволяет Headless JS перехватить сообщение и отобразить кастомную шторку Notifee (с кнопками).
         
         android_config = messaging.AndroidConfig(
             priority='high',
             ttl=3600 * 24,  # 24 часа
             direct_boot_ok=True,
-            # We must leave notification=None for Android to trigger JS background handler
-            notification=None
+            notification=messaging.AndroidNotification(
+                title=title,
+                body=body,
+                channel_id="messages",
+                icon="notification_icon",
+                color="#023c69",
+                tag=notif_tag,
+                # click_action=None - по умолчанию открывает MainActivity
+            )
         )
 
         # Настройки для iOS (APNS)
@@ -210,7 +215,7 @@ async def send_fcm_notification(
             except RuntimeError:
                 loop = asyncio.get_event_loop()
                 
-            logger.info(f"FCM: Sending to {token[:15]}... Title: '{title}' (Android: DATA-ONLY, iOS: Notification+Data)")
+            logger.info(f"FCM: Sending to {token[:15]}... Title: '{title}' (Android: Notification+Data, iOS: Notification+Data)")
             # Используем run_in_executor, так как Firebase Admin SDK блокирующий (синхронный)
             start_time = time.time()
             response = await loop.run_in_executor(None, lambda: messaging.send(message))

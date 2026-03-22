@@ -2,6 +2,7 @@
   "expo": {
     "sdkVersion": "54.0.0",
     "plugins": [
+      "./plugins/withNotificationAndroidPlugin",
       [
         "expo-build-properties",
         {
@@ -17,7 +18,16 @@
         }
       ],
       "@react-native-firebase/app",
-      "@react-native-firebase/messaging",
+      [
+        "@react-native-firebase/messaging",
+        {
+          "android": {
+            "default_notification_channel_id": "messages",
+            "default_notification_icon": "@drawable/notification_icon",
+            "default_notification_color": "@color/notification_icon_color"
+          }
+        }
+      ],
       [
         "expo-image-picker",
         {
@@ -182,10 +192,10 @@
       ]
     },
     "extra": {
-      "apiUrl": "https://fokin.fun",
       "eas": {
-        "projectId": "af01bf4d-1123-4ad1-b52e-c6087481e851"
+        "projectId": "2de64318-d888-474e-b639-33eb05497be3"
       }
-    }
+    },
+    "owner": "k2foxspb"
   }
 }
