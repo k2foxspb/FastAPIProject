@@ -66,7 +66,8 @@ class ChatManager:
             
             if user_id in self.active_connections and not self.active_connections[user_id]:
                 del self.active_connections[user_id]
-        # Skip logging if not connected to avoid log spamming during background uploads
+        else:
+            logger.debug(f"ChatManager: User {user_id} NOT found in active connections.")
 
 manager = ChatManager()
 
@@ -1698,11 +1699,14 @@ async def upload_chunk(
             logger.error(f"message_updated send failed: {e}")
             await db.rollback()
         
+        res_type = upd_msg.message_type if upd_msg else message_type
+        logger.debug(f"Upload completed for session {upload_id}, message_id: {upd_msg.id if upd_msg else 'N/A'}, type: {res_type}")
+        
         await db.commit()
         return {
             "status": "completed",
             "file_path": url,
-            "message_type": message_type
+            "message_type": res_type
         }
     
     await db.commit()

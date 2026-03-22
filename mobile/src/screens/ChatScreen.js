@@ -236,8 +236,6 @@ export default function ChatScreen({ route, navigation }) {
   const isMounted = useRef(true);
   const isVideoNoteUploadRef = useRef(false);
   const LIMIT = 15;
-  const lastProcessedNotifyRef = useRef(null);
-
   const handleCancelUpload = useCallback((uploadId) => {
     if (!uploadId) return;
     console.log('[ChatScreen] Cancelling upload:', uploadId);
@@ -249,82 +247,6 @@ export default function ChatScreen({ route, navigation }) {
     setActiveUploadId(null);
     setUploadingData({ loaded: 0, total: 0, uri: null, mimeType: null });
   }, [isChatConnected, sendMessageWs]);
-
-  // Слушаем и обрабатываем входящие уведомления от WS (новые сообщения, прогресс загрузки, обновления)
-  useEffect(() => {
-    if (!notifications || notifications.length === 0) return;
-    
-    const lastIdx = lastProcessedNotifyRef.current 
-      ? notifications.findIndex(n => n === lastProcessedNotifyRef.current)
-      : -1;
-    const newNotifications = lastIdx === -1 ? notifications : notifications.slice(0, lastIdx);
-
-    // Обрабатываем уведомления в хронологическом порядке (от старых к новым)
-    [...newNotifications].reverse().forEach(notify => {
-      const data = notify.data;
-      if (!data) return;
-
-      // 1. Новые сообщения
-      if (notify.type === 'new_message' || notify.type === 'message') {
-        const isFromMe = Number(data.sender_id) === Number(currentUserId);
-        const otherId = isFromMe ? Number(data.receiver_id) : Number(data.sender_id);
-
-        if (Number(otherId) === Number(userId)) {
-          setMessages(prev => {
-            // Если это наше сообщение (есть client_id), ищем его в pending и обновляем
-            if (isFromMe && data.client_id) {
-              const pendingIdx = prev.findIndex(m => m.client_id === data.client_id && m.status === 'pending');
-              if (pendingIdx !== -1) {
-                const newMsgs = [...prev];
-                newMsgs[pendingIdx] = { ...data, status: 'sent' };
-                return newMsgs;
-              }
-            }
-
-            // Проверка на дубликаты
-            const exists = prev.some(m => 
-              (data.id && String(m.id) === String(data.id)) || 
-              (data.client_id && m.client_id === data.client_id && m.status !== 'pending')
-            );
-            
-            if (!exists) {
-              return [data, ...prev];
-            }
-            return prev;
-          });
-        }
-      } 
-      // 2. Прогресс загрузки
-      else if (notify.type === 'upload_progress') {
-        const { message_id, progress, offset, total } = data;
-        setMessages(prev => prev.map(m => (
-          String(m.id) === String(message_id) && m.is_uploading && !m.file_path
-          ? { ...m, upload_progress: progress, upload_offset: offset, upload_total: total } 
-          : m
-        )));
-      } 
-      // 3. Обновление сообщения (завершение загрузки)
-      else if (notify.type === 'message_updated') {
-        setMessages(prev => {
-          const idx = prev.findIndex(m => String(m.id) === String(data.id));
-          if (idx !== -1) {
-            return prev.map(m => (String(m.id) === String(data.id) ? { ...m, ...data, is_uploading: false, upload_progress: undefined } : m));
-          } else {
-            // Если сообщения нет в списке (например, было скипнуто как собственный плейсхолдер), добавляем его
-            const cidIdx = data.client_id ? prev.findIndex(m => m.client_id === data.client_id) : -1;
-            if (cidIdx !== -1) {
-              const newMsgs = [...prev];
-              newMsgs[cidIdx] = { ...data, is_uploading: false };
-              return newMsgs;
-            }
-            return [data, ...prev];
-          }
-        });
-      }
-    });
-
-    lastProcessedNotifyRef.current = notifications[0];
-  }, [notifications, userId, currentUserId]);
   const videoPlayerRef = useRef(null);
   const chatFlatListRef = useRef(null);
   const recordingOptions = useMemo(() => RecordingPresets.HIGH_QUALITY, []);
@@ -779,111 +701,132 @@ export default function ChatScreen({ route, navigation }) {
   }, [currentUserId]);
 
   useEffect(() => {
-    if (notifications.length > 0) {
-      // Находим индекс последнего обработанного уведомления
-      const lastIdx = lastProcessedNotificationRef.current 
-        ? notifications.findIndex(n => n === lastProcessedNotificationRef.current)
-        : -1;
+    if (!notifications || notifications.length === 0) return;
+
+    // Находим индекс последнего обработанного уведомления
+    const lastIdx = lastProcessedNotificationRef.current 
+      ? notifications.findIndex(n => n === lastProcessedNotificationRef.current)
+      : -1;
+    
+    // Выделяем новые уведомления (те, что до последнего обработанного)
+    const newNotifications = lastIdx === -1 ? notifications : notifications.slice(0, lastIdx);
+    
+    // Обрабатываем уведомления в хронологическом порядке (от старых к новым)
+    [...newNotifications].reverse().forEach(lastNotify => {
+      const data = lastNotify.data;
+      if (!data) return;
       
-      // Выделяем новые уведомления (те, что до последнего обработанного)
-      const newNotifications = lastIdx === -1 ? notifications : notifications.slice(0, lastIdx);
-      
-      // Обрабатываем в хронологическом порядке (с конца массива к началу)
-      [...newNotifications].reverse().forEach(lastNotify => {
-        const notifyType = lastNotify.type || lastNotify.msg_type;
+      const notifyType = lastNotify.type || lastNotify.msg_type;
+      const myIdNum = Number(currentUserIdRef.current || currentUserId);
+      const currentChatId = Number(userId);
+
+      // 1. Новые сообщения
+      if (notifyType === 'new_message' || notifyType === 'message') {
+        const msgSenderId = Number(data.sender_id);
+        const msgReceiverId = Number(data.receiver_id);
+
+        const isRelated = (msgSenderId === currentChatId && msgReceiverId === myIdNum) || 
+                          (msgSenderId === myIdNum && msgReceiverId === currentChatId);
         
-        if (notifyType === 'new_message' && lastNotify.data) {
-          const message = lastNotify.data;
-          const msgSenderId = Number(message.sender_id);
-          const msgReceiverId = Number(message.receiver_id);
-          const currentChatId = Number(userId);
-          const myIdNum = Number(currentUserIdRef.current || currentUserId);
-
-          console.log('[ChatScreen] Message check - from:', msgSenderId, 'to:', msgReceiverId, 'currentChat:', currentChatId, 'myId:', myIdNum);
-
-          const isRelated = (msgSenderId === currentChatId && msgReceiverId === myIdNum) || 
-                            (msgSenderId === myIdNum && msgReceiverId === currentChatId);
-          
-          if (isRelated) {
-            setMessages(prev => {
-              // 1. Пытаемся найти по client_id (только если сообщение от нас)
-              if (message.client_id && msgSenderId === myIdNum) {
-                 const existingIdx = prev.findIndex(m => (m.client_id && m.client_id === message.client_id) || (m.id && String(m.id) === String(message.client_id)));
-                 if (existingIdx !== -1) {
-                   console.log('[ChatScreen] Found optimistic message to replace by client_id:', message.client_id);
-                   const updated = [...prev];
-                   // Важно сохранить старый client_id, чтобы не продублировать, если придет вторая нотификация
-                   updated[existingIdx] = { 
-                     ...message, 
-                     client_id: message.client_id || prev[existingIdx].client_id,
-                     status: 'sent' 
-                   };
-                   return updated;
-                 }
-              }
-
-              // 2. Пытаемся найти по id (сообщение от собеседника или уже обработанное)
-              if (prev.find(m => m.id && message.id && String(m.id) === String(message.id))) {
-                console.log('[ChatScreen] Message already exists in state, skipping:', message.id);
-                return prev;
-              }
-
-              return [{ ...message, status: 'sent' }, ...prev];
-            });
-            setSkip(prev => prev + 1);
-            
-            if (msgSenderId === currentChatId) {
-              // Сообщение от собеседника
-              clearUnread(userId);
-              const isAppActive = AppState.currentState === 'active';
-              if (isAppActive) {
-                // playMessageSound(); // Дубликат удален: звук теперь проигрывается только в NotificationContext
-                markAsReadWs(userId);
-              }
-            } else {
-              // Сообщение от меня
-              console.log('[ChatScreen] My message added to list');
+        if (isRelated) {
+          setMessages(prev => {
+            // Пытаемся заменить оптимистичное (pending) сообщение
+            if (data.client_id && msgSenderId === myIdNum) {
+               const existingIdx = prev.findIndex(m => (m.client_id && m.client_id === data.client_id) || (m.id && String(m.id) === String(data.client_id)));
+               if (existingIdx !== -1) {
+                 const updated = [...prev];
+                 updated[existingIdx] = { 
+                   ...data, 
+                   client_id: data.client_id || prev[existingIdx].client_id,
+                   status: 'sent' 
+                 };
+                 return updated;
+               }
             }
+
+            // Проверка на дубликаты по ID
+            if (prev.find(m => m.id && data.id && String(m.id) === String(data.id))) {
+              return prev;
+            }
+
+            return [{ ...data, status: 'sent' }, ...prev];
+          });
+          setSkip(prev => prev + 1);
+          
+          if (msgSenderId === currentChatId) {
+            clearUnread(userId);
+            if (AppState.currentState === 'active') {
+              markAsReadWs(userId);
+            }
+          }
+        }
+      } 
+      // 2. Прогресс загрузки
+      else if (notifyType === 'upload_progress') {
+        const { message_id, progress, offset, total } = data;
+        setMessages(prev => prev.map(m => (
+          String(m.id) === String(message_id) && m.is_uploading && !m.file_path
+          ? { ...m, upload_progress: progress, upload_offset: offset, upload_total: total } 
+          : m
+        )));
+      } 
+      // 3. Завершение загрузки (message_updated)
+      else if (notifyType === 'message_updated') {
+        setMessages(prev => {
+          const idx = prev.findIndex(m => String(m.id) === String(data.id));
+          if (idx !== -1) {
+            // Если нашли по ID, обновляем статус загрузки и добавляем данные (file_path и т.д.)
+            return prev.map(m => (String(m.id) === String(data.id) ? { ...m, ...data, is_uploading: false, upload_progress: undefined } : m));
           } else {
-            console.log('[ChatScreen] Message not related to this chat, ignoring');
+            // Если по ID не нашли, возможно сообщение в стейте еще под client_id
+            const cidIdx = data.client_id ? prev.findIndex(m => m.client_id === data.client_id) : -1;
+            if (cidIdx !== -1) {
+              const newMsgs = [...prev];
+              newMsgs[cidIdx] = { ...data, is_uploading: false };
+              return newMsgs;
+            }
+            // Если сообщения вообще нет в текущем стейте, добавляем его, если оно относится к этому чату
+            const isFromMe = Number(data.sender_id) === myIdNum;
+            const otherId = isFromMe ? Number(data.receiver_id) : Number(data.sender_id);
+            if (otherId === currentChatId) {
+                return [{ ...data, is_uploading: false, status: 'sent' }, ...prev];
+            }
+            return prev;
           }
-        } else if (notifyType === 'message_deleted') {
-          const msgId = lastNotify.message_id || lastNotify.data?.message_id || lastNotify.data?.id;
-          const uploadId = lastNotify.upload_id || lastNotify.data?.upload_id;
-          if (msgId || uploadId) {
-            setMessages(prev => {
-              return prev.filter(m => {
-                if (msgId && String(m.id) === String(msgId)) return false;
-                if (uploadId && m.upload_id === uploadId) return false;
-                return true;
-              });
-            });
-            fetchDialogs();
-          }
-        } else if (notifyType === 'messages_read' || notifyType === 'your_messages_read' || notifyType === 'mark_read') {
-          // messages_read приходит нам, когда МЫ прочитали чьи-то сообщения (от Notifications WS)
-          // ИЛИ когда КТО-ТО прочитал наши сообщения (от Chat WS)
-          // your_messages_read приходит нам, когда КТО-ТО прочитал наши сообщения (от Notifications WS)
-          
-          const readerId = lastNotify.reader_id || lastNotify.data?.reader_id;
-          
-          // Если это подтверждение прочтения НАШИХ сообщений кем-то другим
+        });
+      }
+      // 4. Удаление сообщения
+      else if (notifyType === 'message_deleted') {
+        const msgId = data.message_id || data.id || lastNotify.message_id;
+        const uploadId = data.upload_id || lastNotify.upload_id;
+        if (msgId || uploadId) {
+          setMessages(prev => prev.filter(m => {
+            if (msgId && String(m.id) === String(msgId)) return false;
+            if (uploadId && m.upload_id === uploadId) return false;
+            return true;
+          }));
+          fetchDialogs();
+        }
+      } 
+      // 5. Прочтение сообщений
+      else if (notifyType === 'messages_read' || notifyType === 'your_messages_read' || notifyType === 'mark_read') {
+          const readerId = data.reader_id || lastNotify.reader_id;
           if (notifyType === 'your_messages_read' || notifyType === 'mark_read' || (notifyType === 'messages_read' && readerId && Number(readerId) === Number(userId))) {
             setMessages(prev => prev.map(m => 
-              (m.sender_id && Number(m.sender_id) === Number(currentUserId)) ? { ...m, is_read: true } : m
+              (m.sender_id && Number(m.sender_id) === myIdNum) ? { ...m, is_read: true } : m
             ));
           }
-        } else if (notifyType === 'user_status' && lastNotify.data) {
-          const { user_id, status, last_seen } = lastNotify.data;
+      }
+      // 6. Статус пользователя
+      else if (notifyType === 'user_status') {
+          const { user_id, status, last_seen } = data;
           if (Number(user_id) === Number(userId)) {
             setInterlocutor(prev => prev ? { ...prev, status, last_seen } : null);
           }
-        }
-      });
-      
-      // Запоминаем последнее уведомление из списка как обработанное
-      lastProcessedNotificationRef.current = notifications[0];
-    }
+      }
+    });
+
+    lastProcessedNotificationRef.current = notifications[0];
   }, [notifications, userId, currentUserId]);
 
   // Добавляем слушатель состояния приложения, чтобы помечать прочитанным при возврате в активный чат
@@ -1360,6 +1303,27 @@ export default function ChatScreen({ route, navigation }) {
         if (loaded !== undefined) setUploadingData(prev => ({ ...prev, loaded, total, ...extra }));
         
         if (status === 'completed') {
+          // Fallback: Обновляем сообщение в локальном стейте, если WS еще не прислал обновление
+          if (result && result.file_path) {
+            setMessages(prev => {
+              const uploadIdMatch = prev.findIndex(m => m.upload_id === activeUploadId);
+              const clientIdMatch = extra?.clientId ? prev.findIndex(m => m.client_id === extra.clientId) : -1;
+              const idx = uploadIdMatch !== -1 ? uploadIdMatch : clientIdMatch;
+              
+              if (idx !== -1) {
+                const newMsgs = [...prev];
+                newMsgs[idx] = { 
+                  ...newMsgs[idx], 
+                  ...result, 
+                  is_uploading: false, 
+                  upload_progress: undefined 
+                };
+                return newMsgs;
+              }
+              return prev;
+            });
+          }
+
           // Для одиночных голосовых сообщений отправляем здесь
           // Для медиа и документов теперь отправляем вручную в функциях загрузки
           // Если есть hasPlaceholder, значит бэкенд сам обновит сообщение

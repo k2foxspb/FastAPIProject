@@ -176,9 +176,12 @@ export const NotificationProvider = ({ children }) => {
     });
 
     setNotifications(prev => {
-      if (prev.some(n => n.type === 'new_message' && (
-        (message.id && String(n.data?.id) === String(message.id)) || 
-        (isFromMe && message.client_id && n.data?.client_id === message.client_id)
+      const isFromMe = Number(message.sender_id) === Number(currentUserIdRef.current);
+      const msgType = wrappedNotification.type || wrappedNotification.msg_type;
+      
+      if (prev.some(n => (n.type === msgType || n.msg_type === msgType) && (
+        (message.id && n.data && String(n.data.id) === String(message.id)) || 
+        (isFromMe && message.client_id && n.data && n.data.client_id === message.client_id)
       ))) {
         return prev;
       }
