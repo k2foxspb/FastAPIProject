@@ -1425,19 +1425,34 @@ async def init_upload(
         
         # Если передан receiver_id, создаем placeholder сообщения сразу
         if req.receiver_id:
-            new_msg = ChatMessage(
-                sender_id=user_id,
-                receiver_id=req.receiver_id,
-                message=None,
-                file_path=None,
-                message_type=req.message_type or "file",
-                client_id=req.client_id,
-                duration=req.duration,
-                reply_to_id=req.reply_to_id,
-                is_uploading=True,
-                upload_id=upload_id
+            # Проверяем, не создано ли уже сообщение с таким client_id (например, через WS)
+            stmt_check = select(ChatMessage).where(
+                ChatMessage.sender_id == user_id,
+                ChatMessage.client_id == req.client_id
             )
-            db.add(new_msg)
+            existing_msg = (await db.execute(stmt_check)).scalars().first()
+            
+            if existing_msg:
+                logger.debug(f"init_upload: Message with client_id {req.client_id} already exists (id: {existing_msg.id}). Updating upload_id.")
+                existing_msg.upload_id = upload_id
+                new_msg = existing_msg
+                # Убеждаемся, что статус uploading установлен
+                new_msg.is_uploading = True
+            else:
+                new_msg = ChatMessage(
+                    sender_id=user_id,
+                    receiver_id=req.receiver_id,
+                    message=None,
+                    file_path=None,
+                    message_type=req.message_type or "file",
+                    client_id=req.client_id,
+                    duration=req.duration,
+                    reply_to_id=req.reply_to_id,
+                    is_uploading=True,
+                    upload_id=upload_id
+                )
+                db.add(new_msg)
+            
             await db.commit()
             await db.refresh(new_msg)
             
@@ -1735,23 +1750,27 @@ async def upload_chunk(
             except Exception:
                 pass
                 
-            # Пытаемся обновить placeholder-сообщение
+            # Пытаемся обновить placeholder-сообщения (могут быть дубли при сбоях)
             res_msg2 = await db.execute(
                 select(ChatMessage).where(
                     ChatMessage.upload_id == upload_id,
                     ChatMessage.sender_id == user_id
                 )
             )
-            # Берем первое подходящее (могут быть дубли при сбоях)
-            upd_msg = res_msg2.scalars().first()
+            upd_messages = res_msg2.scalars().all()
             
-            if upd_msg:
-                upd_msg.file_path = url
-                # Не меняем тип, если это видео-заметка (кружок)
-                if upd_msg.message_type != "video_note":
-                    upd_msg.message_type = message_type
-                upd_msg.is_uploading = False
-                upd_msg.upload_id = None
+            upd_msg = None
+            if upd_messages:
+                for msg in upd_messages:
+                    msg.file_path = url
+                    # Не меняем тип, если это видео-заметка (кружок)
+                    if msg.message_type != "video_note":
+                        msg.message_type = message_type
+                    msg.is_uploading = False
+                    msg.upload_id = None
+                
+                # Используем первое сообщение для уведомления
+                upd_msg = upd_messages[0]
                 
             await db.commit() # Фиксируем всё: и сессию, и сообщение
             

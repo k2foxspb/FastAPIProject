@@ -713,6 +713,12 @@ export default function ChatScreen({ route, navigation }) {
   }, [currentUserId]);
 
   useEffect(() => {
+    // При смене пользователя сбрасываем указатель обработанных уведомлений,
+    // чтобы новые уведомления для этого пользователя были обработаны.
+    lastProcessedNotificationRef.current = null;
+  }, [userId]);
+
+  useEffect(() => {
     if (!notifications || notifications.length === 0) return;
 
     // Находим индекс последнего обработанного уведомления
@@ -1464,9 +1470,6 @@ export default function ChatScreen({ route, navigation }) {
               userId,
               (uid) => { 
                 setActiveUploadId(uid);
-                try {
-                  sendMessageWs({ type: 'upload_started', receiver_id: userId, message_type: mt, upload_id: uid, client_id: clientId });
-                } catch (e) { console.warn('Failed to send upload_started WS', e); }
               },
               {}, // apiOptions
               { clientId, hasPlaceholder: true, type: mt, messageType: mt }
@@ -1497,22 +1500,20 @@ export default function ChatScreen({ route, navigation }) {
                 client_id: clientId
               };
 
-          // Оптимистичное добавление
-          const optimisticMsg = {
-            ...msgData,
-            id: clientId,
-            sender_id: currentUserId,
-            timestamp: new Date().toISOString(),
-            is_read: false,
-            status: 'pending'
-          };
-          setMessages(prev => [optimisticMsg, ...prev]);
-
-          // Для одиночного медиа-файла бэкенд уже завершил сообщение в upload_chunk.
-          // Для media_group нужно отправить финальное сообщение, чтобы объединить вложения.
+          // Для media_group нужно добавить оптимистичное сообщение и отправить финальное уведомление
           if (!isSingle) {
+            const optimisticMsg = {
+              ...msgData,
+              id: clientId,
+              sender_id: currentUserId,
+              timestamp: new Date().toISOString(),
+              is_read: false,
+              status: 'pending'
+            };
+            setMessages(prev => [optimisticMsg, ...prev]);
             sendMessageWs(msgData);
           }
+          // Для одиночного медиа-файла бэкенд уже создал плейсхолдер и завершил сообщение сам.
         }
       }
     } catch (error) {
@@ -1580,11 +1581,6 @@ export default function ChatScreen({ route, navigation }) {
               userId,
               (upload_id) => { 
                 setActiveUploadId(upload_id); 
-                try { 
-                  sendMessageWs({ type: 'upload_started', receiver_id: userId, message_type: mt, upload_id: upload_id, client_id: clientId }); 
-                } catch (e) { 
-                  console.warn('Failed to send upload_started WS', e); 
-                } 
               },
               {}, // apiOptions
               { clientId, hasPlaceholder: true, type: mt, messageType: mt }
@@ -1615,22 +1611,20 @@ export default function ChatScreen({ route, navigation }) {
                 client_id: clientId
               };
 
-          // Оптимистичное добавление
-          const optimisticMsg = {
-            ...msgData,
-            id: clientId,
-            sender_id: currentUserId,
-            timestamp: new Date().toISOString(),
-            is_read: false,
-            status: 'pending'
-          };
-          setMessages(prev => [optimisticMsg, ...prev]);
-
-          // Для одиночного медиа-файла бэкенд уже завершил сообщение в upload_chunk.
-          // Для media_group нужно отправить финальное сообщение, чтобы объединить вложения.
+          // Для media_group нужно добавить оптимистичное сообщение и отправить финальное уведомление
           if (!isSingle) {
+            const optimisticMsg = {
+              ...msgData,
+              id: clientId,
+              sender_id: currentUserId,
+              timestamp: new Date().toISOString(),
+              is_read: false,
+              status: 'pending'
+            };
+            setMessages(prev => [optimisticMsg, ...prev]);
             sendMessageWs(msgData);
           }
+          // Для одиночного медиа-файла бэкенд уже создал плейсхолдер и завершил сообщение сам.
         }
       }
     } catch (error) {
@@ -1680,18 +1674,6 @@ export default function ChatScreen({ route, navigation }) {
         (id) => {
           currentUploadId = id;
           setActiveUploadId(id);
-          try { 
-            sendMessageWs({ 
-              type: 'upload_started', 
-              receiver_id: userId, 
-              message_type: 'video_note', 
-              upload_id: id, 
-              client_id: clientId,
-              duration: duration
-            }); 
-          } catch (e) { 
-            console.warn('Failed to send upload_started WS', e); 
-          }
         },
         {}, // apiOptions
         { clientId, hasPlaceholder: true, isVideoNote: true, type: 'video_note', messageType: 'video_note', duration }
@@ -2020,18 +2002,6 @@ export default function ChatScreen({ route, navigation }) {
         userId,
         (upload_id) => {
           setActiveUploadId(upload_id);
-          try {
-            sendMessageWs({
-              type: 'upload_started',
-              receiver_id: userId,
-              message_type: 'voice',
-              upload_id: upload_id,
-              client_id: clientId,
-              duration: duration
-            });
-          } catch (e) {
-            console.warn('Failed to send upload_started WS', e);
-          }
         },
         {}, // apiOptions
         { clientId, hasPlaceholder: true, type: 'voice', messageType: 'voice', duration }
