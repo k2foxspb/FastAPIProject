@@ -1033,11 +1033,15 @@ async def get_chat_history(
             if cid in seen_client_ids:
                 idx = seen_client_ids[cid]
                 existing = unique_messages[idx]
-                # Если текущее сообщение (item) более "полноценное" (не в процессе загрузки), 
-                # а ранее встреченное (existing) было плейсхолдером — заменяем его.
-                # Обычно первое встреченное в истории (DESC) — самое новое.
+                # Приоритет отдаем сообщению, которое уже загружено (не uploading)
+                # Если в истории есть несколько записей с одним client_id,
+                # и одна из них завершена, а другая нет - оставляем завершенную.
                 if existing.get("is_uploading") and not item.get("is_uploading"):
                     unique_messages[idx] = item
+                elif not existing.get("is_uploading") and item.get("is_uploading"):
+                    # Уже есть завершенное, игнорируем текущее (плейсхолдер)
+                    continue
+                # Если оба имеют одинаковый статус uploading, оставляем более новое (уже в unique_messages)
                 continue
             seen_client_ids[cid] = len(unique_messages)
         unique_messages.append(item)
@@ -1696,6 +1700,7 @@ async def upload_chunk(
     if session.offset >= session.file_size:
         session.is_completed = True
         session.offset = session.file_size
+        
         # Загружаем собранный файл в постоянное хранилище (S3/локально)
         file_extension = os.path.splitext(session.filename)[1]
         
@@ -1714,28 +1719,32 @@ async def upload_chunk(
             message_type = "voice"
             
         unique_name = f"{uuid.uuid4()}{file_extension}"
-        with open(file_path, "rb") as f_in:
-            url, _ = storage.save_file(
-                category="chat",
-                filename_hint=unique_name,
-                fileobj=f_in,
-                content_type=final_content_type,
-                private=False,
-            )
         try:
-            os.remove(file_path)
-        except Exception:
-            pass
+            with open(file_path, "rb") as f_in:
+                url, _ = storage.save_file(
+                    category="chat",
+                    filename_hint=unique_name,
+                    fileobj=f_in,
+                    content_type=final_content_type,
+                    private=False,
+                )
             
-        # Пытаемся обновить placeholder-сообщение и отправить событие обновления
-        try:
+            # Удаляем временный файл
+            try:
+                os.remove(file_path)
+            except Exception:
+                pass
+                
+            # Пытаемся обновить placeholder-сообщение
             res_msg2 = await db.execute(
                 select(ChatMessage).where(
                     ChatMessage.upload_id == upload_id,
                     ChatMessage.sender_id == user_id
                 )
             )
-            upd_msg = res_msg2.scalar_one_or_none()
+            # Берем первое подходящее (могут быть дубли при сбоях)
+            upd_msg = res_msg2.scalars().first()
+            
             if upd_msg:
                 upd_msg.file_path = url
                 # Не меняем тип, если это видео-заметка (кружок)
@@ -1743,38 +1752,45 @@ async def upload_chunk(
                     upd_msg.message_type = message_type
                 upd_msg.is_uploading = False
                 upd_msg.upload_id = None
-                await db.commit()
-                update_event = {"type": "message_updated", "data": {
-                    "id": upd_msg.id,
-                    "file_path": url,
-                    "message_type": upd_msg.message_type,
-                    "is_uploading": False,
-                    "upload_id": upload_id,
-                    "client_id": upd_msg.client_id,
-                    "sender_id": upd_msg.sender_id,
-                    "receiver_id": upd_msg.receiver_id,
-                    "timestamp": upd_msg.timestamp.isoformat() if upd_msg.timestamp else None
-                }}
-                await asyncio.gather(
-                    manager.send_personal_message(update_event, user_id),
-                    manager.send_personal_message(update_event, upd_msg.receiver_id),
-                    notifications_manager.send_personal_message(update_event, upd_msg.receiver_id),
-                    notifications_manager.send_personal_message(update_event, user_id),
-                    return_exceptions=True
-                )
+                
+            await db.commit() # Фиксируем всё: и сессию, и сообщение
+            
+            # Отправляем уведомления (вне основной транзакции БД)
+            if upd_msg:
+                try:
+                    update_event = {"type": "message_updated", "data": {
+                        "id": upd_msg.id,
+                        "file_path": url,
+                        "message_type": upd_msg.message_type,
+                        "is_uploading": False,
+                        "upload_id": upload_id,
+                        "client_id": upd_msg.client_id,
+                        "sender_id": upd_msg.sender_id,
+                        "receiver_id": upd_msg.receiver_id,
+                        "timestamp": upd_msg.timestamp.isoformat() if upd_msg.timestamp else None
+                    }}
+                    await asyncio.gather(
+                        manager.send_personal_message(update_event, user_id),
+                        manager.send_personal_message(update_event, upd_msg.receiver_id),
+                        notifications_manager.send_personal_message(update_event, upd_msg.receiver_id),
+                        notifications_manager.send_personal_message(update_event, user_id),
+                        return_exceptions=True
+                    )
+                except Exception as e:
+                    logger.error(f"WebSocket notifications failed: {e}")
+            
+            res_type = upd_msg.message_type if upd_msg else message_type
+            logger.debug(f"Upload completed for session {upload_id}, message_id: {upd_msg.id if upd_msg else 'N/A'}, type: {res_type}")
+            
+            return {
+                "status": "completed",
+                "file_path": url,
+                "message_type": res_type
+            }
         except Exception as e:
-            logger.error(f"message_updated send failed: {e}")
+            logger.error(f"Error finalizing upload {upload_id}: {e}")
             await db.rollback()
-        
-        res_type = upd_msg.message_type if upd_msg else message_type
-        logger.debug(f"Upload completed for session {upload_id}, message_id: {upd_msg.id if upd_msg else 'N/A'}, type: {res_type}")
-        
-        await db.commit()
-        return {
-            "status": "completed",
-            "file_path": url,
-            "message_type": res_type
-        }
+            raise HTTPException(status_code=500, detail=f"Failed to finalize upload: {str(e)}")
     
     await db.commit()
     return {"status": "ok", "offset": session.offset}

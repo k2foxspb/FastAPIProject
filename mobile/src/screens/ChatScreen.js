@@ -757,8 +757,19 @@ export default function ChatScreen({ route, navigation }) {
             }
 
             // Проверка на дубликаты по ID
-            if (data.id && prev.find(m => m.id && String(m.id) === String(data.id))) {
-              return prev;
+            if (data.id) {
+              const existingIdx = prev.findIndex(m => m.id && String(m.id) === String(data.id));
+              if (existingIdx !== -1) {
+                const existing = prev[existingIdx];
+                // Если новое сообщение более "полное" (например, не uploading, а старое было uploading), обновляем
+                const isNewBetter = (existing.is_uploading && !data.is_uploading) || (!existing.file_path && data.file_path);
+                if (isNewBetter) {
+                  const next = [...prev];
+                  next[existingIdx] = { ...existing, ...data, status: 'sent' };
+                  return next;
+                }
+                return prev;
+              }
             }
 
             // Дедупликация по client_id
