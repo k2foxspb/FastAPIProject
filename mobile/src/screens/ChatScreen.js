@@ -757,8 +757,24 @@ export default function ChatScreen({ route, navigation }) {
             }
 
             // Проверка на дубликаты по ID
-            if (prev.find(m => m.id && data.id && String(m.id) === String(data.id))) {
+            if (data.id && prev.find(m => m.id && String(m.id) === String(data.id))) {
               return prev;
+            }
+
+            // Дедупликация по client_id
+            if (data.client_id) {
+              const existingIndex = prev.findIndex(m => m.client_id === data.client_id);
+              if (existingIndex !== -1) {
+                const existing = prev[existingIndex];
+                // Если новое сообщение более полное (есть id или не uploading), заменяем
+                const isNewBetter = (!existing.id && data.id) || (existing.is_uploading && !data.is_uploading);
+                if (isNewBetter) {
+                  const next = [...prev];
+                  next[existingIndex] = { ...existing, ...data, status: 'sent' };
+                  return next;
+                }
+                return prev;
+              }
             }
 
             return [{ ...data, status: 'sent' }, ...prev];
@@ -1101,6 +1117,24 @@ export default function ChatScreen({ route, navigation }) {
             uri: mainUpload.fileUri,
             mimeType: mainUpload.mimeType,
             ...mainUpload
+          });
+          
+          // Добавляем подписку, чтобы вовремя убрать плейсхолдер
+          uploadManager.subscribe(mainUpload.upload_id, (progressData) => {
+            if (progressData.status === 'completed' || progressData.status === 'error' || progressData.status === 'cancelled') {
+              setActiveUploadId(null);
+              setUploadingProgress(null);
+              setUploadingData({ loaded: 0, total: 0, uri: null, mimeType: null });
+            } else if (progressData.status === 'uploading') {
+              setUploadingProgress(progressData.progress);
+              if (progressData.loaded !== undefined) {
+                setUploadingData(prev => ({ 
+                  ...prev, 
+                  loaded: progressData.loaded, 
+                  total: progressData.total 
+                }));
+              }
+            }
           });
         }
       }).catch(err => console.log('[ChatScreen] Failed to check active uploads', err));

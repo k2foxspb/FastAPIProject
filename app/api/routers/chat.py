@@ -1676,6 +1676,7 @@ async def upload_chunk(
                 if upd_msg.message_type != "video_note":
                     upd_msg.message_type = message_type
                 upd_msg.is_uploading = False
+                upd_msg.upload_id = None
                 await db.commit()
                 update_event = {"type": "message_updated", "data": {
                     "id": upd_msg.id,
