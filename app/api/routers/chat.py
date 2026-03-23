@@ -637,20 +637,16 @@ async def websocket_chat_endpoint(
                 
                 logger.debug(f"Saving message: type={message_type}, sender={user_id}, receiver={receiver_id}")
                 
-                # Ищем placeholder, если есть client_id
+                # Ищем placeholder или уже созданное сообщение, если есть client_id
                 existing_msg = None
                 if client_id:
-                    # Ищем любые сообщения с этим client_id, которые являются плейсхолдерами (is_uploading или имеют upload_id)
-                    # Ограничиваем временем (24 часа), чтобы не задеть старые сообщения при повторе client_id
+                    # Ищем любые сообщения с этим client_id за последние 24 часа.
+                    # Это позволяет избежать дубликатов, если сообщение уже было создано через init_upload/upload_chunk.
                     time_limit = datetime.utcnow() - timedelta(hours=24)
                     res_existing = await db.execute(
                         select(ChatMessage).where(
                             ChatMessage.client_id == client_id,
                             ChatMessage.sender_id == user_id,
-                            or_(
-                                ChatMessage.is_uploading == True,
-                                ChatMessage.upload_id.isnot(None)
-                            ),
                             ChatMessage.timestamp >= time_limit
                         )
                     )

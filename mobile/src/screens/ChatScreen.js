@@ -1471,7 +1471,8 @@ export default function ChatScreen({ route, navigation }) {
         }
 
         if (attachmentsLocal.length > 0) {
-          const msgData = attachmentsLocal.length === 1 
+          const isSingle = attachmentsLocal.length === 1;
+          const msgData = isSingle 
             ? {
                 receiver_id: userId,
                 file_path: attachmentsLocal[0].file_path,
@@ -1496,7 +1497,11 @@ export default function ChatScreen({ route, navigation }) {
           };
           setMessages(prev => [optimisticMsg, ...prev]);
 
-          sendMessageWs(msgData);
+          // Для одиночного медиа-файла бэкенд уже завершил сообщение в upload_chunk.
+          // Для media_group нужно отправить финальное сообщение, чтобы объединить вложения.
+          if (!isSingle) {
+            sendMessageWs(msgData);
+          }
         }
       }
     } catch (error) {
@@ -1584,7 +1589,8 @@ export default function ChatScreen({ route, navigation }) {
         }
 
         if (attachmentsLocal.length > 0) {
-          const msgData = attachmentsLocal.length === 1 
+          const isSingle = attachmentsLocal.length === 1;
+          const msgData = isSingle 
             ? {
                 receiver_id: userId,
                 file_path: attachmentsLocal[0].file_path,
@@ -1609,7 +1615,11 @@ export default function ChatScreen({ route, navigation }) {
           };
           setMessages(prev => [optimisticMsg, ...prev]);
 
-          sendMessageWs(msgData);
+          // Для одиночного медиа-файла бэкенд уже завершил сообщение в upload_chunk.
+          // Для media_group нужно отправить финальное сообщение, чтобы объединить вложения.
+          if (!isSingle) {
+            sendMessageWs(msgData);
+          }
         }
       }
     } catch (error) {
@@ -2749,7 +2759,20 @@ export default function ChatScreen({ route, navigation }) {
       <FlatList
         ref={chatFlatListRef}
         data={messages}
-        extraData={[messages.length, currentUserId, selectedIds.length, theme, userId, viewableItems, uploadingProgress, uploadingData, activeUploadId]}
+        extraData={[
+          messages, 
+          messages.length, 
+          currentUserId, 
+          selectedIds, 
+          selectedIds.length, 
+          theme, 
+          userId, 
+          viewableItems, 
+          uploadingProgress, 
+          uploadingData, 
+          activeUploadId, 
+          token
+        ]}
         keyExtractor={(item) => `msg_${item.id !== undefined && item.id !== null ? String(item.id) : (item.client_id || Math.random())}`}
         renderItem={renderMessageItem}
         onEndReached={loadMoreMessages}
@@ -2766,7 +2789,6 @@ export default function ChatScreen({ route, navigation }) {
         onScroll={handleScroll}
         scrollEventThrottle={16}
         viewabilityConfig={viewabilityConfig}
-        extraData={[viewableItems, selectedIds, messages, token]}
         removeClippedSubviews={false}
         initialNumToRender={15}
         maxToRenderPerBatch={10}
