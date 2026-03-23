@@ -1422,7 +1422,77 @@ async def init_upload(
             mime_type=req.mime_type
         )
         db.add(new_session)
-        await db.commit()
+        
+        # Если передан receiver_id, создаем placeholder сообщения сразу
+        if req.receiver_id:
+            new_msg = ChatMessage(
+                sender_id=user_id,
+                receiver_id=req.receiver_id,
+                message=None,
+                file_path=None,
+                message_type=req.message_type or "file",
+                client_id=req.client_id,
+                duration=req.duration,
+                reply_to_id=req.reply_to_id,
+                is_uploading=True,
+                upload_id=upload_id
+            )
+            db.add(new_msg)
+            await db.commit()
+            await db.refresh(new_msg)
+            
+            # Отправляем уведомление о новом сообщении (плейсхолдере)
+            sender_name = f"{current_user.first_name} {current_user.last_name}".strip() or "Пользователь"
+            
+            # Готовим данные отвечаемого сообщения, если оно есть
+            reply_to_data = None
+            if req.reply_to_id:
+                try:
+                    reply_res = await db.execute(
+                        select(ChatMessage, UserModel.first_name, UserModel.last_name)
+                        .join(UserModel, ChatMessage.sender_id == UserModel.id)
+                        .where(ChatMessage.id == req.reply_to_id)
+                    )
+                    reply_row = reply_res.first()
+                    if reply_row:
+                        r_msg, r_fname, r_lname = reply_row
+                        reply_to_data = {
+                            "id": r_msg.id,
+                            "message": r_msg.message,
+                            "message_type": r_msg.message_type,
+                            "sender_id": r_msg.sender_id,
+                            "sender_name": f"{r_fname} {r_lname}".strip() or "Пользователь"
+                        }
+                except Exception:
+                    pass
+
+            response_data = {
+                "id": new_msg.id,
+                "client_id": req.client_id,
+                "sender_id": user_id,
+                "sender_name": sender_name,
+                "receiver_id": req.receiver_id,
+                "message": None,
+                "file_path": None,
+                "message_type": req.message_type or "file",
+                "duration": req.duration,
+                "reply_to_id": req.reply_to_id,
+                "reply_to": reply_to_data,
+                "timestamp": new_msg.timestamp.isoformat(),
+                "is_read": 0,
+                "is_uploading": True,
+                "upload_id": upload_id
+            }
+            chat_event = {"type": "new_message", "data": response_data}
+            await asyncio.gather(
+                manager.send_personal_message(chat_event, req.receiver_id),
+                manager.send_personal_message(chat_event, user_id),
+                notifications_manager.send_personal_message(chat_event, req.receiver_id),
+                notifications_manager.send_personal_message(chat_event, user_id),
+                return_exceptions=True
+            )
+        else:
+            await db.commit()
         
         return {"upload_id": upload_id, "offset": 0}
     except HTTPException:

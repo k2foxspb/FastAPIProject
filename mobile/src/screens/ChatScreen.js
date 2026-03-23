@@ -25,7 +25,7 @@ import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
 import { formatStatus, formatName, formatFileSize, parseISODate, formatMessageTime, getAvatarUrl } from '../utils/formatters';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { setRecordingAudioMode } from '../utils/audioSettings';
+import { setRecordingAudioMode, setPlaybackAudioMode } from '../utils/audioSettings';
 
 function VideoUploadPlaceholder({ progressPercent, activeUploadId, uri, loaded, total, onCancel }) {
   const isFinished = progressPercent >= 100;
@@ -2236,10 +2236,10 @@ export default function ChatScreen({ route, navigation }) {
             {/* Рендерим плейсхолдеры для медиа в процессе загрузки */}
             {isMediaGroup && item.attachments && item.attachments.map((att, idx) => (
               <View key={`upload_att_${idx}`} style={{ marginBottom: 4 }}>
-                {renderMediaPlaceholder(att.type, isReceived, att.file_path)}
+                {renderMediaPlaceholder(att.type, isReceived, att.file_path || (isOwner ? uploadingData.uri : null))}
               </View>
             ))}
-            {!isMediaGroup && isMedia && renderMediaPlaceholder(item.message_type, isReceived, item.file_path)}
+            {!isMediaGroup && isMedia && renderMediaPlaceholder(item.message_type, isReceived, item.file_path || (isOwner ? uploadingData.uri : null))}
             
             <View style={{ 
                 flexDirection: 'row', 

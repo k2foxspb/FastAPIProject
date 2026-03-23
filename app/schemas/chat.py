@@ -63,6 +63,11 @@ class UploadInitRequest(BaseModel):
     filename: str
     file_size: int
     mime_type: Optional[str] = None
+    receiver_id: Optional[int] = None
+    client_id: Optional[str] = None
+    message_type: Optional[str] = None
+    duration: Optional[float] = None
+    reply_to_id: Optional[int] = None
 
 class UploadSessionResponse(BaseModel):
     upload_id: str
