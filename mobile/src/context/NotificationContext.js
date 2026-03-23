@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { Vibration, AppState, Alert } from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
 import Constants from 'expo-constants';
@@ -867,39 +867,72 @@ export const NotificationProvider = ({ children }) => {
     }
   }, []);
 
+  const contextValue = useMemo(() => ({ 
+    notifications, 
+    dialogs, 
+    unreadTotal, 
+    friendRequestsCount,
+    fetchDialogs, 
+    fetchFriendRequestsCount,
+    isConnected, 
+    isChatConnected,
+    connect, 
+    disconnect,
+    injectExternalNotification,
+    sendMessage,
+    getHistoryWs,
+    onHistoryReceived,
+    onSearchResultsReceived,
+    searchMessagesWs,
+    markAsReadWs,
+    deleteMessageWs,
+    bulkDeleteMessagesWs,
+    currentUser,
+    loadUser,
+    loadingUser,
+    currentUserId,
+    activeChatId,
+    setActiveChatId,
+    clearUnread,
+    userStatuses,
+    getCachedHistory,
+    typingUsers,
+    sendTypingStatus
+  }), [
+    notifications, 
+    dialogs, 
+    unreadTotal, 
+    friendRequestsCount,
+    fetchDialogs, 
+    fetchFriendRequestsCount,
+    isConnected, 
+    isChatConnected,
+    connect, 
+    disconnect,
+    injectExternalNotification,
+    sendMessage,
+    getHistoryWs,
+    onHistoryReceived,
+    onSearchResultsReceived,
+    searchMessagesWs,
+    markAsReadWs,
+    deleteMessageWs,
+    bulkDeleteMessagesWs,
+    currentUser,
+    loadUser,
+    loadingUser,
+    currentUserId,
+    activeChatId,
+    setActiveChatId,
+    clearUnread,
+    userStatuses,
+    getCachedHistory,
+    typingUsers,
+    sendTypingStatus
+  ]);
+
   return (
-    <NotificationContext.Provider value={{ 
-      notifications, 
-      dialogs, 
-      unreadTotal, 
-      friendRequestsCount,
-      fetchDialogs, 
-      fetchFriendRequestsCount,
-      isConnected, 
-      isChatConnected,
-      connect, 
-      disconnect,
-      injectExternalNotification,
-      sendMessage,
-      getHistoryWs,
-      onHistoryReceived,
-      onSearchResultsReceived,
-      searchMessagesWs,
-      markAsReadWs,
-      deleteMessageWs,
-      bulkDeleteMessagesWs,
-      currentUser,
-      loadUser,
-      loadingUser,
-      currentUserId,
-      activeChatId,
-      setActiveChatId,
-      clearUnread,
-      userStatuses,
-      getCachedHistory,
-      typingUsers,
-      sendTypingStatus
-    }}>
+    <NotificationContext.Provider value={contextValue}>
       {children}
     </NotificationContext.Provider>
   );

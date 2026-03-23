@@ -62,8 +62,11 @@ const VideoPlayer = ({
     }
   }, [shouldPlay, player]);
 
+  const playerReadyCalledRef = useRef(null);
+
   useEffect(() => {
-    if (typeof onPlayerReady === 'function') {
+    if (typeof onPlayerReady === 'function' && playerReadyCalledRef.current !== player) {
+      playerReadyCalledRef.current = player;
       onPlayerReady(player);
     }
   }, [onPlayerReady, player]);
