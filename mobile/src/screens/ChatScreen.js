@@ -385,8 +385,8 @@ export default function ChatScreen({ route, navigation }) {
     }
   };
 
-  const onViewableItemsChanged = useRef(({ viewableItems }) => {
-    setViewableItems(viewableItems.map(v => v.item.id));
+  const onViewableItemsChanged = useRef(({ viewableItems: viewable }) => {
+    setViewableItems(viewable.map(v => String(v.item.id || v.item.client_id)));
   }).current;
 
   const viewabilityConfig = useRef({
@@ -488,7 +488,9 @@ export default function ChatScreen({ route, navigation }) {
       if (dur > 0 && pos >= dur) {
         player.currentTime = 0;
       }
-      player.play();
+      setPlaybackAudioMode().finally(() => {
+        try { player.play(); } catch (_) {}
+      });
     } catch (e) {
       console.log('[FullScreenVideo] play/pause failed', e);
     }
@@ -1475,7 +1477,7 @@ export default function ChatScreen({ route, navigation }) {
         setActiveUploadId(null);
         setBatchTotal(0);
         setAttachmentsLocalCount(0);
-      }, 1000);
+      }, 100);
     }
   };
 
@@ -1589,7 +1591,7 @@ export default function ChatScreen({ route, navigation }) {
         setAttachmentsLocalCount(0);
         setUploadingProgress(null);
         setActiveUploadId(null);
-      }, 1000);
+      }, 100);
     }
   };
 
@@ -1648,7 +1650,7 @@ export default function ChatScreen({ route, navigation }) {
         isVideoNoteUploadRef.current = false;
         setUploadingProgress(null);
         setActiveUploadId(null);
-      }, 1000);
+      }, 100);
     }
   };
 
@@ -2406,8 +2408,9 @@ export default function ChatScreen({ route, navigation }) {
                         item={{ ...att, message_type: att.type }} 
                         style={{ width: '100%', height: '100%' }}
                         onFullScreen={() => handleFullScreen(attUri, att.type)}
-                        shouldPlay={viewableItems.includes(item.id)}
+                        shouldPlay={false}
                         isStatic={true}
+                        isParentVisible={viewableItems.includes(String(item.id || item.client_id))}
                       />
                     </Pressable>
                   );
@@ -2422,8 +2425,9 @@ export default function ChatScreen({ route, navigation }) {
                     item={item} 
                     onFullScreen={handleFullScreen} 
                     style={{ borderRadius: 12, overflow: 'hidden' }}
-                    shouldPlay={viewableItems.includes(item.id)}
-                    isStatic={!viewableItems.includes(item.id)}
+                    shouldPlay={false}
+                    isStatic={true}
+                    isParentVisible={viewableItems.includes(String(item.id || item.client_id))}
                   />
                 </View>
               ) : renderMediaPlaceholder(item.message_type, isReceived, item.file_path)
@@ -2434,7 +2438,7 @@ export default function ChatScreen({ route, navigation }) {
               <VoiceMessage 
                 item={item} 
                 currentUserId={currentUserId} 
-                isParentVisible={viewableItems.includes(item.id)}
+                isParentVisible={viewableItems.includes(String(item.id || item.client_id))}
               />
             ) : renderMediaPlaceholder(item.message_type, isReceived, item.file_path)
           )}
@@ -2443,7 +2447,7 @@ export default function ChatScreen({ route, navigation }) {
               <VideoNoteMessage 
                 item={item} 
                 isReceived={isReceived} 
-                isParentVisible={viewableItems.includes(item.id)}
+                isParentVisible={viewableItems.includes(String(item.id || item.client_id))}
               />
             ) : renderMediaPlaceholder(item.message_type, isReceived, item.file_path)
           )}
@@ -2453,7 +2457,7 @@ export default function ChatScreen({ route, navigation }) {
                 key={`att_vn_${idx}`}
                 item={att} 
                 isReceived={isReceived} 
-                isParentVisible={viewableItems.includes(item.id)}
+                isParentVisible={viewableItems.includes(String(item.id || item.client_id))}
               />
             ))
           )}
@@ -2728,6 +2732,7 @@ export default function ChatScreen({ route, navigation }) {
         onScroll={handleScroll}
         scrollEventThrottle={16}
         viewabilityConfig={viewabilityConfig}
+        extraData={[viewableItems, selectedIds, messages, token]}
         removeClippedSubviews={false}
         initialNumToRender={15}
         maxToRenderPerBatch={10}
@@ -2810,6 +2815,7 @@ export default function ChatScreen({ route, navigation }) {
                   shouldPlay={currentMediaIndex === index}
                   isMuted={false}
                   isStatic={index !== currentMediaIndex}
+                  isParentVisible={true}
                   onPlayerReady={(player) => {
                     fullScreenPlayersByIndex.current.set(index, player);
                     if (index === currentMediaIndex) {

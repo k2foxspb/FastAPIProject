@@ -16,6 +16,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { createVideoPlayer, VideoView, useVideoPlayer } from 'expo-video';
 import * as FileSystem from 'expo-file-system/legacy';
 import { API_BASE_URL } from '../constants';
+import { setPlaybackAudioMode } from '../utils/audioSettings';
 
 const INLINE_SIZE = 170;
 const MODAL_VIDEO_SIZE = 280;
@@ -86,47 +87,47 @@ function ProgressRing({ progress }) {
   );
 }
 
+const InlineCircleVideoContent = ({ uri }) => {
+  const player = useVideoPlayer(uri, (p) => {
+    p.loop = true;
+    p.muted = true;
+    try {
+      p.audioMixingMode = 'mixWithOthers';
+    } catch (e) {}
+  });
+  
+  useEffect(() => {
+    if (!player) return;
+    
+    // В списке чата мы не запускаем воспроизведение автоматически,
+    // чтобы не тратить ресурсы и не мешать основному плееру.
+    // Плеер просто покажет первый кадр как превью.
+    try {
+      player.pause();
+    } catch (e) {}
+    
+    return () => {
+      try {
+        player.pause();
+      } catch (e) {}
+    };
+  }, [player, uri]);
+
+  return (
+    <VideoView 
+      player={player} 
+      style={StyleSheet.absoluteFill} 
+      contentFit="cover"
+      nativeControls={false}
+    />
+  );
+};
+
 export default function VideoNoteMessage({ item, isReceived, isParentVisible }) {
   const remoteUri = resolveRemoteUri(item?.file_path || item?.video_url || item?.uri);
 
   const [playUri, setPlayUri] = useState('');
   const [downloading, setDownloading] = useState(false);
-
-  // Inline preview player - only for visible items in the list
-  const inlinePlayer = useVideoPlayer(playUri || remoteUri, (p) => {
-    p.loop = true;
-    p.muted = true;
-  });
-
-  useEffect(() => {
-    if (inlinePlayer) {
-      if (isParentVisible) {
-        inlinePlayer.play();
-      } else {
-        inlinePlayer.pause();
-      }
-    }
-  }, [isParentVisible, inlinePlayer]);
-
-  useEffect(() => {
-    if (inlinePlayer && (playUri || remoteUri)) {
-      inlinePlayer.replaceAsync(playUri || remoteUri);
-      if (isParentVisible) {
-        inlinePlayer.play();
-      }
-    }
-  }, [playUri, remoteUri, inlinePlayer]);
-
-  useEffect(() => {
-    return () => {
-      if (inlinePlayer) {
-        try {
-          inlinePlayer.pause();
-          inlinePlayer.release?.();
-        } catch (e) {}
-      }
-    };
-  }, [inlinePlayer]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -175,6 +176,13 @@ export default function VideoNoteMessage({ item, isReceived, isParentVisible }) 
             setDuration(dur);
             durationRef.current = dur;
           }
+          // Принудительно запускаем в модале при готовности
+          setPlaybackAudioMode().then(() => {
+            player.play();
+          }).catch(err => {
+            console.log('[VideoNoteMessage] setPlaybackAudioMode error:', err);
+            player.play();
+          });
         } else if (status === 'idle') {
           setPlayerReady(false);
           setIsPlaying(false);
@@ -264,13 +272,21 @@ export default function VideoNoteMessage({ item, isReceived, isParentVisible }) 
     setDuration(0);
 
     // Create a fresh player — only one player exists while modal is open
+    await setPlaybackAudioMode();
     const player = createVideoPlayer(uri);
     player.loop = false;
+    try {
+      player.audioMixingMode = 'doNotMix';
+    } catch (e) {}
     playerRef.current = player;
     setModalPlayer(player);
 
-    // Start playback immediately
-    player.play();
+    // Give it a small delay or wait for statusChange to ensure playback starts
+    setTimeout(() => {
+      if (playerRef.current === player) {
+        player.play();
+      }
+    }, 100);
 
     backdropOpacity.setValue(0);
     videoScale.setValue(0.05);
@@ -307,9 +323,11 @@ export default function VideoNoteMessage({ item, isReceived, isParentVisible }) 
     const p = playerRef.current;
     if (!p) return;
     if (isPlaying) {
-      p.pause();
+      try { p.pause(); } catch (_) {}
     } else {
-      p.play();
+      setPlaybackAudioMode().finally(() => {
+        try { p.play(); } catch (_) {}
+      });
     }
   }, [isPlaying]);
 
@@ -390,16 +408,11 @@ export default function VideoNoteMessage({ item, isReceived, isParentVisible }) 
 
   return (
     <>
-      {/* Inline circle — static placeholder, no VideoView/player */}
+      {/* Inline circle — static placeholder or player if visible */}
       <TouchableOpacity onPress={openModal} activeOpacity={0.85} style={styles.inlineContainer}>
         <View style={styles.inlineVideoWrap}>
-          {inlinePlayer ? (
-            <VideoView 
-              player={inlinePlayer} 
-              style={StyleSheet.absoluteFill} 
-              contentFit="cover"
-              nativeControls={false}
-            />
+          {isParentVisible ? (
+            <InlineCircleVideoContent uri={playUri || remoteUri} />
           ) : (
             <View style={styles.inlinePlaceholder} />
           )}

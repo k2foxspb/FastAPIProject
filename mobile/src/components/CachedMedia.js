@@ -7,7 +7,7 @@ import VideoPlayer from './VideoPlayer';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
 
-const CachedMedia = ({ item, onFullScreen, style, resizeMode = "cover", useNativeControls = false, shouldPlay = true, isMuted = true, onPlayerReady, isLooping, isStatic = false }) => {
+const CachedMedia = ({ item, onFullScreen, style, resizeMode = "cover", useNativeControls = false, shouldPlay = true, isMuted = true, onPlayerReady, isLooping, isStatic = false, isParentVisible = true }) => {
   const { theme } = useTheme();
   const colors = themeConstants[theme];
   const [localUri, setLocalUri] = useState(null);
@@ -82,6 +82,19 @@ const CachedMedia = ({ item, onFullScreen, style, resizeMode = "cover", useNativ
       ]}>
         <ActivityIndicator size={isVideo ? "large" : "small"} color={isVideo ? "#fff" : colors.primary} />
       </View>
+    );
+  }
+
+  if (isVideo && !isParentVisible && !shouldPlay) {
+    return (
+      <TouchableOpacity
+        onPress={() => onFullScreen && onFullScreen(localUri, item.message_type || item.type)}
+        style={[styles.thumbnail, style]}
+      >
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' }]}>
+           <MaterialIcons name="videocam" size={40} color="rgba(255,255,255,0.3)" />
+        </View>
+      </TouchableOpacity>
     );
   }
 
