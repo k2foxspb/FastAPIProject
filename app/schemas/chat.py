@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Union
 
 class ChatMessageBase(BaseModel):
     receiver_id: int
@@ -63,11 +63,14 @@ class UploadInitRequest(BaseModel):
     filename: str
     file_size: int
     mime_type: Optional[str] = None
-    receiver_id: Optional[int] = None
+    receiver_id: Optional[Union[str, int]] = None
     client_id: Optional[str] = None
     message_type: Optional[str] = None
     duration: Optional[float] = None
     reply_to_id: Optional[int] = None
+
+    class Config:
+        extra = "ignore"
 
 class UploadSessionResponse(BaseModel):
     upload_id: str
