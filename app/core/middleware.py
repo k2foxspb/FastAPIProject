@@ -20,11 +20,30 @@ class TimingMiddleware:
             return await self.app(scope, receive, send)
             
         start_time = time.time()
-        await self.app(scope, receive, send)
-        duration = time.time() - start_time
-        method = scope.get("method", "UNKNOWN")
-        path = scope.get("path", "UNKNOWN")
-        logger.debug(f"Request: {method} {path} | Duration: {duration:.4f}s")
+        
+        # Флаг, чтобы не логировать дважды (на start и disconnect/finish)
+        logged = False
+
+        async def send_wrapper(message):
+            nonlocal logged
+            if message["type"] == "http.response.start" and not logged:
+                duration = time.time() - start_time
+                method = scope.get("method", "UNKNOWN")
+                path = scope.get("path", "UNKNOWN")
+                logger.debug(f"Request: {method} {path} | Duration: {duration:.4f}s")
+                logged = True
+            await send(message)
+
+        try:
+            await self.app(scope, receive, send_wrapper)
+        except Exception as e:
+            if not logged:
+                duration = time.time() - start_time
+                method = scope.get("method", "UNKNOWN")
+                path = scope.get("path", "UNKNOWN")
+                logger.error(f"Request: {method} {path} | FAILED | Duration: {duration:.4f}s | Error: {e}")
+                logged = True
+            raise e
 
 
 def setup_middleware(app: FastAPI) -> None:
