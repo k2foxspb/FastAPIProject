@@ -109,7 +109,17 @@ export const uploadManager = {
 
     const token = await storage.getAccessToken();
     const fileInfo = await getInfoAsync(fileUri);
-    const fileSize = fileInfo.size;
+    let fileSize = fileInfo.size;
+
+    // Если getInfoAsync не вернул размер (бывает для content:// на Android), 
+    // пробуем взять из extraMeta, если он там есть
+    if ((fileSize === undefined || fileSize === null) && extraMeta?.fileSize) {
+      fileSize = extraMeta.fileSize;
+    }
+
+    if (fileSize === undefined || fileSize === null) {
+      throw new Error('Не удалось определить размер файла. Попробуйте выбрать его снова.');
+    }
 
     // 1. Инициализация загрузки
     const initRes = await api.initUpload({
