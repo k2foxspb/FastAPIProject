@@ -14,42 +14,37 @@ const VideoPlayer = ({
   onPlayerReady,
 }) => {
   const [playerStatus, setPlayerStatus] = useState('idle');
+  const playerSourceRef = useRef(null);
+  
   const player = useVideoPlayer(uri, (p) => {
     p.loop = isLooping;
     p.muted = isMuted;
     if (shouldPlay) {
-      p.play();
+      setPlaybackAudioMode().finally(() => {
+        p.play();
+      });
     }
   });
 
-  const onPlayerReadyRef = useRef(onPlayerReady);
-
   useEffect(() => {
-    onPlayerReadyRef.current = onPlayerReady;
-  }, [onPlayerReady]);
-
-  useEffect(() => {
-    const fn = onPlayerReadyRef.current;
-    if (typeof fn === 'function') {
-      fn(player);
+    if (uri && uri !== playerSourceRef.current) {
+      playerSourceRef.current = uri;
+      if (player.replaceAsync) {
+        player.replaceAsync(uri)
+          .then(() => {
+            if (shouldPlay) {
+              setPlaybackAudioMode().finally(() => player.play());
+            }
+          })
+          .catch(err => console.log('[VideoPlayer] replaceAsync error:', err));
+      } else {
+        player.replace(uri);
+        if (shouldPlay) {
+          setPlaybackAudioMode().finally(() => player.play());
+        }
+      }
     }
-    
-    const sub = player.addListener('statusChange', (payload) => {
-      setPlayerStatus(payload.status);
-    });
-    return () => sub.remove();
-  }, [player]);
-
-  useEffect(() => {
-    if (shouldPlay && !isMuted) {
-      setPlaybackAudioMode();
-    }
-    if (shouldPlay) {
-      player.play();
-    } else {
-      player.pause();
-    }
-  }, [shouldPlay, isMuted, player]);
+  }, [uri, player, shouldPlay]);
 
   useEffect(() => {
     player.muted = isMuted;
@@ -58,6 +53,33 @@ const VideoPlayer = ({
   useEffect(() => {
     player.loop = isLooping;
   }, [isLooping, player]);
+
+  useEffect(() => {
+    if (shouldPlay) {
+      setPlaybackAudioMode().finally(() => player.play());
+    } else {
+      player.pause();
+    }
+  }, [shouldPlay, player]);
+
+  const playerReadyCalledRef = useRef(null);
+
+  useEffect(() => {
+    if (typeof onPlayerReady === 'function' && playerReadyCalledRef.current !== player) {
+      playerReadyCalledRef.current = player;
+      onPlayerReady(player);
+    }
+  }, [onPlayerReady, player]);
+
+  useEffect(() => {
+    const sub = player.addListener('statusChange', ({ status }) => {
+      setPlayerStatus(status);
+      if (status === 'readyToPlay' && shouldPlay) {
+        setPlaybackAudioMode().finally(() => player.play());
+      }
+    });
+    return () => sub.remove();
+  }, [player, shouldPlay]);
 
   return (
     <View style={[styles.container, style]}>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { getShadow } from '../utils/shadowStyles';
 import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Alert, Platform } from 'react-native';
 import { Audio, useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
@@ -30,11 +30,20 @@ export default function VoiceMessage({ item, currentUserId, isParentVisible = tr
   const localFileUri = `${cacheDirectory}${fileName}`;
 
   const audioSource = localUri || remoteUri;
-  // We use useAudioPlayer without an initial source to keep the player instance stable.
-  // This prevents the "already released" crash when the source changes (e.g. after downloading the file)
-  // while an async function (like loadAndPlay) is still using the old player instance.
   const player = useAudioPlayer();
   const status = useAudioPlayerStatus(player);
+  const playerSourceRef = useRef(null);
+
+  useEffect(() => {
+    if (audioSource && audioSource !== playerSourceRef.current) {
+      playerSourceRef.current = audioSource;
+      if (player.replaceAsync) {
+        player.replaceAsync(audioSource).catch(e => console.log('[VoiceMessage] replaceAsync error:', e));
+      } else {
+        player.replace(audioSource);
+      }
+    }
+  }, [audioSource, player]);
 
   useEffect(() => {
     if (!isParentVisible && player.playing) {
@@ -43,23 +52,20 @@ export default function VoiceMessage({ item, currentUserId, isParentVisible = tr
   }, [isParentVisible, player.playing]);
 
   useEffect(() => {
-    if (audioSource) {
-      player.replace(audioSource);
-      try {
-        player.setPlaybackRate(playbackRate);
-      } catch (e) {
-        console.log('[VoiceMessage] Failed to set playbackRate on source change:', e);
-      }
-    }
-  }, [audioSource, player]);
-
-  useEffect(() => {
-    try {
+    if (player) {
       player.setPlaybackRate(playbackRate);
-    } catch (e) {
-      console.log('[VoiceMessage] Failed to set playbackRate on value change:', e);
     }
   }, [playbackRate, player]);
+
+  useEffect(() => {
+    return () => {
+      if (player) {
+        try {
+          player.pause();
+        } catch (e) {}
+      }
+    };
+  }, [player]);
 
   useEffect(() => {
     if (Platform.OS === 'web') {
@@ -82,16 +88,17 @@ export default function VoiceMessage({ item, currentUserId, isParentVisible = tr
   }, []);
 
   const loadAndPlay = async () => {
-    await setPlaybackAudioMode();
-
     if (player.playing) {
       player.pause();
       return;
     }
 
+    // Ensure audio mode is set before playing
+    await setPlaybackAudioMode();
+
     // Если аудио уже проиграно до конца, сбрасываем в начало перед повторным запуском
     if (status.currentTime >= (status.duration || 0) && (status.duration || 0) > 0) {
-      await player.seekTo(0);
+      player.seekTo(0);
     }
 
     if (!localUri && Platform.OS !== 'web') {
@@ -112,6 +119,11 @@ export default function VoiceMessage({ item, currentUserId, isParentVisible = tr
           uri = downloadRes.uri;
         }
         setLocalUri(uri);
+        if (player.replaceAsync) {
+          await player.replaceAsync(uri);
+        } else {
+          player.replace(uri);
+        }
       } catch (error) {
         console.error('Error loading voice message:', error);
         try {
@@ -122,7 +134,15 @@ export default function VoiceMessage({ item, currentUserId, isParentVisible = tr
       }
     }
 
-    await player.play();
+    try {
+      await player.play();
+    } catch (e) {
+      console.log('[VoiceMessage] play error:', e);
+      // Small fallback for race conditions
+      setTimeout(() => {
+        try { player.play(); } catch (_) {}
+      }, 150);
+    }
   };
 
   const handleDownload = async () => {

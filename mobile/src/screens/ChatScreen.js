@@ -25,7 +25,7 @@ import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
 import { formatStatus, formatName, formatFileSize, parseISODate, formatMessageTime, getAvatarUrl } from '../utils/formatters';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { setRecordingAudioMode } from '../utils/audioSettings';
+import { setRecordingAudioMode, setPlaybackAudioMode } from '../utils/audioSettings';
 
 function VideoUploadPlaceholder({ progressPercent, activeUploadId, uri, loaded, total, onCancel }) {
   const isFinished = progressPercent >= 100;
@@ -95,7 +95,7 @@ export default function ChatScreen({ route, navigation }) {
   const insets = useSafeAreaInsets();
   const { theme } = useTheme();
   const colors = themeConstants[theme];
-  const { setActiveChatId, fetchDialogs, currentUserId, notifications, connect, dialogs, clearUnread, currentUser, sendMessage: sendMessageWs, markAsReadWs, deleteMessageWs, bulkDeleteMessagesWs, getHistoryWs, onHistoryReceived, onSearchResultsReceived, searchMessagesWs, getCachedHistory, isChatConnected } = useNotifications();
+  const { setActiveChatId, fetchDialogs, currentUserId, notifications, connect, dialogs, clearUnread, currentUser, sendMessage: sendMessageWs, markAsReadWs, deleteMessageWs, bulkDeleteMessagesWs, getHistoryWs, onHistoryReceived, onSearchResultsReceived, searchMessagesWs, getCachedHistory, isChatConnected, typingUsers, sendTypingStatus } = useNotifications();
   const { userId, userName } = route.params;
   const [messages, setMessages] = useState([]);
   const [inputText, setInputText] = useState('');
@@ -104,6 +104,41 @@ export default function ChatScreen({ route, navigation }) {
   const [uploadingProgress, setUploadingProgress] = useState(null);
   const [uploadingData, setUploadingData] = useState({ loaded: 0, total: 0, uri: null, mimeType: null });
   const [activeUploadId, setActiveUploadId] = useState(null);
+  
+  const typingTimerRef = useRef(null);
+  const isCurrentlyTyping = useRef(false);
+
+  useEffect(() => {
+    if (inputText.length > 0) {
+      if (!isCurrentlyTyping.current) {
+        isCurrentlyTyping.current = true;
+        sendTypingStatus(userId, true);
+      }
+      
+      if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+      
+      typingTimerRef.current = setTimeout(() => {
+        isCurrentlyTyping.current = false;
+        sendTypingStatus(userId, false);
+      }, 3000);
+    } else if (isCurrentlyTyping.current) {
+      isCurrentlyTyping.current = false;
+      sendTypingStatus(userId, false);
+      if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+    }
+    
+    return () => {
+      if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+    };
+  }, [inputText, userId, sendTypingStatus]);
+
+  const isPartnerTyping = useMemo(() => {
+    const timestamp = typingUsers[userId];
+    if (!timestamp) return false;
+    // Считаем, что печатает, если последнее событие было меньше 5 секунд назад
+    return (Date.now() - timestamp) < 5000;
+  }, [typingUsers, userId]);
+
   const [fullScreenMedia, setFullScreenMedia] = useState(null); // { index, list }
   const [allMedia, setAllMedia] = useState([]);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -188,6 +223,18 @@ export default function ChatScreen({ route, navigation }) {
   };
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState([]);
+
+  const toggleSelection = (id) => {
+    setSelectedIds(prev => {
+      if (prev.includes(id)) {
+        const next = prev.filter(x => x !== id);
+        if (next.length === 0) setSelectionMode(false);
+        return next;
+      } else {
+        return [...prev, id];
+      }
+    });
+  };
   const [isRecording, setIsRecording] = useState(false);
   const [inputMode, setInputMode] = useState('audio'); // 'audio' or 'video'
   const [isVideoRecording, setIsVideoRecording] = useState(false);
@@ -201,9 +248,6 @@ export default function ChatScreen({ route, navigation }) {
   const isMounted = useRef(true);
   const isVideoNoteUploadRef = useRef(false);
   const LIMIT = 15;
-  const lastProcessedNotificationId = useRef(null);
-  const lastProcessedMsgId = useRef(null);
-
   const handleCancelUpload = useCallback((uploadId) => {
     if (!uploadId) return;
     console.log('[ChatScreen] Cancelling upload:', uploadId);
@@ -215,98 +259,6 @@ export default function ChatScreen({ route, navigation }) {
     setActiveUploadId(null);
     setUploadingData({ loaded: 0, total: 0, uri: null, mimeType: null });
   }, [isChatConnected, sendMessageWs]);
-
-  // Слушаем новые уведомления (сообщения) в реальном времени
-  useEffect(() => {
-    if (notifications && notifications.length > 0) {
-      const latest = notifications[0];
-      if ((latest.type === 'new_message' || latest.type === 'message') && latest.data) {
-        // Чтобы не обрабатывать одно и то же уведомление дважды при ререндерах
-        const notifId = latest.data.id || latest.data.client_id;
-        if (lastProcessedNotificationId.current === notifId) return;
-        lastProcessedNotificationId.current = notifId;
-
-        const msg = latest.data;
-        const isFromMe = Number(msg.sender_id) === Number(currentUserId);
-        const otherId = isFromMe ? Number(msg.receiver_id) : Number(msg.sender_id);
-
-        if (Number(otherId) === Number(userId)) {
-          // Не добавляем в список собственные плейсхолдеры загрузки, у нас для этого есть локальный индикатор
-          // Но мы их больше не скипаем, чтобы они сразу появлялись в списке сообщений
-          // и корректно обновлялись через message_updated.
-          // if ((latest.type === 'new_message' || latest.type === 'message') && msg?.is_uploading && isFromMe) {
-          //   console.log('[ChatScreen] Skipping own upload placeholder message');
-          //   return;
-          // }
-          console.log('[ChatScreen] New real-time message received from notifications:', msg.id || msg.client_id, 'type:', latest.type);
-          setMessages(prev => {
-            // Если это наше сообщение (есть client_id), ищем его в pending и обновляем
-            if (isFromMe && msg.client_id) {
-              const pendingIdx = prev.findIndex(m => m.client_id === msg.client_id && m.status === 'pending');
-              if (pendingIdx !== -1) {
-                console.log('[ChatScreen] Updating pending message to sent:', msg.client_id);
-                const newMsgs = [...prev];
-                newMsgs[pendingIdx] = { ...msg, status: 'sent' };
-                return newMsgs;
-              }
-            }
-
-            // Проверка на дубликаты (по id или client_id)
-            const exists = prev.some(m => 
-              (msg.id && String(m.id) === String(msg.id)) || 
-              (msg.client_id && m.client_id === msg.client_id && m.status !== 'pending')
-            );
-            
-            if (!exists) {
-              console.log('[ChatScreen] Adding new message to list from real-time:', msg.id || msg.client_id);
-              return [msg, ...prev];
-            }
-            return prev;
-          });
-        }
-      }
-    }
-  }, [notifications, userId, currentUserId]);
-
-  // Отслеживаем прогресс загрузки и завершение (message_updated) от Chat WS
-  const lastProcessedUploadNotifyRef = useRef(null);
-  useEffect(() => {
-    if (!notifications || notifications.length === 0) return;
-    
-    const lastIdx = lastProcessedUploadNotifyRef.current 
-      ? notifications.findIndex(n => n === lastProcessedUploadNotifyRef.current)
-      : -1;
-    const newNotifications = lastIdx === -1 ? notifications : notifications.slice(0, lastIdx);
-
-    newNotifications.forEach(notify => {
-      if (notify.type === 'upload_progress' && notify.data) {
-        const { message_id, progress, offset, total } = notify.data;
-        setMessages(prev => prev.map(m => (String(m.id) === String(message_id) 
-          ? { ...m, is_uploading: true, upload_progress: progress, upload_offset: offset, upload_total: total } 
-          : m
-        )));
-      } else if (notify.type === 'message_updated' && notify.data) {
-        const up = notify.data;
-        setMessages(prev => {
-          const idx = prev.findIndex(m => String(m.id) === String(up.id));
-          if (idx !== -1) {
-            return prev.map(m => (String(m.id) === String(up.id) ? { ...m, ...up, is_uploading: false, upload_progress: undefined } : m));
-          } else {
-            // Если сообщения нет в списке (например, было скипнуто как собственный плейсхолдер), добавляем его
-            const cidIdx = up.client_id ? prev.findIndex(m => m.client_id === up.client_id) : -1;
-            if (cidIdx !== -1) {
-              const newMsgs = [...prev];
-              newMsgs[cidIdx] = { ...up, is_uploading: false };
-              return newMsgs;
-            }
-            return [up, ...prev];
-          }
-        });
-      }
-    });
-
-    lastProcessedUploadNotifyRef.current = notifications[0];
-  }, [notifications]);
   const videoPlayerRef = useRef(null);
   const chatFlatListRef = useRef(null);
   const recordingOptions = useMemo(() => RecordingPresets.HIGH_QUALITY, []);
@@ -323,8 +275,6 @@ export default function ChatScreen({ route, navigation }) {
   const [fullScreenIsPlaying, setFullScreenIsPlaying] = useState(false);
   const [fullScreenPlaybackRate, setFullScreenPlaybackRate] = useState(1);
   const [fullScreenSliderWidth, setFullScreenSliderWidth] = useState(1);
-  const [isVideoNoteModalVisible, setIsVideoNoteModalVisible] = useState(false);
-  const [activeVideoNote, setActiveVideoNote] = useState(null);
   const [isSeekingFullScreen, setIsSeekingFullScreen] = useState(false);
   const [seekingPositionFullScreen, setSeekingPositionFullScreen] = useState(null);
   const recordingDotOpacity = useRef(new Animated.Value(1)).current;
@@ -435,8 +385,8 @@ export default function ChatScreen({ route, navigation }) {
     }
   };
 
-  const onViewableItemsChanged = useRef(({ viewableItems }) => {
-    setViewableItems(viewableItems.map(v => v.item.id));
+  const onViewableItemsChanged = useRef(({ viewableItems: viewable }) => {
+    setViewableItems(viewable.map(v => String(v.item.id || v.item.client_id)));
   }).current;
 
   const viewabilityConfig = useRef({
@@ -538,7 +488,9 @@ export default function ChatScreen({ route, navigation }) {
       if (dur > 0 && pos >= dur) {
         player.currentTime = 0;
       }
-      player.play();
+      setPlaybackAudioMode().finally(() => {
+        try { player.play(); } catch (_) {}
+      });
     } catch (e) {
       console.log('[FullScreenVideo] play/pause failed', e);
     }
@@ -761,111 +713,165 @@ export default function ChatScreen({ route, navigation }) {
   }, [currentUserId]);
 
   useEffect(() => {
-    if (notifications.length > 0) {
-      // Находим индекс последнего обработанного уведомления
-      const lastIdx = lastProcessedNotificationRef.current 
-        ? notifications.findIndex(n => n === lastProcessedNotificationRef.current)
-        : -1;
+    // При смене пользователя сбрасываем указатель обработанных уведомлений,
+    // чтобы новые уведомления для этого пользователя были обработаны.
+    lastProcessedNotificationRef.current = null;
+  }, [userId]);
+
+  useEffect(() => {
+    if (!notifications || notifications.length === 0) return;
+
+    // Находим индекс последнего обработанного уведомления
+    const lastIdx = lastProcessedNotificationRef.current 
+      ? notifications.findIndex(n => n === lastProcessedNotificationRef.current)
+      : -1;
+    
+    // Выделяем новые уведомления (те, что до последнего обработанного)
+    const newNotifications = lastIdx === -1 ? notifications : notifications.slice(0, lastIdx);
+    
+    // Обрабатываем уведомления в хронологическом порядке (от старых к новым)
+    [...newNotifications].reverse().forEach(lastNotify => {
+      const data = lastNotify.data;
+      if (!data) return;
       
-      // Выделяем новые уведомления (те, что до последнего обработанного)
-      const newNotifications = lastIdx === -1 ? notifications : notifications.slice(0, lastIdx);
-      
-      // Обрабатываем в хронологическом порядке (с конца массива к началу)
-      [...newNotifications].reverse().forEach(lastNotify => {
-        const notifyType = lastNotify.type || lastNotify.msg_type;
+      const notifyType = lastNotify.type || lastNotify.msg_type;
+      const myIdNum = Number(currentUserIdRef.current || currentUserId);
+      const currentChatId = Number(userId);
+
+      // 1. Новые сообщения
+      if (notifyType === 'new_message' || notifyType === 'message') {
+        const msgSenderId = Number(data.sender_id);
+        const msgReceiverId = Number(data.receiver_id);
+
+        const isRelated = (msgSenderId === currentChatId && msgReceiverId === myIdNum) || 
+                          (msgSenderId === myIdNum && msgReceiverId === currentChatId);
         
-        if (notifyType === 'new_message' && lastNotify.data) {
-          const message = lastNotify.data;
-          const msgSenderId = Number(message.sender_id);
-          const msgReceiverId = Number(message.receiver_id);
-          const currentChatId = Number(userId);
-          const myIdNum = Number(currentUserIdRef.current || currentUserId);
+        if (isRelated) {
+          setMessages(prev => {
+            // Пытаемся заменить оптимистичное (pending) сообщение
+            if (data.client_id && msgSenderId === myIdNum) {
+               const existingIdx = prev.findIndex(m => (m.client_id && m.client_id === data.client_id) || (m.id && String(m.id) === String(data.client_id)));
+               if (existingIdx !== -1) {
+                 const updated = [...prev];
+                 updated[existingIdx] = { 
+                   ...data, 
+                   client_id: data.client_id || prev[existingIdx].client_id,
+                   status: 'sent' 
+                 };
+                 return updated;
+               }
+            }
 
-          console.log('[ChatScreen] Message check - from:', msgSenderId, 'to:', msgReceiverId, 'currentChat:', currentChatId, 'myId:', myIdNum);
-
-          const isRelated = (msgSenderId === currentChatId && msgReceiverId === myIdNum) || 
-                            (msgSenderId === myIdNum && msgReceiverId === currentChatId);
-          
-          if (isRelated) {
-            setMessages(prev => {
-              // 1. Пытаемся найти по client_id (только если сообщение от нас)
-              if (message.client_id && msgSenderId === myIdNum) {
-                 const existingIdx = prev.findIndex(m => (m.client_id && m.client_id === message.client_id) || (m.id && String(m.id) === String(message.client_id)));
-                 if (existingIdx !== -1) {
-                   console.log('[ChatScreen] Found optimistic message to replace by client_id:', message.client_id);
-                   const updated = [...prev];
-                   // Важно сохранить старый client_id, чтобы не продублировать, если придет вторая нотификация
-                   updated[existingIdx] = { 
-                     ...message, 
-                     client_id: message.client_id || prev[existingIdx].client_id,
-                     status: 'sent' 
-                   };
-                   return updated;
-                 }
-              }
-
-              // 2. Пытаемся найти по id (сообщение от собеседника или уже обработанное)
-              if (prev.find(m => m.id && message.id && String(m.id) === String(message.id))) {
-                console.log('[ChatScreen] Message already exists in state, skipping:', message.id);
+            // Проверка на дубликаты по ID
+            if (data.id) {
+              const existingIdx = prev.findIndex(m => m.id && String(m.id) === String(data.id));
+              if (existingIdx !== -1) {
+                const existing = prev[existingIdx];
+                // Если новое сообщение более "полное" (например, не uploading, а старое было uploading), обновляем
+                const isNewBetter = (existing.is_uploading && !data.is_uploading) || (!existing.file_path && data.file_path);
+                if (isNewBetter) {
+                  const next = [...prev];
+                  next[existingIdx] = { ...existing, ...data, status: 'sent' };
+                  return next;
+                }
                 return prev;
               }
-
-              return [{ ...message, status: 'sent' }, ...prev];
-            });
-            setSkip(prev => prev + 1);
-            
-            if (msgSenderId === currentChatId) {
-              // Сообщение от собеседника
-              clearUnread(userId);
-              const isAppActive = AppState.currentState === 'active';
-              if (isAppActive) {
-                // playMessageSound(); // Дубликат удален: звук теперь проигрывается только в NotificationContext
-                markAsReadWs(userId);
-              }
-            } else {
-              // Сообщение от меня
-              console.log('[ChatScreen] My message added to list');
             }
+
+            // Дедупликация по client_id
+            if (data.client_id) {
+              const existingIndex = prev.findIndex(m => m.client_id === data.client_id);
+              if (existingIndex !== -1) {
+                const existing = prev[existingIndex];
+                // Если новое сообщение более полное (есть id или не uploading), заменяем
+                const isNewBetter = (!existing.id && data.id) || (existing.is_uploading && !data.is_uploading);
+                if (isNewBetter) {
+                  const next = [...prev];
+                  next[existingIndex] = { ...existing, ...data, status: 'sent' };
+                  return next;
+                }
+                return prev;
+              }
+            }
+
+            return [{ ...data, status: 'sent' }, ...prev];
+          });
+          setSkip(prev => prev + 1);
+          
+          if (msgSenderId === currentChatId) {
+            clearUnread(userId);
+            if (AppState.currentState === 'active') {
+              markAsReadWs(userId);
+            }
+          }
+        }
+      } 
+      // 2. Прогресс загрузки
+      else if (notifyType === 'upload_progress') {
+        const { message_id, progress, offset, total } = data;
+        setMessages(prev => prev.map(m => (
+          String(m.id) === String(message_id) && m.is_uploading && !m.file_path
+          ? { ...m, upload_progress: progress, upload_offset: offset, upload_total: total } 
+          : m
+        )));
+      } 
+      // 3. Завершение загрузки (message_updated)
+      else if (notifyType === 'message_updated') {
+        setMessages(prev => {
+          const idx = prev.findIndex(m => String(m.id) === String(data.id));
+          if (idx !== -1) {
+            // Если нашли по ID, обновляем статус загрузки и добавляем данные (file_path и т.д.)
+            return prev.map(m => (String(m.id) === String(data.id) ? { ...m, ...data, is_uploading: false, upload_progress: undefined } : m));
           } else {
-            console.log('[ChatScreen] Message not related to this chat, ignoring');
+            // Если по ID не нашли, возможно сообщение в стейте еще под client_id
+            const cidIdx = data.client_id ? prev.findIndex(m => m.client_id === data.client_id) : -1;
+            if (cidIdx !== -1) {
+              const newMsgs = [...prev];
+              newMsgs[cidIdx] = { ...data, is_uploading: false };
+              return newMsgs;
+            }
+            // Если сообщения вообще нет в текущем стейте, добавляем его, если оно относится к этому чату
+            const isFromMe = Number(data.sender_id) === myIdNum;
+            const otherId = isFromMe ? Number(data.receiver_id) : Number(data.sender_id);
+            if (otherId === currentChatId) {
+                return [{ ...data, is_uploading: false, status: 'sent' }, ...prev];
+            }
+            return prev;
           }
-        } else if (notifyType === 'message_deleted') {
-          const msgId = lastNotify.message_id || lastNotify.data?.message_id || lastNotify.data?.id;
-          const uploadId = lastNotify.upload_id || lastNotify.data?.upload_id;
-          if (msgId || uploadId) {
-            setMessages(prev => {
-              return prev.filter(m => {
-                if (msgId && String(m.id) === String(msgId)) return false;
-                if (uploadId && m.upload_id === uploadId) return false;
-                return true;
-              });
-            });
-            fetchDialogs();
-          }
-        } else if (notifyType === 'messages_read' || notifyType === 'your_messages_read' || notifyType === 'mark_read') {
-          // messages_read приходит нам, когда МЫ прочитали чьи-то сообщения (от Notifications WS)
-          // ИЛИ когда КТО-ТО прочитал наши сообщения (от Chat WS)
-          // your_messages_read приходит нам, когда КТО-ТО прочитал наши сообщения (от Notifications WS)
-          
-          const readerId = lastNotify.reader_id || lastNotify.data?.reader_id;
-          
-          // Если это подтверждение прочтения НАШИХ сообщений кем-то другим
+        });
+      }
+      // 4. Удаление сообщения
+      else if (notifyType === 'message_deleted') {
+        const msgId = data.message_id || data.id || lastNotify.message_id;
+        const uploadId = data.upload_id || lastNotify.upload_id;
+        if (msgId || uploadId) {
+          setMessages(prev => prev.filter(m => {
+            if (msgId && String(m.id) === String(msgId)) return false;
+            if (uploadId && m.upload_id === uploadId) return false;
+            return true;
+          }));
+          fetchDialogs();
+        }
+      } 
+      // 5. Прочтение сообщений
+      else if (notifyType === 'messages_read' || notifyType === 'your_messages_read' || notifyType === 'mark_read') {
+          const readerId = data.reader_id || lastNotify.reader_id;
           if (notifyType === 'your_messages_read' || notifyType === 'mark_read' || (notifyType === 'messages_read' && readerId && Number(readerId) === Number(userId))) {
             setMessages(prev => prev.map(m => 
-              (m.sender_id && Number(m.sender_id) === Number(currentUserId)) ? { ...m, is_read: true } : m
+              (m.sender_id && Number(m.sender_id) === myIdNum) ? { ...m, is_read: true } : m
             ));
           }
-        } else if (notifyType === 'user_status' && lastNotify.data) {
-          const { user_id, status, last_seen } = lastNotify.data;
+      }
+      // 6. Статус пользователя
+      else if (notifyType === 'user_status') {
+          const { user_id, status, last_seen } = data;
           if (Number(user_id) === Number(userId)) {
             setInterlocutor(prev => prev ? { ...prev, status, last_seen } : null);
           }
-        }
-      });
-      
-      // Запоминаем последнее уведомление из списка как обработанное
-      lastProcessedNotificationRef.current = notifications[0];
-    }
+      }
+    });
+
+    lastProcessedNotificationRef.current = notifications[0];
   }, [notifications, userId, currentUserId]);
 
   // Добавляем слушатель состояния приложения, чтобы помечать прочитанным при возврате в активный чат
@@ -1129,6 +1135,24 @@ export default function ChatScreen({ route, navigation }) {
             mimeType: mainUpload.mimeType,
             ...mainUpload
           });
+          
+          // Добавляем подписку, чтобы вовремя убрать плейсхолдер
+          uploadManager.subscribe(mainUpload.upload_id, (progressData) => {
+            if (progressData.status === 'completed' || progressData.status === 'error' || progressData.status === 'cancelled') {
+              setActiveUploadId(null);
+              setUploadingProgress(null);
+              setUploadingData({ loaded: 0, total: 0, uri: null, mimeType: null });
+            } else if (progressData.status === 'uploading') {
+              setUploadingProgress(progressData.progress);
+              if (progressData.loaded !== undefined) {
+                setUploadingData(prev => ({ 
+                  ...prev, 
+                  loaded: progressData.loaded, 
+                  total: progressData.total 
+                }));
+              }
+            }
+          });
         }
       }).catch(err => console.log('[ChatScreen] Failed to check active uploads', err));
     };
@@ -1342,6 +1366,27 @@ export default function ChatScreen({ route, navigation }) {
         if (loaded !== undefined) setUploadingData(prev => ({ ...prev, loaded, total, ...extra }));
         
         if (status === 'completed') {
+          // Fallback: Обновляем сообщение в локальном стейте, если WS еще не прислал обновление
+          if (result && result.file_path) {
+            setMessages(prev => {
+              const uploadIdMatch = prev.findIndex(m => m.upload_id === activeUploadId);
+              const clientIdMatch = extra?.clientId ? prev.findIndex(m => m.client_id === extra.clientId) : -1;
+              const idx = uploadIdMatch !== -1 ? uploadIdMatch : clientIdMatch;
+              
+              if (idx !== -1) {
+                const newMsgs = [...prev];
+                newMsgs[idx] = { 
+                  ...newMsgs[idx], 
+                  ...result, 
+                  is_uploading: false, 
+                  upload_progress: undefined 
+                };
+                return newMsgs;
+              }
+              return prev;
+            });
+          }
+
           // Для одиночных голосовых сообщений отправляем здесь
           // Для медиа и документов теперь отправляем вручную в функциях загрузки
           // Если есть hasPlaceholder, значит бэкенд сам обновит сообщение
@@ -1425,9 +1470,6 @@ export default function ChatScreen({ route, navigation }) {
               userId,
               (uid) => { 
                 setActiveUploadId(uid);
-                try {
-                  sendMessageWs({ type: 'upload_started', receiver_id: userId, message_type: mt, upload_id: uid, client_id: clientId });
-                } catch (e) { console.warn('Failed to send upload_started WS', e); }
               },
               {}, // apiOptions
               { clientId, hasPlaceholder: true, type: mt, messageType: mt }
@@ -1443,7 +1485,8 @@ export default function ChatScreen({ route, navigation }) {
         }
 
         if (attachmentsLocal.length > 0) {
-          const msgData = attachmentsLocal.length === 1 
+          const isSingle = attachmentsLocal.length === 1;
+          const msgData = isSingle 
             ? {
                 receiver_id: userId,
                 file_path: attachmentsLocal[0].file_path,
@@ -1457,18 +1500,20 @@ export default function ChatScreen({ route, navigation }) {
                 client_id: clientId
               };
 
-          // Оптимистичное добавление
-          const optimisticMsg = {
-            ...msgData,
-            id: clientId,
-            sender_id: currentUserId,
-            timestamp: new Date().toISOString(),
-            is_read: false,
-            status: 'pending'
-          };
-          setMessages(prev => [optimisticMsg, ...prev]);
-
-          sendMessageWs(msgData);
+          // Для media_group нужно добавить оптимистичное сообщение и отправить финальное уведомление
+          if (!isSingle) {
+            const optimisticMsg = {
+              ...msgData,
+              id: clientId,
+              sender_id: currentUserId,
+              timestamp: new Date().toISOString(),
+              is_read: false,
+              status: 'pending'
+            };
+            setMessages(prev => [optimisticMsg, ...prev]);
+            sendMessageWs(msgData);
+          }
+          // Для одиночного медиа-файла бэкенд уже создал плейсхолдер и завершил сообщение сам.
         }
       }
     } catch (error) {
@@ -1483,7 +1528,7 @@ export default function ChatScreen({ route, navigation }) {
         setActiveUploadId(null);
         setBatchTotal(0);
         setAttachmentsLocalCount(0);
-      }, 1000);
+      }, 100);
     }
   };
 
@@ -1536,11 +1581,6 @@ export default function ChatScreen({ route, navigation }) {
               userId,
               (upload_id) => { 
                 setActiveUploadId(upload_id); 
-                try { 
-                  sendMessageWs({ type: 'upload_started', receiver_id: userId, message_type: mt, upload_id: upload_id, client_id: clientId }); 
-                } catch (e) { 
-                  console.warn('Failed to send upload_started WS', e); 
-                } 
               },
               {}, // apiOptions
               { clientId, hasPlaceholder: true, type: mt, messageType: mt }
@@ -1556,7 +1596,8 @@ export default function ChatScreen({ route, navigation }) {
         }
 
         if (attachmentsLocal.length > 0) {
-          const msgData = attachmentsLocal.length === 1 
+          const isSingle = attachmentsLocal.length === 1;
+          const msgData = isSingle 
             ? {
                 receiver_id: userId,
                 file_path: attachmentsLocal[0].file_path,
@@ -1570,18 +1611,20 @@ export default function ChatScreen({ route, navigation }) {
                 client_id: clientId
               };
 
-          // Оптимистичное добавление
-          const optimisticMsg = {
-            ...msgData,
-            id: clientId,
-            sender_id: currentUserId,
-            timestamp: new Date().toISOString(),
-            is_read: false,
-            status: 'pending'
-          };
-          setMessages(prev => [optimisticMsg, ...prev]);
-
-          sendMessageWs(msgData);
+          // Для media_group нужно добавить оптимистичное сообщение и отправить финальное уведомление
+          if (!isSingle) {
+            const optimisticMsg = {
+              ...msgData,
+              id: clientId,
+              sender_id: currentUserId,
+              timestamp: new Date().toISOString(),
+              is_read: false,
+              status: 'pending'
+            };
+            setMessages(prev => [optimisticMsg, ...prev]);
+            sendMessageWs(msgData);
+          }
+          // Для одиночного медиа-файла бэкенд уже создал плейсхолдер и завершил сообщение сам.
         }
       }
     } catch (error) {
@@ -1597,7 +1640,7 @@ export default function ChatScreen({ route, navigation }) {
         setAttachmentsLocalCount(0);
         setUploadingProgress(null);
         setActiveUploadId(null);
-      }, 1000);
+      }, 100);
     }
   };
 
@@ -1631,18 +1674,6 @@ export default function ChatScreen({ route, navigation }) {
         (id) => {
           currentUploadId = id;
           setActiveUploadId(id);
-          try { 
-            sendMessageWs({ 
-              type: 'upload_started', 
-              receiver_id: userId, 
-              message_type: 'video_note', 
-              upload_id: id, 
-              client_id: clientId,
-              duration: duration
-            }); 
-          } catch (e) { 
-            console.warn('Failed to send upload_started WS', e); 
-          }
         },
         {}, // apiOptions
         { clientId, hasPlaceholder: true, isVideoNote: true, type: 'video_note', messageType: 'video_note', duration }
@@ -1656,7 +1687,7 @@ export default function ChatScreen({ route, navigation }) {
         isVideoNoteUploadRef.current = false;
         setUploadingProgress(null);
         setActiveUploadId(null);
-      }, 1000);
+      }, 100);
     }
   };
 
@@ -1921,14 +1952,6 @@ export default function ChatScreen({ route, navigation }) {
     setRecordingDuration(0);
   };
 
-  const [videoNotePosition, setVideoNotePosition] = useState(0);
-  const [videoNoteDuration, setVideoNoteDuration] = useState(0);
-  const [videoNoteIsPlaying, setVideoNoteIsPlaying] = useState(false);
-  const videoNotePlayerRef = useRef(null);
-  const [videoNoteSliderWidth, setVideoNoteSliderWidth] = useState(320);
-  const [isVideoNoteSeeking, setIsVideoNoteSeeking] = useState(false);
-  const [videoNoteSeekingPosition, setVideoNoteSeekingPosition] = useState(null);
-  const videoNoteSubscriptions = useRef([]);
   const [isVideoRecordingTimer, setIsVideoRecordingTimer] = useState(0);
   const videoRecordingInterval = useRef(null);
 
@@ -1953,103 +1976,6 @@ export default function ChatScreen({ route, navigation }) {
     };
   }, [isVideoRecording]);
 
-  const cleanupVideoNoteSubscriptions = () => {
-    videoNoteSubscriptions.current.forEach(sub => {
-      if (sub && typeof sub.remove === 'function') sub.remove();
-    });
-    videoNoteSubscriptions.current = [];
-  };
-
-  const handleVideoNotePlayerReady = (player) => {
-    videoNotePlayerRef.current = player;
-    cleanupVideoNoteSubscriptions();
-    
-    if (player) {
-      try {
-        player.timeUpdateEventInterval = 0.1;
-      } catch (e) {}
-
-      setVideoNotePosition(player.currentTime || 0);
-      setVideoNoteDuration(player.duration || 0);
-      setVideoNoteIsPlaying(!!player.playing);
-
-      const subs = [];
-      if (typeof player.addListener === 'function') {
-        subs.push(player.addListener('timeUpdate', (payload) => {
-          if (isVideoNoteSeeking) return;
-          setVideoNotePosition(payload?.currentTime ?? player.currentTime ?? 0);
-        }));
-        subs.push(player.addListener('sourceLoad', (payload) => {
-          setVideoNoteDuration(payload?.duration ?? player.duration ?? 0);
-        }));
-        subs.push(player.addListener('playingChange', (payload) => {
-          setVideoNoteIsPlaying(!!payload?.isPlaying);
-        }));
-        subs.push(player.addListener('playToEnd', () => {
-          setVideoNoteIsPlaying(false);
-          try { player.currentTime = 0; } catch (e) {}
-        }));
-      }
-      videoNoteSubscriptions.current = subs;
-    }
-  };
-
-  const videoNotePanResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
-      onPanResponderGrant: (evt, gestureState) => {
-        setIsVideoNoteSeeking(true);
-        if (videoNotePlayerRef.current) {
-          try { videoNotePlayerRef.current.pause(); } catch (e) {}
-          setVideoNoteIsPlaying(false);
-        }
-        handleVideoNoteSeek(evt);
-      },
-      onPanResponderMove: (evt, gestureState) => {
-        handleVideoNoteSeek(evt);
-      },
-      onPanResponderRelease: () => {
-        setIsVideoNoteSeeking(false);
-        if (videoNotePlayerRef.current && videoNoteSeekingPosition !== null) {
-          videoNotePlayerRef.current.currentTime = videoNoteSeekingPosition;
-          setVideoNotePosition(videoNoteSeekingPosition);
-          setVideoNoteSeekingPosition(null);
-        }
-      },
-    })
-  ).current;
-
-  const handleVideoNoteSeek = (evt) => {
-    const { locationX } = evt.nativeEvent;
-    const ratio = Math.max(0, Math.min(1, locationX / videoNoteSliderWidth));
-    if (videoNoteDuration > 0) {
-      const nextTime = ratio * videoNoteDuration;
-      setVideoNoteSeekingPosition(nextTime);
-      if (videoNotePlayerRef.current) {
-        try { videoNotePlayerRef.current.currentTime = nextTime; } catch (e) {}
-      }
-    }
-  };
-
-  const handleVideoNoteModalClose = () => {
-    if (videoNotePlayerRef.current) {
-      videoNotePlayerRef.current.pause();
-    }
-    cleanupVideoNoteSubscriptions();
-    setIsVideoNoteModalVisible(false);
-    setActiveVideoNote(null);
-  };
-
-  const handleVideoNoteTogglePlay = () => {
-    if (videoNotePlayerRef.current) {
-      if (videoNoteIsPlaying) {
-        videoNotePlayerRef.current.pause();
-      } else {
-        videoNotePlayerRef.current.play();
-      }
-    }
-  };
 
   const formatRecordingTime = (millis) => {
     const totalSeconds = Math.floor(millis / 1000);
@@ -2076,18 +2002,6 @@ export default function ChatScreen({ route, navigation }) {
         userId,
         (upload_id) => {
           setActiveUploadId(upload_id);
-          try {
-            sendMessageWs({
-              type: 'upload_started',
-              receiver_id: userId,
-              message_type: 'voice',
-              upload_id: upload_id,
-              client_id: clientId,
-              duration: duration
-            });
-          } catch (e) {
-            console.warn('Failed to send upload_started WS', e);
-          }
         },
         {}, // apiOptions
         { clientId, hasPlaceholder: true, type: 'voice', messageType: 'voice', duration }
@@ -2109,171 +2023,61 @@ export default function ChatScreen({ route, navigation }) {
     if (uploadingProgress === null || !uploadingData.uri) return null;
 
     const progressPercent = Math.round(uploadingProgress * 100);
+    const progressText = (uploadingData.loaded !== undefined && uploadingData.total !== undefined && uploadingData.total > 0)
+        ? `${formatFileSize(uploadingData.loaded)} / ${formatFileSize(uploadingData.total)}`
+        : (progressPercent > 0 ? `${progressPercent}%` : '');
 
-    // Video note — renders like VideoNoteMessage inline (no messageBubble wrapper)
-    if (uploadingData.type === 'video_note') {
-      return (
-        <View style={[styles.messageWrapper, styles.sentWrapper, { opacity: 0.85, marginBottom: 10 }]}>
-          <View style={{ flexDirection: 'column', alignItems: 'flex-end' }}>
-          <View style={{ position: 'relative', width: 170, height: 170 }}>
-            {/* Circle matching VideoNoteMessage inline style */}
-            <View style={{
-              width: 170,
-              height: 170,
-              borderRadius: 85,
-              overflow: 'hidden',
-              backgroundColor: '#1a1a1a',
-              justifyContent: 'center',
-              alignItems: 'center',
-            }}>
-              {uploadingData.uri && (
-                <Image 
-                  source={{ uri: uploadingData.uri }} 
-                  style={StyleSheet.absoluteFill} 
-                  resizeMode="cover"
-                />
-              )}
-              <View style={{ ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'center', alignItems: 'center' }}>
-                <ActivityIndicator size="large" color="#4FC3F7" />
-                <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 13, marginTop: 8 }}>
-                  {progressPercent}%
-                </Text>
-              </View>
-            </View>
-            {/* Cancel button */}
-            <TouchableOpacity
-              style={{
-                position: 'absolute',
-                top: 8,
-                right: 8,
-                width: 30,
-                height: 30,
-                borderRadius: 15,
-                backgroundColor: 'rgba(0,0,0,0.6)',
-                borderWidth: 1,
-                borderColor: 'rgba(255,255,255,0.3)',
-                justifyContent: 'center',
-                alignItems: 'center',
-              }}
-              onPress={() => handleCancelUpload(activeUploadId)}
-            >
-              <MaterialIcons name="close" size={17} color="#fff" />
-            </TouchableOpacity>
-          </View>
-          <Text style={{ color: 'rgba(255,255,255,0.45)', fontSize: 10, alignSelf: 'flex-end', marginTop: 3 }}>
-            Отправка...
-          </Text>
-          </View>
-        </View>
-      );
+    // Определяем тип для плейсхолдера
+    let type = uploadingData.type || 'file';
+    // Если тип уже специфичный (например, video_note), не переопределяем его общим типом видео
+    if (type !== 'video_note') {
+        if (uploadingData.mimeType?.startsWith('image/')) type = 'image';
+        else if (uploadingData.mimeType?.startsWith('video/')) type = 'video';
+        else if (uploadingData.mimeType?.startsWith('audio/') || type === 'voice') type = 'voice';
     }
 
-    // Other types (image, file, voice…) — keep original messageBubble layout
+    const isMediaGroup = type === 'media_group';
+
+    const isVideoNote = type === 'video_note';
+
     return (
-      <View style={[
-        styles.messageWrapper,
-        styles.sentWrapper,
-        { opacity: 0.8, marginBottom: 10 }
-      ]}>
-        <View style={[styles.messageBubble, styles.sent, { backgroundColor: colors.primary }]}>
-          {uploadingData.mimeType?.startsWith('image/') ? (
-            <View>
-              <Image
-                source={{ uri: uploadingData.uri }}
-                style={{ width: 200, height: 150, borderRadius: 10 }}
-                resizeMode="cover"
-              />
-              <View style={{
-                ...StyleSheet.absoluteFillObject,
-                backgroundColor: 'rgba(0,0,0,0.3)',
-                justifyContent: 'center',
-                alignItems: 'center',
-                borderRadius: 10
-              }}>
-                <View style={{
-                  backgroundColor: 'rgba(0,0,0,0.5)',
-                  paddingHorizontal: 12,
-                  paddingVertical: 6,
-                  borderRadius: 15,
-                  flexDirection: 'row',
-                  alignItems: 'center'
-                }}>
-                  <ActivityIndicator size="small" color="#fff" style={{ marginRight: 8 }} />
-                  <Text style={{ color: '#fff', fontWeight: 'bold' }}>
-                    {uploadingData.loaded !== undefined && uploadingData.total !== undefined && uploadingData.total > 0
-                      ? `${formatFileSize(uploadingData.loaded)} / ${formatFileSize(uploadingData.total)}` 
-                      : `${progressPercent}%`}
-                  </Text>
-                </View>
-                <TouchableOpacity
-                  style={{
-                    position: 'absolute',
-                    top: 8,
-                    right: 8,
-                    width: 28,
-                    height: 28,
-                    borderRadius: 14,
-                    backgroundColor: 'rgba(0,0,0,0.6)',
-                    borderWidth: 1,
-                    borderColor: 'rgba(255,255,255,0.3)',
-                    justifyContent: 'center',
-                    alignItems: 'center',
-                  }}
-                  onPress={() => handleCancelUpload(activeUploadId)}
-                >
-                  <MaterialIcons name="close" size={16} color="#fff" />
-                </TouchableOpacity>
-              </View>
+      <View style={[styles.messageWrapper, styles.sentWrapper, { marginBottom: 10 }]}>
+        <View style={[
+            styles.messageBubble, 
+            styles.sent, 
+            { 
+                backgroundColor: isVideoNote ? 'transparent' : colors.primary, 
+                padding: isVideoNote ? 0 : 4,
+                alignItems: isVideoNote ? 'center' : 'stretch'
+            }
+        ]}> 
+          {/* Рендерим плейсхолдеры для медиа в процессе загрузки */}
+          {isMediaGroup && uploadingData.attachments && uploadingData.attachments.map((att, idx) => (
+            <View key={`upload_att_${idx}`} style={{ marginBottom: 4 }}>
+              {renderMediaPlaceholder(att.type, false, att.file_path || att.uri)}
             </View>
-          ) : uploadingData.mimeType?.startsWith('video/') ? (
-            <VideoUploadPlaceholder
-              progressPercent={progressPercent}
-              activeUploadId={activeUploadId}
-              uri={uploadingData.uri}
-              loaded={uploadingData.loaded}
-              total={uploadingData.total}
-              onCancel={handleCancelUpload}
-            />
-          ) : (
-            <View style={{ padding: 10 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
-                <MaterialIcons 
-                  name={uploadingData.mimeType?.startsWith('audio/') ? "mic" : "insert-drive-file"} 
-                  size={24} 
-                  color="#fff" 
-                />
-                <Text style={{ color: '#fff', marginLeft: 10, fontWeight: '500', flex: 1 }}>
-                  {progressPercent >= 100 ? "Обработка..." : (uploadingData.type === 'voice' || (uploadingData.mimeType || '').startsWith('audio/') ? "Голосовое сообщение" : "Загрузка файла...")}
-                </Text>
-                <TouchableOpacity
-                  style={{
-                    width: 26,
-                    height: 26,
-                    borderRadius: 13,
-                    backgroundColor: 'rgba(0,0,0,0.4)',
-                    borderWidth: 1,
-                    borderColor: 'rgba(255,255,255,0.3)',
-                    justifyContent: 'center',
-                    alignItems: 'center',
-                    marginLeft: 8,
-                  }}
-                  onPress={() => handleCancelUpload(activeUploadId)}
-                >
-                  <MaterialIcons name="close" size={15} color="#fff" />
-                </TouchableOpacity>
-              </View>
-              <View style={{ height: 4, backgroundColor: 'rgba(255,255,255,0.3)', borderRadius: 2, overflow: 'hidden', width: 150 }}>
-                <View style={{ height: '100%', backgroundColor: '#fff', width: `${progressPercent}%` }} />
-              </View>
-              <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 10, marginTop: 4, textAlign: 'right' }}>
-                {uploadingData.loaded !== undefined && uploadingData.total !== undefined && uploadingData.total > 0
-                  ? `${formatFileSize(uploadingData.loaded)} / ${formatFileSize(uploadingData.total)}` 
-                  : `${progressPercent}%`}
-              </Text>
-            </View>
-          )}
-          <View style={styles.messageFooter}>
-            <Text style={[styles.messageTime, { color: 'rgba(255,255,255,0.9)' }]}>Отправка...</Text>
+          ))}
+          {!isMediaGroup && renderMediaPlaceholder(type, false, uploadingData.uri)}
+          
+          <View style={{ 
+              flexDirection: 'row', 
+              alignItems: 'center', 
+              padding: 8,
+              backgroundColor: isVideoNote ? 'rgba(0,0,0,0.5)' : 'transparent',
+              borderRadius: isVideoNote ? 20 : 0,
+              marginTop: isVideoNote ? -40 : 0,
+              marginBottom: isVideoNote ? 10 : 0
+          }}>
+            <ActivityIndicator size="small" color="#fff" />
+            <Text style={[styles.messageText, { color: '#fff', marginLeft: 8, fontSize: 12 }]}>
+              {progressPercent >= 100 ? "Обработка..." : (isVideoNote ? (progressPercent > 0 ? `${progressPercent}%` : "Загрузка...") : "Загрузка... " + progressText)}
+            </Text>
+            <TouchableOpacity 
+              onPress={() => handleCancelUpload(activeUploadId)}
+              style={{ marginLeft: 10 }}
+            >
+              <MaterialIcons name="close" size={18} color="#fff" />
+            </TouchableOpacity>
           </View>
         </View>
       </View>
@@ -2310,12 +2114,93 @@ export default function ChatScreen({ route, navigation }) {
     );
   };
 
+  const renderMediaPlaceholder = (type, isReceived, uri = null) => {
+    let iconName = 'insert-drive-file';
+    let label = 'Файл';
+    
+    if (type === 'image') { iconName = 'image'; label = 'Фотография'; }
+    else if (type === 'video') { iconName = 'videocam'; label = 'Видео'; }
+    else if (type === 'voice' || type === 'audio') { iconName = 'mic'; label = 'Голосовое сообщение'; }
+    else if (type === 'video_note') { iconName = 'play-circle-outline'; label = 'Видео-сообщение'; }
+    
+    const isVisual = type === 'image' || type === 'video' || type === 'video_note';
+    const isVideoNote = type === 'video_note';
+
+    if (isVisual) {
+        return (
+            <View style={{
+                width: isVideoNote ? 160 : 200,
+                height: isVideoNote ? 160 : 150,
+                borderRadius: isVideoNote ? 80 : 12,
+                backgroundColor: isReceived ? colors.border + '44' : 'rgba(255,255,255,0.1)',
+                justifyContent: 'center',
+                alignItems: 'center',
+                overflow: 'hidden',
+                margin: 4,
+                borderWidth: 1,
+                borderColor: isReceived ? colors.border : 'rgba(255,255,255,0.2)'
+            }}>
+                {uri ? (
+                    <Image 
+                        source={{ uri }} 
+                        style={StyleSheet.absoluteFill} 
+                        resizeMode="cover"
+                    />
+                ) : (
+                    <View style={{ position: 'absolute', opacity: 0.2 }}>
+                         <MaterialIcons name={iconName} size={isVideoNote ? 100 : 80} color={isReceived ? colors.textSecondary : '#fff'} />
+                    </View>
+                )}
+                {!isVideoNote && (
+                    <View style={{
+                        backgroundColor: 'rgba(0,0,0,0.4)',
+                        paddingHorizontal: 10,
+                        paddingVertical: 5,
+                        borderRadius: 15,
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        borderWidth: 1,
+                        borderColor: 'rgba(255,255,255,0.2)'
+                    }}>
+                        <MaterialIcons name={iconName} size={16} color="#fff" />
+                        <Text style={{ color: '#fff', fontSize: 11, marginLeft: 4, fontWeight: '500' }}>{label}</Text>
+                    </View>
+                )}
+            </View>
+        );
+    }
+
+    return (
+      <View style={{ 
+          backgroundColor: isReceived ? colors.border + '44' : 'rgba(255,255,255,0.1)',
+          flexDirection: 'row',
+          alignItems: 'center',
+          padding: 12,
+          borderRadius: 12,
+          minWidth: 150,
+          margin: 4
+      }}>
+        <MaterialIcons name={iconName} size={24} color={isReceived ? colors.textSecondary : 'rgba(255,255,255,0.7)'} />
+        <Text style={{ 
+          color: isReceived ? colors.textSecondary : 'rgba(255,255,255,0.7)',
+          marginLeft: 8,
+          fontSize: 14
+        }}>
+          {label}
+        </Text>
+      </View>
+    );
+  };
+
   const renderMessageItem = ({ item, index }) => {
     const isImage = item.message_type === 'image';
     const isVideo = item.message_type === 'video';
     const isVoice = item.message_type === 'voice';
+    const isAudio = item.message_type === 'audio';
     const isVideoNote = item.message_type === 'video_note';
     const isFile = item.message_type === 'file';
+    const isMediaGroup = item.message_type === 'media_group';
+    const isMedia = isImage || isVideo || isVoice || isAudio || isVideoNote || isMediaGroup || isFile;
     const isReceived = Number(item.sender_id) === Number(userId);
     const isOwner = Number(item.sender_id) === Number(currentUserId);
     const isSelected = selectedIds.includes(item.id);
@@ -2330,17 +2215,35 @@ export default function ChatScreen({ route, navigation }) {
         ? `${formatFileSize(item.upload_offset)} / ${formatFileSize(item.upload_total)}`
         : (progressPercent > 0 ? `${progressPercent}%` : '');
 
-      const isMediaGroup = item.message_type === 'media_group';
-      const isMedia = isImage || isVideo || isVoice || isVideoNote || isMediaGroup;
-
       return (
         <View style={[styles.messageWrapper, isReceived ? styles.receivedWrapper : styles.sentWrapper]}>
-          <View style={[styles.messageBubble, isReceived ? styles.receivedBubble : styles.sentBubble]}> 
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <ActivityIndicator size="small" color={isReceived ? colors.text : '#fff'} />
-              <Text style={[styles.messageText, isReceived ? { color: colors.text } : { color: '#fff' }, { marginLeft: 8 }]}>
-                {progressPercent >= 100 ? "Обработка..." : (!isReceived && isMedia ? "" : "Загрузка файла... ")}
-                {progressPercent < 100 ? progressText : ""}
+          <View style={[
+            styles.messageBubble, 
+            isReceived 
+              ? [styles.received, { backgroundColor: isVideoNote ? 'transparent' : colors.surface }] 
+              : [styles.sent, { backgroundColor: isVideoNote ? 'transparent' : colors.primary }],
+            { padding: isVideoNote ? 0 : 4, alignItems: isVideoNote ? 'center' : 'stretch' }
+          ]}> 
+            {/* Рендерим плейсхолдеры для медиа в процессе загрузки */}
+            {isMediaGroup && item.attachments && item.attachments.map((att, idx) => (
+              <View key={`upload_att_${idx}`} style={{ marginBottom: 4 }}>
+                {renderMediaPlaceholder(att.type, isReceived, att.file_path || (isOwner ? uploadingData.uri : null))}
+              </View>
+            ))}
+            {!isMediaGroup && isMedia && renderMediaPlaceholder(item.message_type, isReceived, item.file_path || (isOwner ? uploadingData.uri : null))}
+            
+            <View style={{ 
+                flexDirection: 'row', 
+                alignItems: 'center', 
+                padding: 8,
+                backgroundColor: isVideoNote ? 'rgba(0,0,0,0.5)' : 'transparent',
+                borderRadius: isVideoNote ? 20 : 0,
+                marginTop: isVideoNote ? -40 : 0,
+                marginBottom: isVideoNote ? 10 : 0
+            }}>
+              <ActivityIndicator size="small" color={isReceived && !isVideoNote ? colors.text : '#fff'} />
+              <Text style={[styles.messageText, (isReceived && !isVideoNote) ? { color: colors.text } : { color: '#fff' }, { marginLeft: 8, fontSize: 12 }]}>
+                {progressPercent >= 100 ? "Обработка..." : (isVideoNote ? (progressPercent > 0 ? `${progressPercent}%` : "Загрузка...") : "Загрузка... " + progressText)}
               </Text>
             </View>
           </View>
@@ -2365,36 +2268,6 @@ export default function ChatScreen({ route, navigation }) {
       openFullScreen(uri, type);
     };
 
-    const toggleSelection = (id) => {
-      setSelectedIds(prev => 
-        prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
-      );
-    };
-
-    const handleLongPress = () => {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      if (!selectionMode) {
-        setSelectionMode(true);
-        setSelectedIds([item.id]);
-      }
-    };
-
-    const handlePress = () => {
-      if (selectionMode) {
-        toggleSelection(item.id);
-      }
-    };
-
-    const handleVideoNotePress = (item) => {
-      const uri = item?.file_path || item?.video_url || item?.uri;
-      if (uri) {
-        const fullUri = uri.startsWith('http') ? uri : `${API_BASE_URL}${uri.startsWith('/') ? '' : '/'}${uri}`;
-        setActiveVideoNote(fullUri);
-        setVideoNoteIsPlaying(true);
-        setIsVideoNoteModalVisible(true);
-      }
-    };
-
     const renderLeftActions = (progress, dragX) => {
       const scale = dragX.interpolate({
         inputRange: [0, 50, 80],
@@ -2412,6 +2285,20 @@ export default function ChatScreen({ route, navigation }) {
 
     const isCurrentSearchResult = globalSearchResults[currentGlobalSearchIdx]?.id === item.id;
     const isReplyHighlighted = replyHighlightId === item.id;
+
+    const handlePress = () => {
+      if (selectionMode) {
+        toggleSelection(item.id);
+      }
+    };
+
+    const handleLongPress = () => {
+      if (!selectionMode) {
+        setSelectionMode(true);
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      }
+      toggleSelection(item.id);
+    };
 
     return (
       <Swipeable
@@ -2498,11 +2385,11 @@ export default function ChatScreen({ route, navigation }) {
             <View style={styles.mediaGridContainer}>
               <View style={styles.mediaGrid}>
                 {item.attachments.map((att, idx) => {
-                  if (!att.file_path || att.type === 'video_note') return null;
-                  const attUri = att.file_path.startsWith('http') ? att.file_path : `${API_BASE_URL}${att.file_path}`;
+                  if (att.type === 'video_note') return null;
+                  const attUri = att.file_path ? (att.file_path.startsWith('http') ? att.file_path : `${API_BASE_URL}${att.file_path}`) : null;
                   
                   // Расчет размеров для сетки
-                  const count = item.attachments.length;
+                  const count = item.attachments.filter(a => a.type !== 'video_note').length;
                   let itemWidth = '100%';
                   let itemHeight = 200;
                   
@@ -2522,6 +2409,14 @@ export default function ChatScreen({ route, navigation }) {
                     itemHeight = 100;
                   }
 
+                  if (!attUri) {
+                    return (
+                      <View key={`${item.id}_att_${idx}`} style={{ width: itemWidth, height: itemHeight, marginBottom: 4 }}>
+                        {renderMediaPlaceholder(att.type, isReceived, att.file_path)}
+                      </View>
+                    );
+                  }
+
                   return (
                     <Pressable 
                       key={`${item.id}_att_${idx}`}
@@ -2538,8 +2433,9 @@ export default function ChatScreen({ route, navigation }) {
                         item={{ ...att, message_type: att.type }} 
                         style={{ width: '100%', height: '100%' }}
                         onFullScreen={() => handleFullScreen(attUri, att.type)}
-                        shouldPlay={viewableItems.includes(item.id)}
+                        shouldPlay={false}
                         isStatic={true}
+                        isParentVisible={viewableItems.includes(String(item.id || item.client_id))}
                       />
                     </Pressable>
                   );
@@ -2548,30 +2444,37 @@ export default function ChatScreen({ route, navigation }) {
             </View>
           ) : (
             (isImage || isVideo) && (
-              <View style={{ borderRadius: 12, overflow: 'hidden' }}>
-                <CachedMedia 
-                  item={item} 
-                  onFullScreen={handleFullScreen} 
-                  style={{ borderRadius: 12, overflow: 'hidden' }}
-                  shouldPlay={viewableItems.includes(item.id)}
-                  isStatic={true}
-                />
-              </View>
+              item.file_path || item.uri ? (
+                <View style={{ borderRadius: 12, overflow: 'hidden' }}>
+                  <CachedMedia 
+                    item={item} 
+                    onFullScreen={handleFullScreen} 
+                    style={{ borderRadius: 12, overflow: 'hidden' }}
+                    shouldPlay={false}
+                    isStatic={true}
+                    isParentVisible={viewableItems.includes(String(item.id || item.client_id))}
+                  />
+                </View>
+              ) : renderMediaPlaceholder(item.message_type, isReceived, item.file_path)
             )
           )}
           {isVoice && (
-            <VoiceMessage 
-              item={item} 
-              currentUserId={currentUserId} 
-              isParentVisible={viewableItems.includes(item.id)}
-            />
+            item.file_path || item.uri ? (
+              <VoiceMessage 
+                item={item} 
+                currentUserId={currentUserId} 
+                isParentVisible={viewableItems.includes(String(item.id || item.client_id))}
+              />
+            ) : renderMediaPlaceholder(item.message_type, isReceived, item.file_path)
           )}
           {isVideoNote && (
-            <VideoNoteMessage 
-              item={item} 
-              isReceived={isReceived} 
-              isParentVisible={viewableItems.includes(item.id)}
-            />
+            item.file_path || item.video_url || item.uri ? (
+              <VideoNoteMessage 
+                item={item} 
+                isReceived={isReceived} 
+                isParentVisible={viewableItems.includes(String(item.id || item.client_id))}
+              />
+            ) : renderMediaPlaceholder(item.message_type, isReceived, item.file_path)
           )}
           {item.attachments && item.attachments.some(att => att.type === 'video_note') && !isVideoNote && (
             item.attachments.filter(att => att.type === 'video_note').map((att, idx) => (
@@ -2579,7 +2482,7 @@ export default function ChatScreen({ route, navigation }) {
                 key={`att_vn_${idx}`}
                 item={att} 
                 isReceived={isReceived} 
-                isParentVisible={viewableItems.includes(item.id)}
+                isParentVisible={viewableItems.includes(String(item.id || item.client_id))}
               />
             ))
           )}
@@ -2795,7 +2698,9 @@ export default function ChatScreen({ route, navigation }) {
               </View>
               <View>
                 <Text style={[styles.headerTitle, { color: colors.text }]}>{formatName(interlocutor) || userName}</Text>
-                {interlocutor && (
+                {isPartnerTyping ? (
+                  <Text style={[styles.headerStatus, { color: colors.primary, fontWeight: 'bold' }]}>печатает...</Text>
+                ) : interlocutor && (
                   <Text style={[styles.headerStatus, { color: colors.textSecondary }]}>
                     {formatStatus(interlocutor.status, interlocutor.last_seen)}
                   </Text>
@@ -2835,7 +2740,20 @@ export default function ChatScreen({ route, navigation }) {
       <FlatList
         ref={chatFlatListRef}
         data={messages}
-        extraData={[messages.length, currentUserId, selectedIds.length, theme, userId, viewableItems, uploadingProgress, uploadingData, activeUploadId]}
+        extraData={[
+          messages, 
+          messages.length, 
+          currentUserId, 
+          selectedIds, 
+          selectedIds.length, 
+          theme, 
+          userId, 
+          viewableItems, 
+          uploadingProgress, 
+          uploadingData, 
+          activeUploadId, 
+          token
+        ]}
         keyExtractor={(item) => `msg_${item.id !== undefined && item.id !== null ? String(item.id) : (item.client_id || Math.random())}`}
         renderItem={renderMessageItem}
         onEndReached={loadMoreMessages}
@@ -2934,6 +2852,7 @@ export default function ChatScreen({ route, navigation }) {
                   shouldPlay={currentMediaIndex === index}
                   isMuted={false}
                   isStatic={index !== currentMediaIndex}
+                  isParentVisible={true}
                   onPlayerReady={(player) => {
                     fullScreenPlayersByIndex.current.set(index, player);
                     if (index === currentMediaIndex) {
@@ -3033,86 +2952,6 @@ export default function ChatScreen({ route, navigation }) {
         </View>
       </Modal>
 
-      <Modal
-        visible={isVideoNoteModalVisible}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={handleVideoNoteModalClose}
-      >
-        <Pressable 
-          style={styles.videoNoteModalOverlay} 
-          onPress={handleVideoNoteModalClose}
-        >
-          <View style={styles.videoNoteModalContent}>
-            <View 
-              style={styles.videoNoteSliderContainer}
-              onLayout={(e) => setVideoNoteSliderWidth(e.nativeEvent.layout.width || 320)}
-              {...videoNotePanResponder.panHandlers}
-            >
-              <View style={styles.videoNoteModalCircle}>
-                {activeVideoNote && (
-                  <VideoPlayer
-                    uri={activeVideoNote}
-                    style={styles.videoNoteModalVideo}
-                    onClose={handleVideoNoteModalClose}
-                    hideControls={true}
-                    shouldPlay={videoNoteIsPlaying}
-                    isLooping={false}
-                    onPlayerReady={handleVideoNotePlayerReady}
-                  />
-                )}
-                {/* Круговой прогресс */}
-                <View style={styles.videoNoteProgressRing}>
-                   {/* В реальном приложении здесь лучше использовать react-native-svg 
-                       Для имитации кольцевого прогресса без SVG, мы используем 
-                       слайдер снизу и круглую рамку.
-                   */}
-                </View>
-              </View>
-
-              {/* Линейный прогресс под кругом (как альтернатива или дополнение для удобства перемотки) */}
-              <View style={styles.videoNoteProgressBar}>
-                <View style={[
-                  styles.videoNoteProgressFill,
-                  { 
-                    width: `${videoNoteDuration > 0 
-                      ? (((isVideoNoteSeeking ? videoNoteSeekingPosition : videoNotePosition) / videoNoteDuration) * 100).toFixed(2) 
-                      : 0}%` 
-                  }
-                ]} />
-              </View>
-            </View>
-
-            <View style={styles.videoNoteControlsRow}>
-              <Text style={styles.videoNoteTimeText}>
-                {formatMediaTime(isVideoNoteSeeking ? videoNoteSeekingPosition : videoNotePosition)}
-              </Text>
-              
-              <TouchableOpacity 
-                style={styles.videoNotePlayPauseBtn} 
-                onPress={handleVideoNoteTogglePlay}
-              >
-                <MaterialIcons 
-                  name={videoNoteIsPlaying ? "pause" : "play-arrow"} 
-                  size={32} 
-                  color="#fff" 
-                />
-              </TouchableOpacity>
-
-              <Text style={styles.videoNoteTimeText}>
-                {formatMediaTime(videoNoteDuration)}
-              </Text>
-            </View>
-
-            <TouchableOpacity 
-              style={styles.videoNoteModalClose} 
-              onPress={handleVideoNoteModalClose}
-            >
-              <MaterialIcons name="close" size={30} color="#fff" />
-            </TouchableOpacity>
-          </View>
-        </Pressable>
-      </Modal>
 
       {!selectionMode && (
         <View style={[

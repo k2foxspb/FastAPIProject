@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { Vibration, AppState, Alert } from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
 import Constants from 'expo-constants';
@@ -86,6 +86,7 @@ export const NotificationProvider = ({ children }) => {
   const chatWsShouldReconnect = useRef(true);
   const chatWsLastToken = useRef(null);
   const chatWsHeartbeatInterval = useRef(null);
+  const [typingUsers, setTypingUsers] = useState({});
 
   useEffect(() => {
     activeChatIdRef.current = activeChatId;
@@ -175,9 +176,12 @@ export const NotificationProvider = ({ children }) => {
     });
 
     setNotifications(prev => {
-      if (prev.some(n => n.type === 'new_message' && (
-        (message.id && String(n.data?.id) === String(message.id)) || 
-        (isFromMe && message.client_id && n.data?.client_id === message.client_id)
+      const isFromMe = Number(message.sender_id) === Number(currentUserIdRef.current);
+      const msgType = wrappedNotification.type || wrappedNotification.msg_type;
+      
+      if (prev.some(n => (n.type === msgType || n.msg_type === msgType) && (
+        (message.id && n.data && String(n.data.id) === String(message.id)) || 
+        (isFromMe && message.client_id && n.data && n.data.client_id === message.client_id)
       ))) {
         return prev;
       }
@@ -328,13 +332,19 @@ export const NotificationProvider = ({ children }) => {
           } else if (msgType === 'new_message' && payload.data) {
             console.log(`[NotificationContext] Received new_message via Chat WS: id=${payload.data.id}, client_id=${payload.data.client_id}`);
             handleNewMessage(payload.data, payload);
+          } else if (msgType === 'typing') {
+            console.log(`[NotificationContext] User ${payload.user_id} typing: ${payload.is_typing}`);
+            setTypingUsers(prev => ({
+              ...prev,
+              [payload.user_id]: payload.is_typing ? Date.now() : 0
+            }));
           } else if (msgType === 'upload_progress' && payload.data) {
             // Прокидываем событие дальше, чтобы экраны могли обновить прогресс
             setNotifications(prev => [payload, ...prev]);
           } else if (msgType === 'message_updated' && payload.data) {
             // Прокидываем событие обновления сообщения
-            setNotifications(prev => [payload, ...prev]);
-            console.log(`[NotificationContext] Received new_message via Chat WS: id=${payload.data.id}, client_id=${payload.data.client_id}`);
+            // Мы вызываем handleNewMessage, который внутри добавит уведомление в список notifications
+            console.log(`[NotificationContext] Received message_updated via Chat WS: id=${payload.data.id}, client_id=${payload.data.client_id}`);
             handleNewMessage(payload.data, payload);
           } else if (msgType === 'message_deleted') {
             setNotifications(prev => [payload, ...prev]);
@@ -832,6 +842,18 @@ export const NotificationProvider = ({ children }) => {
     }
   }, [isConnected, fetchDialogs, fetchFriendRequestsCount]);
 
+  const sendTypingStatus = useCallback((otherUserId, isTyping) => {
+    if (chatWs.current && chatWs.current.readyState === WebSocket.OPEN) {
+      chatWs.current.send(JSON.stringify({
+        type: 'typing',
+        other_user_id: otherUserId,
+        is_typing: isTyping
+      }));
+      return true;
+    }
+    return false;
+  }, []);
+
   const getCachedHistory = useCallback(async (otherUserId) => {
     const myId = currentUserIdRef.current;
     if (!myId || !otherUserId) return [];
@@ -845,37 +867,72 @@ export const NotificationProvider = ({ children }) => {
     }
   }, []);
 
+  const contextValue = useMemo(() => ({ 
+    notifications, 
+    dialogs, 
+    unreadTotal, 
+    friendRequestsCount,
+    fetchDialogs, 
+    fetchFriendRequestsCount,
+    isConnected, 
+    isChatConnected,
+    connect, 
+    disconnect,
+    injectExternalNotification,
+    sendMessage,
+    getHistoryWs,
+    onHistoryReceived,
+    onSearchResultsReceived,
+    searchMessagesWs,
+    markAsReadWs,
+    deleteMessageWs,
+    bulkDeleteMessagesWs,
+    currentUser,
+    loadUser,
+    loadingUser,
+    currentUserId,
+    activeChatId,
+    setActiveChatId,
+    clearUnread,
+    userStatuses,
+    getCachedHistory,
+    typingUsers,
+    sendTypingStatus
+  }), [
+    notifications, 
+    dialogs, 
+    unreadTotal, 
+    friendRequestsCount,
+    fetchDialogs, 
+    fetchFriendRequestsCount,
+    isConnected, 
+    isChatConnected,
+    connect, 
+    disconnect,
+    injectExternalNotification,
+    sendMessage,
+    getHistoryWs,
+    onHistoryReceived,
+    onSearchResultsReceived,
+    searchMessagesWs,
+    markAsReadWs,
+    deleteMessageWs,
+    bulkDeleteMessagesWs,
+    currentUser,
+    loadUser,
+    loadingUser,
+    currentUserId,
+    activeChatId,
+    setActiveChatId,
+    clearUnread,
+    userStatuses,
+    getCachedHistory,
+    typingUsers,
+    sendTypingStatus
+  ]);
+
   return (
-    <NotificationContext.Provider value={{ 
-      notifications, 
-      dialogs, 
-      unreadTotal, 
-      friendRequestsCount,
-      fetchDialogs, 
-      fetchFriendRequestsCount,
-      isConnected, 
-      isChatConnected,
-      connect, 
-      disconnect,
-      injectExternalNotification,
-      sendMessage,
-      getHistoryWs,
-      onHistoryReceived,
-      onSearchResultsReceived,
-      searchMessagesWs,
-      markAsReadWs,
-      deleteMessageWs,
-      bulkDeleteMessagesWs,
-      currentUser,
-      loadUser,
-      loadingUser,
-      currentUserId,
-      activeChatId,
-      setActiveChatId,
-      clearUnread,
-      userStatuses,
-      getCachedHistory
-    }}>
+    <NotificationContext.Provider value={contextValue}>
       {children}
     </NotificationContext.Provider>
   );

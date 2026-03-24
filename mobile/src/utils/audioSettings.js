@@ -1,56 +1,74 @@
 import { setAudioModeAsync } from 'expo-audio';
 
+let currentMode = null;
+let modePromise = null;
+
+const setAudioModeSafely = async (mode, settings) => {
+  if (currentMode === mode) return;
+  
+  // Wait for existing promise if any
+  if (modePromise) {
+    try {
+      await modePromise;
+    } catch (e) {}
+  }
+  
+  if (currentMode === mode) return;
+
+  modePromise = (async () => {
+    console.log(`[AudioSettings] Transitioning to ${mode} mode...`);
+    try {
+      await setAudioModeAsync(settings);
+      currentMode = mode;
+      console.log(`[AudioSettings] Successfully set ${mode} mode`);
+    } catch (e) {
+      console.log(`[AudioSettings] Error setting ${mode} mode:`, e);
+      throw e;
+    } finally {
+      modePromise = null;
+    }
+  })();
+
+  return modePromise;
+};
+
 /**
  * Устанавливает режим аудио для воспроизведения медиа.
  * Включает прерывание звука из других приложений (они встают на паузу).
  */
 export const setPlaybackAudioMode = async () => {
-  try {
-    await setAudioModeAsync({
-      allowsRecording: false,
-      playsInSilentMode: true,
-      interruptionMode: 'doNotMix',
-      shouldPlayInBackground: false,
-      shouldRouteThroughEarpiece: false,
-    });
-  } catch (e) {
-    console.log('[AudioSettings] Error setting playback mode:', e);
-  }
+  await setAudioModeSafely('playback', {
+    allowsRecording: false,
+    playsInSilentMode: true,
+    interruptionMode: 'doNotMix',
+    shouldPlayInBackground: false,
+    shouldRouteThroughEarpiece: false,
+  });
 };
 
 /**
  * Устанавливает режим аудио для записи голосовых сообщений.
  */
 export const setRecordingAudioMode = async () => {
-  try {
-    await setAudioModeAsync({
-      allowsRecording: true,
-      playsInSilentMode: true,
-      interruptionMode: 'doNotMix',
-      shouldPlayInBackground: false,
-      shouldRouteThroughEarpiece: false,
-      allowsBackgroundRecording: false,
-    });
-  } catch (e) {
-    console.log('[AudioSettings] Error setting recording mode:', e);
-  }
+  await setAudioModeSafely('recording', {
+    allowsRecording: true,
+    playsInSilentMode: true,
+    interruptionMode: 'doNotMix',
+    shouldPlayInBackground: false,
+    shouldRouteThroughEarpiece: false,
+    allowsBackgroundRecording: false,
+  });
 };
 
 /**
  * Устанавливает режим аудио для коротких уведомлений.
- * Другие приложения приглушаются (ducking), но не останавливаются полностью.
  */
 export const setNotificationAudioMode = async () => {
-  try {
-    await setAudioModeAsync({
-      allowsRecording: false,
-      playsInSilentMode: true,
-      // Important: don't lower other apps
-      interruptionMode: 'mixWithOthers',
-      shouldPlayInBackground: false,
-      shouldRouteThroughEarpiece: false,
-    });
-  } catch (e) {
-    console.log('[AudioSettings] Error setting notification mode:', e);
-  }
+  await setAudioModeSafely('notification', {
+    allowsRecording: false,
+    playsInSilentMode: true,
+    interruptionMode: 'mixWithOthers',
+    shouldPlayInBackground: false,
+    shouldRouteThroughEarpiece: false,
+  });
 };

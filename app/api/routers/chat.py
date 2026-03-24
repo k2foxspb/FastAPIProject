@@ -66,7 +66,8 @@ class ChatManager:
             
             if user_id in self.active_connections and not self.active_connections[user_id]:
                 del self.active_connections[user_id]
-        # Skip logging if not connected to avoid log spamming during background uploads
+        else:
+            logger.debug(f"ChatManager: User {user_id} NOT found in active connections.")
 
 manager = ChatManager()
 
@@ -255,6 +256,17 @@ async def websocket_chat_endpoint(
                         }, user_id),
                         return_exceptions=True
                     )
+                continue
+
+            if msg_type == "typing":
+                other_user_id = message_data.get("other_user_id")
+                is_typing = message_data.get("is_typing", True)
+                if other_user_id:
+                    await manager.send_personal_message({
+                        "type": "typing",
+                        "user_id": user_id,
+                        "is_typing": is_typing
+                    }, int(other_user_id))
                 continue
 
             if msg_type == "delete_message":
@@ -625,20 +637,16 @@ async def websocket_chat_endpoint(
                 
                 logger.debug(f"Saving message: type={message_type}, sender={user_id}, receiver={receiver_id}")
                 
-                # Ищем placeholder, если есть client_id
+                # Ищем placeholder или уже созданное сообщение, если есть client_id
                 existing_msg = None
                 if client_id:
-                    # Ищем любые сообщения с этим client_id, которые являются плейсхолдерами (is_uploading или имеют upload_id)
-                    # Ограничиваем временем (24 часа), чтобы не задеть старые сообщения при повторе client_id
+                    # Ищем любые сообщения с этим client_id за последние 24 часа.
+                    # Это позволяет избежать дубликатов, если сообщение уже было создано через init_upload/upload_chunk.
                     time_limit = datetime.utcnow() - timedelta(hours=24)
                     res_existing = await db.execute(
                         select(ChatMessage).where(
                             ChatMessage.client_id == client_id,
                             ChatMessage.sender_id == user_id,
-                            or_(
-                                ChatMessage.is_uploading == True,
-                                ChatMessage.upload_id.isnot(None)
-                            ),
                             ChatMessage.timestamp >= time_limit
                         )
                     )
@@ -950,7 +958,8 @@ async def get_chat_history(
         return []
 
     result = await db.execute(
-        select(ChatMessage)
+        select(ChatMessage, FileUploadSession.offset.label("upload_offset"), FileUploadSession.file_size.label("upload_total"))
+        .outerjoin(FileUploadSession, ChatMessage.upload_id == FileUploadSession.id)
         .options(joinedload(ChatMessage.reply_to).joinedload(ChatMessage.sender))
         .where(
             or_(
@@ -969,11 +978,12 @@ async def get_chat_history(
         .offset(skip)
         .limit(limit)
     )
-    db_messages = result.scalars().all()
+    db_rows = result.all()
 
     # Преобразуем в словари и добавим attachments для media_group
     messages = []
-    for m in db_messages:
+    for row in db_rows:
+        m = row.ChatMessage
         item = {
             "id": m.id,
             "sender_id": m.sender_id,
@@ -988,6 +998,9 @@ async def get_chat_history(
             "reply_to_id": m.reply_to_id,
             "is_uploading": getattr(m, 'is_uploading', False),
             "upload_id": getattr(m, 'upload_id', None),
+            "upload_offset": row.upload_offset,
+            "upload_total": row.upload_total,
+            "upload_progress": (row.upload_offset / row.upload_total) if row.upload_offset and row.upload_total else 0
         }
         
         if m.reply_to:
@@ -1020,11 +1033,15 @@ async def get_chat_history(
             if cid in seen_client_ids:
                 idx = seen_client_ids[cid]
                 existing = unique_messages[idx]
-                # Если текущее сообщение (item) более "полноценное" (не в процессе загрузки), 
-                # а ранее встреченное (existing) было плейсхолдером — заменяем его.
-                # Обычно первое встреченное в истории (DESC) — самое новое.
+                # Приоритет отдаем сообщению, которое уже загружено (не uploading)
+                # Если в истории есть несколько записей с одним client_id,
+                # и одна из них завершена, а другая нет - оставляем завершенную.
                 if existing.get("is_uploading") and not item.get("is_uploading"):
                     unique_messages[idx] = item
+                elif not existing.get("is_uploading") and item.get("is_uploading"):
+                    # Уже есть завершенное, игнорируем текущее (плейсхолдер)
+                    continue
+                # Если оба имеют одинаковый статус uploading, оставляем более новое (уже в unique_messages)
                 continue
             seen_client_ids[cid] = len(unique_messages)
         unique_messages.append(item)
@@ -1405,7 +1422,92 @@ async def init_upload(
             mime_type=req.mime_type
         )
         db.add(new_session)
-        await db.commit()
+        
+        # Если передан receiver_id, создаем placeholder сообщения сразу
+        if req.receiver_id:
+            # Проверяем, не создано ли уже сообщение с таким client_id (например, через WS)
+            stmt_check = select(ChatMessage).where(
+                ChatMessage.sender_id == user_id,
+                ChatMessage.client_id == req.client_id
+            )
+            existing_msg = (await db.execute(stmt_check)).scalars().first()
+            
+            if existing_msg:
+                logger.debug(f"init_upload: Message with client_id {req.client_id} already exists (id: {existing_msg.id}). Updating upload_id.")
+                existing_msg.upload_id = upload_id
+                new_msg = existing_msg
+                # Убеждаемся, что статус uploading установлен
+                new_msg.is_uploading = True
+            else:
+                new_msg = ChatMessage(
+                    sender_id=user_id,
+                    receiver_id=req.receiver_id,
+                    message=None,
+                    file_path=None,
+                    message_type=req.message_type or "file",
+                    client_id=req.client_id,
+                    duration=req.duration,
+                    reply_to_id=req.reply_to_id,
+                    is_uploading=True,
+                    upload_id=upload_id
+                )
+                db.add(new_msg)
+            
+            await db.commit()
+            await db.refresh(new_msg)
+            
+            # Отправляем уведомление о новом сообщении (плейсхолдере)
+            sender_name = f"{current_user.first_name} {current_user.last_name}".strip() or "Пользователь"
+            
+            # Готовим данные отвечаемого сообщения, если оно есть
+            reply_to_data = None
+            if req.reply_to_id:
+                try:
+                    reply_res = await db.execute(
+                        select(ChatMessage, UserModel.first_name, UserModel.last_name)
+                        .join(UserModel, ChatMessage.sender_id == UserModel.id)
+                        .where(ChatMessage.id == req.reply_to_id)
+                    )
+                    reply_row = reply_res.first()
+                    if reply_row:
+                        r_msg, r_fname, r_lname = reply_row
+                        reply_to_data = {
+                            "id": r_msg.id,
+                            "message": r_msg.message,
+                            "message_type": r_msg.message_type,
+                            "sender_id": r_msg.sender_id,
+                            "sender_name": f"{r_fname} {r_lname}".strip() or "Пользователь"
+                        }
+                except Exception:
+                    pass
+
+            response_data = {
+                "id": new_msg.id,
+                "client_id": req.client_id,
+                "sender_id": user_id,
+                "sender_name": sender_name,
+                "receiver_id": req.receiver_id,
+                "message": None,
+                "file_path": None,
+                "message_type": req.message_type or "file",
+                "duration": req.duration,
+                "reply_to_id": req.reply_to_id,
+                "reply_to": reply_to_data,
+                "timestamp": new_msg.timestamp.isoformat(),
+                "is_read": 0,
+                "is_uploading": True,
+                "upload_id": upload_id
+            }
+            chat_event = {"type": "new_message", "data": response_data}
+            await asyncio.gather(
+                manager.send_personal_message(chat_event, req.receiver_id),
+                manager.send_personal_message(chat_event, user_id),
+                notifications_manager.send_personal_message(chat_event, req.receiver_id),
+                notifications_manager.send_personal_message(chat_event, user_id),
+                return_exceptions=True
+            )
+        else:
+            await db.commit()
         
         return {"upload_id": upload_id, "offset": 0}
     except HTTPException:
@@ -1613,6 +1715,7 @@ async def upload_chunk(
     if session.offset >= session.file_size:
         session.is_completed = True
         session.offset = session.file_size
+        
         # Загружаем собранный файл в постоянное хранилище (S3/локально)
         file_extension = os.path.splitext(session.filename)[1]
         
@@ -1631,63 +1734,82 @@ async def upload_chunk(
             message_type = "voice"
             
         unique_name = f"{uuid.uuid4()}{file_extension}"
-        with open(file_path, "rb") as f_in:
-            url, _ = storage.save_file(
-                category="chat",
-                filename_hint=unique_name,
-                fileobj=f_in,
-                content_type=final_content_type,
-                private=False,
-            )
         try:
-            os.remove(file_path)
-        except Exception:
-            pass
+            with open(file_path, "rb") as f_in:
+                url, _ = storage.save_file(
+                    category="chat",
+                    filename_hint=unique_name,
+                    fileobj=f_in,
+                    content_type=final_content_type,
+                    private=False,
+                )
             
-        # Пытаемся обновить placeholder-сообщение и отправить событие обновления
-        try:
+            # Удаляем временный файл
+            try:
+                os.remove(file_path)
+            except Exception:
+                pass
+                
+            # Пытаемся обновить placeholder-сообщения (могут быть дубли при сбоях)
             res_msg2 = await db.execute(
                 select(ChatMessage).where(
                     ChatMessage.upload_id == upload_id,
                     ChatMessage.sender_id == user_id
                 )
             )
-            upd_msg = res_msg2.scalar_one_or_none()
+            upd_messages = res_msg2.scalars().all()
+            
+            upd_msg = None
+            if upd_messages:
+                for msg in upd_messages:
+                    msg.file_path = url
+                    # Не меняем тип, если это видео-заметка (кружок)
+                    if msg.message_type != "video_note":
+                        msg.message_type = message_type
+                    msg.is_uploading = False
+                    msg.upload_id = None
+                
+                # Используем первое сообщение для уведомления
+                upd_msg = upd_messages[0]
+                
+            await db.commit() # Фиксируем всё: и сессию, и сообщение
+            
+            # Отправляем уведомления (вне основной транзакции БД)
             if upd_msg:
-                upd_msg.file_path = url
-                # Не меняем тип, если это видео-заметка (кружок)
-                if upd_msg.message_type != "video_note":
-                    upd_msg.message_type = message_type
-                upd_msg.is_uploading = False
-                await db.commit()
-                update_event = {"type": "message_updated", "data": {
-                    "id": upd_msg.id,
-                    "file_path": url,
-                    "message_type": upd_msg.message_type,
-                    "is_uploading": False,
-                    "upload_id": upload_id,
-                    "client_id": upd_msg.client_id,
-                    "sender_id": upd_msg.sender_id,
-                    "receiver_id": upd_msg.receiver_id,
-                    "timestamp": upd_msg.timestamp.isoformat() if upd_msg.timestamp else None
-                }}
-                await asyncio.gather(
-                    manager.send_personal_message(update_event, user_id),
-                    manager.send_personal_message(update_event, upd_msg.receiver_id),
-                    notifications_manager.send_personal_message(update_event, upd_msg.receiver_id),
-                    notifications_manager.send_personal_message(update_event, user_id),
-                    return_exceptions=True
-                )
+                try:
+                    update_event = {"type": "message_updated", "data": {
+                        "id": upd_msg.id,
+                        "file_path": url,
+                        "message_type": upd_msg.message_type,
+                        "is_uploading": False,
+                        "upload_id": upload_id,
+                        "client_id": upd_msg.client_id,
+                        "sender_id": upd_msg.sender_id,
+                        "receiver_id": upd_msg.receiver_id,
+                        "timestamp": upd_msg.timestamp.isoformat() if upd_msg.timestamp else None
+                    }}
+                    await asyncio.gather(
+                        manager.send_personal_message(update_event, user_id),
+                        manager.send_personal_message(update_event, upd_msg.receiver_id),
+                        notifications_manager.send_personal_message(update_event, upd_msg.receiver_id),
+                        notifications_manager.send_personal_message(update_event, user_id),
+                        return_exceptions=True
+                    )
+                except Exception as e:
+                    logger.error(f"WebSocket notifications failed: {e}")
+            
+            res_type = upd_msg.message_type if upd_msg else message_type
+            logger.debug(f"Upload completed for session {upload_id}, message_id: {upd_msg.id if upd_msg else 'N/A'}, type: {res_type}")
+            
+            return {
+                "status": "completed",
+                "file_path": url,
+                "message_type": res_type
+            }
         except Exception as e:
-            logger.error(f"message_updated send failed: {e}")
+            logger.error(f"Error finalizing upload {upload_id}: {e}")
             await db.rollback()
-        
-        await db.commit()
-        return {
-            "status": "completed",
-            "file_path": url,
-            "message_type": message_type
-        }
+            raise HTTPException(status_code=500, detail=f"Failed to finalize upload: {str(e)}")
     
     await db.commit()
     return {"status": "ok", "offset": session.offset}
