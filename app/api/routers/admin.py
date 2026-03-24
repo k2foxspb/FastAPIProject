@@ -229,15 +229,15 @@ async def upload_app_chunk(
 
     # Проверка пользователя по токену
     from app.api.routers.chat import get_user_from_token
-    user_id = await get_user_from_token(actual_token, db)
-    if user_id is None:
+    user = await get_user_from_token(actual_token, db)
+    if user is None:
         raise HTTPException(status_code=401, detail="Invalid token")
         
     # Проверка, что это владелец
-    user_res = await db.execute(select(UserModel).where(UserModel.id == user_id))
-    user = user_res.scalar_one_or_none()
-    if not user or user.role != "owner":
+    if user.role != "owner":
         raise HTTPException(status_code=403, detail="Only owner can upload app versions")
+
+    user_id = user.id
 
     res = await db.execute(select(FileUploadSession).where(FileUploadSession.id == upload_id))
     session = res.scalar_one_or_none()

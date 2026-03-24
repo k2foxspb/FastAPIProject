@@ -83,6 +83,9 @@ export default function AdminAppUploadScreen({ navigation }) {
         {
           api: adminApi,
           chunkPath: '/admin/upload-app/chunk/'
+        },
+        {
+          fileSize: file.size
         }
       );
 
