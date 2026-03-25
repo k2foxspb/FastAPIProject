@@ -2962,7 +2962,7 @@ export default function ChatScreen({ route, navigation }) {
             borderTopWidth: 1,
             paddingBottom: Platform.OS === 'web' 
               ? 20 
-              : (isKeyboardVisible ? 5 : Math.max(insets.bottom, 12) + 5),
+              : (isKeyboardVisible ? (Platform.OS === 'ios' ? 10 : 8) : (Platform.OS === 'android' ? 12 : Math.max(insets.bottom, 10))),
             flexDirection: 'column'
           }
         ]}>

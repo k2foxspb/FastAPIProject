@@ -184,6 +184,7 @@ export default function TabNavigator() {
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
+        tabBarHideOnKeyboard: false,
         tabBarIcon: ({ focused, color, size }) => {
           let iconName;
           if (route.name === 'Feed') {
@@ -200,6 +201,7 @@ export default function TabNavigator() {
         tabBarStyle: {
           backgroundColor: colors.background,
           borderTopColor: colors.border,
+          display: 'flex',
         },
         headerStyle: {
           backgroundColor: colors.background,
@@ -234,16 +236,6 @@ export default function TabNavigator() {
           title: 'Чат', 
           headerShown: false,
           tabBarBadge: unreadTotal > 0 ? unreadTotal : null,
-          tabBarStyle: ((route) => {
-            const routeName = getFocusedRouteNameFromRoute(route) ?? 'ChatList';
-            if (routeName === 'Chat') {
-              return { display: 'none' };
-            }
-            return {
-              backgroundColor: colors.background,
-              borderTopColor: colors.border,
-            };
-          })(route),
         })} 
       />
       <Tab.Screen name="Profile" component={ProfileStack} options={{ title: 'Профиль', headerShown: false }} />
