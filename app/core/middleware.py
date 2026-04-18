@@ -127,7 +127,7 @@ def setup_middleware(app: FastAPI) -> None:
     app.add_middleware(
         SessionMiddleware,
         secret_key=config.os.getenv("SESSION_SECRET_KEY", "7UzGQS7woBazLUtVQJG39ywOP7J7lkPkB0UmDhMgBR8="),
-        max_age=14 * 24 * 60 * 60,  # 14 дней
+        max_age=30 * 24 * 60 * 60,  # 30 дней
         same_site="lax",
         https_only=False,  # Можно установить в True, если используется HTTPS
     )
