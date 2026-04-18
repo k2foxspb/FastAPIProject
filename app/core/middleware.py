@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from starlette.middleware.sessions import SessionMiddleware
+from starlette.datastructures import MutableHeaders
 
 
 
@@ -44,6 +45,34 @@ class TimingMiddleware:
                 logger.error(f"Request: {method} {path} | FAILED | Duration: {duration:.4f}s | Error: {e}")
                 logged = True
             raise e
+
+
+class SessionRenewalMiddleware:
+    """
+    Middleware для автоматического продления сессии при каждом запросе.
+    Starlette SessionMiddleware отправляет куку только если сессия была изменена.
+    Этот middleware помечает сессию как измененную, если она существует.
+    """
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+
+        # Мы не можем просто пометить сессию как измененную здесь, 
+        # так как SessionMiddleware еще не отработал и не добавил 'session' в scope.
+        # Поэтому нам нужно обернуть send, чтобы перехватить ответ,
+        # НО SessionMiddleware сам оборачивает send.
+        
+        # Правильный подход: SessionRenewalMiddleware должен стоять ВНУТРИ SessionMiddleware
+        # и просто делать request.session["_renew"] = time.time()
+        
+        if "session" in scope:
+            # Если мы уже внутри SessionMiddleware
+            scope["session"]["_last_activity"] = int(time.time())
+            
+        return await self.app(scope, receive, send)
 
 
 def setup_middleware(app: FastAPI) -> None:
@@ -89,9 +118,18 @@ def setup_middleware(app: FastAPI) -> None:
     app.add_middleware(GZipMiddleware, minimum_size=1000)
 
     # Sessions
+    # Важно: SessionRenewalMiddleware должен быть внутри SessionMiddleware, 
+    # чтобы иметь доступ к scope["session"]. 
+    # В FastAPI/Starlette порядок add_middleware обратный: последний добавленный выполняется первым.
+    # Значит SessionMiddleware должен быть добавлен ПОСЛЕ SessionRenewalMiddleware.
+    
+    app.add_middleware(SessionRenewalMiddleware)
     app.add_middleware(
         SessionMiddleware,
-        secret_key=config.os.getenv("SESSION_SECRET_KEY", "7UzGQS7woBazLUtVQJG39ywOP7J7lkPkB0UmDhMgBR8=")
+        secret_key=config.os.getenv("SESSION_SECRET_KEY", "7UzGQS7woBazLUtVQJG39ywOP7J7lkPkB0UmDhMgBR8="),
+        max_age=14 * 24 * 60 * 60,  # 14 дней
+        same_site="lax",
+        https_only=False,  # Можно установить в True, если используется HTTPS
     )
 # мидлвар на основе функции
 # @app.middleware("http")
