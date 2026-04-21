@@ -16,8 +16,8 @@ from app.api.dependencies import get_async_db
 # Создаём контекст для хеширования с использованием bcrypt
 
 
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
-REFRESH_TOKEN_EXPIRE_DAYS = 7
+ACCESS_TOKEN_EXPIRE_MINUTES = 60
+REFRESH_TOKEN_EXPIRE_DAYS = 30
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="users/token")
 
 def hash_password(password: str) -> str:
@@ -67,7 +67,9 @@ async def get_current_user_optional(
 ):
     """
     Необязательная версия получения текущего пользователя.
-    Не выбрасывает 401, если токен отсутствует или невалиден.
+    Если токен отсутствует - возвращает None (гость).
+    Если токен ЕСТЬ, но он невалиден или истек - выбрасывает 401, 
+    чтобы фронтенд мог обновить токен или перенаправить на логин.
     """
     if not token:
         return None
@@ -83,7 +85,19 @@ async def get_current_user_optional(
             )
         )
         return result.first()
-    except:
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token has expired",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    except jwt.PyJWTError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    except Exception:
         return None
 
 
