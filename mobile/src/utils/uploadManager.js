@@ -113,11 +113,11 @@ export const uploadManager = {
 
     // Если getInfoAsync не вернул размер (бывает для content:// на Android), 
     // пробуем взять из extraMeta, если он там есть
-    if ((fileSize === undefined || fileSize === null) && extraMeta?.fileSize) {
+    if ((fileSize === undefined || fileSize === null || isNaN(fileSize)) && extraMeta?.fileSize) {
       fileSize = extraMeta.fileSize;
     }
 
-    if (fileSize === undefined || fileSize === null) {
+    if (fileSize === undefined || fileSize === null || isNaN(fileSize)) {
       throw new Error('Не удалось определить размер файла. Попробуйте выбрать его снова.');
     }
 
