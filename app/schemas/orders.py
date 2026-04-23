@@ -45,6 +45,10 @@ class OrderCheckoutResponse(BaseModel):
     )
 
 
+class OrderStatusUpdate(BaseModel):
+    status: str = Field(..., description='новый статус заказа')
+
+
 class OrderStatus(BaseModel):
     order_id: int = Field(..., description='id заказа')
     status: str = Field(..., description='статус')

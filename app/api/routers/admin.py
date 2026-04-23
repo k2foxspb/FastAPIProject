@@ -386,6 +386,17 @@ async def admin_delete_message(
     await db.commit()
     return {"message": "Message deleted"}
 
+@router.delete("/chats/messages")
+async def admin_bulk_delete_messages(
+    message_ids: list[int],
+    allowed: bool = Depends(check_admin_permission("chats")),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """Удаляет несколько сообщений (полностью из базы)."""
+    await db.execute(delete(ChatMessageModel).where(ChatMessageModel.id.in_(message_ids)))
+    await db.commit()
+    return {"message": f"Deleted {len(message_ids)} messages"}
+
 # Пример для категорий
 from app.schemas.categories import Category as CategorySchema
 @router.get("/categories", response_model=list[CategorySchema])

@@ -43,6 +43,8 @@ class ChatMessageResponse(ChatMessageBase):
     upload_progress: Optional[float] = None
     upload_offset: Optional[int] = None
     upload_total: Optional[int] = None
+    deleted_by_sender: bool = False
+    deleted_by_receiver: bool = False
 
     class Config:
         from_attributes = True

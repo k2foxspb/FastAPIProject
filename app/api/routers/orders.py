@@ -1,3 +1,4 @@
+import asyncio
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -10,8 +11,11 @@ from app.api.dependencies import get_async_db
 from app.models.cart_items import CartItem as CartItemModel
 from app.models.orders import Order as OrderModel, OrderItem as OrderItemModel
 from app.models.users import User as UserModel
-from app.schemas.orders import Order as OrderSchema, OrderList, OrderCheckoutResponse, OrderStatus
+from app.models.products import Product as ProductModel
+from app.schemas.orders import Order as OrderSchema, OrderList, OrderCheckoutResponse, OrderStatus, OrderStatusUpdate
 from app.utils.yookassa import create_yookassa_payment
+from app.api.routers.notifications import manager as notifications_manager
+from app.core.fcm import send_fcm_notification
 
 router = APIRouter(
     prefix="/orders",
@@ -120,10 +124,43 @@ async def checkout_order(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to load created order",
         )
+
+    # Уведомляем продавцов о новом заказе
+    asyncio.create_task(_notify_sellers_new_order(db, created_order, current_user))
+
     return OrderCheckoutResponse(
         order=created_order,
         confirmation_url=payment_info.get("confirmation_url"),
     )
+
+
+async def _notify_sellers_new_order(db: AsyncSession, order: OrderModel, buyer: UserModel):
+    """Уведомляет продавцов о новом заказе."""
+    buyer_name = f"{buyer.first_name} {buyer.last_name}".strip() if (buyer.first_name or buyer.last_name) else buyer.email
+    seller_ids = set()
+    for item in order.items:
+        if item.product and item.product.seller_id:
+            seller_ids.add(item.product.seller_id)
+
+    for seller_id in seller_ids:
+        seller_result = await db.scalars(select(UserModel).where(UserModel.id == seller_id))
+        seller = seller_result.first()
+        msg = {
+            "type": "new_order",
+            "order_id": order.id,
+            "buyer_id": buyer.id,
+            "buyer_name": buyer_name,
+            "total_amount": str(order.total_amount),
+            "message": f"Новый заказ #{order.id} от {buyer_name} на сумму {order.total_amount} ₽"
+        }
+        asyncio.create_task(notifications_manager.send_personal_message(msg, seller_id))
+        if seller and seller.fcm_token:
+            asyncio.create_task(send_fcm_notification(
+                token=seller.fcm_token,
+                title=f"Новый заказ #{order.id}",
+                body=msg["message"],
+                data={k: str(v) for k, v in msg.items()},
+            ))
 
 
 @router.get("/", response_model=OrderList)
@@ -164,6 +201,43 @@ async def get_order(
     order = await _load_order_with_items(db, order_id)
     if not order or order.user_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
+    return order
+
+
+@router.patch("/{order_id}/status", response_model=OrderSchema)
+async def update_order_status(
+        order_id: int,
+        body: OrderStatusUpdate,
+        db: AsyncSession = Depends(get_async_db),
+        current_user: UserModel = Depends(get_current_user),
+):
+    """
+    Продавец меняет статус заказа (processing, shipped, delivered).
+    Покупатель получает уведомление.
+    """
+    allowed_statuses = {"processing", "shipped", "delivered", "canceled"}
+    if body.status not in allowed_statuses:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail=f"Недопустимый статус. Разрешены: {allowed_statuses}")
+
+    order = await _load_order_with_items(db, order_id)
+    if not order:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
+
+    # Проверяем, что текущий пользователь — продавец хотя бы одного товара в заказе
+    seller_ids = {item.product.seller_id for item in order.items if item.product}
+    if current_user.id not in seller_ids:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                            detail="Вы не являетесь продавцом товаров в этом заказе")
+
+    order.status = body.status
+    await db.commit()
+    await db.refresh(order)
+
+    # Уведомляем покупателя
+    from app.api.routers.payments import _notify_order_status
+    asyncio.create_task(_notify_order_status(db, order, body.status))
+
     return order
 
 

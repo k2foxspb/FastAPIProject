@@ -627,6 +627,13 @@ export const NotificationProvider = ({ children }) => {
           }
         }
 
+        if (payload.type === 'new_order' || payload.type === 'order_status_changed') {
+          console.log(`[NotificationContext] Order notification: ${payload.type}, order_id=${payload.order_id}`);
+          if (appState.current === 'active') {
+            Vibration.vibrate([0, 200, 100, 200]);
+          }
+        }
+
         setNotifications((prev) => {
           if (payload.type === 'new_message' && prev.some(n => n.type === 'new_message' && String(n.data?.id) === String(payload.data?.id))) {
             return prev;

@@ -1,15 +1,20 @@
+import asyncio
 import ipaddress
 import json
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yookassa.domain.notification import WebhookNotification
 
 from app.api.dependencies import get_async_db
-from app.models.orders import Order as OrderModel
+from app.models.orders import Order as OrderModel, OrderItem as OrderItemModel
+from app.models.users import User as UserModel
+from app.api.routers.notifications import manager as notifications_manager
+from app.core.fcm import send_fcm_notification
 
 router = APIRouter(
     prefix="/payments",
@@ -79,7 +84,10 @@ async def yookassa_webhook(
     if not order_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Missing order id")
 
-    result = await db.scalars(select(OrderModel).where(OrderModel.id == int(order_id)))
+    result = await db.scalars(
+        select(OrderModel)
+        .where(OrderModel.id == int(order_id))
+    )
     order = result.first()
     if order is None:
         return {"status": "ignored"}
@@ -89,12 +97,85 @@ async def yookassa_webhook(
             order.status = "paid"
             order.paid_at = datetime.now(timezone.utc)
             order.payment_id = payment.id
-        await db.commit()
+            await db.commit()
+            await _notify_order_status(db, order, "paid")
+        else:
+            await db.commit()
         return {"status": "ok"}
     elif payment.status == "canceled":
         order.status = "canceled"
+        await db.commit()
+        await _notify_order_status(db, order, "canceled")
+        return {"status": "ok"}
 
     await db.commit()
     return {"status": "ok"}
+
+
+async def _notify_order_status(db: AsyncSession, order: OrderModel, new_status: str):
+    """Отправляет уведомления покупателю и продавцам при изменении статуса заказа."""
+    status_labels = {
+        "paid": "Оплачен",
+        "canceled": "Отменён",
+        "shipped": "Отправлен",
+        "delivered": "Доставлен",
+        "processing": "В обработке",
+    }
+    status_label = status_labels.get(new_status, new_status)
+
+    # Загружаем покупателя и продавцов
+    buyer_result = await db.scalars(select(UserModel).where(UserModel.id == order.user_id))
+    buyer = buyer_result.first()
+
+    # Собираем уникальных продавцов из позиций заказа
+    from app.models.products import Product as ProductModel
+    items_result = await db.scalars(
+        select(OrderItemModel)
+        .options(selectinload(OrderItemModel.product))
+        .where(OrderItemModel.order_id == order.id)
+    )
+    items = list(items_result.all())
+
+    seller_ids = set()
+    for item in items:
+        if item.product and item.product.seller_id:
+            seller_ids.add(item.product.seller_id)
+
+    # Уведомление покупателю
+    buyer_msg = {
+        "type": "order_status_changed",
+        "order_id": order.id,
+        "status": new_status,
+        "status_label": status_label,
+        "message": f"Статус вашего заказа #{order.id} изменён: {status_label}"
+    }
+    asyncio.create_task(notifications_manager.send_personal_message(buyer_msg, order.user_id))
+    if buyer and buyer.fcm_token:
+        asyncio.create_task(send_fcm_notification(
+            token=buyer.fcm_token,
+            title=f"Заказ #{order.id}: {status_label}",
+            body=buyer_msg["message"],
+            data={k: str(v) for k, v in buyer_msg.items()},
+        ))
+
+    # Уведомление продавцам
+    for seller_id in seller_ids:
+        seller_result = await db.scalars(select(UserModel).where(UserModel.id == seller_id))
+        seller = seller_result.first()
+        seller_msg = {
+            "type": "order_status_changed",
+            "order_id": order.id,
+            "status": new_status,
+            "status_label": status_label,
+            "message": f"Заказ #{order.id} от покупателя изменил статус: {status_label}"
+        }
+        asyncio.create_task(notifications_manager.send_personal_message(seller_msg, seller_id))
+        if seller and seller.fcm_token:
+            asyncio.create_task(send_fcm_notification(
+                token=seller.fcm_token,
+                title=f"Заказ #{order.id}: {status_label}",
+                body=seller_msg["message"],
+                data={k: str(v) for k, v in seller_msg.items()},
+            ))
 
 
