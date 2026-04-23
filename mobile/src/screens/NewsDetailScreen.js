@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, Image, ScrollView, Dimensions, ActivityIndicator, Alert, FlatList, TouchableOpacity, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, Text, StyleSheet, Image, ScrollView, Dimensions, ActivityIndicator, Alert, FlatList, TouchableOpacity, TextInput, KeyboardAvoidingView, Platform, RefreshControl } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import notifee from '@notifee/react-native';
 import RenderHTML from 'react-native-render-html';
@@ -26,6 +26,7 @@ export default function NewsDetailScreen({ route, navigation }) {
   const [newComment, setNewComment] = useState('');
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
   const [user, setUser] = useState(currentUser);
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     loadNews();
@@ -58,6 +59,12 @@ export default function NewsDetailScreen({ route, navigation }) {
       console.error('Error loading comments:', err);
     }
   };
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await Promise.all([loadNews(), loadComments()]);
+    setRefreshing(false);
+  }, [newsId]);
 
   const loadNews = async () => {
     try {
@@ -247,7 +254,10 @@ export default function NewsDetailScreen({ route, navigation }) {
       keyboardVerticalOffset={90}
       enabled={Platform.OS !== 'web'}
     >
-      <ScrollView style={[styles.container, { backgroundColor: colors.background }]}>
+      <ScrollView
+        style={[styles.container, { backgroundColor: colors.background }]}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      >
         {allImages.length > 0 && (
           <View style={styles.imageContainer}>
             <FlatList

@@ -1,6 +1,6 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import { getShadow } from '../utils/shadowStyles';
-import { View, Text, StyleSheet, Image, FlatList, ScrollView, TouchableOpacity, Modal, TouchableWithoutFeedback, Switch, Alert, Platform, Linking } from 'react-native';
+import { View, Text, StyleSheet, Image, FlatList, ScrollView, TouchableOpacity, Modal, TouchableWithoutFeedback, Switch, Alert, Platform, Linking, RefreshControl } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import api, { usersApi, newsApi, setAuthToken } from '../api';
 import { API_BASE_URL } from '../constants';
@@ -21,6 +21,8 @@ export default function ProfileScreen({ navigation }) {
   const [isSettingsVisible, setSettingsVisible] = useState(false);
   const [isUpdateBannerHidden, setIsUpdateBannerHidden] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const fetchProfileRef = useRef(null);
   const [quietHours, setQuietHours] = useState({ enabled: false, start: '22:00', end: '08:00' });
   const { disconnect, currentUser, loadingUser, loadUser } = useNotifications();
   const { theme, isDark, toggleTheme, isSystemTheme, useSystemThemeSetting } = useTheme();
@@ -219,6 +221,7 @@ export default function ProfileScreen({ navigation }) {
         }
       };
 
+      fetchProfileRef.current = fetchProfile;
       fetchProfile();
 
       // Загрузка настроек тихих часов
@@ -270,6 +273,12 @@ export default function ProfileScreen({ navigation }) {
     setIsUpdateBannerHidden(true);
   };
 
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    if (fetchProfileRef.current) await fetchProfileRef.current();
+    setRefreshing(false);
+  }, []);
+
   if (error && !user) return (
     <View style={[styles.container, { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center', padding: 20 }]}>
       <Icon name="alert-circle-outline" size={64} color={colors.error} />
@@ -312,7 +321,10 @@ export default function ProfileScreen({ navigation }) {
   );
 
   return (
-    <ScrollView style={[styles.container, { backgroundColor: colors.background }]}>
+    <ScrollView
+      style={[styles.container, { backgroundColor: colors.background }]}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+    >
       {user.update_available && !isUpdateBannerHidden && (
         <View style={styles.updateBannerWrapper}>
           <TouchableOpacity 

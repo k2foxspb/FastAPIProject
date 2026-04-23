@@ -12,7 +12,8 @@ import {
   TextInput, 
   Dimensions, 
   Platform, 
-  KeyboardAvoidingView 
+  KeyboardAvoidingView,
+  RefreshControl 
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { productsApi, usersApi, cartApi } from '../api';
@@ -40,6 +41,7 @@ export default function ProductDetailScreen({ route, navigation }) {
   const [comment, setComment] = useState('');
   const [submittingReview, setSubmittingReview] = useState(false);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
 
   const loadData = useCallback(async () => {
     try {
@@ -70,6 +72,12 @@ export default function ProductDetailScreen({ route, navigation }) {
       setLoading(false);
     }
   }, [productId, currentUser]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await loadData();
+    setRefreshing(false);
+  }, [loadData]);
 
   useEffect(() => {
     loadData();
@@ -257,7 +265,10 @@ export default function ProductDetailScreen({ route, navigation }) {
       keyboardVerticalOffset={90}
       enabled={Platform.OS !== 'web'}
     >
-      <ScrollView style={[styles.container, { backgroundColor: colors.background }]}>
+      <ScrollView
+        style={[styles.container, { backgroundColor: colors.background }]}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      >
         <View style={styles.imageContainer}>
         <FlatList
           data={allImages}

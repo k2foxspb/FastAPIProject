@@ -41,8 +41,6 @@ export const setPlaybackAudioMode = async () => {
     allowsRecording: false,
     playsInSilentMode: true,
     interruptionMode: 'doNotMix',
-    shouldPlayInBackground: false,
-    shouldRouteThroughEarpiece: false,
   });
 };
 
@@ -54,9 +52,6 @@ export const setRecordingAudioMode = async () => {
     allowsRecording: true,
     playsInSilentMode: true,
     interruptionMode: 'doNotMix',
-    shouldPlayInBackground: false,
-    shouldRouteThroughEarpiece: false,
-    allowsBackgroundRecording: false,
   });
 };
 
@@ -68,7 +63,5 @@ export const setNotificationAudioMode = async () => {
     allowsRecording: false,
     playsInSilentMode: true,
     interruptionMode: 'mixWithOthers',
-    shouldPlayInBackground: false,
-    shouldRouteThroughEarpiece: false,
   });
 };

@@ -12,7 +12,8 @@ import {
   Switch, 
   Platform,
   ActivityIndicator,
-  KeyboardAvoidingView
+  KeyboardAvoidingView,
+  RefreshControl
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
@@ -39,6 +40,7 @@ export default function AlbumDetailScreen({ route, navigation }) {
   const [newComment, setNewComment] = useState('');
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
   const [showComments, setShowComments] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   const fetchAlbum = useCallback(async () => {
     try {
@@ -55,6 +57,12 @@ export default function AlbumDetailScreen({ route, navigation }) {
       setLoading(false);
     }
   }, [albumId, navigation]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await fetchAlbum();
+    setRefreshing(false);
+  }, [fetchAlbum]);
 
   const loadComments = async () => {
     try {
@@ -214,7 +222,10 @@ export default function AlbumDetailScreen({ route, navigation }) {
       keyboardVerticalOffset={90}
       enabled={Platform.OS !== 'web'}
     >
-      <ScrollView style={[styles.container, { backgroundColor: colors.background }]}>
+      <ScrollView
+        style={[styles.container, { backgroundColor: colors.background }]}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      >
         <View style={[styles.header, { borderBottomColor: colors.border }]}>
         {isEditing ? (
           <View style={styles.editForm}>

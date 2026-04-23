@@ -1,5 +1,5 @@
-import React, { useCallback } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Image } from 'react-native';
+import React, { useCallback, useState } from 'react';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, Image, RefreshControl } from 'react-native';
 import { useNotifications } from '../context/NotificationContext';
 import { useFocusEffect } from '@react-navigation/native';
 import { useTheme } from '../context/ThemeContext';
@@ -9,6 +9,13 @@ import { formatName, formatMessageTime, parseISODate, getAvatarUrl } from '../ut
 
 export default function ChatListScreen({ navigation }) {
   const { dialogs, fetchDialogs, isConnected } = useNotifications();
+  const [refreshing, setRefreshing] = useState(false);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await fetchDialogs();
+    setRefreshing(false);
+  }, [fetchDialogs]);
   const { theme } = useTheme();
   const colors = themeConstants[theme];
 
@@ -77,6 +84,7 @@ export default function ChatListScreen({ navigation }) {
         renderItem={renderItem}
         contentContainerStyle={styles.list}
         style={{ flex: 1, width: '100%' }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       />
     </View>
   );

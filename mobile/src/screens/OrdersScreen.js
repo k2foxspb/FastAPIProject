@@ -6,6 +6,7 @@ import {
   FlatList,
   TouchableOpacity,
   ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
 import { getShadow } from '../utils/shadowStyles';
 import { useFocusEffect } from '@react-navigation/native';
@@ -19,6 +20,7 @@ export default function OrdersScreen({ navigation }) {
   const colors = themeConstants[theme];
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
   const loadOrders = useCallback(async () => {
     try {
@@ -31,6 +33,12 @@ export default function OrdersScreen({ navigation }) {
       setLoading(false);
     }
   }, []);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await loadOrders();
+    setRefreshing(false);
+  }, [loadOrders]);
 
   useFocusEffect(
     useCallback(() => {
@@ -103,6 +111,7 @@ export default function OrdersScreen({ navigation }) {
             <Text style={{ color: colors.textSecondary }}>У вас пока нет заказов</Text>
           </View>
         }
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       />
     </View>
   );

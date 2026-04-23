@@ -4,6 +4,25 @@ import { API_BASE_URL } from '../constants';
 import { storage } from '../utils/storage';
 import { navigate } from '../navigation/NavigationService';
 
+// Декодирует JWT без верификации подписи (только для проверки exp)
+const decodeJwtExp = (token) => {
+  try {
+    const payload = token.split('.')[1];
+    const decoded = JSON.parse(atob(payload));
+    return decoded.exp || null;
+  } catch {
+    return null;
+  }
+};
+
+// Возвращает true если токен истёк или истечёт в течение следующих bufferSeconds секунд
+const isTokenExpiredOrExpiringSoon = (token, bufferSeconds = 300) => {
+  const exp = decodeJwtExp(token);
+  if (!exp) return true;
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  return exp - nowSeconds < bufferSeconds;
+};
+
 const api = axios.create({
   baseURL: API_BASE_URL,
   timeout: 30000,
@@ -238,26 +257,6 @@ export const ordersApi = {
   getOrderStatus: (id) => api.get(`/orders/${id}/status`),
 };
 
-api.interceptors.request.use(
-  async config => {
-    // В React Native axios иногда плохо определяет FormData, если заголовок не задан явно
-    // Но если мы задаем его вручную, мы НЕ должны добавлять boundary, axios/XMLHttpRequest сделает это сам,
-    // если мы передаем FormData. Однако, в некоторых версиях RN/Axios есть баг, 
-    // когда заголовок теряется или ставится application/json.
-    
-    // Проверяем наличие токена перед каждым запросом, если он еще не установлен
-    if (!config.headers['Authorization']) {
-      const token = await storage.getAccessToken();
-      if (token) {
-        config.headers['Authorization'] = `Bearer ${token}`;
-      }
-    }
-    console.log(`[API Request]: ${config.method?.toUpperCase()} ${config.url}`);
-    return config;
-  },
-  error => Promise.reject(error)
-);
-
 // Добавляем перехватчик для отладки сетевых ошибок
 let isRefreshing = false;
 let failedQueue = [];
@@ -272,6 +271,63 @@ const processQueue = (error, token = null) => {
   });
   failedQueue = [];
 };
+
+// Проактивный рефреш: если токен истекает в течение 5 минут — обновляем заранее
+const proactiveRefresh = async () => {
+  if (isRefreshing) return;
+  const currentToken = api.defaults.headers.common['Authorization']?.replace('Bearer ', '');
+  if (!currentToken || !isTokenExpiredOrExpiringSoon(currentToken, 300)) return;
+
+  const refreshToken = await storage.getRefreshToken();
+  if (!refreshToken) return;
+
+  isRefreshing = true;
+  try {
+    console.log('[API] Proactive token refresh...');
+    const res = await usersApi.refreshAccessToken(refreshToken);
+    const newAccessToken = res.data.access_token;
+    if (newAccessToken) {
+      await storage.saveTokens(newAccessToken, refreshToken);
+      setAuthToken(newAccessToken);
+      processQueue(null, newAccessToken);
+      console.log('[API] Proactive token refresh successful');
+    }
+  } catch (e) {
+    console.error('[API] Proactive token refresh failed:', e);
+    processQueue(e, null);
+  } finally {
+    isRefreshing = false;
+  }
+};
+
+api.interceptors.request.use(
+  async config => {
+    // Если токен уже есть в дефолтных заголовках — используем его (без обращения к storage)
+    const defaultAuth = api.defaults.headers.common['Authorization'];
+    if (defaultAuth) {
+      config.headers['Authorization'] = defaultAuth;
+      // Проактивно рефрешим если токен скоро истечёт (не блокируем текущий запрос)
+      const token = defaultAuth.replace('Bearer ', '');
+      if (isTokenExpiredOrExpiringSoon(token, 300)) {
+        proactiveRefresh();
+      }
+    } else if (!config.headers['Authorization']) {
+      // Токен не в памяти — читаем из storage (только при холодном старте)
+      const token = await storage.getAccessToken();
+      if (token) {
+        config.headers['Authorization'] = `Bearer ${token}`;
+        setAuthToken(token);
+        // Проактивно рефрешим если токен скоро истечёт
+        if (isTokenExpiredOrExpiringSoon(token, 300)) {
+          proactiveRefresh();
+        }
+      }
+    }
+    console.log(`[API Request]: ${config.method?.toUpperCase()} ${config.url}`);
+    return config;
+  },
+  error => Promise.reject(error)
+);
 
 api.interceptors.response.use(
   response => {

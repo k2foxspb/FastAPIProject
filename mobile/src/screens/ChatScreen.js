@@ -26,6 +26,7 @@ import { theme as themeConstants } from '../constants/theme';
 import { formatStatus, formatName, formatFileSize, parseISODate, formatMessageTime, getAvatarUrl } from '../utils/formatters';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { setRecordingAudioMode, setPlaybackAudioMode } from '../utils/audioSettings';
+import { acquireExclusive, releaseExclusive } from '../utils/downloadManager';
 
 function VideoUploadPlaceholder({ progressPercent, activeUploadId, uri, loaded, total, onCancel }) {
   const isFinished = progressPercent >= 100;
@@ -1226,6 +1227,12 @@ export default function ChatScreen({ route, navigation }) {
     }
     setAllMedia(media);
   }, [messages]);
+
+  const fullScreenExclusiveIdRef = useRef(null);
+
+  const closeFullScreen = () => {
+    setFullScreenMedia(null);
+  };
 
   const openFullScreen = (uri, type) => {
     // Для видео/фото из кэша uri может быть локальным путем (file://...)
@@ -2790,7 +2797,7 @@ export default function ChatScreen({ route, navigation }) {
       <Modal
         visible={!!fullScreenMedia}
         transparent={true}
-        onRequestClose={() => setFullScreenMedia(null)}
+        onRequestClose={closeFullScreen}
       >
         <View style={styles.fullScreenContainer}>
           {(
@@ -2804,7 +2811,7 @@ export default function ChatScreen({ route, navigation }) {
 
               <TouchableOpacity 
                 style={styles.fullScreenIconButton} 
-                onPress={() => setFullScreenMedia(null)}
+                onPress={closeFullScreen}
               >
                 <MaterialIcons name="close" size={30} color="white" />
               </TouchableOpacity>

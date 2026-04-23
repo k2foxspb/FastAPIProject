@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, FlatList, TextInput, StyleSheet, TouchableOpacity, Image, Platform } from 'react-native';
+import { View, Text, FlatList, TextInput, StyleSheet, TouchableOpacity, Image, Platform, RefreshControl } from 'react-native';
 import notifee from '@notifee/react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { usersApi } from '../api';
@@ -19,6 +19,7 @@ export default function UsersScreen({ navigation }) {
   const [search, setSearch] = useState('');
   const [currentUserId, setCurrentUserId] = useState(currentUser?.id);
   const [activeTab, setActiveTab] = useState('all'); // 'all', 'friends'
+  const [refreshing, setRefreshing] = useState(false);
 
   // Применяем WebSocket статусы к локальному списку пользователей
   useEffect(() => {
@@ -78,6 +79,12 @@ export default function UsersScreen({ navigation }) {
       setCurrentUserId(currentUser.id);
     }
   }, [currentUser, loadingUser]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await fetchData();
+    setRefreshing(false);
+  }, [search, currentUserId, activeTab]);
 
   const fetchData = async () => {
     try {
@@ -235,6 +242,7 @@ export default function UsersScreen({ navigation }) {
           keyExtractor={(item) => item.id.toString()}
           renderItem={({ item }) => renderUserItem({ item })}
           ListEmptyComponent={<Text style={[styles.emptyText, { color: colors.textSecondary }]}>Пользователи не найдены</Text>}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         />
       ) : (
         <View style={{ flex: 1 }}>
@@ -255,6 +263,7 @@ export default function UsersScreen({ navigation }) {
             keyExtractor={(item) => `friend-${item.id}`}
             renderItem={({ item }) => renderUserItem({ item })}
             ListEmptyComponent={<Text style={[styles.emptyText, { color: colors.textSecondary }]}>У вас пока нет друзей</Text>}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
           />
         </View>
       )}

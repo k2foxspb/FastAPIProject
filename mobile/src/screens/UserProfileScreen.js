@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { getShadow } from '../utils/shadowStyles';
-import { View, Text, StyleSheet, Image, FlatList, ScrollView, TouchableOpacity, ActivityIndicator, Platform } from 'react-native';
+import { View, Text, StyleSheet, Image, FlatList, ScrollView, TouchableOpacity, ActivityIndicator, Platform, RefreshControl } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { usersApi, adminApi, newsApi } from '../api';
 import { API_BASE_URL } from '../constants';
@@ -19,6 +19,7 @@ export default function UserProfileScreen({ route, navigation }) {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   // Применяем WebSocket статус к текущему пользователю
   useEffect(() => {
@@ -53,6 +54,12 @@ export default function UserProfileScreen({ route, navigation }) {
       setLoading(false);
     }
   }, [userId, isAdminView, userStatuses]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await fetchUser();
+    setRefreshing(false);
+  }, [fetchUser]);
 
   const handleFriendAction = async () => {
     try {
@@ -196,7 +203,10 @@ export default function UserProfileScreen({ route, navigation }) {
   );
 
   return (
-    <ScrollView style={[styles.container, { backgroundColor: colors.background }]}>
+    <ScrollView
+      style={[styles.container, { backgroundColor: colors.background }]}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+    >
       <View style={[styles.header, { borderBottomColor: colors.border }]}>
         <TouchableOpacity style={styles.avatarContainer} onPress={openAvatarAlbum}>
           <Image 

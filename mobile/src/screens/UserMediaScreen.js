@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, FlatList, Image, TouchableOpacity, ScrollView, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, FlatList, Image, TouchableOpacity, ScrollView, Dimensions, RefreshControl } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { usersApi } from '../api';
 import { Ionicons as Icon } from '@expo/vector-icons';
@@ -18,6 +18,7 @@ export default function UserMediaScreen({ route, navigation }) {
   const { userId, initialUser, isOwner } = route.params;
   const [user, setUser] = useState(initialUser || null);
   const [loading, setLoading] = useState(!initialUser);
+  const [refreshing, setRefreshing] = useState(false);
 
   const fetchUser = useCallback(async () => {
     try {
@@ -29,6 +30,12 @@ export default function UserMediaScreen({ route, navigation }) {
       setLoading(false);
     }
   }, [userId]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await fetchUser();
+    setRefreshing(false);
+  }, [fetchUser]);
 
   useFocusEffect(
     useCallback(() => {
@@ -45,7 +52,10 @@ export default function UserMediaScreen({ route, navigation }) {
   }
 
   return (
-    <ScrollView style={[styles.container, { backgroundColor: colors.background }]}>
+    <ScrollView
+      style={[styles.container, { backgroundColor: colors.background }]}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+    >
       <View style={styles.section}>
         <Text style={[styles.sectionTitle, { color: colors.text }]}>Альбомы</Text>
         {isOwner && (

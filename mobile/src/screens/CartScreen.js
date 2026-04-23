@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
+  RefreshControl,
 } from 'react-native';
 import { getShadow } from '../utils/shadowStyles';
 import { useFocusEffect } from '@react-navigation/native';
@@ -23,6 +24,7 @@ export default function CartScreen({ navigation }) {
   const [cart, setCart] = useState(null);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   const loadCart = useCallback(async () => {
     try {
@@ -36,6 +38,12 @@ export default function CartScreen({ navigation }) {
       setLoading(false);
     }
   }, []);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await loadCart();
+    setRefreshing(false);
+  }, [loadCart]);
 
   useFocusEffect(
     useCallback(() => {
@@ -186,6 +194,7 @@ export default function CartScreen({ navigation }) {
         keyExtractor={(item) => item?.product?.id?.toString() || Math.random().toString()}
         renderItem={renderItem}
         contentContainerStyle={styles.listContent}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       />
       <View style={[styles.footer, { backgroundColor: colors.surface, borderTopColor: colors.border }]}>
         <View style={styles.totalRow}>

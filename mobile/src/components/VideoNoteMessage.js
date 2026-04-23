@@ -13,10 +13,11 @@ import {
   Image,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { createVideoPlayer, VideoView, useVideoPlayer } from 'expo-video';
+import { createVideoPlayer, VideoView } from 'expo-video';
 import * as FileSystem from 'expo-file-system/legacy';
 import { API_BASE_URL } from '../constants';
 import { setPlaybackAudioMode } from '../utils/audioSettings';
+import { acquireExclusive, releaseExclusive } from '../utils/downloadManager';
 
 const INLINE_SIZE = 170;
 const MODAL_VIDEO_SIZE = 280;
@@ -39,6 +40,12 @@ const resolveRemoteUri = (path) => {
   const base = API_BASE_URL.replace(/\/+$/, '');
   const rel = path.startsWith('/') ? path : `/${path}`;
   return `${base}${rel}`;
+};
+
+const formatBytes = (bytes) => {
+  if (!bytes || bytes <= 0) return '0 КБ';
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} МБ`;
+  return `${Math.round(bytes / 1024)} КБ`;
 };
 
 const formatTime = (secs) => {
@@ -88,30 +95,32 @@ function ProgressRing({ progress }) {
 }
 
 const InlineCircleVideoContent = ({ uri }) => {
-  const player = useVideoPlayer(uri, (p) => {
-    p.loop = true;
-    p.muted = true;
-    try {
-      p.audioMixingMode = 'mixWithOthers';
-    } catch (e) {}
-  });
-  
+  const playerRef = useRef(null);
+  const [player, setPlayer] = useState(null);
+
   useEffect(() => {
-    if (!player) return;
-    
-    // В списке чата мы не запускаем воспроизведение автоматически,
-    // чтобы не тратить ресурсы и не мешать основному плееру.
-    // Плеер просто покажет первый кадр как превью.
+    if (!uri) return;
+    let p;
     try {
-      player.pause();
-    } catch (e) {}
-    
+      p = createVideoPlayer(uri);
+      p.loop = true;
+      p.muted = true;
+      try { p.audioMixingMode = 'mixWithOthers'; } catch (e) {}
+      p.pause();
+    } catch (e) {
+      return;
+    }
+    playerRef.current = p;
+    setPlayer(p);
+
     return () => {
-      try {
-        player.pause();
-      } catch (e) {}
+      setPlayer(null);
+      playerRef.current = null;
+      try { p.release(); } catch (e) {}
     };
-  }, [player, uri]);
+  }, [uri]);
+
+  if (!player) return null;
 
   return (
     <VideoView 
@@ -128,6 +137,11 @@ export default function VideoNoteMessage({ item, isReceived, isParentVisible }) 
 
   const [playUri, setPlayUri] = useState('');
   const [downloading, setDownloading] = useState(false);
+  const [downloadedBytes, setDownloadedBytes] = useState(0);
+  const [totalBytes, setTotalBytes] = useState(0);
+  const [isStalled, setIsStalled] = useState(false);
+  const stalledTimerRef = useRef(null);
+  const lastBytesRef = useRef(0);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -135,7 +149,9 @@ export default function VideoNoteMessage({ item, isReceived, isParentVisible }) 
   const [currentTime, setCurrentTime] = useState(0);
   const [playerReady, setPlayerReady] = useState(false);
   // player instance for modal — created lazily, destroyed on close
-  const [modalPlayer, setModalPlayer] = useState(null);
+  // NOTE: player is stored only in ref to avoid React re-render race with VideoView
+  const [showVideoView, setShowVideoView] = useState(false);
+  const modalPlayerRef = useRef(null);
 
   const playerRef = useRef(null);
   const durationRef = useRef(0);
@@ -144,6 +160,8 @@ export default function VideoNoteMessage({ item, isReceived, isParentVisible }) 
 
   const backdropOpacity = useRef(new Animated.Value(0)).current;
   const videoScale = useRef(new Animated.Value(0.1)).current;
+  const exclusiveIdRef = useRef(null);
+  const downloadIdRef = useRef(null);
 
   // Check local cache on mount
   useEffect(() => {
@@ -161,9 +179,10 @@ export default function VideoNoteMessage({ item, isReceived, isParentVisible }) 
     });
   }, [remoteUri]);
 
-  // Wire up listeners whenever modalPlayer changes
+  // Wire up listeners whenever showVideoView changes (player is in ref)
   useEffect(() => {
-    const player = modalPlayer;
+    if (!showVideoView) return;
+    const player = modalPlayerRef.current;
     if (!player) return;
     playerRef.current = player;
 
@@ -206,7 +225,7 @@ export default function VideoNoteMessage({ item, isReceived, isParentVisible }) 
     return () => {
       subs.forEach((s) => s.remove());
     };
-  }, [modalPlayer]);
+  }, [showVideoView]);
 
   // Poll current time while modal is open
   useEffect(() => {
@@ -231,37 +250,81 @@ export default function VideoNoteMessage({ item, isReceived, isParentVisible }) 
     return () => clearInterval(intervalRef.current);
   }, [isModalOpen, playerReady]);
 
-  const downloadFile = useCallback(async () => {
-    if (!remoteUri) return null;
+  const downloadFileBackground = useCallback(async () => {
+    if (!remoteUri) return;
     const localUri = getLocalCacheUri(remoteUri);
-    setDownloading(true);
-    try {
-      const result = await FileSystem.downloadAsync(remoteUri, localUri);
-      if (result.status < 200 || result.status >= 300) {
-        throw new Error(`Download failed with status ${result.status}`);
-      }
-      setPlayUri(result.uri);
-      return result.uri;
-    } catch (e) {
-      console.warn('[VideoNoteMessage] download error:', e);
+    setDownloading(prev => { if (!prev) return true; return prev; });
+    setIsStalled(false);
+    lastBytesRef.current = 0;
+
+    const MAX_RETRIES = 3;
+    let attempt = 0;
+    while (attempt < MAX_RETRIES) {
       try {
-        await FileSystem.deleteAsync(localUri, { idempotent: true });
-      } catch (_) {}
-      setPlayUri(remoteUri);
-      return remoteUri;
-    } finally {
-      setDownloading(false);
+        // Delete partial file before each attempt
+        try { await FileSystem.deleteAsync(localUri, { idempotent: true }); } catch (_) {}
+        setDownloadedBytes(0);
+        setTotalBytes(0);
+        lastBytesRef.current = 0;
+
+        const resumable = FileSystem.createDownloadResumable(
+          remoteUri,
+          localUri,
+          {},
+          (progress) => {
+            const loaded = progress.totalBytesWritten || 0;
+            const total = progress.totalBytesExpectedToWrite || 0;
+            setDownloadedBytes(loaded);
+            setTotalBytes(total);
+            if (loaded === lastBytesRef.current) {
+              if (!stalledTimerRef.current) {
+                stalledTimerRef.current = setTimeout(() => setIsStalled(true), 3000);
+              }
+            } else {
+              lastBytesRef.current = loaded;
+              if (stalledTimerRef.current) {
+                clearTimeout(stalledTimerRef.current);
+                stalledTimerRef.current = null;
+              }
+              setIsStalled(false);
+            }
+          }
+        );
+
+        const result = await resumable.downloadAsync();
+        if (result && result.status >= 200 && result.status < 300) {
+          setPlayUri(result.uri);
+        }
+        // Success — exit loop
+        break;
+      } catch (e) {
+        attempt += 1;
+        const isRefused = e?.message && (e.message.includes('REFUSED_STREAM') || e.message.includes('stream was reset'));
+        if (isRefused && attempt < MAX_RETRIES) {
+          console.warn(`[VideoNoteMessage] REFUSED_STREAM, retry ${attempt}/${MAX_RETRIES - 1}...`);
+          await new Promise(resolve => setTimeout(resolve, attempt * 1000));
+        } else {
+          console.warn('[VideoNoteMessage] background download error:', e);
+          break;
+        }
+      }
+    }
+
+    // Keep downloadedBytes/totalBytes so badge stays visible after download
+    setDownloading(false);
+    setIsStalled(false);
+    if (stalledTimerRef.current) {
+      clearTimeout(stalledTimerRef.current);
+      stalledTimerRef.current = null;
     }
   }, [remoteUri]);
 
   const openModal = useCallback(async () => {
-    if (downloading) return;
+    // Allow opening even if background download is in progress
 
-    let uri = playUri;
-    if (!uri) {
-      uri = await downloadFile();
-      if (!uri) return;
-    }
+    // Use cached local file if available, otherwise stream directly from remote
+    const uri = playUri || remoteUri;
+    if (!uri) return;
 
     // Reset state
     setIsPlaying(false);
@@ -271,15 +334,27 @@ export default function VideoNoteMessage({ item, isReceived, isParentVisible }) 
     durationRef.current = 0;
     setDuration(0);
 
+    // Acquire exclusive mode — pause all OTHER background downloads
+    exclusiveIdRef.current = acquireExclusive();
+
+    // Start background download for caching AFTER acquiring exclusive (so it won't be paused)
+    if (!playUri) {
+      setDownloading(true);
+      setDownloadedBytes(0);
+      setTotalBytes(0);
+      downloadFileBackground();
+    }
+
     // Create a fresh player — only one player exists while modal is open
-    await setPlaybackAudioMode();
+    try { await setPlaybackAudioMode(); } catch (e) { console.warn('[VideoNoteMessage] setPlaybackAudioMode error:', e); }
     const player = createVideoPlayer(uri);
     player.loop = false;
     try {
       player.audioMixingMode = 'doNotMix';
     } catch (e) {}
     playerRef.current = player;
-    setModalPlayer(player);
+    modalPlayerRef.current = player;
+    setShowVideoView(true);
 
     // Give it a small delay or wait for statusChange to ensure playback starts
     setTimeout(() => {
@@ -295,11 +370,25 @@ export default function VideoNoteMessage({ item, isReceived, isParentVisible }) 
       Animated.timing(backdropOpacity, { toValue: 1, duration: 300, useNativeDriver: true }),
       Animated.spring(videoScale, { toValue: 1, friction: 8, tension: 50, useNativeDriver: true }),
     ]).start();
-  }, [downloading, playUri, downloadFile, backdropOpacity, videoScale]);
+  }, [playUri, remoteUri, downloadFileBackground, backdropOpacity, videoScale]);
 
   const closeModal = useCallback(() => {
+    // Release exclusive mode — resume all paused background downloads
+    if (exclusiveIdRef.current) {
+      releaseExclusive(exclusiveIdRef.current);
+      exclusiveIdRef.current = null;
+    }
     const player = playerRef.current;
     try { player?.pause(); } catch (_) {}
+    // Step 1: hide VideoView (unmount it) BEFORE releasing the player
+    playerRef.current = null;
+    modalPlayerRef.current = null;
+    setShowVideoView(false);
+
+    // Step 2: release player on next tick — after VideoView has unmounted
+    setTimeout(() => {
+      try { player?.release?.(); } catch (_) {}
+    }, 0);
 
     Animated.parallel([
       Animated.timing(backdropOpacity, { toValue: 0, duration: 250, useNativeDriver: true }),
@@ -309,13 +398,6 @@ export default function VideoNoteMessage({ item, isReceived, isParentVisible }) 
       setIsPlaying(false);
       setProgress(0);
       setCurrentTime(0);
-    // Release player to free native resources
-    try { 
-      player?.pause();
-      player?.release?.(); 
-    } catch (_) {}
-      playerRef.current = null;
-      setModalPlayer(null);
     });
   }, [backdropOpacity, videoScale]);
 
@@ -454,9 +536,9 @@ export default function VideoNoteMessage({ item, isReceived, isParentVisible }) 
             {...panResponder.panHandlers}
           >
             <View style={styles.modalVideoWrap}>
-              {modalPlayer && (
+              {showVideoView && modalPlayerRef.current && (
                 <VideoView
-                  player={modalPlayer}
+                  player={modalPlayerRef.current}
                   style={styles.modalVideo}
                   contentFit="cover"
                   nativeControls={false}
@@ -464,19 +546,21 @@ export default function VideoNoteMessage({ item, isReceived, isParentVisible }) 
                 />
               )}
               {!playerReady && (
-                <View style={[styles.modalVideo, { backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' }]}>
+                <View style={[StyleSheet.absoluteFill, { backgroundColor: '#000', justifyContent: 'center', alignItems: 'center', borderRadius: MODAL_VIDEO_SIZE / 2, zIndex: 2 }]}>
                   <ActivityIndicator size="large" color="#4FC3F7" />
                 </View>
               )}
-              <TouchableWithoutFeedback onPress={handlePlayPause}>
-                <View style={styles.centerOverlay}>
-                  {!isPlaying && (
-                    <View style={styles.playBtnLarge}>
-                      <MaterialIcons name="play-arrow" size={52} color="#fff" />
-                    </View>
-                  )}
-                </View>
-              </TouchableWithoutFeedback>
+              {playerReady && (
+                <TouchableWithoutFeedback onPress={handlePlayPause}>
+                  <View style={styles.centerOverlay}>
+                    {!isPlaying && (
+                      <View style={styles.playBtnLarge}>
+                        <MaterialIcons name="play-arrow" size={52} color="#fff" />
+                      </View>
+                    )}
+                  </View>
+                </TouchableWithoutFeedback>
+              )}
             </View>
 
             <ProgressRing progress={progress} />
@@ -485,6 +569,28 @@ export default function VideoNoteMessage({ item, isReceived, isParentVisible }) 
               <Text style={styles.timeText}>{timeLabel}</Text>
             </View>
           </Animated.View>
+
+          {(downloading || downloadedBytes > 0) && (
+            <View style={styles.downloadBadgeOuter}>
+              <View style={styles.downloadBadge}>
+                {downloadedBytes > 0 ? (
+                  <Text style={styles.downloadBytesText}>
+                    {totalBytes > 0
+                      ? `${formatBytes(downloadedBytes)} / ${formatBytes(totalBytes)}`
+                      : formatBytes(downloadedBytes)}
+                  </Text>
+                ) : (
+                  <Text style={styles.downloadBytesText}>загрузка…</Text>
+                )}
+                {totalBytes > 0 && downloadedBytes > 0 && (
+                  <View style={styles.progressBarTrack}>
+                    <View style={[styles.progressBarFill, { width: `${Math.min(downloadedBytes / totalBytes, 1) * 100}%` }]} />
+                  </View>
+                )}
+                {isStalled && <Text style={styles.stallSubText}>медленное соединение…</Text>}
+              </View>
+            </View>
+          )}
         </Animated.View>
       </Modal>
     </>
@@ -627,5 +733,44 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.35)',
+  },
+  downloadBadgeOuter: {
+    position: 'absolute',
+    top: SCREEN_H / 2 + M_OUTER / 2 + 12,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  downloadBadge: {
+    backgroundColor: 'rgba(0,0,0,0.75)',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    alignItems: 'center',
+    minWidth: 140,
+  },
+  downloadBytesText: {
+    color: '#4FC3F7',
+    fontSize: 12,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  progressBarTrack: {
+    width: '100%',
+    height: 4,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderRadius: 2,
+    overflow: 'hidden',
+  },
+  progressBarFill: {
+    height: 4,
+    backgroundColor: '#4FC3F7',
+    borderRadius: 2,
+  },
+  stallSubText: {
+    color: 'rgba(255,255,255,0.6)',
+    fontSize: 10,
+    marginTop: 3,
   },
 });
