@@ -12,6 +12,7 @@ from app.api.dependencies import get_async_db
 from app.models.reviews import Reviews as ReviewModel, ReviewReaction as ReviewReactionModel
 from app.models.users import User as UserModel
 from app.models.products import Product as ProductModel
+from app.models.orders import Order as OrderModel, OrderItem as OrderItemModel
 from app.schemas.reviews import Review as ReviewSchema, Review, CreateReview
 from app.api.routers.notifications import manager
 from app.core.fcm import send_fcm_notification
@@ -140,6 +141,23 @@ async def create_review(review: CreateReview,
     product_result = product.scalar_one_or_none()
     if not product_result:
         raise HTTPException(status_code=400, detail="Product not exist")
+    purchased = await db.scalar(
+        select(OrderItemModel.id)
+        .join(OrderModel, OrderModel.id == OrderItemModel.order_id)
+        .where(OrderItemModel.product_id == product_result.id)
+        .where(OrderModel.user_id == current_buyer.id)
+        .where(OrderModel.status.in_(["completed", "paid"]))
+    )
+    if not purchased:
+        raise HTTPException(status_code=403, detail="You can only review products you have purchased")
+    existing_review = await db.scalar(
+        select(ReviewModel)
+        .where(ReviewModel.is_active == True)
+        .where(ReviewModel.product_id == product_result.id)
+        .where(ReviewModel.user_id == current_buyer.id)
+    )
+    if existing_review:
+        raise HTTPException(status_code=400, detail="You have already reviewed this product")
     review_query = await db.scalars(select(ReviewModel)
                                      .where(ReviewModel.is_active == True)
                                      .where(ReviewModel.product_id == product_result.id))

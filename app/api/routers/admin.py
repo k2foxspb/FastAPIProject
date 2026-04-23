@@ -361,19 +361,24 @@ async def admin_get_all_dialogs(
 async def admin_get_chat_history(
     u1_id: int,
     u2_id: int,
+    limit: int = Query(default=15, ge=1, le=100),
+    skip: int = Query(default=0, ge=0),
     allowed: bool = Depends(check_admin_permission("chats")),
     db: AsyncSession = Depends(get_async_db)
 ):
-    """Возвращает историю переписки между двумя пользователями."""
+    """Возвращает историю переписки между двумя пользователями с пагинацией."""
     result = await db.execute(
         select(ChatMessageModel)
         .where(
             ((ChatMessageModel.sender_id == u1_id) & (ChatMessageModel.receiver_id == u2_id)) |
             ((ChatMessageModel.sender_id == u2_id) & (ChatMessageModel.receiver_id == u1_id))
         )
-        .order_by(ChatMessageModel.timestamp.asc())
+        .order_by(ChatMessageModel.timestamp.desc())
+        .limit(limit)
+        .offset(skip)
     )
-    return result.scalars().all()
+    messages = result.scalars().all()
+    return list(reversed(messages))
 
 @router.delete("/chats/messages/{message_id}")
 async def admin_delete_message(

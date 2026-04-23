@@ -15,10 +15,15 @@ import { documentDirectory, getInfoAsync, downloadAsync, readAsStringAsync, writ
 import * as Sharing from 'expo-sharing';
 import { setPlaybackAudioMode } from '../utils/audioSettings';
 
+const PAGE_SIZE = 15;
+
 export default function AdminChatDetailScreen({ route, navigation }) {
   const { u1, u2 } = route.params;
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const skipRef = useRef(0);
   const { theme } = useTheme();
   const colors = themeConstants[theme];
   const flatListRef = useRef();
@@ -62,13 +67,38 @@ export default function AdminChatDetailScreen({ route, navigation }) {
   const fetchHistory = async () => {
     try {
       setLoading(true);
-      const response = await api.get(`/admin/chats/${u1.id}/${u2.id}`);
+      skipRef.current = 0;
+      const response = await api.get(`/admin/chats/${u1.id}/${u2.id}`, {
+        params: { limit: PAGE_SIZE, skip: 0 }
+      });
       setMessages(response.data);
+      setHasMore(response.data.length === PAGE_SIZE);
+      skipRef.current = response.data.length;
     } catch (error) {
       console.error('Failed to fetch chat history:', error);
       Alert.alert('Ошибка', 'Не удалось загрузить историю переписки');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchMoreHistory = async () => {
+    if (loadingMore || !hasMore) return;
+    try {
+      setLoadingMore(true);
+      const response = await api.get(`/admin/chats/${u1.id}/${u2.id}`, {
+        params: { limit: PAGE_SIZE, skip: skipRef.current }
+      });
+      const newMessages = response.data;
+      if (newMessages.length > 0) {
+        setMessages(prev => [...newMessages, ...prev]);
+        skipRef.current += newMessages.length;
+      }
+      setHasMore(newMessages.length === PAGE_SIZE);
+    } catch (error) {
+      console.error('Failed to fetch more history:', error);
+    } finally {
+      setLoadingMore(false);
     }
   };
 
@@ -330,6 +360,9 @@ export default function AdminChatDetailScreen({ route, navigation }) {
         </View>
       )}
 
+      {loadingMore && (
+        <ActivityIndicator size="small" color={colors.primary} style={{ marginVertical: 8 }} />
+      )}
       <FlatList
         ref={flatListRef}
         data={messages}
@@ -337,6 +370,8 @@ export default function AdminChatDetailScreen({ route, navigation }) {
         renderItem={renderItem}
         contentContainerStyle={styles.list}
         onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
+        onStartReachedThreshold={0.1}
+        onStartReached={fetchMoreHistory}
         extraData={[selectedIds, isSelectionMode]}
       />
 
