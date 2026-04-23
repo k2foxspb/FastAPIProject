@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, Image, TouchableOpacity, StyleSheet, ActivityIndicator, Text, Platform } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { cacheDirectory, getInfoAsync, deleteAsync, createDownloadResumable } from 'expo-file-system/legacy';
+import { cacheDirectory, getInfoAsync, deleteAsync, createDownloadResumable, writeAsStringAsync } from 'expo-file-system/legacy';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_BASE_URL } from '../constants';
 import VideoPlayer from './VideoPlayer';
 import { useTheme } from '../context/ThemeContext';
@@ -24,6 +25,7 @@ const CachedMedia = ({ item, onFullScreen, style, resizeMode = "cover", useNativ
   const [totalBytes, setTotalBytes] = useState(0);
   const [isStalled, setIsStalled] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [cached, setCached] = useState(false);
 
   const stallTimerRef = useRef(null);
   const lastBytesRef = useRef(0);
@@ -33,6 +35,7 @@ const CachedMedia = ({ item, onFullScreen, style, resizeMode = "cover", useNativ
   const remoteUri = (item.file_path && (item.file_path.startsWith('http') || item.file_path.startsWith('file://') || item.file_path.startsWith('content://'))) ? item.file_path : (item.file_path ? `${API_BASE_URL}${item.file_path}` : '');
   const fileName = item.file_path ? item.file_path.split('/').pop() : 'unknown';
   const localFileUri = `${cacheDirectory}${fileName}`;
+  const doneMarkerUri = `${localFileUri}.done`;
 
   const resetStallTimer = (loaded) => {
     if (loaded !== lastBytesRef.current) {
@@ -52,6 +55,17 @@ const CachedMedia = ({ item, onFullScreen, style, resizeMode = "cover", useNativ
   useEffect(() => {
     return () => {
       if (stallTimerRef.current) clearTimeout(stallTimerRef.current);
+      // Pause and save resume state on unmount
+      const resumable = downloadResumableRef.current;
+      if (resumable) {
+        const resumeKey = `dl_resume_${fileName}`;
+        resumable.pauseAsync().then(savable => {
+          if (savable && typeof savable === 'object' && savable.url &&
+              savable.resumeData && typeof savable.resumeData === 'string' && savable.resumeData !== '0' && savable.resumeData.startsWith('{')) {
+            AsyncStorage.setItem(resumeKey, JSON.stringify(savable)).catch(() => {});
+          }
+        }).catch(() => {});
+      }
     };
   }, []);
 
@@ -75,19 +89,36 @@ const CachedMedia = ({ item, onFullScreen, style, resizeMode = "cover", useNativ
 
     const loadMedia = async () => {
       try {
-        const fileInfo = await getInfoAsync(localFileUri);
-        if (fileInfo.exists && fileInfo.size > 0) {
-          setLocalUri(fileInfo.uri);
-          setLoading(false);
-          return;
-        }
-
-        // If file exists but is empty, delete it
-        if (fileInfo.exists && fileInfo.size === 0) {
-          try {
-            await deleteAsync(localFileUri, { idempotent: true });
-          } catch (e) {
-            console.warn('Failed to delete empty file:', e);
+        if (isVideo) {
+          // For video: check done marker to confirm full download
+          const markerInfo = await getInfoAsync(doneMarkerUri);
+          if (markerInfo.exists) {
+            const fileInfo = await getInfoAsync(localFileUri);
+            if (fileInfo.exists && fileInfo.size > 0) {
+              setLocalUri(fileInfo.uri);
+              setLoading(false);
+              setCached(true);
+              if (onDownloadProgress) onDownloadProgress(-1, 0, false, true);
+              return;
+            } else {
+              // Marker exists but file missing — clean up
+              try { await deleteAsync(doneMarkerUri, { idempotent: true }); } catch (e) {}
+              try { await deleteAsync(localFileUri, { idempotent: true }); } catch (e) {}
+            }
+          } else {
+            // No marker — partial or missing, clean up partial file
+            try { await deleteAsync(localFileUri, { idempotent: true }); } catch (e) {}
+          }
+        } else {
+          // For images: check file directly (no marker needed)
+          const fileInfo = await getInfoAsync(localFileUri);
+          if (fileInfo.exists && fileInfo.size > 0) {
+            setLocalUri(fileInfo.uri);
+            setLoading(false);
+            return;
+          }
+          if (fileInfo.exists && fileInfo.size === 0) {
+            try { await deleteAsync(localFileUri, { idempotent: true }); } catch (e) {}
           }
         }
 
@@ -95,6 +126,11 @@ const CachedMedia = ({ item, onFullScreen, style, resizeMode = "cover", useNativ
           // For video: just set remote URI, do NOT auto-download — wait for user tap
           setLocalUri(remoteUri);
           setLoading(false);
+          // If this is a fullscreen player (shouldPlay=true, isParentVisible=true, !isStatic),
+          // start background download immediately
+          if (!isStatic && isParentVisible) {
+            downloadFileBackground(remoteUri, localFileUri);
+          }
         } else {
           // For images: download first (fast), then show
           const downloadResumable = createDownloadResumable(remoteUri, localFileUri, {}, (progress) => {
@@ -123,8 +159,11 @@ const CachedMedia = ({ item, onFullScreen, style, resizeMode = "cover", useNativ
     loadMedia();
   }, [item.file_path]);
 
+  const resumeStorageKey = `dl_resume_${fileName}`;
+
   const downloadFileBackground = async (remote, local) => {
     setDownloading(true);
+    setCached(false);
     setDownloadedBytes(0);
     setTotalBytes(0);
     setIsStalled(false);
@@ -133,27 +172,79 @@ const CachedMedia = ({ item, onFullScreen, style, resizeMode = "cover", useNativ
     const MAX_RETRIES = 3;
     let attempt = 0;
     while (attempt < MAX_RETRIES) {
+      let resumable = null;
       try {
-        // Delete partial file before each attempt
-        try { await deleteAsync(local, { idempotent: true }); } catch (_) {}
-        const resumable = createDownloadResumable(remote, local, {}, (progress) => {
+        // Try to resume from saved state
+        let savedResumeData = null;
+        try {
+          const saved = await AsyncStorage.getItem(resumeStorageKey);
+          if (saved) {
+            // Validate: must be a JSON string with url field (not "0" or garbage)
+            try {
+              const parsed = JSON.parse(saved);
+              if (parsed && typeof parsed === 'object' && parsed.url &&
+                  parsed.resumeData && typeof parsed.resumeData === 'string' && parsed.resumeData !== '0' && parsed.resumeData.startsWith('{')) {
+                savedResumeData = saved;
+              } else await AsyncStorage.removeItem(resumeStorageKey);
+            } catch (_) { await AsyncStorage.removeItem(resumeStorageKey); }
+          }
+        } catch (_) {}
+
+        const progressCallback = (progress) => {
           const { totalBytesWritten, totalBytesExpectedToWrite } = progress;
           setDownloadedBytes(totalBytesWritten);
           setTotalBytes(totalBytesExpectedToWrite);
           resetStallTimer(totalBytesWritten);
           if (onDownloadProgress) onDownloadProgress(totalBytesWritten, totalBytesExpectedToWrite, isStalled);
-        });
+        };
+
+        if (savedResumeData) {
+          // Resume from where we left off
+          resumable = createDownloadResumable(remote, local, {}, progressCallback, savedResumeData);
+        } else {
+          // Fresh download — delete any partial file
+          try { await deleteAsync(local, { idempotent: true }); } catch (_) {}
+          try { await deleteAsync(local + '.done', { idempotent: true }); } catch (_) {}
+          resumable = createDownloadResumable(remote, local, {}, progressCallback);
+        }
         downloadResumableRef.current = resumable;
 
-        const result = await resumable.downloadAsync();
+        const result = savedResumeData
+          ? await resumable.resumeAsync()
+          : await resumable.downloadAsync();
+
+        // Clear saved resume data on success
+        try { await AsyncStorage.removeItem(resumeStorageKey); } catch (_) {}
+
         if (result && result.uri) {
-          setLocalUri(result.uri);
-          setIsStalled(false);
-          if (stallTimerRef.current) clearTimeout(stallTimerRef.current);
+          // Verify file actually exists on disk before marking as cached
+          const verify = await getInfoAsync(result.uri);
+          if (verify.exists && verify.size > 0) {
+            // Write done marker to confirm full download
+            try { await writeAsStringAsync(result.uri + '.done', '1'); } catch (_) {}
+            setLocalUri(verify.uri);
+            setIsStalled(false);
+            if (stallTimerRef.current) clearTimeout(stallTimerRef.current);
+            setCached(true);
+            if (onDownloadProgress) onDownloadProgress(-1, 0, false, true);
+          } else {
+            // File missing or empty — delete and don't mark cached
+            try { await deleteAsync(result.uri, { idempotent: true }); } catch (_) {}
+          }
         }
         // Success — exit loop
         break;
       } catch (e) {
+        // Save resume state so next open can continue from here
+        if (resumable) {
+          try {
+            const savable = await resumable.pauseAsync();
+            if (savable && typeof savable === 'object' && savable.url &&
+                savable.resumeData && typeof savable.resumeData === 'string' && savable.resumeData !== '0' && savable.resumeData.startsWith('{')) {
+              await AsyncStorage.setItem(resumeStorageKey, JSON.stringify(savable));
+            }
+          } catch (_) {}
+        }
         attempt += 1;
         const isRefused = e?.message && (e.message.includes('REFUSED_STREAM') || e.message.includes('stream was reset'));
         if (isRefused && attempt < MAX_RETRIES) {
@@ -173,7 +264,7 @@ const CachedMedia = ({ item, onFullScreen, style, resizeMode = "cover", useNativ
     setDownloading(false);
     setIsStalled(false);
     if (stallTimerRef.current) { clearTimeout(stallTimerRef.current); stallTimerRef.current = null; }
-    if (onDownloadProgress) onDownloadProgress(-1, 0, false);
+    if (onDownloadProgress) onDownloadProgress(-1, 0, false, true);
   };
 
   if (loading) {
@@ -204,33 +295,43 @@ const CachedMedia = ({ item, onFullScreen, style, resizeMode = "cover", useNativ
         style={[styles.thumbnail, style]}
         activeOpacity={0.85}
       >
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' }]}>
-          <MaterialIcons name="videocam" size={40} color="rgba(255,255,255,0.3)" />
-        </View>
+        <VideoPlayer
+          uri={localUri}
+          isMuted={true}
+          isLooping={false}
+          shouldPlay={false}
+          style={StyleSheet.absoluteFill}
+          useNativeControls={false}
+          resizeMode="cover"
+        />
         <View style={styles.playOverlay}>
           <View style={styles.playButtonCircle}>
             <MaterialIcons name="play-arrow" size={32} color="#fff" />
           </View>
         </View>
-        {(downloading || downloadedBytes > 0) && (
-          <View style={styles.downloadBadge} pointerEvents="none">
-            {downloadedBytes > 0 ? (
-              <Text style={styles.downloadBytesText}>
-                {totalBytes > 0
-                  ? `${formatBytes(downloadedBytes)} / ${formatBytes(totalBytes)}`
-                  : formatBytes(downloadedBytes)}
-              </Text>
-            ) : (
-              <Text style={styles.downloadBytesText}>загрузка…</Text>
-            )}
-            {totalBytes > 0 && downloadedBytes > 0 && (
-              <View style={styles.progressBarTrack}>
-                <View style={[styles.progressBarFill, { width: `${Math.min(downloadedBytes / totalBytes, 1) * 100}%` }]} />
-              </View>
-            )}
-            {isStalled && <Text style={styles.stallSubText}>медленное соединение…</Text>}
-          </View>
-        )}
+        <View style={styles.statusBadge} pointerEvents="none">
+          {cached && !downloading ? (
+            <MaterialIcons name="check-circle" size={18} color="#4FC3F7" />
+          ) : downloading ? (
+            <>
+              <ActivityIndicator size={12} color="#4FC3F7" style={{ marginBottom: 2 }} />
+              {downloadedBytes > 0 && (
+                <Text style={styles.statusBytesText}>
+                  {totalBytes > 0
+                    ? `${formatBytes(downloadedBytes)}\n/ ${formatBytes(totalBytes)}`
+                    : formatBytes(downloadedBytes)}
+                </Text>
+              )}
+              {totalBytes > 0 && downloadedBytes > 0 && (
+                <View style={styles.statusProgressTrack}>
+                  <View style={[styles.statusProgressFill, { width: `${Math.min(downloadedBytes / totalBytes, 1) * 100}%` }]} />
+                </View>
+              )}
+            </>
+          ) : (
+            <MaterialIcons name="cloud-download" size={18} color="rgba(255,255,255,0.7)" />
+          )}
+        </View>
       </TouchableOpacity>
     );
   }
@@ -255,25 +356,6 @@ const CachedMedia = ({ item, onFullScreen, style, resizeMode = "cover", useNativ
           />
         )}
       </View>
-      {(downloading || downloadedBytes > 0) && (
-        <View style={styles.downloadBadge} pointerEvents="none">
-          {downloadedBytes > 0 ? (
-            <Text style={styles.downloadBytesText}>
-              {totalBytes > 0
-                ? `${formatBytes(downloadedBytes)} / ${formatBytes(totalBytes)}`
-                : formatBytes(downloadedBytes)}
-            </Text>
-          ) : (
-            <Text style={styles.downloadBytesText}>загрузка…</Text>
-          )}
-          {totalBytes > 0 && downloadedBytes > 0 && (
-            <View style={styles.progressBarTrack}>
-              <View style={[styles.progressBarFill, { width: `${Math.min(downloadedBytes / totalBytes, 1) * 100}%` }]} />
-            </View>
-          )}
-          {isStalled && <Text style={styles.stallSubText}>медленное соединение…</Text>}
-        </View>
-      )}
     </View>
   ) : (
     <TouchableOpacity
@@ -331,40 +413,37 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.3)',
   },
-  downloadBadge: {
+  statusBadge: {
     position: 'absolute',
-    bottom: 8,
-    left: 8,
-    right: 8,
+    top: 6,
+    right: 6,
     zIndex: 10,
-    backgroundColor: 'rgba(0,0,0,0.7)',
+    backgroundColor: 'rgba(0,0,0,0.6)',
     borderRadius: 8,
-    paddingVertical: 5,
-    paddingHorizontal: 8,
+    paddingVertical: 4,
+    paddingHorizontal: 5,
     alignItems: 'center',
+    minWidth: 28,
   },
-  downloadBytesText: {
+  statusBytesText: {
     color: '#4FC3F7',
-    fontSize: 12,
+    fontSize: 9,
     fontWeight: '700',
-    marginBottom: 4,
+    textAlign: 'center',
+    marginTop: 2,
   },
-  progressBarTrack: {
-    width: '100%',
-    height: 4,
+  statusProgressTrack: {
+    width: 40,
+    height: 3,
     backgroundColor: 'rgba(255,255,255,0.2)',
     borderRadius: 2,
     overflow: 'hidden',
+    marginTop: 2,
   },
-  progressBarFill: {
-    height: 4,
+  statusProgressFill: {
+    height: 3,
     backgroundColor: '#4FC3F7',
     borderRadius: 2,
-  },
-  stallSubText: {
-    color: 'rgba(255,255,255,0.7)',
-    fontSize: 10,
-    marginTop: 3,
   },
 });
 

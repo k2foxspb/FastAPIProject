@@ -141,6 +141,11 @@ export default function ChatScreen({ route, navigation }) {
   }, [typingUsers, userId]);
 
   const [fullScreenMedia, setFullScreenMedia] = useState(null); // { index, list }
+  const [fsDownloadedBytes, setFsDownloadedBytes] = useState(0);
+  const [fsTotalBytes, setFsTotalBytes] = useState(0);
+  const [fsDownloading, setFsDownloading] = useState(false);
+  const [fsIsStalled, setFsIsStalled] = useState(false);
+  const [fsCached, setFsCached] = useState(false);
   const [allMedia, setAllMedia] = useState([]);
   const [loadingMore, setLoadingMore] = useState(false);
   // Групповая отправка медиа
@@ -2832,6 +2837,11 @@ export default function ChatScreen({ route, navigation }) {
               const index = Math.round(e.nativeEvent.contentOffset.x / screenWidth);
               currentMediaIndexRef.current = index;
               setCurrentMediaIndex(index);
+              setFsDownloading(false);
+              setFsDownloadedBytes(0);
+              setFsTotalBytes(0);
+              setFsIsStalled(false);
+              setFsCached(false);
               
               // Синхронизация чата: прокручиваем к сообщению, из которого это медиа
               const mediaItem = fullScreenMedia?.list[index];
@@ -2860,6 +2870,19 @@ export default function ChatScreen({ route, navigation }) {
                   isMuted={false}
                   isStatic={index !== currentMediaIndex}
                   isParentVisible={true}
+                  onDownloadProgress={(downloaded, total, stalled, isCached) => {
+                    if (index !== currentMediaIndexRef.current) return;
+                    if (downloaded === -1) {
+                      setFsDownloading(false);
+                      if (isCached) setFsCached(true);
+                    } else {
+                      setFsCached(false);
+                      setFsDownloading(downloaded >= 0);
+                      setFsDownloadedBytes(downloaded);
+                      setFsTotalBytes(total);
+                      setFsIsStalled(stalled);
+                    }
+                  }}
                   onPlayerReady={(player) => {
                     fullScreenPlayersByIndex.current.set(index, player);
                     if (index === currentMediaIndex) {
@@ -2892,6 +2915,26 @@ export default function ChatScreen({ route, navigation }) {
               </View>
             )}
           />
+
+          {fsDownloading && (fullScreenMedia?.list[currentMediaIndex]?.type === 'video' || fullScreenMedia?.list[currentMediaIndex]?.message_type === 'video') && (
+            <View style={styles.fsDownloadBadge} pointerEvents="none">
+              {fsDownloadedBytes > 0 ? (
+                <Text style={styles.fsDownloadBytesText}>
+                  {fsTotalBytes > 0
+                    ? `${fsDownloadedBytes >= 1024 * 1024 ? `${(fsDownloadedBytes / (1024 * 1024)).toFixed(1)} МБ` : `${Math.round(fsDownloadedBytes / 1024)} КБ`} / ${fsTotalBytes >= 1024 * 1024 ? `${(fsTotalBytes / (1024 * 1024)).toFixed(1)} МБ` : `${Math.round(fsTotalBytes / 1024)} КБ`}`
+                    : (fsDownloadedBytes >= 1024 * 1024 ? `${(fsDownloadedBytes / (1024 * 1024)).toFixed(1)} МБ` : `${Math.round(fsDownloadedBytes / 1024)} КБ`)}
+                </Text>
+              ) : (
+                <Text style={styles.fsDownloadBytesText}>загрузка…</Text>
+              )}
+              {fsTotalBytes > 0 && fsDownloadedBytes > 0 && (
+                <View style={styles.fsProgressBarTrack}>
+                  <View style={[styles.fsProgressBarFill, { width: `${Math.min(fsDownloadedBytes / fsTotalBytes, 1) * 100}%` }]} />
+                </View>
+              )}
+              {fsIsStalled && <Text style={styles.fsStallText}>медленное соединение…</Text>}
+            </View>
+          )}
 
           {showFullScreenControls && (fullScreenMedia?.list[currentMediaIndex]?.type === 'video' || fullScreenMedia?.list[currentMediaIndex]?.message_type === 'video') && (
             <View style={styles.fullScreenControlsBottom}>
@@ -3482,6 +3525,42 @@ const styles = StyleSheet.create({
     height: 12,
     borderRadius: 6,
     backgroundColor: '#fff',
+  },
+
+  fsDownloadBadge: {
+    position: 'absolute',
+    bottom: 90,
+    left: 20,
+    right: 20,
+    zIndex: 25,
+    backgroundColor: 'rgba(0,0,0,0.75)',
+    borderRadius: 10,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+  },
+  fsDownloadBytesText: {
+    color: '#4FC3F7',
+    fontSize: 13,
+    fontWeight: '700',
+    marginBottom: 5,
+  },
+  fsProgressBarTrack: {
+    width: '100%',
+    height: 4,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderRadius: 2,
+    overflow: 'hidden',
+  },
+  fsProgressBarFill: {
+    height: 4,
+    backgroundColor: '#4FC3F7',
+    borderRadius: 2,
+  },
+  fsStallText: {
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 11,
+    marginTop: 4,
   },
 
   // Legacy (kept for compatibility; not used by custom controls)

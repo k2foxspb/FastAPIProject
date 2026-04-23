@@ -15,6 +15,7 @@ import {
 import { MaterialIcons } from '@expo/vector-icons';
 import { createVideoPlayer, VideoView } from 'expo-video';
 import * as FileSystem from 'expo-file-system/legacy';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_BASE_URL } from '../constants';
 import { setPlaybackAudioMode } from '../utils/audioSettings';
 import { acquireExclusive, releaseExclusive } from '../utils/downloadManager';
@@ -61,6 +62,9 @@ const getLocalCacheUri = (remoteUri) => {
   const filename = seg[seg.length - 1] || 'videonote.mp4';
   return FileSystem.cacheDirectory + 'vn_' + filename;
 };
+
+const getDoneMarkerUri = (localUri) => localUri + '.done';
+const getResumeStorageKey = (localUri) => `dl_resume_${localUri.split('/').pop()}`;
 
 // Draw a progress arc using dot segments (works without SVG)
 function ProgressRing({ progress }) {
@@ -140,8 +144,10 @@ export default function VideoNoteMessage({ item, isReceived, isParentVisible }) 
   const [downloadedBytes, setDownloadedBytes] = useState(0);
   const [totalBytes, setTotalBytes] = useState(0);
   const [isStalled, setIsStalled] = useState(false);
+  const [cached, setCached] = useState(false);
   const stalledTimerRef = useRef(null);
   const lastBytesRef = useRef(0);
+  const downloadResumableRef = useRef(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -163,18 +169,42 @@ export default function VideoNoteMessage({ item, isReceived, isParentVisible }) 
   const exclusiveIdRef = useRef(null);
   const downloadIdRef = useRef(null);
 
+  // Pause and save resume state on unmount
+  useEffect(() => {
+    return () => {
+      const resumable = downloadResumableRef.current;
+      if (resumable && remoteUri) {
+        const localUri = getLocalCacheUri(remoteUri);
+        const resumeKey = getResumeStorageKey(localUri);
+        resumable.pauseAsync().then(savable => {
+          if (savable && typeof savable === 'object' && savable.url &&
+              savable.resumeData && typeof savable.resumeData === 'string' && savable.resumeData !== '0' && savable.resumeData.startsWith('{')) {
+            AsyncStorage.setItem(resumeKey, JSON.stringify(savable)).catch(() => {})
+          }
+        }).catch(() => {});
+      }
+    };
+  }, [remoteUri]);
+
   // Check local cache on mount
   useEffect(() => {
     if (!remoteUri) return;
     const localUri = getLocalCacheUri(remoteUri);
     if (!localUri) return;
-    FileSystem.getInfoAsync(localUri).then(async (info) => {
-      if (info.exists && info.size > 0) {
-        setPlayUri(info.uri);
-      } else if (info.exists && info.size === 0) {
-        try {
-          await FileSystem.deleteAsync(localUri, { idempotent: true });
-        } catch (e) {}
+    FileSystem.getInfoAsync(getDoneMarkerUri(localUri)).then(async (markerInfo) => {
+      if (markerInfo.exists) {
+        // Marker exists — file fully downloaded
+        const fileInfo = await FileSystem.getInfoAsync(localUri);
+        if (fileInfo.exists && fileInfo.size > 0) {
+          setPlayUri(fileInfo.uri);
+          setCached(true);
+        } else {
+          // File missing despite marker — clean up
+          try { await FileSystem.deleteAsync(getDoneMarkerUri(localUri), { idempotent: true }); } catch (e) {}
+        }
+      } else {
+        // No marker — partial or missing file, clean up
+        try { await FileSystem.deleteAsync(localUri, { idempotent: true }); } catch (e) {}
       }
     });
   }, [remoteUri]);
@@ -253,51 +283,99 @@ export default function VideoNoteMessage({ item, isReceived, isParentVisible }) 
   const downloadFileBackground = useCallback(async () => {
     if (!remoteUri) return;
     const localUri = getLocalCacheUri(remoteUri);
+    const resumeKey = getResumeStorageKey(localUri);
     setDownloading(prev => { if (!prev) return true; return prev; });
+    setCached(false);
     setIsStalled(false);
     lastBytesRef.current = 0;
 
     const MAX_RETRIES = 3;
     let attempt = 0;
     while (attempt < MAX_RETRIES) {
+      let resumable = null;
       try {
-        // Delete partial file before each attempt
-        try { await FileSystem.deleteAsync(localUri, { idempotent: true }); } catch (_) {}
-        setDownloadedBytes(0);
-        setTotalBytes(0);
-        lastBytesRef.current = 0;
-
-        const resumable = FileSystem.createDownloadResumable(
-          remoteUri,
-          localUri,
-          {},
-          (progress) => {
-            const loaded = progress.totalBytesWritten || 0;
-            const total = progress.totalBytesExpectedToWrite || 0;
-            setDownloadedBytes(loaded);
-            setTotalBytes(total);
-            if (loaded === lastBytesRef.current) {
-              if (!stalledTimerRef.current) {
-                stalledTimerRef.current = setTimeout(() => setIsStalled(true), 3000);
-              }
-            } else {
-              lastBytesRef.current = loaded;
-              if (stalledTimerRef.current) {
-                clearTimeout(stalledTimerRef.current);
-                stalledTimerRef.current = null;
-              }
-              setIsStalled(false);
-            }
+        // Try to resume from saved state
+        let savedResumeData = null;
+        try {
+          const saved = await AsyncStorage.getItem(resumeKey);
+          if (saved) {
+            // Validate: must be a JSON string with url field (not "0" or garbage)
+            try {
+              const parsed = JSON.parse(saved);
+              if (parsed && typeof parsed === 'object' && parsed.url &&
+                parsed.resumeData && typeof parsed.resumeData === 'string' && parsed.resumeData !== '0' && parsed.resumeData.startsWith('{')) {
+                savedResumeData = saved;
+              } else await AsyncStorage.removeItem(resumeKey);
+            } catch (_) { await AsyncStorage.removeItem(resumeKey); }
           }
-        );
+        } catch (_) {}
 
-        const result = await resumable.downloadAsync();
+        const progressCallback = (progress) => {
+          const loaded = progress.totalBytesWritten || 0;
+          const total = progress.totalBytesExpectedToWrite || 0;
+          setDownloadedBytes(loaded);
+          setTotalBytes(total);
+          if (loaded === lastBytesRef.current) {
+            if (!stalledTimerRef.current) {
+              stalledTimerRef.current = setTimeout(() => setIsStalled(true), 3000);
+            }
+          } else {
+            lastBytesRef.current = loaded;
+            if (stalledTimerRef.current) {
+              clearTimeout(stalledTimerRef.current);
+              stalledTimerRef.current = null;
+            }
+            setIsStalled(false);
+          }
+        };
+
+        if (savedResumeData) {
+          // Resume from where we left off
+          resumable = FileSystem.createDownloadResumable(remoteUri, localUri, {}, progressCallback, savedResumeData);
+        } else {
+          // Fresh download — delete any partial file
+          try { await FileSystem.deleteAsync(localUri, { idempotent: true }); } catch (_) {}
+          try { await FileSystem.deleteAsync(getDoneMarkerUri(localUri), { idempotent: true }); } catch (_) {}
+          setDownloadedBytes(0);
+          setTotalBytes(0);
+          lastBytesRef.current = 0;
+          resumable = FileSystem.createDownloadResumable(remoteUri, localUri, {}, progressCallback);
+        }
+        downloadResumableRef.current = resumable;
+
+        const result = savedResumeData
+          ? await resumable.resumeAsync()
+          : await resumable.downloadAsync();
+
+        // Clear saved resume data on success
+        try { await AsyncStorage.removeItem(resumeKey); } catch (_) {}
+
         if (result && result.status >= 200 && result.status < 300) {
-          setPlayUri(result.uri);
+          // Verify file actually exists on disk before marking as cached
+          const verify = await FileSystem.getInfoAsync(localUri);
+          if (verify.exists && verify.size > 0) {
+            // Write done marker to confirm full download
+            try { await FileSystem.writeAsStringAsync(getDoneMarkerUri(localUri), '1'); } catch (_) {}
+            setPlayUri(verify.uri);
+            setCached(true);
+          } else {
+            // File missing or empty — delete and don't mark cached
+            try { await FileSystem.deleteAsync(localUri, { idempotent: true }); } catch (_) {}
+          }
         }
         // Success — exit loop
         break;
       } catch (e) {
+        // Save resume state so next open can continue from here
+        if (resumable) {
+          try {
+            const savable = await resumable.pauseAsync();
+            if (savable && typeof savable === 'object' && savable.url &&
+                savable.resumeData && typeof savable.resumeData === 'string' && savable.resumeData !== '0' && savable.resumeData.startsWith('{')) {
+              await AsyncStorage.setItem(resumeKey, JSON.stringify(savable));
+            }
+          } catch (_) {}
+        }
         attempt += 1;
         const isRefused = e?.message && (e.message.includes('REFUSED_STREAM') || e.message.includes('stream was reset'));
         if (isRefused && attempt < MAX_RETRIES) {
@@ -310,6 +388,7 @@ export default function VideoNoteMessage({ item, isReceived, isParentVisible }) 
       }
     }
 
+    downloadResumableRef.current = null;
     // Keep downloadedBytes/totalBytes so badge stays visible after download
     setDownloading(false);
     setIsStalled(false);
@@ -355,13 +434,6 @@ export default function VideoNoteMessage({ item, isReceived, isParentVisible }) 
     playerRef.current = player;
     modalPlayerRef.current = player;
     setShowVideoView(true);
-
-    // Give it a small delay or wait for statusChange to ensure playback starts
-    setTimeout(() => {
-      if (playerRef.current === player) {
-        player.play();
-      }
-    }, 100);
 
     backdropOpacity.setValue(0);
     videoScale.setValue(0.05);
@@ -493,7 +565,7 @@ export default function VideoNoteMessage({ item, isReceived, isParentVisible }) 
       {/* Inline circle — static placeholder or player if visible */}
       <TouchableOpacity onPress={openModal} activeOpacity={0.85} style={styles.inlineContainer}>
         <View style={styles.inlineVideoWrap}>
-          {isParentVisible ? (
+          {isParentVisible && !isModalOpen ? (
             <InlineCircleVideoContent uri={playUri || remoteUri} />
           ) : (
             <View style={styles.inlinePlaceholder} />
@@ -507,6 +579,31 @@ export default function VideoNoteMessage({ item, isReceived, isParentVisible }) 
               </View>
             )}
           </View>
+        </View>
+        <View style={styles.inlineStatusBadge} pointerEvents="none">
+          {cached && !downloading ? (
+            <MaterialIcons name="check-circle" size={16} color="#4FC3F7" />
+          ) : downloading ? (
+            <>
+              <View style={styles.inlineStatusRow}>
+                <ActivityIndicator size={10} color="#4FC3F7" style={{ marginRight: 4 }} />
+                {downloadedBytes > 0 && (
+                  <Text style={styles.inlineStatusText}>
+                    {totalBytes > 0
+                      ? `${formatBytes(downloadedBytes)} / ${formatBytes(totalBytes)}`
+                      : formatBytes(downloadedBytes)}
+                  </Text>
+                )}
+              </View>
+              {totalBytes > 0 && downloadedBytes > 0 && (
+                <View style={styles.inlineStatusTrack}>
+                  <View style={[styles.inlineStatusFill, { width: `${Math.min(downloadedBytes / totalBytes, 1) * 100}%` }]} />
+                </View>
+              )}
+            </>
+          ) : (
+            <MaterialIcons name="cloud-download" size={16} color="rgba(255,255,255,0.7)" />
+          )}
         </View>
         {(duration > 0 || durationRef.current > 0) && (
           <View style={styles.timeBadge}>
@@ -570,27 +667,33 @@ export default function VideoNoteMessage({ item, isReceived, isParentVisible }) 
             </View>
           </Animated.View>
 
-          {(downloading || downloadedBytes > 0) && (
-            <View style={styles.downloadBadgeOuter}>
-              <View style={styles.downloadBadge}>
-                {downloadedBytes > 0 ? (
-                  <Text style={styles.downloadBytesText}>
-                    {totalBytes > 0
-                      ? `${formatBytes(downloadedBytes)} / ${formatBytes(totalBytes)}`
-                      : formatBytes(downloadedBytes)}
-                  </Text>
-                ) : (
-                  <Text style={styles.downloadBytesText}>загрузка…</Text>
-                )}
-                {totalBytes > 0 && downloadedBytes > 0 && (
-                  <View style={styles.progressBarTrack}>
-                    <View style={[styles.progressBarFill, { width: `${Math.min(downloadedBytes / totalBytes, 1) * 100}%` }]} />
-                  </View>
-                )}
-                {isStalled && <Text style={styles.stallSubText}>медленное соединение…</Text>}
-              </View>
+          <View style={styles.downloadBadgeOuter}>
+            <View style={styles.downloadBadge}>
+              {cached && !downloading ? (
+                <Text style={styles.downloadBytesText}>✓ в кэше  {downloadedBytes > 0 ? formatBytes(downloadedBytes) : ''}</Text>
+              ) : downloading ? (
+                <>
+                  {downloadedBytes > 0 ? (
+                    <Text style={styles.downloadBytesText}>
+                      {totalBytes > 0
+                        ? `${formatBytes(downloadedBytes)} / ${formatBytes(totalBytes)}`
+                        : formatBytes(downloadedBytes)}
+                    </Text>
+                  ) : (
+                    <Text style={styles.downloadBytesText}>загрузка…</Text>
+                  )}
+                  {totalBytes > 0 && downloadedBytes > 0 && (
+                    <View style={styles.progressBarTrack}>
+                      <View style={[styles.progressBarFill, { width: `${Math.min(downloadedBytes / totalBytes, 1) * 100}%` }]} />
+                    </View>
+                  )}
+                  {isStalled && <Text style={styles.stallSubText}>медленное соединение…</Text>}
+                </>
+              ) : (
+                <Text style={styles.downloadBytesText}>не загружено</Text>
+              )}
             </View>
-          )}
+          </View>
         </Animated.View>
       </Modal>
     </>
@@ -642,6 +745,39 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 11,
     fontWeight: '600',
+  },
+  inlineStatusBadge: {
+    marginTop: 4,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    borderRadius: 8,
+    paddingVertical: 3,
+    paddingHorizontal: 6,
+    alignItems: 'center',
+    alignSelf: 'center',
+    maxWidth: INLINE_SIZE,
+  },
+  inlineStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  inlineStatusText: {
+    color: '#4FC3F7',
+    fontSize: 9,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  inlineStatusTrack: {
+    width: INLINE_SIZE - 16,
+    height: 3,
+    backgroundColor: 'rgba(255,255,255,0.25)',
+    borderRadius: 2,
+    marginTop: 2,
+    overflow: 'hidden',
+  },
+  inlineStatusFill: {
+    height: 3,
+    backgroundColor: '#4FC3F7',
+    borderRadius: 2,
   },
   // ── Modal ──
   backdrop: {
