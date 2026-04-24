@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>FokinShop — Магазин, чат и новости в одном приложении</title>
+    <meta name="description" content="FokinShop — современная платформа для покупок, общения и обмена новостями. Скачайте приложение для Android и будьте всегда на связи.">
+    <meta name="keywords" content="FokinShop, магазин, чат, новости, покупки, Android, APK, общение">
+    <meta name="author" content="FokinShop Team">
+    <meta name="robots" content="index, follow">
+    <link rel="canonical" href="https://fokin.fun/">
+
+    <!-- Favicons -->
+    <link rel="icon" type="image/png" sizes="192x192" href="/media/app/icon-192.png">
+    <link rel="icon" type="image/png" sizes="512x512" href="/media/app/icon-512.png">
+    <link rel="apple-touch-icon" href="/media/app/icon-192.png">
+    <link rel="shortcut icon" href="/logo.png">
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="FokinShop — Магазин, чат и новости в одном приложении">
+    <meta property="og:description" content="FokinShop — современная платформа для покупок, общения и обмена новостями. Всё самое важное в одном приложении.">
+    <meta property="og:url" content="https://fokin.fun/">
+    <meta property="og:site_name" content="FokinShop">
+    <meta property="og:locale" content="ru_RU">
+    <meta property="og:image" content="https://fokin.fun/logo.png">
+    <meta property="og:image:width" content="512">
+    <meta property="og:image:height" content="512">
+    <meta property="og:image:alt" content="FokinShop логотип">
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="FokinShop — Магазин, чат и новости в одном приложении">
+    <meta name="twitter:description" content="FokinShop — современная платформа для покупок, общения и обмена новостями.">
+    <meta name="twitter:image" content="https://fokin.fun/logo.png">
+
+    <!-- PWA manifest -->
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#2196F3">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="FokinShop">
+
+    <!-- JSON-LD: Organization -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      "name": "FokinShop",
+      "url": "https://fokin.fun",
+      "logo": "https://fokin.fun/logo.png",
+      "contactPoint": {
+        "@type": "ContactPoint",
+        "email": "k2foxspb@mail.ru",
+        "contactType": "customer service"
+      },
+      "sameAs": []
+    }
+    </script>
+    <!-- JSON-LD: SoftwareApplication -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      "name": "FokinShop",
+      "operatingSystem": "ANDROID",
+      "applicationCategory": "ShoppingApplication",
+      "description": "FokinShop — современная платформа для покупок, общения и обмена новостями. Скачайте приложение для Android и будьте всегда на связи.",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "RUB"
+      },
+      "aggregateRating": {
+        "@type": "AggregateRating",
+        "ratingValue": "5",
+        "ratingCount": "100"
+      },
+      "publisher": {
+        "@type": "Organization",
+        "name": "FokinShop Team",
+        "logo": "https://fokin.fun/logo.png"
+      },
+      "downloadUrl": "https://fokin.fun/",
+      "installUrl": "https://fokin.fun/"
+    }
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --surface-color: rgba(30, 41, 59, 0.7);
+            --accent-color: #6366f1;
+            --accent-hover: #4f46e5;
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --border-color: rgba(255, 255, 255, 0.1);
+            --success-color: #10b981;
+        }
+
+        * {
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            background-color: var(--bg-color);
+            background-image: 
+                radial-gradient(circle at 0% 0%, rgba(99, 102, 241, 0.15) 0%, transparent 50%),
+                radial-gradient(circle at 100% 100%, rgba(79, 70, 229, 0.1) 0%, transparent 50%);
+            color: var(--text-primary);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            line-height: 1.5;
+            padding: 20px;
+        }
+
+        .hero {
+            max-width: 800px;
+            width: 100%;
+            text-align: center;
+            padding: 60px 20px 40px;
+            animation: fadeIn 0.8s ease-out;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .logo-container {
+            margin-bottom: 24px;
+            position: relative;
+            display: inline-block;
+        }
+
+        .logo {
+            width: 140px;
+            height: 140px;
+            object-fit: contain;
+            border-radius: 32px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+            border: 2px solid var(--border-color);
+            background: #1e293b;
+        }
+
+        .logo-glow {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 160px;
+            height: 160px;
+            background: var(--accent-color);
+            filter: blur(40px);
+            opacity: 0.2;
+            z-index: -1;
+            border-radius: 50%;
+        }
+
+        h1 {
+            font-size: clamp(32px, 8vw, 48px);
+            font-weight: 800;
+            margin: 0 0 16px;
+            letter-spacing: -0.04em;
+            background: linear-gradient(135deg, #fff 0%, #94a3b8 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .tagline {
+            font-size: clamp(18px, 4vw, 20px);
+            color: var(--text-secondary);
+            margin-bottom: 48px;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .download-card {
+            background: var(--surface-color);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--border-color);
+            border-radius: 32px;
+            padding: 40px;
+            width: 100%;
+            max-width: 440px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            margin-bottom: 60px;
+        }
+
+        .version-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 6px 16px;
+            background: rgba(99, 102, 241, 0.1);
+            border: 1px solid rgba(99, 102, 241, 0.2);
+            border-radius: 100px;
+            color: var(--accent-color);
+            font-weight: 600;
+            font-size: 14px;
+            margin-bottom: 24px;
+        }
+
+        .download-btn {
+            background-color: var(--accent-color);
+            color: white;
+            padding: 18px 32px;
+            border-radius: 20px;
+            text-decoration: none;
+            font-weight: 700;
+            font-size: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            width: 100%;
+            box-sizing: border-box;
+            box-shadow: 0 10px 25px -5px rgba(99, 102, 241, 0.4);
+        }
+
+        .download-btn:hover {
+            background-color: var(--accent-hover);
+            transform: translateY(-4px) scale(1.02);
+            box-shadow: 0 20px 30px -10px rgba(99, 102, 241, 0.5);
+        }
+
+        .download-btn:active {
+            transform: translateY(0) scale(0.98);
+        }
+
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 24px;
+            max-width: 1000px;
+            width: 100%;
+            padding: 0 20px 80px;
+        }
+
+        .feature-card {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--border-color);
+            border-radius: 24px;
+            padding: 32px;
+            text-align: left;
+            transition: all 0.3s ease;
+        }
+
+        .feature-card:hover {
+            background: rgba(255, 255, 255, 0.05);
+            border-color: rgba(255, 255, 255, 0.2);
+            transform: translateY(-5px);
+        }
+
+        .feature-icon {
+            width: 48px;
+            height: 48px;
+            background: rgba(99, 102, 241, 0.1);
+            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 20px;
+            color: var(--accent-color);
+            font-size: 24px;
+        }
+
+        .feature-title {
+            font-weight: 700;
+            font-size: 18px;
+            margin-bottom: 8px;
+            color: #fff;
+        }
+
+        .feature-desc {
+            color: var(--text-secondary);
+            font-size: 15px;
+            line-height: 1.6;
+        }
+
+        .loading-spinner {
+            width: 24px;
+            height: 24px;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: #fff;
+            animation: spin 0.8s linear infinite;
+            margin-right: 12px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .how-it-works {
+            width: 100%;
+            max-width: 1000px;
+            padding: 60px 20px;
+            animation: fadeIn 1s ease-out;
+        }
+        .steps-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 40px;
+        }
+        .step {
+            text-align: center;
+        }
+        .step-num {
+            width: 50px;
+            height: 50px;
+            background: var(--accent-color);
+            color: #fff;
+            border-radius: 25px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 800;
+            font-size: 24px;
+            margin: 0 auto 20px;
+            box-shadow: 0 10px 20px rgba(99, 102, 241, 0.3);
+        }
+        .step h3 { margin-bottom: 10px; font-size: 20px; }
+        .step p { color: var(--text-secondary); line-height: 1.6; }
+
+        .phone-mockup {
+            margin: 80px 0;
+            perspective: 1000px;
+            display: flex;
+            justify-content: center;
+        }
+        .phone-frame {
+            width: 280px;
+            height: 580px;
+            background: #1e293b;
+            border: 8px solid #334155;
+            border-radius: 40px;
+            padding: 12px;
+            box-shadow: 0 50px 100px -20px rgba(0,0,0,0.5);
+            transform: rotateY(-15deg) rotateX(10deg);
+            transition: all 0.6s cubic-bezier(0.23, 1, 0.32, 1);
+        }
+        .phone-frame:hover {
+            transform: rotateY(0) rotateX(0) scale(1.02);
+        }
+        .phone-screen {
+            background: var(--bg-color);
+            width: 100%;
+            height: 100%;
+            border-radius: 24px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            border: 1px solid rgba(255,255,255,0.05);
+        }
+        .mock-header { height: 60px; background: rgba(255,255,255,0.05); padding: 15px 10px; }
+        .mock-status-bar { width: 40px; height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; margin: 0 auto 10px; }
+        .mock-nav { width: 100%; height: 20px; background: rgba(255,255,255,0.05); border-radius: 10px; }
+        .mock-content { flex: 1; padding: 20px; display: flex; flex-direction: column; }
+        .mock-message { height: 16px; border-radius: 8px; margin-bottom: 12px; width: 70%; }
+        .mock-message.left { background: rgba(99, 102, 241, 0.2); align-self: flex-start; }
+        .mock-message.right { background: rgba(255, 255, 255, 0.1); align-self: flex-end; width: 60%; }
+        .mock-card { height: 80px; background: linear-gradient(90deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.05) 100%); border-radius: 15px; margin-bottom: 20px; }
+        .mock-tab-bar { height: 65px; background: rgba(255,255,255,0.05); display: flex; justify-content: space-around; align-items: center; border-top: 1px solid rgba(255,255,255,0.05); }
+        .mock-tab { width: 28px; height: 28px; background: rgba(255,255,255,0.07); border-radius: 8px; }
+
+        .hidden { display: none; }
+
+        footer {
+            margin-top: auto;
+            padding: 40px 20px;
+            color: var(--text-secondary);
+            font-size: 14px;
+            text-align: center;
+            border-top: 1px solid var(--border-color);
+            width: 100%;
+        }
+
+        @media (max-width: 640px) {
+            .hero { padding-top: 40px; }
+            .download-card { padding: 30px 20px; border-radius: 24px; }
+            .features-grid { grid-template-columns: 1fr; }
+        }
+    </style>
+    <meta name="google-site-verification" content="29HuyK0yV3eZ1XaA4VNvb3JqYKFLdkrytJH3DNJUScw">
+</head>
+<body>
+    <div class="hero">
+        <div class="logo-container">
+            <div class="logo-glow"></div>
+            <img src="/logo.png" alt="Logo" class="logo" onerror="this.src='https://via.placeholder.com/140?text=FS'">
+        </div>
+        
+        <h1>FokinShop</h1>
+        <p class="tagline">Ваше пространство для общения, покупок и новостей. Всё самое важное в одном приложении.</p>
+        <div style="margin-bottom: 24px; font-size: 14px;">
+            <a href="https://fokin.fun/privacy-policy" style="color: var(--text-secondary); text-decoration: underline; margin: 0 10px;">Privacy Policy / Политика конфиденциальности</a>
+        </div>
+
+        <div class="download-card" id="appStatus">
+            <div id="loadingInfo" style="display: flex; align-items: center; justify-content: center;">
+                <div class="loading-spinner"></div>
+                <span style="color: var(--text-secondary); font-weight: 500;">Поиск последней версии...</span>
+            </div>
+
+            <div id="appBanner" class="hidden">
+                <div class="version-badge">
+                    Версия <span id="latestVer" style="margin-left: 4px;">...</span>
+                </div>
+                <a id="downloadBtn" class="download-btn" href="#" download>
+                    <svg style="margin-right: 12px;" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v4"></path>
+                        <polyline points="7 10 12 15 17 10"></polyline>
+                        <line x1="12" y1="15" x2="12" y2="3"></line>
+                    </svg>
+                    Скачать для Android
+                </a>
+            </div>
+            
+            <div id="noApp" class="hidden">
+                <div style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.2); padding: 16px; border-radius: 16px; color: #f87171;">
+                    Приложение временно недоступно для загрузки. Пожалуйста, зайдите позже.
+                </div>
+            </div>
+
+            <p style="font-size: 13px; margin-top: 24px; color: var(--text-secondary); border-top: 1px solid var(--border-color); padding-top: 20px;">
+                Используя FokinShop, вы соглашаетесь с 
+                <a href="https://fokin.fun/privacy-policy" style="color: var(--accent-color); text-decoration: none; font-weight: 500;">Политикой конфиденциальности</a> и 
+                <a href="https://fokin.fun/terms" style="color: var(--accent-color); text-decoration: none; font-weight: 500;">Правилами использования</a>.
+            </p>
+        </div>
+
+        <div class="features-grid">
+            <div class="feature-card">
+                <div class="feature-icon">🛍️</div>
+                <div class="feature-title">Умный магазин</div>
+                <div class="feature-desc">Покупайте товары легко и быстро. Удобный интерфейс и безопасная оплата.</div>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">💬</div>
+                <div class="feature-title">Живое общение</div>
+                <div class="feature-desc">Общайтесь с друзьями в чате, делитесь новостями и впечатлениями в реальном времени.</div>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">🔔</div>
+                <div class="feature-title">Уведомления</div>
+                <div class="feature-desc">Будьте в курсе всех акций и сообщений. Мгновенные пуш-уведомления на ваш телефон.</div>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">📸</div>
+                <div class="feature-title">Фото и альбомы</div>
+                <div class="feature-desc">Создавайте личные альбомы, делитесь моментами и получайте реакции от друзей.</div>
+            </div>
+        </div>
+
+        <section class="how-it-works">
+            <h2 style="font-size: 32px; margin-bottom: 40px; text-align: center;">Как это работает</h2>
+            <div class="steps-container">
+                <div class="step">
+                    <div class="step-num">1</div>
+                    <h3>Скачайте APK</h3>
+                    <p>Нажмите кнопку загрузки выше, чтобы получить установочный файл.</p>
+                </div>
+                <div class="step">
+                    <div class="step-num">2</div>
+                    <h3>Установите</h3>
+                    <p>Разрешите установку из неизвестных источников в настройках Android.</p>
+                </div>
+                <div class="step">
+                    <div class="step-num">3</div>
+                    <h3>Пользуйтесь</h3>
+                    <p>Войдите по номеру телефона и начните покупки или общение!</p>
+                </div>
+                <div class="step">
+                    <div class="step-num">4</div>
+                    <h3>Приглашайте друзей</h3>
+                    <p>Вместе покупать и общаться гораздо интереснее!</p>
+                </div>
+            </div>
+        </section>
+
+        <div class="phone-mockup">
+            <div class="phone-frame">
+                <div class="phone-screen">
+                    <div class="mock-header">
+                        <div class="mock-status-bar"></div>
+                        <div class="mock-nav"></div>
+                    </div>
+                    <div class="mock-content">
+                        <div class="mock-message left"></div>
+                        <div class="mock-message right"></div>
+                        <div class="mock-message left" style="width: 50%;"></div>
+                        <div class="mock-card" style="margin-top: 20px;"></div>
+                        <div class="mock-card"></div>
+                    </div>
+                    <div class="mock-tab-bar">
+                        <div class="mock-tab"></div>
+                        <div class="mock-tab"></div>
+                        <div class="mock-tab"></div>
+                        <div class="mock-tab"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <footer>
+        <nav style="margin-bottom: 24px;">
+            <a href="https://fokin.fun/privacy-policy" style="color: var(--text-secondary); text-decoration: none; margin: 0 12px; transition: color 0.2s;">Privacy Policy / Политика конфиденциальности</a>
+            <a href="https://fokin.fun/terms" style="color: var(--text-secondary); text-decoration: none; margin: 0 12px; transition: color 0.2s;">Terms / Правила использования</a>
+            <a href="mailto:k2foxspb@mail.ru" style="color: var(--text-secondary); text-decoration: none; margin: 0 12px; transition: color 0.2s;">Поддержка</a>
+        </nav>
+        <p>&copy; 2026 FokinShop Team. Сделано с любовью для пользователей.</p>
+    </footer>
+
+    <script>
+        async function loadLatest() {
+            const banner = document.getElementById('appBanner');
+            const loader = document.getElementById('loadingInfo');
+            const noApp = document.getElementById('noApp');
+            const downloadBtn = document.getElementById('downloadBtn');
+            const versionText = document.getElementById('latestVer');
+
+            try {
+                // Имитация небольшой задержки для плавности
+                await new Promise(r => setTimeout(r, 600));
+                
+                const res = await fetch('/news/app-version/latest');
+                if (!res.ok) throw new Error('Not found');
+                
+                const data = await res.json();
+                
+                if (data && data.file_path) {
+                    downloadBtn.href = data.file_path;
+                    versionText.textContent = data.version || 'v1.0.10';
+                    
+                    loader.style.display = 'none';
+                    banner.classList.remove('hidden');
+                } else {
+                    throw new Error('No file path');
+                }
+            } catch(e) {
+                console.error('Failed to load version:', e);
+                loader.style.display = 'none';
+                noApp.classList.remove('hidden');
+            }
+        }
+        
+        loadLatest();
+    </script>
+</body>
+</html>

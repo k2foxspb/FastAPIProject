@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Правила использования - FokinShop</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --surface-color: rgba(30, 41, 59, 0.7);
+            --accent-color: #6366f1;
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --border-color: rgba(255, 255, 255, 0.1);
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-color);
+            background-image: 
+                radial-gradient(circle at 100% 100%, rgba(79, 70, 229, 0.1) 0%, transparent 50%);
+            color: var(--text-primary);
+            line-height: 1.6;
+            margin: 0;
+            padding: 40px 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .container {
+            max-width: 800px;
+            width: 100%;
+            background: var(--surface-color);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--border-color);
+            border-radius: 24px;
+            padding: 40px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        }
+
+        h1 {
+            font-size: 32px;
+            font-weight: 800;
+            margin: 0 0 24px;
+            background: linear-gradient(135deg, #fff 0%, #94a3b8 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        h2 {
+            font-size: 20px;
+            font-weight: 700;
+            margin: 32px 0 16px;
+            color: var(--accent-color);
+        }
+
+        p, li {
+            color: var(--text-secondary);
+            font-size: 16px;
+            margin-bottom: 12px;
+        }
+
+        ul {
+            padding-left: 20px;
+            margin-bottom: 24px;
+        }
+
+        .back-link {
+            display: inline-flex;
+            align-items: center;
+            color: var(--text-secondary);
+            text-decoration: none;
+            margin-bottom: 32px;
+            font-weight: 500;
+            transition: color 0.2s;
+        }
+
+        .back-link:hover {
+            color: var(--text-primary);
+        }
+
+        .date {
+            font-size: 14px;
+            color: var(--text-secondary);
+            opacity: 0.6;
+            margin-bottom: 40px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="/" class="back-link">
+            <svg style="margin-right: 8px;" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="19" y1="12" x2="5" y2="12"></line>
+                <polyline points="12 19 5 12 12 5"></polyline>
+            </svg>
+            На главную
+        </a>
+
+        <h1>Правила использования</h1>
+        <p class="date">Дата обновления: 10 марта 2026 г.</p>
+        
+        <p>Используя мобильное приложение и сервисы FokinShop ("Приложение"), вы соглашаетесь с настоящими Правилами использования. Пожалуйста, внимательно ознакомьтесь с ними.</p>
+        
+        <h2>1. Регистрация и Аккаунт</h2>
+        <p>Для использования функций Приложения требуется аутентификация через сервис Google. Вы несете полную ответственность за сохранность доступа к своему аккаунту и за любые действия, совершаемые в Приложении под вашей учетной записью.</p>
+        
+        <h2>2. Контент Пользователя</h2>
+        <p>Вы сохраняете все права на контент, который вы публикуете в Приложении. Однако, загружая фотографии, публикуя отзывы или создавая записи, вы предоставляете нам неисключительную лицензию на использование, хранение и отображение этого контента исключительно в целях обеспечения работы и развития сервиса.</p>
+        
+        <h2>3. Правила поведения</h2>
+        <p>При использовании Приложения запрещается:</p>
+        <ul>
+            <li>Публиковать контент, нарушающий законодательство, права третьих лиц или общепринятые нормы приличия.</li>
+            <li>Использовать автоматизированные скрипты для сбора данных или имитации действий пользователя.</li>
+            <li>Выдавать себя за другого человека, представителя организации или бренда без законных оснований.</li>
+            <li>Совершать действия, направленные на нарушение стабильной работы серверов Приложения.</li>
+        </ul>
+        
+        <h2>4. Модерация контента</h2>
+        <p>Администрация оставляет за собой право удалять контент, нарушающий данные Правила, а также временно или постоянно ограничивать доступ пользователям, систематически нарушающим регламент сервиса.</p>
+        
+        <h2>5. Ограничение ответственности</h2>
+        <p>Приложение предоставляется по принципу "как есть" (as is). Мы не гарантируем абсолютную бесперебойность работы и не несем ответственности за возможные потери данных или косвенные убытки, связанные с использованием сервиса.</p>
+        
+        <h2>6. Изменения правил</h2>
+        <p>Мы оставляем за собой право изменять данные Правила в любое время. Ваше дальнейшее использование Приложения после публикации изменений означает согласие с новой редакцией Правил.</p>
+        
+        <h2>7. Поддержка</h2>
+        <p>По любым вопросам относительно работы Приложения вы можете обратиться в службу поддержки: <a href="mailto:k2foxspb@mail.ru" style="color: var(--accent-color); text-decoration: none;">k2foxspb@mail.ru</a></p>
+    </div>
+</body>
+</html>

@@ -1,0 +1,552 @@
+from datetime import datetime
+from pydantic import BaseModel, EmailStr, Field, ConfigDict, field_validator
+from typing import Any, Optional
+
+
+class UserCreate(BaseModel):
+    email: EmailStr = Field(description="Email пользователя")
+    password: str = Field(min_length=8, description="Пароль (минимум 8 символов)")
+    first_name: str | None = Field(default=None, description="Имя")
+    last_name: str | None = Field(default=None, description="Фамилия")
+    role: str = Field(default="buyer", pattern="^(buyer|seller|admin|owner)$",
+                      description="Роль: 'buyer', 'seller', 'admin' или 'owner'")
+
+
+class UserUpdate(BaseModel):
+    email: EmailStr | None = None
+    first_name: str | None = None
+    last_name: str | None = None
+
+class ReactorInfo(BaseModel):
+    id: int
+    first_name: str | None = None
+    last_name: str | None = None
+    avatar_url: str | None = None
+    model_config = ConfigDict(from_attributes=True)
+
+
+class UserPhotoBase(BaseModel):
+    image_url: str
+    preview_url: str
+    description: str | None = None
+    album_id: int | None = None
+    privacy: str = "public"
+
+class UserPhotoCreate(UserPhotoBase):
+    pass
+
+class UserPhotoUpdate(BaseModel):
+    description: str | None = None
+    album_id: int | None = None
+    privacy: str | None = None
+
+class BulkDeletePhotosRequest(BaseModel):
+    photo_ids: list[int]
+
+class UserPhotoCommentBase(BaseModel):
+    comment: str = Field(min_length=1)
+
+class UserPhotoCommentCreate(UserPhotoCommentBase):
+    pass
+
+class UserPhotoComment(UserPhotoCommentBase):
+    id: int
+    user_id: int
+    photo_id: int
+    created_at: datetime
+    first_name: str | None = None
+    last_name: str | None = None
+    avatar_url: str | None = None
+    likes_count: int = 0
+    dislikes_count: int = 0
+    my_reaction: int | None = None
+    liked_by: list[ReactorInfo] = []
+    disliked_by: list[ReactorInfo] = []
+    model_config = ConfigDict(from_attributes=True)
+
+    @classmethod
+    def model_validate(cls, obj, **kwargs):
+        try:
+            if isinstance(obj, dict):
+                return cls(**obj)
+            
+            data = {
+                "id": int(getattr(obj, "id", 0)),
+                "user_id": int(getattr(obj, "user_id", 0)),
+                "photo_id": int(getattr(obj, "photo_id", 0)),
+                "comment": str(getattr(obj, "comment", "")),
+                "created_at": getattr(obj, "created_at", None),
+                "first_name": None,
+                "last_name": None,
+                "avatar_url": None,
+                "likes_count": int(getattr(obj, "likes_count", 0)),
+                "dislikes_count": int(getattr(obj, "dislikes_count", 0)),
+                "my_reaction": getattr(obj, "my_reaction", None),
+                "liked_by": [],
+                "disliked_by": []
+            }
+            
+            # Пользователь
+            if hasattr(obj, "user") and obj.user:
+                data["first_name"] = obj.user.first_name
+                data["last_name"] = obj.user.last_name
+                data["avatar_url"] = obj.user.avatar_url
+            
+            # Реакции
+            obj_dict = getattr(obj, "__dict__", {})
+            if "reactions" in obj_dict:
+                reactions = obj_dict["reactions"]
+                # Убеждаемся, что реакции загружены вместе с пользователями, проверяя __dict__ каждой реакции
+                data["liked_by"] = [r.user for r in reactions if r.reaction_type == 1 and "user" in getattr(r, "__dict__", {}) and r.user is not None]
+                data["disliked_by"] = [r.user for r in reactions if r.reaction_type == -1 and "user" in getattr(r, "__dict__", {}) and r.user is not None]
+                
+                # Если счетчики не заданы вручную, считаем их из реакций
+                if data["likes_count"] == 0:
+                    data["likes_count"] = len(data["liked_by"])
+                if data["dislikes_count"] == 0:
+                    data["dislikes_count"] = len(data["disliked_by"])
+
+            return cls(**data)
+        except Exception as e:
+            raise e
+
+class UserPhoto(UserPhotoBase):
+    id: int
+    created_at: datetime | None = None
+    likes_count: int = 0
+    dislikes_count: int = 0
+    my_reaction: int | None = None
+    comments_count: int = 0
+    liked_by: list[ReactorInfo] = []
+    disliked_by: list[ReactorInfo] = []
+    model_config = ConfigDict(from_attributes=True)
+
+    @classmethod
+    def model_validate(cls, obj, **kwargs):
+        try:
+            if isinstance(obj, dict):
+                # Ensure mandatory fields have defaults if missing in dict
+                data = {
+                    "image_url": obj.get("image_url", ""),
+                    "preview_url": obj.get("preview_url", ""),
+                    "description": obj.get("description"),
+                    "album_id": obj.get("album_id"),
+                    "privacy": obj.get("privacy", "public"),
+                    "id": obj.get("id", 0),
+                    "created_at": obj.get("created_at"),
+                    "likes_count": obj.get("likes_count", 0),
+                    "dislikes_count": obj.get("dislikes_count", 0),
+                    "my_reaction": obj.get("my_reaction"),
+                    "comments_count": obj.get("comments_count", 0),
+                    "liked_by": obj.get("liked_by", []),
+                    "disliked_by": obj.get("disliked_by", [])
+                }
+                return cls(**data)
+            
+            # Базовые поля
+            data = {
+                "image_url": str(getattr(obj, "image_url", "")),
+                "preview_url": str(getattr(obj, "preview_url", "")),
+                "description": getattr(obj, "description", None),
+                "album_id": getattr(obj, "album_id", None),
+                "privacy": str(getattr(obj, "privacy", "public")),
+                "id": int(getattr(obj, "id", 0)),
+                "created_at": getattr(obj, "created_at", None),
+                "likes_count": int(getattr(obj, "likes_count", 0)),
+                "dislikes_count": int(getattr(obj, "dislikes_count", 0)),
+                "my_reaction": getattr(obj, "my_reaction", None),
+                "comments_count": int(getattr(obj, "comments_count", 0)),
+                "liked_by": [],
+                "disliked_by": []
+            }
+
+            # Пытаемся достать реакции из __dict__ напрямую, чтобы не триггерить lazy load
+            obj_dict = getattr(obj, "__dict__", {})
+            if "reactions" in obj_dict:
+                reactions = obj_dict["reactions"]
+                # Убеждаемся, что реакции загружены вместе с пользователями
+                data["liked_by"] = [r.user for r in reactions if r.reaction_type == 1 and "user" in getattr(r, "__dict__", {}) and r.user is not None]
+                data["disliked_by"] = [r.user for r in reactions if r.reaction_type == -1 and "user" in getattr(r, "__dict__", {}) and r.user is not None]
+                if data["likes_count"] == 0:
+                    data["likes_count"] = len(data["liked_by"])
+                if data["dislikes_count"] == 0:
+                    data["dislikes_count"] = len(data["disliked_by"])
+            
+            if "comments" in obj_dict:
+                if data["comments_count"] == 0:
+                    data["comments_count"] = len(obj_dict["comments"])
+            
+            return cls(**data)
+        except Exception as e:
+            raise e
+
+
+class PhotoAlbumBase(BaseModel):
+    title: str
+    description: str | None = None
+    privacy: str = "public"
+
+class PhotoAlbumCreate(PhotoAlbumBase):
+    pass
+
+class PhotoAlbumUpdate(BaseModel):
+    title: str | None = None
+    description: str | None = None
+    privacy: str | None = None
+
+class PhotoAlbumCommentBase(BaseModel):
+    comment: str = Field(min_length=1)
+
+class PhotoAlbumCommentCreate(PhotoAlbumCommentBase):
+    pass
+
+class PhotoAlbumComment(PhotoAlbumCommentBase):
+    id: int
+    user_id: int
+    album_id: int
+    created_at: datetime
+    first_name: str | None = None
+    last_name: str | None = None
+    avatar_url: str | None = None
+    likes_count: int = 0
+    dislikes_count: int = 0
+    my_reaction: int | None = None
+    liked_by: list[ReactorInfo] = []
+    disliked_by: list[ReactorInfo] = []
+    model_config = ConfigDict(from_attributes=True)
+
+    @classmethod
+    def model_validate(cls, obj, **kwargs):
+        try:
+            if isinstance(obj, dict):
+                return cls(**obj)
+            
+            data = {
+                "id": int(getattr(obj, "id", 0)),
+                "user_id": int(getattr(obj, "user_id", 0)),
+                "album_id": int(getattr(obj, "album_id", 0)),
+                "comment": str(getattr(obj, "comment", "")),
+                "created_at": getattr(obj, "created_at", None),
+                "first_name": None,
+                "last_name": None,
+                "avatar_url": None,
+                "likes_count": int(getattr(obj, "likes_count", 0)),
+                "dislikes_count": int(getattr(obj, "dislikes_count", 0)),
+                "my_reaction": getattr(obj, "my_reaction", None),
+                "liked_by": [],
+                "disliked_by": []
+            }
+            
+            if hasattr(obj, "user") and obj.user:
+                data["first_name"] = obj.user.first_name
+                data["last_name"] = obj.user.last_name
+                data["avatar_url"] = obj.user.avatar_url
+            
+            obj_dict = getattr(obj, "__dict__", {})
+            if "reactions" in obj_dict:
+                reactions = obj_dict["reactions"]
+                data["liked_by"] = [r.user for r in reactions if r.reaction_type == 1 and "user" in getattr(r, "__dict__", {}) and r.user is not None]
+                data["disliked_by"] = [r.user for r in reactions if r.reaction_type == -1 and "user" in getattr(r, "__dict__", {}) and r.user is not None]
+                
+                if data["likes_count"] == 0:
+                    data["likes_count"] = len(data["liked_by"])
+                if data["dislikes_count"] == 0:
+                    data["dislikes_count"] = len(data["disliked_by"])
+
+            return cls(**data)
+        except Exception:
+            return cls(
+                id=int(getattr(obj, "id", 0)),
+                user_id=int(getattr(obj, "user_id", 0)),
+                album_id=int(getattr(obj, "album_id", 0)),
+                comment=str(getattr(obj, "comment", "Error")),
+                created_at=getattr(obj, "created_at", datetime.utcnow())
+            )
+
+class PhotoAlbum(PhotoAlbumBase):
+    id: int
+    user_id: int
+    created_at: datetime | None = None
+    photos: list[UserPhoto] = []
+    
+    # Для превью альбома (последняя фотография)
+    album_preview_url: str | None = None
+    
+    likes_count: int = 0
+    dislikes_count: int = 0
+    my_reaction: int | None = None
+    liked_by: list[ReactorInfo] = []
+    disliked_by: list[ReactorInfo] = []
+    comments_count: int = 0
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @classmethod
+    def model_validate(cls, obj, **kwargs):
+        try:
+            if isinstance(obj, dict):
+                data = {
+                    "id": obj.get("id", 0),
+                    "user_id": obj.get("user_id", 0),
+                    "title": obj.get("title", ""),
+                    "description": obj.get("description"),
+                    "privacy": obj.get("privacy", "public"),
+                    "created_at": obj.get("created_at"),
+                    "photos": obj.get("photos", []),
+                    "album_preview_url": obj.get("album_preview_url"),
+                    "likes_count": obj.get("likes_count", 0),
+                    "dislikes_count": obj.get("dislikes_count", 0),
+                    "my_reaction": obj.get("my_reaction"),
+                    "liked_by": obj.get("liked_by", []),
+                    "disliked_by": obj.get("disliked_by", []),
+                    "comments_count": obj.get("comments_count", 0)
+                }
+                if data["photos"] and isinstance(data["photos"][0], dict):
+                    data["photos"] = [UserPhoto.model_validate(p) for p in data["photos"]]
+                return cls(**data)
+                
+            data = {
+                "id": int(getattr(obj, "id", 0)),
+                "user_id": int(getattr(obj, "user_id", 0)),
+                "title": str(getattr(obj, "title", "")),
+                "description": getattr(obj, "description", None),
+                "privacy": str(getattr(obj, "privacy", "public")),
+                "created_at": getattr(obj, "created_at", None),
+                "photos": [],
+                "album_preview_url": None,
+                "likes_count": int(getattr(obj, "likes_count", 0)),
+                "dislikes_count": int(getattr(obj, "dislikes_count", 0)),
+                "my_reaction": getattr(obj, "my_reaction", None),
+                "liked_by": [],
+                "disliked_by": [],
+                "comments_count": int(getattr(obj, "comments_count", 0))
+            }
+            
+            obj_dict = getattr(obj, "__dict__", {})
+            if "photos" in obj_dict:
+                photos = obj_dict["photos"]
+                data["photos"] = [UserPhoto.model_validate(p) for p in photos] if photos else []
+                if data["photos"]:
+                    valid_for_preview = [p for p in data["photos"] if p.created_at is not None]
+                    if valid_for_preview:
+                        sorted_photos = sorted(valid_for_preview, key=lambda x: x.created_at, reverse=True)
+                        data["album_preview_url"] = sorted_photos[0].preview_url
+                    else:
+                        data["album_preview_url"] = data["photos"][0].preview_url
+
+            if "reactions" in obj_dict:
+                reactions = obj_dict["reactions"]
+                data["liked_by"] = [r.user for r in reactions if r.reaction_type == 1 and "user" in getattr(r, "__dict__", {}) and r.user is not None]
+                data["disliked_by"] = [r.user for r in reactions if r.reaction_type == -1 and "user" in getattr(r, "__dict__", {}) and r.user is not None]
+                if data["likes_count"] == 0:
+                    data["likes_count"] = len(data["liked_by"])
+                if data["dislikes_count"] == 0:
+                    data["dislikes_count"] = len(data["disliked_by"])
+            
+            if "comments" in obj_dict:
+                if data["comments_count"] == 0:
+                    data["comments_count"] = len(obj_dict["comments"])
+
+            return cls(**data)
+        except Exception:
+            return cls(
+                id=int(getattr(obj, "id", 0)),
+                user_id=int(getattr(obj, "user_id", 0)),
+                title=str(getattr(obj, "title", "Error")),
+                photos=[]
+            )
+
+
+class AdminPermissionCreate(BaseModel):
+    admin_id: int
+    model_name: str
+
+class AdminPermission(BaseModel):
+    id: int
+    admin_id: int
+    model_name: str
+    model_config = ConfigDict(from_attributes=True)
+
+
+class User(BaseModel):
+    id: int
+    email: Optional[str] = None
+    phone_number: Optional[str] = None
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    is_active: bool = True
+    role: str = "buyer"
+    status: Optional[str] = "offline"
+    last_seen: Optional[str] = None
+    avatar_url: Optional[str] = None
+    avatar_preview_url: Optional[str] = None
+    fcm_token: Optional[str] = None
+    friendship_status: Optional[str] = None # "pending", "accepted", "requested_by_me", "requested_by_them", null
+    photos: list[UserPhoto] = []
+    albums: list[PhotoAlbum] = []
+    admin_permissions: list[AdminPermission] = []
+    update_available: bool = False
+    latest_app_version: Optional['AppVersionResponse'] = None
+    
+    model_config = ConfigDict(from_attributes=True)
+
+    @classmethod
+    def model_validate(cls, obj, **kwargs):
+        try:
+            if isinstance(obj, dict):
+                # Ensure mandatory fields have defaults if missing in dict
+                data = {
+                    "id": obj.get("id", 0),
+                    "email": obj.get("email"),
+                    "phone_number": obj.get("phone_number"),
+                    "first_name": obj.get("first_name"),
+                    "last_name": obj.get("last_name"),
+                    "is_active": obj.get("is_active", True),
+                    "role": obj.get("role", "buyer"),
+                    "status": obj.get("status", "offline"),
+                    "last_seen": obj.get("last_seen"),
+                    "avatar_url": obj.get("avatar_url"),
+                    "avatar_preview_url": obj.get("avatar_preview_url"),
+                    "fcm_token": obj.get("fcm_token"),
+                    "friendship_status": obj.get("friendship_status"),
+                    "photos": obj.get("photos", []),
+                    "albums": obj.get("albums", []),
+                    "admin_permissions": obj.get("admin_permissions", []),
+                    "update_available": obj.get("update_available", False),
+                    "latest_app_version": obj.get("latest_app_version")
+                }
+                return cls(**data)
+                
+            # Получаем базовые поля
+            data = {
+                "id": int(getattr(obj, "id", 0)),
+                "email": getattr(obj, "email", None),
+                "phone_number": getattr(obj, "phone_number", None),
+                "first_name": getattr(obj, "first_name", None),
+                "last_name": getattr(obj, "last_name", None),
+                "is_active": bool(getattr(obj, "is_active", True)),
+                "role": str(getattr(obj, "role", "buyer")),
+                "status": str(getattr(obj, "status", "offline")),
+                "last_seen": getattr(obj, "last_seen", None),
+                "avatar_url": getattr(obj, "avatar_url", None),
+                "avatar_preview_url": getattr(obj, "avatar_preview_url", None),
+                "fcm_token": getattr(obj, "fcm_token", None),
+                "friendship_status": getattr(obj, "friendship_status", None),
+                "photos": [],
+                "albums": [],
+                "admin_permissions": [],
+                "update_available": getattr(obj, "update_available", False),
+                "latest_app_version": getattr(obj, "latest_app_version", None)
+            }
+            
+            # Используем __dict__ напрямую, это самый надежный способ избежать ленивой загрузки
+            obj_dict = getattr(obj, "__dict__", {})
+            
+            # ВАЖНО: проверяем наличие ключей в __dict__, чтобы не триггерить Lazy Loading 
+            # через getattr(obj, "photos"), если photos не были подгружены в запросе
+            if "photos" in obj_dict and obj_dict["photos"] is not None:
+                photos = obj_dict["photos"]
+                data["photos"] = [UserPhoto.model_validate(p) for p in photos]
+            
+            if "albums" in obj_dict and obj_dict["albums"] is not None:
+                albums = obj_dict["albums"]
+                data["albums"] = [PhotoAlbum.model_validate(a) for a in albums]
+
+            if "admin_permissions" in obj_dict and obj_dict["admin_permissions"] is not None:
+                perms = obj_dict["admin_permissions"]
+                data["admin_permissions"] = [AdminPermission.model_validate(p) for p in perms]
+                
+            return cls(**data)
+        except Exception as e:
+            from loguru import logger
+            logger.error(f"User validation error: {e}")
+            # Возвращаем объект, но без вложенных данных, если они вызвали ошибку
+            return cls(
+                id=int(getattr(obj, "id", 0)),
+                email=getattr(obj, "email", None),
+                first_name=getattr(obj, "first_name", "Error"),
+                last_name=getattr(obj, "last_name", "Validation"),
+                role=getattr(obj, "role", "buyer"),
+                avatar_url=getattr(obj, "avatar_url", None)
+            )
+
+
+class GoogleAuthRequest(BaseModel):
+    id_token: str
+    fcm_token: str | None = None
+
+
+class FirebaseAuthRequest(BaseModel):
+    id_token: str
+    fcm_token: str | None = None
+    recaptcha_token: str | None = None
+
+
+class VerifyCodeRequest(BaseModel):
+    phone_number: str
+    code: str
+
+class ResendCodeRequest(BaseModel):
+    phone_number: str
+
+class RequestCodeRequest(BaseModel):
+    phone_number: str
+
+class RefreshTokenRequest(BaseModel):
+    refresh_token: str
+
+class PhoneCodeResponse(BaseModel):
+    message: str
+    phone: str
+
+
+class FCMTokenUpdate(BaseModel):
+    fcm_token: str
+
+class TokenResponse(BaseModel):
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
+    fcm_token: str | None = None
+    needs_phone: bool = False
+    needs_email: bool = False
+
+
+class FirebaseConfigResponse(BaseModel):
+    apiKey: str
+    appId: str
+    projectId: str
+    storageBucket: str
+    messagingSenderId: str
+    databaseURL: str | None = None
+
+
+class Friendship(BaseModel):
+    id: int
+    user_id: int
+    friend_id: int
+    status: str
+    created_at: datetime
+    
+    # deleted_by_id опционален на случай если его нет в БД
+    deleted_by_id: int | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class AppVersionResponse(BaseModel):
+    id: int
+    version: str
+    file_path: str
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+class AppLogRequest(BaseModel):
+    message: str
+    level: Optional[str] = "info"
+    device_info: Optional[str] = None
+
+
+
+

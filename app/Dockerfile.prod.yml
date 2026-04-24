@@ -1,0 +1,24 @@
+FROM tiangolo/uvicorn-gunicorn:python3.11-slim
+
+# устанавливаем переменные окружения
+ENV HOME=/home/fast \
+    APP_HOME=/home/fast/app \
+    PYTHONPATH="$PYTHONPATH:/home/fast" \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+# создаем рабочую директорию
+RUN mkdir -p $APP_HOME
+
+# устанавливаем рабочую директорию
+WORKDIR $APP_HOME
+
+# копирование проекта FastAPI в рабочую директорию
+COPY app app
+COPY requirements.txt alembic.ini .env firebase-service-account.json*  ./
+
+# обновление pip
+# установка зависимостей из списка requirements.txt
+RUN pip install --upgrade pip \
+ && pip install -r requirements.txt
+

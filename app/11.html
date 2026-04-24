@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html>
+   <body>
+      <h1>Send JS request</h1>
+      <button onclick="getData()">Click me</button>
+      <script>
+         function getData() {
+            fetch('https://127.0.0.1:8000/')
+               .then(resp => resp.json())
+               .then(data => {
+                  console.log(data);
+               })
+               .catch(error => {
+                  console.error(error);
+               });
+         }
+      </script>
+   </body>
+</html>

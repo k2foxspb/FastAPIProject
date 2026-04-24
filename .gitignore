@@ -1,0 +1,11 @@
+.expo/
+.idea/
+.output.txt
+info.log
+__pycache__/
+*.pyc
+app/app/
+app/media/
+.env
+mobile/.env
+*.db

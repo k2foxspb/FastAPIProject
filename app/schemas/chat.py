@@ -1,0 +1,88 @@
+from pydantic import BaseModel
+from datetime import datetime
+from typing import Optional, Union
+
+class ChatMessageBase(BaseModel):
+    receiver_id: int
+    message: Optional[str] = None
+    file_path: Optional[str] = None
+    attachments: Optional[list[dict]] = None
+    message_type: str = "text"
+    client_id: Optional[str] = None # Для оптимистичных обновлений
+    duration: Optional[float] = None # Длительность аудио/видео в секундах
+    reply_to_id: Optional[int] = None
+    is_uploading: bool = False
+    upload_id: Optional[str] = None
+    upload_progress: Optional[float] = None
+    upload_offset: Optional[int] = None
+    upload_total: Optional[int] = None
+
+class ChatMessageCreate(ChatMessageBase):
+    pass
+
+class ChatMessageReply(BaseModel):
+    id: int
+    message: Optional[str] = None
+    message_type: str
+    sender_id: int
+    sender_name: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+class ChatMessageResponse(ChatMessageBase):
+    id: int
+    client_id: Optional[str] = None # Возвращаем обратно
+    sender_id: int
+    sender_name: Optional[str] = None
+    timestamp: datetime
+    is_read: int
+    reply_to: Optional[ChatMessageReply] = None
+    is_uploading: bool = False
+    upload_id: Optional[str] = None
+    upload_progress: Optional[float] = None
+    upload_offset: Optional[int] = None
+    upload_total: Optional[int] = None
+    deleted_by_sender: bool = False
+    deleted_by_receiver: bool = False
+
+    class Config:
+        from_attributes = True
+
+class DialogResponse(BaseModel):
+    user_id: int
+    email: str
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    avatar_url: Optional[str] = None
+    last_message: str
+    last_message_time: datetime
+    unread_count: int
+    status: Optional[str] = "offline"
+    last_seen: Optional[str] = None
+
+class UploadInitRequest(BaseModel):
+    filename: str
+    file_size: int
+    mime_type: Optional[str] = None
+    receiver_id: Optional[Union[str, int]] = None
+    client_id: Optional[str] = None
+    message_type: Optional[str] = None
+    duration: Optional[float] = None
+    reply_to_id: Optional[int] = None
+
+    class Config:
+        extra = "ignore"
+
+class UploadSessionResponse(BaseModel):
+    upload_id: str
+    offset: int
+    chunk_size: int = 1024 * 1024 # 1MB по умолчанию
+
+class UploadStatusResponse(BaseModel):
+    upload_id: str
+    offset: int
+    is_completed: bool
+
+class BulkDeleteMessagesRequest(BaseModel):
+    message_ids: list[int]

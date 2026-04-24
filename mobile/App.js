@@ -1,0 +1,127 @@
+import { initializeFirebase } from './src/utils/firebaseInit'; // Гарантированная инициализация
+import React, { useEffect } from 'react';
+import { NavigationContainer } from '@react-navigation/native';
+import * as Linking from 'expo-linking';
+import { Alert } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
+import TabNavigator from './src/navigation/TabNavigator';
+import { navigationRef } from './src/navigation/NavigationService';
+import { requestUserPermission, setupCloudMessaging, updateServerFcmToken } from './src/utils/notifications';
+import { NotificationProvider, useNotifications } from './src/context/NotificationContext.js';
+import { ThemeProvider, useTheme } from './src/context/ThemeContext.js';
+import { storage } from './src/utils/storage';
+import { setAuthToken, usersApi } from './src/api';
+import { setPlaybackAudioMode } from './src/utils/audioSettings';
+import { cleanOldCache } from './src/utils/cacheCleanup';
+
+function AppContent() {
+  const { connect, injectExternalNotification } = useNotifications();
+  const { theme } = useTheme();
+
+  const linking = {
+    prefixes: [Linking.createURL('/'), 'fokinfun://', 'https://fokin.fun', 'https://fastapi-f628e.firebaseapp.com'],
+    config: {
+      screens: {
+        Feed: {
+          screens: {
+            NewsDetail: 'news/:newsId',
+            ProductDetail: 'product/:productId',
+          },
+        },
+        Messages: {
+          screens: {
+            Chat: 'chat/:userId/:userName',
+          },
+        },
+        Users: {
+          screens: {
+            UserProfile: 'user/:userId',
+          },
+        },
+        Profile: {
+          screens: {
+            Login: 'login',
+            VerifyEmail: {
+              path: 'verify-email',
+              exact: false,
+            },
+            VerifyEmailBridge: {
+              path: 'users/verify-email',
+              exact: false,
+            },
+            FirebaseAction: {
+              path: '__/auth/action',
+              exact: false,
+            }
+          },
+        },
+      },
+    },
+    subscribe(listener) {
+      const onReceiveURL = async ({ url }) => {
+        console.log('[Linking] Received URL:', url);
+        listener(url);
+      };
+
+      const subscription = Linking.addEventListener('url', onReceiveURL);
+
+      return () => {
+        subscription.remove();
+      };
+    },
+  };
+
+  useEffect(() => {
+    // Устанавливаем режим аудио для всего приложения
+    setPlaybackAudioMode();
+
+    // Очищаем кэш старше 3 дней
+    cleanOldCache();
+    
+    // Сначала инициализируем Firebase (теперь это async)
+    initializeFirebase().then(() => {
+      console.log('[App] Firebase initialized successfully (Junie Debug v1)');
+      requestUserPermission().then(granted => {
+        if (granted) {
+          // Если разрешение получено, пробуем получить и сохранить токен
+          const { getFcmToken } = require('./src/utils/notifications');
+          getFcmToken().catch(e => console.log('Initial getFcmToken failed', e));
+        }
+      });
+      setupCloudMessaging(injectExternalNotification);
+    });
+
+    // Проверка сохраненной сессии
+    const checkSession = async () => {
+      try {
+        const token = await storage.getAccessToken();
+        if (token) {
+          setAuthToken(token);
+          connect(token);
+          // Обновляем FCM токен на сервере после авторизации
+          updateServerFcmToken().catch(e => console.log('FCM Update failed', e));
+        }
+      } catch (err) {
+        console.log('checkSession failed', err);
+      }
+    };
+    checkSession();
+  }, [connect]);
+
+  return (
+    <NavigationContainer linking={linking} ref={navigationRef}>
+      <StatusBar style={theme === 'dark' ? 'light' : 'dark'} backgroundColor={theme === 'dark' ? '#000000' : '#FFFFFF'} />
+      <TabNavigator />
+    </NavigationContainer>
+  );
+}
+
+export default function App() {
+  return (
+    <ThemeProvider>
+      <NotificationProvider>
+        <AppContent />
+      </NotificationProvider>
+    </ThemeProvider>
+  );
+}

@@ -1,0 +1,19 @@
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.k2foxspb.fokinfun",
+      "sha256_cert_fingerprints": [
+        "7c:da:d6:64:32:d5:ad:8f:cc:9e:80:c1:5c:a0:ee:ae:2c:ba:b6:76:91:5a:06:b4:03:cf:1f:51:97:cd:02:6e",
+        "89:89:e8:79:85:26:06:90:32:c9:29:de:15:26:00:9c:39:6b:52:bb:00:a5:3d:c8:ba:f4:34:c4:c9:ad:aa:d8",
+        "FA:C6:17:45:DC:09:03:78:6F:B9:ED:E6:2A:96:2B:39:9F:73:48:F0:BB:6F:89:9B:83:32:66:75:91:03:3B:9C",
+        "3A:62:52:AF:3F:CF:FD:95:2B:B4:A0:B7:45:F8:16:B6:F4:C5:00:43:2C:BA:B6:76:91:5A:06:B4:03:CF:1F:51",
+        "5E:8F:16:06:2E:A3:CD:2C:4A:0D:54:78:76:BA:A6:F3:8C:AB:F6:25:00:A5:3D:C8:BA:F4:34:C4:C9:AD:AA:D8",
+        "02:CD:F2:C4:08:42:01:E2:B6:1D:6B:BA:27:81:7A:B4:E0:4F:96:BC:54:F1:64:14:38:3F:1B:32:4C:E6:E1:92"
+      ]
+    }
+  }
+]

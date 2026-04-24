@@ -1,0 +1,201 @@
+{
+  "expo": {
+    "sdkVersion": "54.0.0",
+    "plugins": [
+      "./plugins/withNotificationAndroidPlugin",
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "useFrameworks": "static"
+          },
+          "android": {
+            "compileSdkVersion": 35,
+            "targetSdkVersion": 35,
+            "buildToolsVersion": "35.0.0",
+            "kotlinTargetJvmVersion": "17"
+          }
+        }
+      ],
+      "@react-native-firebase/app",
+      [
+        "@react-native-firebase/messaging",
+        {
+          "android": {
+            "default_notification_channel_id": "messages",
+            "default_notification_icon": "@drawable/notification_icon",
+            "default_notification_color": "@color/notification_icon_color"
+          }
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Приложение запрашивает доступ к вашим фотографиям, чтобы вы могли делиться ими.",
+          "cameraPermission": "Приложение запрашивает доступ к камере, чтобы вы могли делать снимки.",
+          "microphonePermission": "Приложение запрашивает доступ к микрофону."
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Приложение запрашивает доступ к камере, чтобы вы могли записывать видео-кружочки.",
+          "microphonePermission": "Приложение запрашивает доступ к микрофону."
+        }
+      ],
+      "expo-asset"
+    ],
+    "name": "FastAPI",
+    "slug": "fastapi",
+    "scheme": "fokinfun",
+    "version": "1.0.10",
+    "orientation": "portrait",
+    "icon": "./assets/logo1024.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/logo.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.k2foxspb.fokinfun",
+      "entitlements": {
+        "aps-environment": "production"
+      },
+      "associatedDomains": [
+        "applinks:fokin.fun",
+        "applinks:fastapi-f628e.firebaseapp.com"
+      ],
+      "infoPlist": {
+        "UIBackgroundModes": [
+          "remote-notification",
+          "fetch"
+        ],
+        "NSCameraUsageDescription": "Приложение запрашивает доступ к камере, чтобы вы могли делать снимки.",
+        "NSMicrophoneUsageDescription": "Приложение запрашивает доступ к микрофону.",
+        "NSPhotoLibraryUsageDescription": "Приложение запрашивает доступ к вашим фотографиям, чтобы вы могли делиться ими."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/logo1024.png",
+        "backgroundColor": "#ffffff"
+      },
+      "package": "com.k2foxspb.fokinfun",
+      "googleServicesFile": "./google-services.json",
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "fokin.fun",
+              "pathPrefix": "/verify-email"
+            },
+            {
+              "scheme": "https",
+              "host": "fokin.fun",
+              "pathPrefix": "/users/verify-email"
+            },
+            {
+              "scheme": "https",
+              "host": "fokin.fun",
+              "pathPrefix": "/news"
+            },
+            {
+              "scheme": "https",
+              "host": "fokin.fun",
+              "pathPrefix": "/product"
+            },
+            {
+              "scheme": "https",
+              "host": "fokin.fun",
+              "pathPrefix": "/user"
+            },
+            {
+              "scheme": "https",
+              "host": "fokin.fun",
+              "pathPrefix": "/chat"
+            },
+            {
+              "scheme": "https",
+              "host": "fokin.fun",
+              "pathPrefix": "/login"
+            },
+            {
+              "scheme": "https",
+              "host": "fokin.fun",
+              "pathPrefix": "/__/auth/links"
+            },
+            {
+              "scheme": "https",
+              "host": "fokin.fun",
+              "pathPrefix": "/__/auth/action"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        },
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "fastapi-f628e.firebaseapp.com",
+              "pathPrefix": "/__/auth/links"
+            },
+            {
+              "scheme": "https",
+              "host": "fastapi-f628e.firebaseapp.com",
+              "pathPrefix": "/__/auth/action"
+            },
+            {
+              "scheme": "https",
+              "host": "fastapi-f628e.firebaseapp.com",
+              "pathPrefix": "/verify-email"
+            },
+            {
+              "scheme": "https",
+              "host": "fastapi-f628e.firebaseapp.com",
+              "pathPrefix": "/users/verify-email"
+            },
+            {
+              "scheme": "https",
+              "host": "fastapi-f628e.firebaseapp.com",
+              "pathPrefix": "/login"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
+      ],
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.WAKE_LOCK",
+        "android.permission.RECEIVE_BOOT_COMPLETED",
+        "android.permission.VIBRATE",
+        "android.permission.FOREGROUND_SERVICE"
+      ]
+    },
+    "extra": {
+      "eas": {
+        "projectId": "2de64318-d888-474e-b639-33eb05497be3"
+      }
+    },
+    "owner": "k2foxspb"
+  }
+}
