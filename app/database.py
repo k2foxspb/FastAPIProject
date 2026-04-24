@@ -1,9 +1,8 @@
 
 from sqlalchemy import create_engine, MetaData
 from sqlalchemy.orm import sessionmaker, DeclarativeBase
-
-DATABASE_URL = 'sqlite:///ecommerce.db'
-engine = create_engine(DATABASE_URL, echo=True)
+from app.core.config import DATABASE_URL as _DATABASE_URL_SYNC
+engine = create_engine(_DATABASE_URL_SYNC, echo=True)
 SessionLocal = sessionmaker(bind=engine)
 
 # Настройка конвенции именования для Alembic

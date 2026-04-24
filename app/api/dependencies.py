@@ -1,26 +1,5 @@
-from sqlalchemy.orm import Session, selectinload
-from collections.abc import Generator, AsyncGenerator
-from sqlalchemy.ext.asyncio import AsyncSession
-from app.database import async_session_maker, SessionLocal
-from app.models.users import User as UserModel, Friendship as FriendshipModel
+from app.models.users import Friendship as FriendshipModel
 from sqlalchemy import select
-
-
-def get_db() -> Generator[Session, None, None]:
-    """
-    Зависимость для получения сессии базы данных.
-    Создаёт новую сессию для каждого запроса и закрывает её после обработки.
-    """
-    db: Session = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-
-
-# --------------- Асинхронная сессия -------------------------
-
 from collections.abc import AsyncGenerator
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import async_session_maker

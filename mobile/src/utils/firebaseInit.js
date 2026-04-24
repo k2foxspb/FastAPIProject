@@ -1,5 +1,15 @@
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
+
+const extra = Constants.expoConfig?.extra || {};
+const firebaseConfig = {
+  apiKey: extra.firebaseApiKey,
+  appId: extra.firebaseAppId,
+  projectId: extra.firebaseProjectId,
+  storageBucket: extra.firebaseStorageBucket,
+  messagingSenderId: extra.firebaseMessagingSenderId,
+  databaseURL: extra.firebaseDatabaseURL,
+};
 import { getApp, getApps, initializeApp } from '@react-native-firebase/app';
 
 // Переменная для хранения статуса инициализации
@@ -60,14 +70,6 @@ const initializeFirebase = async () => {
       } catch (e) {
         if (Platform.OS === 'android') {
           console.log('[FCM] Native auto-init failed, performing manual init...');
-          const firebaseConfig = {
-            apiKey: "AIzaSyAwKCJuxsxfnY6aloE5lnDn-triTVBswxE",
-            appId: "1:176773891332:android:01174694c19132ed0ffc51",
-            projectId: "fastapi-f628e",
-            storageBucket: "fastapi-f628e.firebasestorage.app",
-            messagingSenderId: "176773891332",
-            databaseURL: "https://fastapi-f628e-default-rtdb.firebaseio.com",
-          };
           const app = initializeApp(firebaseConfig);
           console.log('[FCM] initializeApp SUCCESS (Manual Fallback)');
           setupAppCheck();

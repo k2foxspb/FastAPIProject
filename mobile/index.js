@@ -3,6 +3,17 @@ import { getApps, initializeApp } from '@react-native-firebase/app';
 import { getMessaging, setBackgroundMessageHandler } from '@react-native-firebase/messaging';
 import { Platform } from 'react-native';
 import { registerRootComponent } from 'expo';
+import Constants from 'expo-constants';
+
+const _extra = Constants.expoConfig?.extra || {};
+const _firebaseConfig = {
+  apiKey: _extra.firebaseApiKey,
+  appId: _extra.firebaseAppId,
+  projectId: _extra.firebaseProjectId,
+  storageBucket: _extra.firebaseStorageBucket,
+  messagingSenderId: _extra.firebaseMessagingSenderId,
+  databaseURL: _extra.firebaseDatabaseURL,
+};
 
 // 1. ПЕРВООЧЕРЕДНАЯ РЕГИСТРАЦИЯ ФОНОВЫХ ОБРАБОТЧИКОВ (Критично для Android Headless JS)
 // Согласно документации RNFirebase, setBackgroundMessageHandler должен быть вызван 
@@ -15,14 +26,7 @@ if (Platform.OS === 'android') {
   // Гарантированная инициализация Firebase для Headless JS
   if (getApps().length === 0) {
     try {
-      initializeApp({
-        apiKey: "AIzaSyAwKCJuxsxfnY6aloE5lnDn-triTVBswxE",
-        appId: "1:176773891332:android:01174694c19132ed0ffc51",
-        projectId: "fastapi-f628e",
-        storageBucket: "fastapi-f628e.firebasestorage.app",
-        messagingSenderId: "176773891332",
-        databaseURL: "https://fastapi-f628e-default-rtdb.firebaseio.com",
-      });
+      initializeApp(_firebaseConfig);
       console.log('[Entry] Firebase manual initialization SUCCESS (Headless Task)');
     } catch (e) {
       console.error('[Entry] Firebase manual initialization failed:', e);
