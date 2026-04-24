@@ -26,7 +26,6 @@ import { theme as themeConstants } from '../constants/theme';
 import { formatStatus, formatName, formatFileSize, parseISODate, formatMessageTime, getAvatarUrl } from '../utils/formatters';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { setRecordingAudioMode, setPlaybackAudioMode } from '../utils/audioSettings';
-import { acquireExclusive, releaseExclusive } from '../utils/downloadManager';
 
 function VideoUploadPlaceholder({ progressPercent, activeUploadId, uri, loaded, total, onCancel }) {
   const isFinished = progressPercent >= 100;

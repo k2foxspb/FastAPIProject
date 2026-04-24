@@ -12,6 +12,7 @@ import { ThemeProvider, useTheme } from './src/context/ThemeContext.js';
 import { storage } from './src/utils/storage';
 import { setAuthToken, usersApi } from './src/api';
 import { setPlaybackAudioMode } from './src/utils/audioSettings';
+import { cleanOldCache } from './src/utils/cacheCleanup';
 
 function AppContent() {
   const { connect, injectExternalNotification } = useNotifications();
@@ -73,6 +74,9 @@ function AppContent() {
   useEffect(() => {
     // Устанавливаем режим аудио для всего приложения
     setPlaybackAudioMode();
+
+    // Очищаем кэш старше 3 дней
+    cleanOldCache();
     
     // Сначала инициализируем Firebase (теперь это async)
     initializeFirebase().then(() => {
