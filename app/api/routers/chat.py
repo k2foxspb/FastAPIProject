@@ -1797,6 +1797,44 @@ async def upload_chunk(
                     )
                 except Exception as e:
                     logger.error(f"WebSocket notifications failed: {e}")
+                
+                # FCM push-уведомление получателю
+                try:
+                    receiver = await db.get(UserModel, upd_msg.receiver_id)
+                    if receiver and receiver.fcm_token:
+                        sender_result = await db.execute(
+                            select(UserModel.first_name, UserModel.last_name, UserModel.avatar_url)
+                            .where(UserModel.id == user_id)
+                        )
+                        sender_row = sender_result.first()
+                        sender_name = f"{sender_row.first_name} {sender_row.last_name}".strip() if sender_row and (sender_row.first_name or sender_row.last_name) else "Пользователь"
+                        sender_avatar = sender_row.avatar_url if sender_row else None
+
+                        final_type = upd_msg.message_type
+                        if final_type == "video_note":
+                            fcm_body = f"📹 Видеосообщение"
+                        elif final_type in ("voice", "audio"):
+                            fcm_body = f"🎤 Голосовое сообщение"
+                        elif final_type == "image":
+                            fcm_body = "🖼️ Фотография"
+                        elif final_type == "video":
+                            fcm_body = "🎥 Видео"
+                        else:
+                            fcm_body = "📁 Файл"
+
+                        asyncio.create_task(send_fcm_notification(
+                            token=receiver.fcm_token,
+                            title=sender_name,
+                            body=fcm_body,
+                            sender_id=user_id,
+                            sender_avatar=sender_avatar,
+                            data={
+                                "chat_id": str(user_id),
+                                "message_id": str(upd_msg.id)
+                            }
+                        ))
+                except Exception as e:
+                    logger.error(f"FCM notification failed after upload: {e}")
             
             res_type = upd_msg.message_type if upd_msg else message_type
             logger.debug(f"Upload completed for session {upload_id}, message_id: {upd_msg.id if upd_msg else 'N/A'}, type: {res_type}")
