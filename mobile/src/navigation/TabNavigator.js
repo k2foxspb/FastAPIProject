@@ -14,7 +14,7 @@ import UsersScreen from '../screens/UsersScreen';
 import UserProfileScreen from '../screens/UserProfileScreen';
 import UserMediaScreen from '../screens/UserMediaScreen';
 import ChatListScreen from '../screens/ChatListScreen';
-import ChatScreen from '../screens/ChatScreen';
+import ChatScreen from '../screens/chat/ChatScreen';
 import FeedScreen from '../screens/FeedScreen';
 import CartScreen from '../screens/CartScreen';
 import OrdersScreen from '../screens/OrdersScreen';
