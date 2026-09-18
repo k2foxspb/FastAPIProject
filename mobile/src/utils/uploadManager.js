@@ -10,6 +10,29 @@ const activeUploads = new Map(); // uploadId -> boolean (is uploading)
 const abortControllers = new Map(); // uploadId -> AbortController
 const cancelledUploads = new Set(); // uploadIds explicitly cancelled by user
 
+// Глобальный реестр всех активных загрузок (для отображения индикатора вне экрана чата)
+const globalRegistry = new Map(); // uploadId -> { uploadId, fileName, mimeType, progress, loaded, total, status, receiverId, ...extraMeta }
+const globalListeners = new Set(); // Set of callbacks(list)
+
+function notifyGlobalListeners() {
+  const list = Array.from(globalRegistry.values());
+  globalListeners.forEach(cb => {
+    try { cb(list); } catch (e) {}
+  });
+}
+
+function upsertGlobalEntry(uploadId, patch) {
+  const prev = globalRegistry.get(uploadId) || { uploadId };
+  globalRegistry.set(uploadId, { ...prev, ...patch });
+  notifyGlobalListeners();
+}
+
+function removeGlobalEntry(uploadId) {
+  if (globalRegistry.delete(uploadId)) {
+    notifyGlobalListeners();
+  }
+}
+
 export const uploadManager = {
   /**
    * Подписаться на прогресс загрузки
@@ -32,9 +55,10 @@ export const uploadManager = {
   },
 
   notifyProgress(uploadId, progress, status = 'uploading', result = null, extra = {}) {
+    // Защита от NaN
+    const safeProgress = isNaN(progress) ? 0 : progress;
+
     if (listeners.has(uploadId)) {
-      // Защита от NaN
-      const safeProgress = isNaN(progress) ? 0 : progress;
       console.log(`[UploadManager] Notifying progress for ${uploadId}: ${safeProgress}, status: ${status}`);
       listeners.get(uploadId).forEach(cb => cb({ 
         progress: safeProgress, 
@@ -43,6 +67,31 @@ export const uploadManager = {
         ...extra
       }));
     }
+
+    // Обновляем глобальный реестр, чтобы индикатор был виден вне экрана чата
+    if (status === 'completed' || status === 'cancelled' || status === 'error') {
+      removeGlobalEntry(uploadId);
+    } else {
+      upsertGlobalEntry(uploadId, { 
+        progress: safeProgress, 
+        status, 
+        ...extra 
+      });
+    }
+  },
+
+  /**
+   * Подписаться на список ВСЕХ активных загрузок (для глобального индикатора вне экрана чата)
+   */
+  subscribeGlobal(callback) {
+    globalListeners.add(callback);
+    // Сразу отдаем текущее состояние
+    callback(Array.from(globalRegistry.values()));
+    return () => globalListeners.delete(callback);
+  },
+
+  getAllActiveUploads() {
+    return Array.from(globalRegistry.values());
   },
 
   /**
@@ -67,9 +116,11 @@ export const uploadManager = {
       abortControllers.delete(uploadId);
       activeUploads.delete(uploadId);
       this.notifyProgress(uploadId, 0, 'cancelled');
+      removeGlobalEntry(uploadId);
       return true;
     }
     this.notifyProgress(uploadId, 0, 'cancelled');
+    removeGlobalEntry(uploadId);
     return false;
   },
 
@@ -136,6 +187,20 @@ export const uploadManager = {
     
     // Вызываем колбэк сразу после получения ID
     if (onInit) onInit(upload_id);
+
+    // Регистрируем загрузку в глобальном реестре, чтобы она была видна вне экрана чата
+    upsertGlobalEntry(upload_id, {
+      uploadId: upload_id,
+      fileName,
+      mimeType,
+      receiverId,
+      total: fileSize,
+      loaded: 0,
+      progress: 0,
+      status: 'uploading',
+      direction: 'upload',
+      ...extraMeta
+    });
     
     // Сохраняем метаданные загрузки для возможности восстановления
     const uploadInfo = {
@@ -301,6 +366,19 @@ export const uploadManager = {
 
     const fileInfo = await getInfoAsync(fileUri);
     const fileSize = fileInfo.size;
+
+    // Регистрируем восстановленную загрузку в глобальном реестре
+    upsertGlobalEntry(uploadId, {
+      uploadId,
+      fileName,
+      receiverId,
+      total: fileSize,
+      loaded: offset,
+      progress: fileSize ? offset / fileSize : 0,
+      status: 'uploading',
+      direction: 'upload',
+      ...extraMeta
+    });
     
     return this.runUploadLoop(uploadId, fileUri, offset, fileSize, token, chunkPath, extraMeta);
   },

@@ -9,6 +9,39 @@ import * as FileSystem from 'expo-file-system/legacy';
 // url -> { downloading, downloadedBytes, totalBytes, cached, localUri, listeners: Set<fn> }
 const store = new Map();
 
+// Глобальный реестр активных скачиваний (для отображения индикатора вне экрана чата)
+const globalRegistry = new Map(); // url -> { url, fileName, downloadedBytes, totalBytes, status }
+const globalListeners = new Set();
+
+function notifyGlobalListeners() {
+  const list = Array.from(globalRegistry.values());
+  globalListeners.forEach(fn => {
+    try { fn(list); } catch (e) {}
+  });
+}
+
+function upsertGlobalEntry(url, patch) {
+  const prev = globalRegistry.get(url) || { url };
+  globalRegistry.set(url, { ...prev, ...patch });
+  notifyGlobalListeners();
+}
+
+function removeGlobalEntry(url) {
+  if (globalRegistry.delete(url)) {
+    notifyGlobalListeners();
+  }
+}
+
+export function subscribeGlobal(callback) {
+  globalListeners.add(callback);
+  callback(Array.from(globalRegistry.values()));
+  return () => globalListeners.delete(callback);
+}
+
+export function getAllActiveDownloads() {
+  return Array.from(globalRegistry.values());
+}
+
 function getEntry(url) {
   if (!store.has(url)) {
     store.set(url, {
@@ -35,6 +68,23 @@ function notify(url) {
     localUri: entry.localUri,
   };
   entry.listeners.forEach(fn => fn(snapshot));
+
+  // Синхронизируем глобальный реестр, чтобы индикатор был виден вне экрана чата
+  if (entry.downloading) {
+    let fileName = url;
+    try { fileName = decodeURIComponent(url.split('/').pop().split('?')[0]) || url; } catch (_) {}
+    upsertGlobalEntry(url, {
+      url,
+      fileName,
+      loaded: entry.downloadedBytes,
+      total: entry.totalBytes,
+      progress: entry.totalBytes ? entry.downloadedBytes / entry.totalBytes : 0,
+      status: 'downloading',
+      direction: 'download',
+    });
+  } else {
+    removeGlobalEntry(url);
+  }
 }
 
 export function subscribe(url, listener) {

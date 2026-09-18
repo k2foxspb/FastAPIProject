@@ -48,7 +48,7 @@
     "name": "FastAPI",
     "slug": "fastapi",
     "scheme": "fokinfun",
-    "version": "1.0.10",
+    "version": "1.0.20",
     "orientation": "portrait",
     "icon": "./assets/logo1024.png",
     "userInterfaceStyle": "light",

@@ -13,6 +13,7 @@ import { storage } from './src/utils/storage';
 import { setAuthToken, warmUpAppCheck } from './src/api';
 import { setPlaybackAudioMode } from './src/utils/audioSettings';
 import { cleanOldCache } from './src/utils/cacheCleanup';
+import GlobalTransferIndicator from './src/components/GlobalTransferIndicator';
 
 function AppContent() {
   const { connect, injectExternalNotification } = useNotifications();
@@ -114,6 +115,8 @@ function AppContent() {
     <NavigationContainer linking={linking} ref={navigationRef}>
       <StatusBar style={theme === 'dark' ? 'light' : 'dark'} backgroundColor={theme === 'dark' ? '#000000' : '#FFFFFF'} />
       <TabNavigator />
+      {/* Глобальный индикатор фоновой загрузки/выгрузки медиафайлов, виден на любом экране */}
+      <GlobalTransferIndicator />
     </NavigationContainer>
   );
 }
