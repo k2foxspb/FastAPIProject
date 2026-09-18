@@ -1,5 +1,4 @@
 import axios from 'axios';
-import { getToken as getAppCheckToken } from '@react-native-firebase/app-check';
 import { API_BASE_URL } from '../constants';
 import { storage } from '../utils/storage';
 import { navigate } from '../navigation/NavigationService';
@@ -23,16 +22,33 @@ const isTokenExpiredOrExpiringSoon = (token, bufferSeconds = 300) => {
   return exp - nowSeconds < bufferSeconds;
 };
 
+const extractBearer = (headerValue) => {
+  if (!headerValue || typeof headerValue !== 'string') return null;
+  return headerValue.replace(/^Bearer\s+/i, '') || null;
+};
+
 const api = axios.create({
   baseURL: API_BASE_URL,
   timeout: 30000,
 });
 
+// Отдельный клиент для обновления токена: без интерцепторов, чтобы 401 на самом
+// refresh-запросе не попадал обратно в очередь ожидания и не вызывал дедлок.
+const authClient = axios.create({
+  baseURL: API_BASE_URL,
+  timeout: 15000,
+});
+
 // Интерцептор для добавления Firebase App Check токена
+// Максимальное время ожидания App Check токена. На холодном старте Play Integrity
+// может отвечать несколько секунд — не блокируем из-за этого загрузку контента.
+const APP_CHECK_TIMEOUT_MS = 4000;
 let appCheckRef = null;
 let getTokenFn = null;
+let appCheckUnavailable = false;
 
-api.interceptors.request.use(async (config) => {
+const getAppCheckToken = async () => {
+  if (appCheckUnavailable) return null;
   try {
     // Импортируем модули один раз (v22+)
     if (!getTokenFn) {
@@ -40,21 +56,35 @@ api.interceptors.request.use(async (config) => {
       if (typeof getAppCheck === 'function' && typeof getToken === 'function') {
         appCheckRef = getAppCheck();
         getTokenFn = getToken;
+      } else {
+        appCheckUnavailable = true;
+        return null;
       }
     }
 
-    if (getTokenFn && appCheckRef) {
-      // Использование false (forceRefresh=false) позволяет Firebase SDK возвращать кэшированный токен, что очень быстро.
-      const response = await getTokenFn(appCheckRef, false);
-      const token = response?.token;
-      if (token) {
-        config.headers['X-Firebase-AppCheck'] = token;
-      }
+    // Использование false (forceRefresh=false) позволяет Firebase SDK возвращать кэшированный токен, что очень быстро.
+    const tokenPromise = getTokenFn(appCheckRef, false).then(response => response?.token || null);
+    const timeoutPromise = new Promise(resolve => setTimeout(() => resolve(null), APP_CHECK_TIMEOUT_MS));
+    const token = await Promise.race([tokenPromise, timeoutPromise]);
+    if (!token && __DEV__) {
+      console.log('[AppCheck Interceptor] Token not ready within timeout, sending request without it');
     }
+    return token;
   } catch (error) {
     if (__DEV__) {
       console.log('[AppCheck Interceptor] Token acquisition skipped:', error.message);
     }
+    return null;
+  }
+};
+
+// Прогрев App Check токена при старте, чтобы первый запрос не ждал аттестацию
+export const warmUpAppCheck = () => getAppCheckToken().catch(() => null);
+
+api.interceptors.request.use(async (config) => {
+  const token = await getAppCheckToken();
+  if (token) {
+    config.headers['X-Firebase-AppCheck'] = token;
   }
   return config;
 }, (error) => {
@@ -92,7 +122,7 @@ export const usersApi = {
       },
     });
   },
-  refreshAccessToken: (refreshToken) => api.post('/users/refresh-token-access', { refresh_token: refreshToken }),
+  refreshAccessToken: (refreshToken) => authClient.post('/users/refresh-token-access', { refresh_token: refreshToken }),
   // Пользователи
   getUsers: (search) => api.get('/users/', { params: { search } }),
   getUser: (id) => api.get(`/users/${id}`),
@@ -257,72 +287,107 @@ export const ordersApi = {
   getOrderStatus: (id) => api.get(`/orders/${id}/status`),
 };
 
-// Добавляем перехватчик для отладки сетевых ошибок
-let isRefreshing = false;
-let failedQueue = [];
+// ---------------------------------------------------------------------------
+// Обновление access-токена
+// ---------------------------------------------------------------------------
+// Единый promise на все параллельные запросы: пока идёт refresh, все ждут его
+// результат. Нет очереди failedQueue и флага isRefreshing, которые раньше могли
+// «зависнуть», если сам refresh-запрос вернул 401 (бесконечная загрузка).
+let refreshPromise = null;
 
-const processQueue = (error, token = null) => {
-  failedQueue.forEach(prom => {
-    if (error) {
-      prom.reject(error);
-    } else {
-      prom.resolve(token);
+const NO_REFRESH_TOKEN = 'NO_REFRESH_TOKEN';
+
+const refreshTokens = () => {
+  if (refreshPromise) return refreshPromise;
+
+  refreshPromise = (async () => {
+    const refreshToken = await storage.getRefreshToken();
+    if (!refreshToken) {
+      const err = new Error('No refresh token available');
+      err.code = NO_REFRESH_TOKEN;
+      throw err;
     }
+
+    console.log('[API] Refreshing access token...');
+    const res = await usersApi.refreshAccessToken(refreshToken);
+    const newAccessToken = res.data?.access_token;
+    if (!newAccessToken) {
+      throw new Error('No access token in refresh response');
+    }
+
+    await storage.saveTokens(newAccessToken, refreshToken);
+    setAuthToken(newAccessToken);
+    console.log('[API] Access token refreshed');
+    return newAccessToken;
+  })().finally(() => {
+    refreshPromise = null;
   });
-  failedQueue = [];
+
+  return refreshPromise;
 };
 
-// Проактивный рефреш: если токен истекает в течение 5 минут — обновляем заранее
-const proactiveRefresh = async () => {
-  if (isRefreshing) return;
-  const currentToken = api.defaults.headers.common['Authorization']?.replace('Bearer ', '');
-  if (!currentToken || !isTokenExpiredOrExpiringSoon(currentToken, 300)) return;
+// Сессия действительно недействительна (а не временная сетевая ошибка):
+// нет refresh-токена либо сервер отверг его (4xx).
+const isSessionInvalid = (err) => {
+  if (err?.code === NO_REFRESH_TOKEN) return true;
+  const status = err?.response?.status;
+  return typeof status === 'number' && status >= 400 && status < 500;
+};
 
-  const refreshToken = await storage.getRefreshToken();
-  if (!refreshToken) return;
-
-  isRefreshing = true;
-  try {
-    console.log('[API] Proactive token refresh...');
-    const res = await usersApi.refreshAccessToken(refreshToken);
-    const newAccessToken = res.data.access_token;
-    if (newAccessToken) {
-      await storage.saveTokens(newAccessToken, refreshToken);
-      setAuthToken(newAccessToken);
-      processQueue(null, newAccessToken);
-      console.log('[API] Proactive token refresh successful');
-    }
-  } catch (e) {
-    console.error('[API] Proactive token refresh failed:', e);
-    processQueue(e, null);
-  } finally {
-    isRefreshing = false;
+const handleSessionExpired = async (redirectToLogin) => {
+  await storage.clearTokens();
+  setAuthToken(null);
+  if (redirectToLogin) {
+    console.log('[API] Session expired, redirecting to login');
+    navigate('Profile', { screen: 'Login' });
   }
 };
 
+// 401 от App Check — это не проблема авторизации пользователя, refresh не поможет
+const isAppCheckError = (error) => {
+  const detail = error?.response?.data?.detail;
+  return typeof detail === 'string' && detail.includes('App Check');
+};
+
+// Эндпоинты, которые можно смотреть анонимно — при 401 не редиректим на логин
+const ignoredUrls = ['/news/', '/products/'];
+const isIgnoredUrl = (url) => ignoredUrls.some(ignored => (url || '').includes(ignored));
+
 api.interceptors.request.use(
   async config => {
-    // Если токен уже есть в дефолтных заголовках — используем его (без обращения к storage)
-    const defaultAuth = api.defaults.headers.common['Authorization'];
-    if (defaultAuth) {
-      config.headers['Authorization'] = defaultAuth;
-      // Проактивно рефрешим если токен скоро истечёт (не блокируем текущий запрос)
-      const token = defaultAuth.replace('Bearer ', '');
-      if (isTokenExpiredOrExpiringSoon(token, 300)) {
-        proactiveRefresh();
-      }
-    } else if (!config.headers['Authorization']) {
-      // Токен не в памяти — читаем из storage (только при холодном старте)
-      const token = await storage.getAccessToken();
+    // Берём токен из заголовков (явно переданный или дефолтный), иначе из storage (холодный старт)
+    let token = extractBearer(config.headers?.['Authorization']) || extractBearer(api.defaults.headers.common['Authorization']);
+    if (!token) {
+      token = await storage.getAccessToken();
       if (token) {
-        config.headers['Authorization'] = `Bearer ${token}`;
         setAuthToken(token);
-        // Проактивно рефрешим если токен скоро истечёт
-        if (isTokenExpiredOrExpiringSoon(token, 300)) {
-          proactiveRefresh();
-        }
       }
     }
+
+    if (token) {
+      if (isTokenExpiredOrExpiringSoon(token, 0)) {
+        // Токен уже истёк — обновляем до отправки, иначе гарантированно получим 401 и лишний круг
+        try {
+          token = await refreshTokens();
+        } catch (e) {
+          console.log('[API] Pre-request refresh failed:', e.message);
+          if (isSessionInvalid(e)) {
+            await handleSessionExpired(false);
+            token = null;
+          }
+        }
+      } else if (isTokenExpiredOrExpiringSoon(token, 300)) {
+        // Истекает в ближайшие 5 минут — обновляем в фоне, текущий запрос не блокируем
+        refreshTokens().catch(e => console.log('[API] Background refresh failed:', e.message));
+      }
+    }
+
+    if (token) {
+      config.headers['Authorization'] = `Bearer ${token}`;
+    } else {
+      delete config.headers['Authorization'];
+    }
+
     console.log(`[API Request]: ${config.method?.toUpperCase()} ${config.url}`);
     return config;
   },
@@ -336,80 +401,26 @@ api.interceptors.response.use(
   },
   async error => {
     const originalRequest = error.config;
-    console.log(`[API Error]: ${originalRequest?.method?.toUpperCase()} ${originalRequest?.url} - Status: ${error.response?.status}, Message: ${error.message}`);
+    const status = error.response?.status;
+    console.log(`[API Error]: ${originalRequest?.method?.toUpperCase()} ${originalRequest?.url} - Status: ${status}, Message: ${error.message}`);
 
-    // Если ошибка 401 и это не повторный запрос
-    if (error.response?.status === 401 && !originalRequest._retry) {
-      // Игнорируем редирект для некоторых эндпоинтов, чтобы пользователь мог смотреть контент анонимно
-      const ignoredUrls = ['/news/', '/products/'];
-      const isIgnored = ignoredUrls.some(url => originalRequest.url.includes(url));
+    // Если ошибка 401 (не App Check) и это не повторный запрос — пробуем обновить токен один раз
+    if (status === 401 && originalRequest && !originalRequest._retry && !isAppCheckError(error)) {
+      originalRequest._retry = true;
+      const isIgnored = isIgnoredUrl(originalRequest.url);
 
-      // Если URL в списке игнорируемых и у нас нет refresh токена, просто возвращаем ошибку без редиректа
-      const refreshToken = await storage.getRefreshToken();
-      if (isIgnored && !refreshToken) {
-        console.log(`[API] 401 for ignored URL ${originalRequest.url} and no refresh token, skipping redirect`);
+      try {
+        const newAccessToken = await refreshTokens();
+        originalRequest.headers['Authorization'] = `Bearer ${newAccessToken}`;
+        return api(originalRequest);
+      } catch (refreshError) {
+        console.log('[API] Failed to refresh token:', refreshError.message);
+        if (isSessionInvalid(refreshError)) {
+          await handleSessionExpired(!isIgnored);
+        }
+        // Возвращаем исходную 401-ошибку, чтобы вызывающий код корректно её обработал
         return Promise.reject(error);
       }
-
-      if (isRefreshing) {
-        return new Promise(function(resolve, reject) {
-          failedQueue.push({ resolve, reject });
-        })
-          .then(token => {
-            originalRequest.headers['Authorization'] = 'Bearer ' + token;
-            return api(originalRequest);
-          })
-          .catch(err => {
-            return Promise.reject(err);
-          });
-      }
-
-      originalRequest._retry = true;
-      isRefreshing = true;
-
-      return new Promise(async (resolve, reject) => {
-        try {
-          const refreshToken = await storage.getRefreshToken();
-          if (refreshToken) {
-            console.log('[API] Attempting to refresh token...');
-            const res = await usersApi.refreshAccessToken(refreshToken);
-            const newAccessToken = res.data.access_token;
-            
-            if (newAccessToken) {
-              await storage.saveTokens(newAccessToken, refreshToken);
-              setAuthToken(newAccessToken);
-              processQueue(null, newAccessToken);
-              originalRequest.headers['Authorization'] = `Bearer ${newAccessToken}`;
-              resolve(api(originalRequest));
-            } else {
-              throw new Error('No access token in refresh response');
-            }
-          } else {
-            console.log('[API] No refresh token available');
-            await storage.clearTokens();
-            setAuthToken(null);
-            
-            if (!isIgnored) {
-              console.log('[API] Redirecting to login');
-              navigate('Profile', { screen: 'Login' });
-            }
-            throw new Error('No refresh token available');
-          }
-        } catch (refreshError) {
-          console.error('[API] Failed to refresh token:', refreshError);
-          processQueue(refreshError, null);
-          await storage.clearTokens();
-          setAuthToken(null);
-          
-          if (!isIgnored) {
-             console.log('[API] Redirecting to login');
-             navigate('Profile', { screen: 'Login' });
-          }
-          reject(refreshError);
-        } finally {
-          isRefreshing = false;
-        }
-      });
     }
 
     console.log('[API Error Detail]:', {
@@ -418,9 +429,8 @@ api.interceptors.response.use(
         url: error.config?.url,
         method: error.config?.method,
         baseURL: error.config?.baseURL,
-        headers: error.config?.headers,
       },
-      status: error.response?.status,
+      status,
       data: error.response?.data
     });
     return Promise.reject(error);
@@ -428,3 +438,4 @@ api.interceptors.response.use(
 );
 
 export default api;
+

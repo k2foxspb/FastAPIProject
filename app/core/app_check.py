@@ -93,8 +93,10 @@ async def verify_app_check(request: Request):
     if not app_check_token:
         # Мы логируем это как предупреждение, если проверка принудительная
         logger.warning(f"App Check: Missing token in request to {request.url.path}")
+        # 403, а не 401: это не проблема авторизации пользователя, и клиент не должен
+        # пытаться обновлять токен / сбрасывать сессию из-за App Check
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
+            status_code=status.HTTP_403_FORBIDDEN,
             detail="Missing Firebase App Check token",
         )
 
@@ -151,6 +153,6 @@ async def verify_app_check(request: Request):
             
         logger.error(f"App Check: Uncaught error for {request.url.path}: {e}")
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
+            status_code=status.HTTP_403_FORBIDDEN,
             detail=f"Invalid Firebase App Check token: {str(e)}",
         )

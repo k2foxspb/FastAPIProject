@@ -10,7 +10,7 @@ import { requestUserPermission, setupCloudMessaging, updateServerFcmToken } from
 import { NotificationProvider, useNotifications } from './src/context/NotificationContext.js';
 import { ThemeProvider, useTheme } from './src/context/ThemeContext.js';
 import { storage } from './src/utils/storage';
-import { setAuthToken, usersApi } from './src/api';
+import { setAuthToken, warmUpAppCheck } from './src/api';
 import { setPlaybackAudioMode } from './src/utils/audioSettings';
 import { cleanOldCache } from './src/utils/cacheCleanup';
 
@@ -81,6 +81,8 @@ function AppContent() {
     // Сначала инициализируем Firebase (теперь это async)
     initializeFirebase().then(() => {
       console.log('[App] Firebase initialized successfully (Junie Debug v1)');
+      // Прогреваем App Check токен в фоне, чтобы первые запросы не ждали аттестацию
+      warmUpAppCheck();
       requestUserPermission().then(granted => {
         if (granted) {
           // Если разрешение получено, пробуем получить и сохранить токен
