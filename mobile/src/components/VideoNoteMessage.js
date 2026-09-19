@@ -13,6 +13,7 @@ import {
   Image,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
+import Svg, { Circle } from 'react-native-svg';
 import { createVideoPlayer, VideoView } from 'expo-video';
 import * as FileSystem from 'expo-file-system/legacy';
 import { API_BASE_URL } from '../constants';
@@ -27,8 +28,7 @@ const M_OUTER = MODAL_VIDEO_SIZE + 2 * (RING_GAP + RING_STROKE);
 const M_CENTER = M_OUTER / 2;
 const M_RING_R = MODAL_VIDEO_SIZE / 2 + RING_GAP + RING_STROKE / 2;
 const THUMB_R = 9;
-const ARC_SEGMENTS = 120;
-const DOT_SIZE = RING_STROKE + 1;
+const RING_CIRCUMFERENCE = 2 * Math.PI * M_RING_R;
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 const MODAL_PAGE_X = (SCREEN_W - M_OUTER) / 2;
@@ -65,32 +65,40 @@ const getLocalCacheUri = (remoteUri) => {
 const getDoneMarkerUri = (localUri) => localUri + '.done';
 const getResumeStorageKey = (localUri) => `dl_resume_${localUri.split('/').pop()}`;
 
-// Draw a progress arc using dot segments (works without SVG)
+// Draw a smooth progress ring using SVG (stroke-dashoffset animation)
 function ProgressRing({ progress }) {
-  const thumbAngle = progress * 2 * Math.PI - Math.PI / 2;
+  const clampedProgress = Math.max(0, Math.min(progress, 1));
+  const thumbAngle = clampedProgress * 2 * Math.PI - Math.PI / 2;
   const thumbX = M_CENTER + M_RING_R * Math.cos(thumbAngle);
   const thumbY = M_CENTER + M_RING_R * Math.sin(thumbAngle);
+  const dashOffset = RING_CIRCUMFERENCE * (1 - clampedProgress);
 
   return (
     <View style={styles.ringContainer} pointerEvents="none">
-      {Array.from({ length: ARC_SEGMENTS }, (_, i) => {
-        const a = (i / ARC_SEGMENTS) * 2 * Math.PI - Math.PI / 2;
-        const active = i / ARC_SEGMENTS <= progress;
-        return (
-          <View
-            key={i}
-            style={{
-              position: 'absolute',
-              left: M_CENTER + M_RING_R * Math.cos(a) - DOT_SIZE / 2,
-              top: M_CENTER + M_RING_R * Math.sin(a) - DOT_SIZE / 2,
-              width: DOT_SIZE,
-              height: DOT_SIZE,
-              borderRadius: DOT_SIZE / 2,
-              backgroundColor: active ? '#4FC3F7' : 'rgba(255,255,255,0.25)',
-            }}
-          />
-        );
-      })}
+      <Svg width={M_OUTER} height={M_OUTER}>
+        {/* Track */}
+        <Circle
+          cx={M_CENTER}
+          cy={M_CENTER}
+          r={M_RING_R}
+          stroke="rgba(255,255,255,0.25)"
+          strokeWidth={RING_STROKE}
+          fill="transparent"
+        />
+        {/* Progress */}
+        <Circle
+          cx={M_CENTER}
+          cy={M_CENTER}
+          r={M_RING_R}
+          stroke="#4FC3F7"
+          strokeWidth={RING_STROKE}
+          strokeLinecap="round"
+          strokeDasharray={`${RING_CIRCUMFERENCE}, ${RING_CIRCUMFERENCE}`}
+          strokeDashoffset={dashOffset}
+          fill="transparent"
+          transform={`rotate(-90 ${M_CENTER} ${M_CENTER})`}
+        />
+      </Svg>
       {/* Thumb dot */}
       <View style={[styles.thumbDot, { left: thumbX - THUMB_R, top: thumbY - THUMB_R }]} />
     </View>
@@ -131,6 +139,7 @@ const InlineCircleVideoContent = ({ uri }) => {
       style={StyleSheet.absoluteFill} 
       contentFit="cover"
       nativeControls={false}
+      surfaceType="textureView"
     />
   );
 };
@@ -477,6 +486,7 @@ export default function VideoNoteMessage({ item, isReceived, isParentVisible }) 
                   contentFit="cover"
                   nativeControls={false}
                   allowsPictureInPicture={false}
+                  surfaceType="textureView"
                 />
               )}
               {!playerReady && (

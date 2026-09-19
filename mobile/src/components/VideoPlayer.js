@@ -103,6 +103,7 @@ const VideoPlayer = ({
         style={styles.video}
         contentFit={resizeMode === 'contain' ? 'contain' : (resizeMode === 'stretch' ? 'fill' : 'cover')}
         nativeControls={useNativeControls}
+        surfaceType="textureView"
       />
     </View>
   );
