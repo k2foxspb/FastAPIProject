@@ -48,22 +48,26 @@ const VideoPlayer = ({
   useEffect(() => {
     if (uri && uri !== playerSourceRef.current) {
       playerSourceRef.current = uri;
+      // Запоминаем текущую позицию воспроизведения, чтобы продолжить с того же места
+      // после замены источника (например, когда видео докачалось и поток переключается на локальный файл)
+      let resumeTime = 0;
+      try { resumeTime = player.currentTime || 0; } catch (e) {}
+
+      const resumePlayback = () => {
+        try { if (resumeTime > 0) player.currentTime = resumeTime; } catch (e) {}
+        if (shouldPlayRef.current) {
+          setPlaybackAudioMode().finally(() => {
+            try { player.play(); } catch (e) {}
+          });
+        }
+      };
+
       try {
         if (player.replaceAsync) {
-          player.replaceAsync(uri).then(() => {
-            if (shouldPlayRef.current) {
-              setPlaybackAudioMode().finally(() => {
-                try { player.play(); } catch (e) {}
-              });
-            }
-          }).catch(err => console.log('[VideoPlayer] replaceAsync error:', err));
+          player.replaceAsync(uri).then(resumePlayback).catch(err => console.log('[VideoPlayer] replaceAsync error:', err));
         } else {
           player.replace(uri);
-          if (shouldPlayRef.current) {
-            setPlaybackAudioMode().finally(() => {
-              try { player.play(); } catch (e) {}
-            });
-          }
+          resumePlayback();
         }
       } catch (e) {
         console.log('[VideoPlayer] replace error:', e);

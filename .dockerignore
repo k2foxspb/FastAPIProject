@@ -1,12 +1,17 @@
 .git
+.gitignore
+.gitattributes
+.github
 .venv
 mobile
 node_modules
 .idea
+.vscode
 .expo
 __pycache__
 *.db
 *.log
+info.log
 venv
 env
 *.pyc
@@ -23,3 +28,24 @@ coverage.xml
 *.cover
 .hypothesis
 .pytest_cache
+.mypy_cache
+.ruff_cache
+*.egg-info
+dist
+build
+
+# Runtime data / secrets not needed for image build
+.env
+mobile/.env
+firebase-service-account.json
+media
+app/media
+
+# Docker/compose files not needed inside build context
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# Misc OS files
+.DS_Store
+Thumbs.db
