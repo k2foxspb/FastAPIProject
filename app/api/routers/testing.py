@@ -1,6 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, delete, and_, or_
+from sqlalchemy import select
 import asyncio
 from app.api.dependencies import get_async_db
 from app.api.routers.chat import manager as chat_manager
@@ -9,9 +9,7 @@ from app.core.fcm import send_fcm_notification
 from app.models.users import User as UserModel
 from app.models.chat import ChatMessage
 from app.schemas.chat import ChatMessageCreate, ChatMessageResponse
-from typing import List, Optional
 from datetime import datetime
-import os
 
 router = APIRouter(prefix="/test/chat", tags=["Testing Chat"])
 
@@ -102,119 +100,3 @@ async def send_message_as_user(
         ))
 
     return resp_msg
-
-@router.get("/history", response_model=List[ChatMessageResponse])
-async def get_test_history(
-    user1_id: int, 
-    user2_id: int, 
-    limit: int = 50, 
-    db: AsyncSession = Depends(get_async_db)
-):
-    """
-    Получить историю сообщений между двумя пользователями без авторизации.
-    """
-    query = select(ChatMessage).where(
-        or_(
-            and_(ChatMessage.sender_id == user1_id, ChatMessage.receiver_id == user2_id),
-            and_(ChatMessage.sender_id == user2_id, ChatMessage.receiver_id == user1_id)
-        )
-    ).order_by(ChatMessage.timestamp.desc()).limit(limit)
-    
-    result = await db.execute(query)
-    messages = result.scalars().all()
-    
-    # Получаем имена отправителей
-    user_ids = list(set([m.sender_id for m in messages]))
-    user_res = await db.execute(select(UserModel.id, UserModel.first_name, UserModel.last_name).where(UserModel.id.in_(user_ids)))
-    user_map = {u.id: f"{u.first_name} {u.last_name}" for u in user_res.fetchall()}
-
-    return [
-        ChatMessageResponse(
-            id=m.id,
-            sender_id=m.sender_id,
-            receiver_id=m.receiver_id,
-            message=m.message,
-            file_path=m.file_path,
-            message_type=m.message_type,
-            client_id=m.client_id,
-            duration=m.duration,
-            timestamp=m.timestamp,
-            is_read=m.is_read,
-            sender_name=user_map.get(m.sender_id, f"User {m.sender_id}")
-        ) for m in messages
-    ]
-
-@router.delete("/clear")
-async def clear_test_chat(
-    user1_id: int, 
-    user2_id: int, 
-    db: AsyncSession = Depends(get_async_db)
-):
-    """
-    Удалить все сообщения между двумя пользователями.
-    """
-    stmt = delete(ChatMessage).where(
-        or_(
-            and_(ChatMessage.sender_id == user1_id, ChatMessage.receiver_id == user2_id),
-            and_(ChatMessage.sender_id == user2_id, ChatMessage.receiver_id == user1_id)
-        )
-    )
-    await db.execute(stmt)
-    await db.commit()
-    return {"status": "success", "message": f"Chat between {user1_id} and {user2_id} cleared"}
-
-@router.get("/last_messages", response_model=List[ChatMessageResponse])
-async def get_last_messages(
-    limit: int = 20, 
-    db: AsyncSession = Depends(get_async_db)
-):
-    """
-    Получить последние сообщения во всей системе (для отладки).
-    """
-    query = select(ChatMessage).order_by(ChatMessage.timestamp.desc()).limit(limit)
-    result = await db.execute(query)
-    messages = result.scalars().all()
-    
-    # Получаем имена отправителей
-    user_ids = list(set([m.sender_id for m in messages]))
-    user_res = await db.execute(select(UserModel.id, UserModel.first_name, UserModel.last_name).where(UserModel.id.in_(user_ids)))
-    user_map = {u.id: f"{u.first_name} {u.last_name}" for u in user_res.fetchall()}
-
-    return [
-        ChatMessageResponse(
-            id=m.id,
-            sender_id=m.sender_id,
-            receiver_id=m.receiver_id,
-            message=m.message,
-            file_path=m.file_path,
-            message_type=m.message_type,
-            client_id=m.client_id,
-            duration=m.duration,
-            timestamp=m.timestamp,
-            is_read=m.is_read,
-            sender_name=user_map.get(m.sender_id, f"User {m.sender_id}")
-        ) for m in messages
-    ]
-
-@router.get("/app-check-info")
-async def get_app_check_info():
-    """
-    Получить информацию о конфигурации App Check (для отладки).
-    """
-    import firebase_admin
-    from app.core import config
-    
-    apps_info = []
-    for app in firebase_admin._apps.values():
-        apps_info.append({
-            "name": app.name,
-            "project_id": app.project_id if hasattr(app, 'project_id') else "unknown"
-        })
-        
-    return {
-        "enforced": config.FIREBASE_APP_CHECK_ENFORCED,
-        "service_account_path": config.FIREBASE_SERVICE_ACCOUNT_PATH,
-        "active_apps": apps_info,
-        "cwd": os.getcwd(),
-        "env": {k: v for k, v in os.environ.items() if "FIREBASE" in k}
-    }

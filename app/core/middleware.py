@@ -6,7 +6,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from starlette.middleware.sessions import SessionMiddleware
-from starlette.datastructures import MutableHeaders
 
 
 
@@ -108,11 +107,12 @@ def setup_middleware(app: FastAPI) -> None:
         allow_headers=["*"],
     )
 
-    # Trusted Host
-    # app.add_middleware(
-    #     TrustedHostMiddleware,
-    #     allowed_hosts=config.ALLOWED_HOSTS
-    # )
+    # Trusted Host: защищает от подделки заголовка Host.
+    # В продакшене config.ALLOWED_HOSTS не содержит wildcard "*".
+    app.add_middleware(
+        TrustedHostMiddleware,
+        allowed_hosts=config.ALLOWED_HOSTS
+    )
 
     # GZip compression
     app.add_middleware(GZipMiddleware, minimum_size=1000)
@@ -126,10 +126,10 @@ def setup_middleware(app: FastAPI) -> None:
     app.add_middleware(SessionRenewalMiddleware)
     app.add_middleware(
         SessionMiddleware,
-        secret_key=config.os.getenv("SESSION_SECRET_KEY", "7UzGQS7woBazLUtVQJG39ywOP7J7lkPkB0UmDhMgBR8="),
+        secret_key=config.SESSION_SECRET_KEY,
         max_age=30 * 24 * 60 * 60,  # 30 дней
         same_site="lax",
-        https_only=False,  # Можно установить в True, если используется HTTPS
+        https_only=config.SESSION_HTTPS_ONLY,  # True в продакшене (требует HTTPS)
     )
 # мидлвар на основе функции
 # @app.middleware("http")

@@ -15,7 +15,15 @@ services:
     # Открываем порт 8000 внутри и снаружи
 #    ports:
 #      - '8000:8000'
+    env_file:
+      - .env
     environment:
+      - ENVIRONMENT=production
+      - SECRET_KEY=${SECRET_KEY}
+      - SESSION_SECRET_KEY=${SESSION_SECRET_KEY}
+      - CORS_ORIGINS=${CORS_ORIGINS}
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS}
+      - ENABLE_API_DOCS=${ENABLE_API_DOCS:-false}
       - REDIS_HOST=${REDIS_HOST:-redis}
       - POSTGRES_HOST=${POSTGRES_HOST:-db}
       - POSTGRES_USER=${POSTGRES_USER:-ecommerce_user}
@@ -69,7 +77,12 @@ services:
     command: celery -A app.core.celery_app worker --loglevel=info
     volumes:
       - media_data:/home/fast/app/media
+    env_file:
+      - .env
     environment:
+      - ENVIRONMENT=production
+      - SECRET_KEY=${SECRET_KEY}
+      - SESSION_SECRET_KEY=${SESSION_SECRET_KEY}
       - REDIS_HOST=${REDIS_HOST:-redis}
       - POSTGRES_HOST=${POSTGRES_HOST:-db}
       - POSTGRES_USER=${POSTGRES_USER:-ecommerce_user}
