@@ -375,14 +375,14 @@ export async function handleNotificationResponse(event) {
         console.log(`[Notifee] Handling default click for type: ${msgType}`);
         
         if (msgType === 'new_message' && senderId) {
-          navigationRef.navigate('Messages', { screen: 'Chat', params: { userId: senderId, userName: senderName || 'Чат' } });
+          navigationRef.navigate('Messages', { screen: 'Chat', params: { userId: senderId, userName: senderName || 'Чат' }, initial: false });
           try { await storage.removeItem(`notif_messages_${senderId}`); } catch (_) {}
         } else if (msgType === 'friend_request' || msgType === 'friend_accept') {
           navigationRef.navigate('Users', { screen: 'UsersMain', params: { initialTab: 'friends' } });
         } else if (msgType === 'new_post' && newsId) {
           navigationRef.navigate('Feed', { screen: 'NewsDetail', params: { newsId } });
         } else if (senderId) {
-          navigationRef.navigate('Messages', { screen: 'Chat', params: { userId: senderId, userName: senderName || 'Чат' } });
+          navigationRef.navigate('Messages', { screen: 'Chat', params: { userId: senderId, userName: senderName || 'Чат' }, initial: false });
         } else {
           navigationRef.navigate('Feed');
         }

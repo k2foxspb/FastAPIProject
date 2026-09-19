@@ -240,7 +240,7 @@ export default function UserProfileScreen({ route, navigation }) {
 
           <TouchableOpacity 
             style={[styles.messageBtn, { backgroundColor: colors.primary }]}
-            onPress={() => navigation.navigate('Messages', { screen: 'Chat', params: { userId: user.id, userName: formatName(user) } })}
+            onPress={() => navigation.navigate('Messages', { screen: 'Chat', params: { userId: user.id, userName: formatName(user) }, initial: false })}
           >
             <Icon name="chatbubble-ellipses-outline" size={20} color="#fff" />
             <Text style={styles.messageBtnText}>Написать</Text>

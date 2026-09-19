@@ -73,7 +73,14 @@ function ChatStack() {
       />
       <Stack.Screen name="UserProfile" component={UserProfileScreen} options={{ title: 'Профиль пользователя' }} />
       <Stack.Screen name="UserMedia" component={UserMediaScreen} options={{ title: 'Медиафайлы' }} />
-      <Stack.Screen name="PhotoDetail" component={PhotoDetailScreen} options={{ title: 'Фотография' }} />
+      <Stack.Screen 
+        name="PhotoDetail" 
+        component={PhotoDetailScreen} 
+        options={{ 
+          title: 'Фотография',
+          headerShown: false // Скрываем стандартный заголовок, экран сам рисует свой оверлей на весь экран
+        }} 
+      />
     </Stack.Navigator>
   );
 }
@@ -95,7 +102,14 @@ function ProfileStack() {
       <Stack.Screen name="CreateAlbum" component={CreateAlbumScreen} options={{ title: 'Новый альбом' }} />
       <Stack.Screen name="AlbumDetail" component={AlbumDetailScreen} options={{ title: 'Альбом' }} />
       <Stack.Screen name="UserMedia" component={UserMediaScreen} options={{ title: 'Медиафайлы' }} />
-      <Stack.Screen name="PhotoDetail" component={PhotoDetailScreen} options={{ title: 'Фотография' }} />
+      <Stack.Screen 
+        name="PhotoDetail" 
+        component={PhotoDetailScreen} 
+        options={{ 
+          title: 'Фотография',
+          headerShown: false // Скрываем стандартный заголовок, экран сам рисует свой оверлей на весь экран
+        }} 
+      />
       <Stack.Screen name="UploadPhoto" component={UploadPhotoScreen} options={{ title: 'Загрузить фото' }} />
       <Stack.Screen name="EditProfile" component={EditProfileScreen} options={{ title: 'Редактировать профиль' }} />
       <Stack.Screen name="Admin" component={AdminScreen} options={{ title: 'Админка' }} />
@@ -147,7 +161,14 @@ function UsersStack() {
       <Stack.Screen name="UsersMain" component={UsersScreen} options={{ title: 'Пользователи' }} />
       <Stack.Screen name="UserProfile" component={UserProfileScreen} options={{ title: 'Профиль пользователя' }} />
       <Stack.Screen name="UserMedia" component={UserMediaScreen} options={{ title: 'Медиафайлы' }} />
-      <Stack.Screen name="PhotoDetail" component={PhotoDetailScreen} options={{ title: 'Фотография' }} />
+      <Stack.Screen 
+        name="PhotoDetail" 
+        component={PhotoDetailScreen} 
+        options={{ 
+          title: 'Фотография',
+          headerShown: false // Скрываем стандартный заголовок, экран сам рисует свой оверлей на весь экран
+        }} 
+      />
     </Stack.Navigator>
   );
 }
@@ -232,11 +253,18 @@ export default function TabNavigator() {
       <Tab.Screen 
         name="Messages" 
         component={ChatStack} 
-        options={({ route }) => ({ 
-          title: 'Чат', 
-          headerShown: false,
-          tabBarBadge: unreadTotal > 0 ? unreadTotal : null,
-        })} 
+        options={({ route }) => {
+          // Скрываем нижнюю панель навигации, когда открыт конкретный чат,
+          // чтобы освободить место под поле ввода сообщения.
+          const routeName = getFocusedRouteNameFromRoute(route) ?? 'ChatList';
+          const hideTabBar = routeName !== 'ChatList';
+          return {
+            title: 'Чат', 
+            headerShown: false,
+            tabBarBadge: unreadTotal > 0 ? unreadTotal : null,
+            tabBarStyle: hideTabBar ? { display: 'none' } : undefined,
+          };
+        }} 
       />
       <Tab.Screen name="Profile" component={ProfileStack} options={{ title: 'Профиль', headerShown: false }} />
     </Tab.Navigator>

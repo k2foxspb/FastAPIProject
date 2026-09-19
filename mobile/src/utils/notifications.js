@@ -387,7 +387,7 @@ export async function setupCloudMessaging(onNotificationReceived = null) {
         if (!navigationRef?.isReady?.()) return;
 
         if (type === 'new_message' && senderId) {
-          navigationRef.navigate('Messages', { screen: 'Chat', params: { userId: senderId, userName: senderName || 'Чат' } });
+          navigationRef.navigate('Messages', { screen: 'Chat', params: { userId: senderId, userName: senderName || 'Чат' }, initial: false });
           return;
         }
 
@@ -406,7 +406,7 @@ export async function setupCloudMessaging(onNotificationReceived = null) {
         }
 
         if (senderId) {
-          navigationRef.navigate('Messages', { screen: 'Chat', params: { userId: senderId, userName: senderName || 'Чат' } });
+          navigationRef.navigate('Messages', { screen: 'Chat', params: { userId: senderId, userName: senderName || 'Чат' }, initial: false });
         } else {
           navigationRef.navigate('Feed');
         }
