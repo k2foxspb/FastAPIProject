@@ -54,7 +54,7 @@ export default function ChatInputBar({
         borderTopWidth: 1,
         paddingBottom: Platform.OS === 'web' 
           ? 20 
-          : (isKeyboardVisible ? (Platform.OS === 'ios' ? 10 : 8) : (Platform.OS === 'android' ? 12 : Math.max(insets.bottom, 10))),
+          : (isKeyboardVisible ? (Platform.OS === 'ios' ? 10 : 8) : Math.max(insets.bottom, Platform.OS === 'android' ? 12 : 10)),
         flexDirection: 'column'
       }
     ]}>

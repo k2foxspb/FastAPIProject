@@ -43,6 +43,21 @@ const VideoPlayer = ({
     }
   }, [shouldPlay, player]);
 
+  // Позиция воспроизведения, которую нужно восстановить после замены источника
+  // (например, когда видео докачалось и поток переключается на локальный файл).
+  // Хранится в ref, чтобы её мог применить тот слушатель, который сработает первым —
+  // либо промис replaceAsync, либо событие statusChange('readyToPlay') —
+  // и видео не успевало "прыгнуть" на начало перед восстановлением позиции.
+  const pendingResumeTimeRef = useRef(null);
+
+  const applyPendingResumeTime = () => {
+    const resumeTime = pendingResumeTimeRef.current;
+    if (resumeTime !== null) {
+      pendingResumeTimeRef.current = null;
+      try { if (resumeTime > 0) player.currentTime = resumeTime; } catch (e) {}
+    }
+  };
+
   // Handle uri change
   const playerSourceRef = useRef(uri);
   useEffect(() => {
@@ -52,9 +67,10 @@ const VideoPlayer = ({
       // после замены источника (например, когда видео докачалось и поток переключается на локальный файл)
       let resumeTime = 0;
       try { resumeTime = player.currentTime || 0; } catch (e) {}
+      pendingResumeTimeRef.current = resumeTime;
 
       const resumePlayback = () => {
-        try { if (resumeTime > 0) player.currentTime = resumeTime; } catch (e) {}
+        applyPendingResumeTime();
         if (shouldPlayRef.current) {
           setPlaybackAudioMode().finally(() => {
             try { player.play(); } catch (e) {}
@@ -79,6 +95,9 @@ const VideoPlayer = ({
   useEffect(() => {
     const sub = player.addListener('statusChange', ({ status }) => {
       if (status === 'readyToPlay' && shouldPlayRef.current) {
+        // Если к этому моменту позиция ещё не восстановлена (гонка с промисом replaceAsync),
+        // применяем её прямо здесь — до старта воспроизведения, чтобы избежать видимого рестарта с начала.
+        applyPendingResumeTime();
         setPlaybackAudioMode().finally(() => {
           try { player.play(); } catch (e) {}
         });

@@ -44,21 +44,23 @@ export default function FullScreenMediaViewer({
       onRequestClose={onClose}
     >
       <View style={styles.fullScreenContainer}>
-        <View style={styles.fullScreenControlsTop}>
-          <TouchableOpacity 
-            style={styles.fullScreenIconButton} 
-            onPress={onDownload}
-          >
-            <MaterialIcons name="file-download" size={30} color="white" />
-          </TouchableOpacity>
+        {showFullScreenControls && (
+          <View style={styles.fullScreenControlsTop}>
+            <TouchableOpacity 
+              style={styles.fullScreenIconButton} 
+              onPress={onDownload}
+            >
+              <MaterialIcons name="file-download" size={30} color="white" />
+            </TouchableOpacity>
 
-          <TouchableOpacity 
-            style={styles.fullScreenIconButton} 
-            onPress={onClose}
-          >
-            <MaterialIcons name="close" size={30} color="white" />
-          </TouchableOpacity>
-        </View>
+            <TouchableOpacity 
+              style={styles.fullScreenIconButton} 
+              onPress={onClose}
+            >
+              <MaterialIcons name="close" size={30} color="white" />
+            </TouchableOpacity>
+          </View>
+        )}
         
         <FlatList
           data={fullScreenMedia?.list || []}

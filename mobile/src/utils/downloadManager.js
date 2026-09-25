@@ -162,8 +162,11 @@ export async function startDownload(url, localUri, doneMarkerUri) {
         (progress) => {
           const loaded = progress.totalBytesWritten || 0;
           const total = progress.totalBytesExpectedToWrite || 0;
-          entry.downloadedBytes = loaded;
-          entry.totalBytes = total;
+          // Не даём индикатору "скакать" назад: если после разрыва соединения
+          // докачка стартует заново, показываем максимум из уже достигнутого
+          // и текущего значения, чтобы прогресс-бар не прыгал вперёд-назад.
+          entry.downloadedBytes = Math.max(entry.downloadedBytes, loaded);
+          if (total > 0) entry.totalBytes = total;
           notify(url);
         }
       );
@@ -192,9 +195,9 @@ export async function startDownload(url, localUri, doneMarkerUri) {
       attempt += 1;
       const isRefused = e?.message && (e.message.includes('REFUSED_STREAM') || e.message.includes('stream was reset'));
       if (isRefused && attempt < MAX_RETRIES) {
-        entry.downloadedBytes = 0;
-        entry.totalBytes = 0;
-        notify(url);
+        // Не сбрасываем entry.downloadedBytes здесь — иначе индикатор прыгнет назад к 0.
+        // Math.max в колбэке прогресса не даст отображаемому значению уменьшиться,
+        // даже если сама докачка технически начнётся с нуля.
         await new Promise(resolve => setTimeout(resolve, attempt * 1000));
         // Delete partial file before retry
         try { await FileSystem.deleteAsync(localUri, { idempotent: true }); } catch (_) {}

@@ -16,23 +16,22 @@ import {
   Platform
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useVideoPlayer, VideoView } from 'expo-video';
 import * as Haptics from 'expo-haptics';
 import { usersApi } from '../api';
 import { Ionicons as Icon, MaterialIcons } from '@expo/vector-icons';
 import { getFullUrl } from '../utils/urlHelper';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
-import VideoPlayer from '../components/VideoPlayer';
+import FullScreenVideoPlayer from '../components/FullScreenVideoPlayer';
 
 const { width, height } = Dimensions.get('window');
 
-const VideoItem = ({ uri, style, useNativeControls, shouldPlay }) => {
+const VideoItem = ({ uri, style, controlsEnabled, shouldPlay }) => {
   return (
-    <VideoPlayer 
+    <FullScreenVideoPlayer
       uri={uri} 
       style={style} 
-      useNativeControls={useNativeControls} 
+      controlsEnabled={controlsEnabled} 
       shouldPlay={shouldPlay} 
       isLooping={true}
       resizeMode="contain"
@@ -325,21 +324,9 @@ export default function PhotoDetailScreen({ route, navigation }) {
                     styles.fullPhoto,
                     isSelected && { opacity: 0.7 }
                   ]}
-                  useNativeControls={!selectionMode}
+                  controlsEnabled={!selectionMode}
                   shouldPlay={currentIndex === index && !selectionMode}
                 />
-                {!selectionMode && (
-                  <>
-                    <TouchableOpacity 
-                      style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '20%', zIndex: 5 }} 
-                      onPress={toggleDescription}
-                    />
-                    <TouchableOpacity 
-                      style={{ position: 'absolute', bottom: 80, left: 0, right: 0, height: '20%', zIndex: 5 }} 
-                      onPress={toggleDescription}
-                    />
-                  </>
-                )}
                 {selectionMode && (
                   <TouchableOpacity 
                     style={StyleSheet.absoluteFill} 

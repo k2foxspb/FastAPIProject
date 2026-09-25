@@ -10,7 +10,7 @@ import { formatName } from '../utils/formatters';
 import CachedMedia from '../components/CachedMedia';
 import VoiceMessage from '../components/VoiceMessage';
 import FileMessage from '../components/FileMessage';
-import VideoPlayer from '../components/VideoPlayer';
+import FullScreenVideoPlayer from '../components/FullScreenVideoPlayer';
 import { documentDirectory, getInfoAsync, downloadAsync, readAsStringAsync, writeAsStringAsync, EncodingType, StorageAccessFramework } from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { setPlaybackAudioMode } from '../utils/audioSettings';
@@ -387,11 +387,10 @@ export default function AdminChatDetailScreen({ route, navigation }) {
           {fullScreenMedia && (
             <View style={[styles.fullScreenContent, { width: screen.width, height: screen.height }]}>
               {fullScreenMedia.type === 'video' ? (
-                <VideoPlayer
+                <FullScreenVideoPlayer
                   uri={fullScreenMedia.uri}
                   style={styles.fullScreenVideo}
                   resizeMode="contain"
-                  useNativeControls
                   shouldPlay
                 />
               ) : (

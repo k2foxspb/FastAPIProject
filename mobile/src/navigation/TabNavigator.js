@@ -258,12 +258,17 @@ export default function TabNavigator() {
           // чтобы освободить место под поле ввода сообщения.
           const routeName = getFocusedRouteNameFromRoute(route) ?? 'ChatList';
           const hideTabBar = routeName !== 'ChatList';
-          return {
+          const options = {
             title: 'Чат', 
             headerShown: false,
             tabBarBadge: unreadTotal > 0 ? unreadTotal : null,
-            tabBarStyle: hideTabBar ? { display: 'none' } : undefined,
           };
+          // tabBarStyle указываем только когда панель нужно скрыть, иначе (при undefined)
+          // React Navigation перестаёт наследовать тему из screenOptions родительского навигатора.
+          if (hideTabBar) {
+            options.tabBarStyle = { display: 'none' };
+          }
+          return options;
         }} 
       />
       <Tab.Screen name="Profile" component={ProfileStack} options={{ title: 'Профиль', headerShown: false }} />

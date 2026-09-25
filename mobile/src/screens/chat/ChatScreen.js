@@ -258,9 +258,12 @@ export default function ChatScreen({ route, navigation }) {
 
   return (
     <KeyboardAvoidingView 
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'} 
+      behavior="padding" 
       style={[styles.container, { backgroundColor: colors.background, flex: 1 }]}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+      keyboardVerticalOffset={0}
+      // Это управляемый (managed) Expo-проект без собственного AndroidManifest.xml,
+      // поэтому предполагать принудительный windowSoftInputMode="adjustResize" от Expo нельзя —
+      // компенсация клавиатуры должна выполняться самим KeyboardAvoidingView на обеих платформах.
       enabled={Platform.OS !== 'web'}
     >
       <ChatHeader
