@@ -1,6 +1,6 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { createStackNavigator, CardStyleInterpolators } from '@react-navigation/stack';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { View } from 'react-native';
 import { Ionicons as Icon } from '@expo/vector-icons';
 
@@ -40,7 +40,9 @@ import AdminLogsScreen from '../screens/AdminLogsScreen';
 
 
 const Tab = createBottomTabNavigator();
-const Stack = createStackNavigator();
+// createNativeStackNavigator использует нативные переходы ОС (UINavigationController/Fragment)
+// вместо JS-анимаций, поэтому переходы между экранами не мерцают и не дёргаются.
+const Stack = createNativeStackNavigator();
 
 import { useNotifications } from '../context/NotificationContext.js';
 import { useTheme } from '../context/ThemeContext.js';
@@ -57,9 +59,8 @@ function ChatStack() {
       screenOptions={{
         headerStyle: { backgroundColor: colors.background },
         headerTintColor: colors.text,
-        cardStyle: { backgroundColor: colors.background },
-        cardStyleInterpolator: CardStyleInterpolators.forHorizontalIOS,
-        animationEnabled: true,
+        contentStyle: { backgroundColor: colors.background },
+        animation: 'slide_from_right',
       }}
     >
       <Stack.Screen name="ChatList" component= {ChatListScreen} options={{ title: 'Сообщения' }} />
@@ -93,8 +94,8 @@ function ProfileStack() {
       screenOptions={{
         headerStyle: { backgroundColor: colors.background },
         headerTintColor: colors.text,
-        cardStyleInterpolator: CardStyleInterpolators.forFadeFromBottomAndroid,
-        animationEnabled: true,
+        contentStyle: { backgroundColor: colors.background },
+        animation: 'fade_from_bottom',
       }}
     >
       <Stack.Screen name="ProfileMain" component={ProfileScreen} options={{ title: 'Профиль' }} />
@@ -154,8 +155,8 @@ function UsersStack() {
       screenOptions={{
         headerStyle: { backgroundColor: colors.background },
         headerTintColor: colors.text,
-        cardStyleInterpolator: CardStyleInterpolators.forFadeFromBottomAndroid,
-        animationEnabled: true,
+        contentStyle: { backgroundColor: colors.background },
+        animation: 'fade_from_bottom',
       }}
     >
       <Stack.Screen name="UsersMain" component={UsersScreen} options={{ title: 'Пользователи' }} />
@@ -181,8 +182,8 @@ function FeedStack() {
       screenOptions={{
         headerStyle: { backgroundColor: colors.background },
         headerTintColor: colors.text,
-        cardStyleInterpolator: CardStyleInterpolators.forFadeFromBottomAndroid,
-        animationEnabled: true,
+        contentStyle: { backgroundColor: colors.background },
+        animation: 'fade_from_bottom',
       }}
     >
       <Stack.Screen name="FeedMain" component={FeedScreen} options={{ title: 'Новости и Товары' }} />

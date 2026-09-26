@@ -1,6 +1,7 @@
 import { initializeFirebase } from './src/utils/firebaseInit'; // Гарантированная инициализация
 import React, { useEffect } from 'react';
-import { NavigationContainer } from '@react-navigation/native';
+import { NavigationContainer, DefaultTheme, DarkTheme } from '@react-navigation/native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import * as Linking from 'expo-linking';
@@ -11,6 +12,7 @@ import { navigationRef } from './src/navigation/NavigationService';
 import { requestUserPermission, setupCloudMessaging, updateServerFcmToken } from './src/utils/notifications';
 import { NotificationProvider, useNotifications } from './src/context/NotificationContext.js';
 import { ThemeProvider, useTheme } from './src/context/ThemeContext.js';
+import { theme as themeConstants } from './src/constants/theme';
 import { storage } from './src/utils/storage';
 import { setAuthToken, warmUpAppCheck } from './src/api';
 import { setPlaybackAudioMode } from './src/utils/audioSettings';
@@ -20,6 +22,21 @@ import GlobalTransferIndicator from './src/components/GlobalTransferIndicator';
 function AppContent() {
   const { connect, injectExternalNotification } = useNotifications();
   const { theme } = useTheme();
+  const colors = themeConstants[theme];
+
+  // Передаём тему навигации, чтобы фон системных переходов между экранами совпадал
+  // с фоном приложения и не "вспыхивал" белым при смене экрана в тёмной теме.
+  const navigationTheme = {
+    ...(theme === 'dark' ? DarkTheme : DefaultTheme),
+    colors: {
+      ...(theme === 'dark' ? DarkTheme.colors : DefaultTheme.colors),
+      background: colors.background,
+      card: colors.background,
+      text: colors.text,
+      border: colors.border,
+      primary: colors.primary,
+    },
+  };
 
   const linking = {
     prefixes: [Linking.createURL('/'), 'fokinfun://', 'https://fokin.fun', 'https://fastapi-f628e.firebaseapp.com'],
@@ -114,7 +131,7 @@ function AppContent() {
   }, [connect]);
 
   return (
-    <NavigationContainer linking={linking} ref={navigationRef}>
+    <NavigationContainer linking={linking} ref={navigationRef} theme={navigationTheme}>
       <StatusBar style={theme === 'dark' ? 'light' : 'dark'} backgroundColor={theme === 'dark' ? '#000000' : '#FFFFFF'} />
       <TabNavigator />
       {/* Глобальный индикатор фоновой загрузки/выгрузки медиафайлов, виден на любом экране */}
@@ -125,17 +142,22 @@ function AppContent() {
 
 export default function App() {
   return (
-    <SafeAreaProvider>
-      {/* KeyboardProvider из react-native-keyboard-controller обеспечивает надёжную работу
-          KeyboardAvoidingView на Android при включённом edge-to-edge (SDK 54) — обычный
-          KeyboardAvoidingView из react-native под edge-to-edge не отрабатывает надёжно. */}
-      <KeyboardProvider>
-        <ThemeProvider>
-          <NotificationProvider>
-            <AppContent />
-          </NotificationProvider>
-        </ThemeProvider>
-      </KeyboardProvider>
-    </SafeAreaProvider>
+    // GestureHandlerRootView должен оборачивать всё дерево приложения, иначе жестовые
+    // компоненты (например, Swipeable из react-native-gesture-handler) выбрасывают
+    // "PanGestureHandler must be used as a descendant of GestureHandlerRootView".
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider>
+        {/* KeyboardProvider из react-native-keyboard-controller обеспечивает надёжную работу
+            KeyboardAvoidingView на Android при включённом edge-to-edge (SDK 54) — обычный
+            KeyboardAvoidingView из react-native под edge-to-edge не отрабатывает надёжно. */}
+        <KeyboardProvider>
+          <ThemeProvider>
+            <NotificationProvider>
+              <AppContent />
+            </NotificationProvider>
+          </ThemeProvider>
+        </KeyboardProvider>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }
