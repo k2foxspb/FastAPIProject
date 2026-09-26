@@ -584,6 +584,16 @@ export const styles = StyleSheet.create({
   replyMessageText: {
     fontSize: 11,
   },
+  forwardedLabelContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  forwardedLabelText: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    marginLeft: 4,
+  },
 });
 
 export default styles;

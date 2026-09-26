@@ -21,6 +21,7 @@ import useFullScreenMedia from './hooks/useFullScreenMedia';
 import useVoiceRecording from './hooks/useVoiceRecording';
 import useVideoNoteRecording from './hooks/useVideoNoteRecording';
 import ChatHeader from './components/ChatHeader';
+import ForwardMessageModal from './components/ForwardMessageModal';
 import MessageItem from './components/MessageItem';
 import UploadPlaceholder from './components/UploadPlaceholder';
 import UploadProgressBanner from './components/UploadProgressBanner';
@@ -99,6 +100,7 @@ export default function ChatScreen({ route, navigation }) {
     currentUserId,
     deleteMessageWs,
     bulkDeleteMessagesWs,
+    sendMessageWs,
   });
   const { selectionMode, selectedIds } = selection;
 
@@ -255,6 +257,7 @@ export default function ChatScreen({ route, navigation }) {
       onReply={handleReply}
       onOpenFullScreen={openFullScreen}
       onScrollToMessage={search.scrollToMessageById}
+      navigation={navigation}
     />
   );
 
@@ -282,6 +285,7 @@ export default function ChatScreen({ route, navigation }) {
         selectedIds={selectedIds}
         onClearSelection={selection.clearSelection}
         onBulkDelete={selection.handleBulkDelete}
+        onForward={selection.openForwardModal}
         isSearching={search.isSearching}
         searchQuery={search.searchQuery}
         onSearchChange={search.handleSearch}
@@ -367,6 +371,14 @@ export default function ChatScreen({ route, navigation }) {
       )}
 
       <FullScreenMediaViewer {...viewerProps} />
+
+      <ForwardMessageModal
+        visible={selection.isForwardModalVisible}
+        dialogs={dialogs.filter(d => Number(d.user_id) !== Number(userId))}
+        colors={colors}
+        onClose={selection.closeForwardModal}
+        onForward={selection.handleForward}
+      />
 
       {!selectionMode && (
         <ChatInputBar

@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { Alert } from 'react-native';
 import * as Haptics from 'expo-haptics';
+import { buildForwardMessageData } from '../utils';
 
-// Режим множественного выделения сообщений и их удаление
+// Режим множественного выделения сообщений: удаление и пересылка в другие чаты
 export default function useMessageSelection({
   messages,
   setMessages,
@@ -11,9 +12,11 @@ export default function useMessageSelection({
   currentUserId,
   deleteMessageWs,
   bulkDeleteMessagesWs,
+  sendMessageWs,
 }) {
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState([]);
+  const [isForwardModalVisible, setForwardModalVisible] = useState(false);
 
   const toggleSelection = (id) => {
     setSelectedIds(prev => {
@@ -132,6 +135,42 @@ export default function useMessageSelection({
     );
   };
 
+  const openForwardModal = () => {
+    if (selectedIds.length === 0) return;
+    setForwardModalVisible(true);
+  };
+
+  const closeForwardModal = () => {
+    setForwardModalVisible(false);
+  };
+
+  const handleForward = (receiverIds) => {
+    if (!receiverIds || receiverIds.length === 0 || selectedIds.length === 0) return;
+
+    // Пересылаем в хронологическом порядке (messages идут от новых к старым, т.к. FlatList inverted)
+    const messagesToForward = messages
+      .filter(m => selectedIds.includes(m.id))
+      .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+    if (messagesToForward.length === 0) return;
+
+    let hasFailures = false;
+    receiverIds.forEach(receiverId => {
+      messagesToForward.forEach(message => {
+        const msgData = buildForwardMessageData(message, receiverId);
+        const sent = sendMessageWs(msgData);
+        if (!sent) hasFailures = true;
+      });
+    });
+
+    setForwardModalVisible(false);
+    clearSelection();
+
+    if (hasFailures) {
+      Alert.alert('Внимание', 'Некоторые сообщения будут отправлены позже, когда восстановится соединение.');
+    }
+  };
+
   return {
     selectionMode,
     selectedIds,
@@ -141,5 +180,9 @@ export default function useMessageSelection({
     handleLongPressMessage,
     handleDeleteMessage,
     handleBulkDelete,
+    isForwardModalVisible,
+    openForwardModal,
+    closeForwardModal,
+    handleForward,
   };
 }

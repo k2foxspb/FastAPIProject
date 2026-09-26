@@ -616,6 +616,8 @@ async def websocket_chat_endpoint(
             client_id = message_data.get("client_id")  # Добавлено для оптимистичных обновлений
             duration = message_data.get("duration") # Длительность аудио/видео
             reply_to_id = message_data.get("reply_to_id")
+            forwarded_from_id = message_data.get("forwarded_from_id")
+            forwarded_from_name = message_data.get("forwarded_from_name")
             
             if receiver_id_raw and (content or file_path or (attachments and len(attachments) > 0)):
                 # Приводим к int для корректного поиска в менеджерах соединений
@@ -667,6 +669,8 @@ async def websocket_chat_endpoint(
                     existing_msg.message_type = message_type
                     existing_msg.duration = duration
                     existing_msg.reply_to_id = reply_to_id
+                    existing_msg.forwarded_from_id = forwarded_from_id
+                    existing_msg.forwarded_from_name = forwarded_from_name
                     existing_msg.is_uploading = False
                     existing_msg.upload_id = None
                     existing_msg.timestamp = datetime.utcnow()
@@ -681,7 +685,9 @@ async def websocket_chat_endpoint(
                         message_type=message_type,
                         client_id=client_id,
                         duration=duration,
-                        reply_to_id=reply_to_id
+                        reply_to_id=reply_to_id,
+                        forwarded_from_id=forwarded_from_id,
+                        forwarded_from_name=forwarded_from_name
                     )
                     db.add(new_msg)
                 
@@ -725,6 +731,8 @@ async def websocket_chat_endpoint(
                     "duration": duration,
                     "reply_to_id": reply_to_id,
                     "reply_to": reply_to_data,
+                    "forwarded_from_id": forwarded_from_id,
+                    "forwarded_from_name": forwarded_from_name,
                     "timestamp": new_msg.timestamp.isoformat(),
                     "is_read": 0
                 }
@@ -996,6 +1004,8 @@ async def get_chat_history(
             "timestamp": m.timestamp,
             "is_read": m.is_read,
             "reply_to_id": m.reply_to_id,
+            "forwarded_from_id": m.forwarded_from_id,
+            "forwarded_from_name": m.forwarded_from_name,
             "is_uploading": getattr(m, 'is_uploading', False),
             "upload_id": getattr(m, 'upload_id', None),
             "upload_offset": row.upload_offset,

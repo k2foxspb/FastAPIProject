@@ -61,6 +61,34 @@ export const buildOptimisticMessage = (msgData, currentUserId, replyTo = null) =
   reply_to: replyTo
 });
 
+// Собираем данные для пересылки сообщения другому пользователю.
+// Переиспользуем уже загруженные файлы (file_path/attachments), поэтому повторная загрузка не нужна.
+// Если пересылаемое сообщение уже было переслано ранее, сохраняем ссылку на самого первого автора (не переписываем цепочку).
+export const buildForwardMessageData = (message, receiverId) => {
+  const msgData = {
+    receiver_id: receiverId,
+    client_id: generateClientId(),
+    message_type: message.message_type || 'text',
+    forwarded_from_id: message.forwarded_from_id || message.sender_id,
+    forwarded_from_name: message.forwarded_from_name || message.sender_name,
+  };
+
+  if (message.message) {
+    msgData.message = message.message;
+  }
+  if (message.duration) {
+    msgData.duration = message.duration;
+  }
+
+  if (message.message_type === 'media_group' && message.attachments && message.attachments.length > 0) {
+    msgData.attachments = message.attachments.map(att => ({ file_path: att.file_path, type: att.type }));
+  } else if (message.file_path) {
+    msgData.file_path = message.file_path;
+  }
+
+  return msgData;
+};
+
 export const getReplyPreviewText = (msg) => (
   msg.message || (msg.message_type === 'image' ? 'Фотография' : (msg.message_type === 'voice' ? 'Голосовое сообщение' : 'Файл'))
 );

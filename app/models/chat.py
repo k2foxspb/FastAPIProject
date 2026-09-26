@@ -22,10 +22,14 @@ class ChatMessage(Base):
     deleted_by_receiver: Mapped[bool] = mapped_column(Boolean, default=False)
     is_uploading: Mapped[bool] = mapped_column(Boolean, default=False)
     upload_id: Mapped[str] = mapped_column(String, nullable=True)
+    # Пересылка: id и имя исходного отправителя сообщения (для отметки "Переслано от" и ссылки на профиль)
+    forwarded_from_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
+    forwarded_from_name: Mapped[str] = mapped_column(String, nullable=True)
 
     sender = relationship("User", foreign_keys=[sender_id])
     receiver = relationship("User", foreign_keys=[receiver_id])
     reply_to = relationship("ChatMessage", remote_side=[id])
+    forwarded_from = relationship("User", foreign_keys=[forwarded_from_id])
 
 class FileUploadSession(Base):
     __tablename__ = "file_upload_sessions"

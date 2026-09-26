@@ -33,6 +33,7 @@ export default function MessageItem({
   onReply,
   onOpenFullScreen,
   onScrollToMessage,
+  navigation,
 }) {
   const isImage = item.message_type === 'image';
   const isVideo = item.message_type === 'video';
@@ -175,6 +176,18 @@ export default function MessageItem({
               isGrouped && (isReceived ? { borderTopLeftRadius: 18 } : { borderTopRightRadius: 18 })
             ]}
           >
+        {item.forwarded_from_id && (
+          <TouchableOpacity
+            activeOpacity={0.7}
+            onPress={() => navigation?.navigate('UserProfile', { userId: item.forwarded_from_id })}
+            style={styles.forwardedLabelContainer}
+          >
+            <MaterialIcons name="forward" size={14} color={isReceived ? colors.primary : '#fff'} />
+            <Text style={[styles.forwardedLabelText, { color: isReceived ? colors.primary : '#fff' }]} numberOfLines={1}>
+              Переслано от {Number(item.forwarded_from_id) === Number(currentUserId) ? 'Вас' : (item.forwarded_from_name || 'Пользователь')}
+            </Text>
+          </TouchableOpacity>
+        )}
         {item.reply_to && (
           <TouchableOpacity 
             activeOpacity={0.7}

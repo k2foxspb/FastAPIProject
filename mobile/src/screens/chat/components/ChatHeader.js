@@ -18,6 +18,7 @@ export default function ChatHeader({
   selectedIds,
   onClearSelection,
   onBulkDelete,
+  onForward,
   // поиск
   isSearching,
   searchQuery,
@@ -41,9 +42,14 @@ export default function ChatHeader({
             <MaterialIcons name="close" size={24} color={colors.text} />
           </TouchableOpacity>
           <Text style={[styles.selectionTitle, { color: colors.text }]}>Выбрано: {selectedIds.length}</Text>
-          <TouchableOpacity onPress={onBulkDelete} disabled={selectedIds.length === 0}>
-            <MaterialIcons name="delete" size={24} color={selectedIds.length > 0 ? colors.error : colors.textSecondary} />
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row' }}>
+            <TouchableOpacity onPress={onForward} disabled={selectedIds.length === 0} style={{ marginRight: 16 }}>
+              <MaterialIcons name="forward" size={24} color={selectedIds.length > 0 ? colors.primary : colors.textSecondary} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={onBulkDelete} disabled={selectedIds.length === 0}>
+              <MaterialIcons name="delete" size={24} color={selectedIds.length > 0 ? colors.error : colors.textSecondary} />
+            </TouchableOpacity>
+          </View>
         </View>
       ) : isSearching ? (
         <View style={styles.searchBar}>

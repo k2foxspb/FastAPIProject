@@ -649,7 +649,7 @@ export async function updateServerFcmToken(passedToken = null, forceSync = false
     if (!forceSync) {
       const lastSynced = await storage.getItem('last_synced_fcm_token');
       if (lastSynced === token) {
-        console.log('[FCM] Token already synced with server, skipping.');
+
         return { success: true, token, alreadySynced: true };
       }
     }

@@ -11,6 +11,8 @@ class ChatMessageBase(BaseModel):
     client_id: Optional[str] = None # Для оптимистичных обновлений
     duration: Optional[float] = None # Длительность аудио/видео в секундах
     reply_to_id: Optional[int] = None
+    forwarded_from_id: Optional[int] = None # id исходного отправителя при пересылке
+    forwarded_from_name: Optional[str] = None # имя исходного отправителя при пересылке
     is_uploading: bool = False
     upload_id: Optional[str] = None
     upload_progress: Optional[float] = None
@@ -38,6 +40,8 @@ class ChatMessageResponse(ChatMessageBase):
     timestamp: datetime
     is_read: int
     reply_to: Optional[ChatMessageReply] = None
+    forwarded_from_id: Optional[int] = None
+    forwarded_from_name: Optional[str] = None
     is_uploading: bool = False
     upload_id: Optional[str] = None
     upload_progress: Optional[float] = None
