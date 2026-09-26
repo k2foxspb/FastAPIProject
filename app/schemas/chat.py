@@ -27,6 +27,10 @@ class ChatMessageCreate(ChatMessageBase):
 class MessageReactionItem(BaseModel):
     emoji: str
     user_id: int
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    avatar_url: Optional[str] = None
+    avatar_preview_url: Optional[str] = None
 
 class ChatMessageReply(BaseModel):
     id: int

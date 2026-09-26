@@ -168,6 +168,35 @@ async def _get_group_member_ids(db: AsyncSession, group_id: int) -> List[int]:
     return [row[0] for row in members_res.all()]
 
 
+async def _build_reactions_map(db: AsyncSession, message_ids: List[int]) -> dict:
+    """Пакетно подгружает реакции для списка сообщений вместе с данными пользователя
+    (имя, фамилия, аватар), чтобы на клиенте можно было показать, кто поставил реакцию."""
+    reactions_map: dict = {}
+    if not message_ids:
+        return reactions_map
+    res_reactions = await db.execute(
+        select(
+            ChatMessageReaction,
+            UserModel.first_name,
+            UserModel.last_name,
+            UserModel.avatar_url,
+            UserModel.avatar_preview_url,
+        )
+        .join(UserModel, ChatMessageReaction.user_id == UserModel.id)
+        .where(ChatMessageReaction.message_id.in_(message_ids))
+    )
+    for r, first_name, last_name, avatar_url, avatar_preview_url in res_reactions.all():
+        reactions_map.setdefault(r.message_id, []).append({
+            "emoji": r.emoji,
+            "user_id": r.user_id,
+            "first_name": first_name,
+            "last_name": last_name,
+            "avatar_url": avatar_url,
+            "avatar_preview_url": avatar_preview_url,
+        })
+    return reactions_map
+
+
 async def _broadcast_to_users(event: dict, user_ids: List[int], include_notifications: bool = True):
     """Рассылка события списку пользователей через chat WS и (опционально) notifications WS."""
     tasks = []
@@ -369,17 +398,7 @@ async def websocket_chat_endpoint(
                         msgs = res_history.scalars().unique().all()
 
                         message_ids = [m.id for m in msgs]
-                        reactions_map = {}
-                        if message_ids:
-                            res_reactions = await db.execute(
-                                select(ChatMessageReaction).where(
-                                    ChatMessageReaction.message_id.in_(message_ids)
-                                )
-                            )
-                            for r in res_reactions.scalars().all():
-                                reactions_map.setdefault(r.message_id, []).append(
-                                    {"emoji": r.emoji, "user_id": r.user_id}
-                                )
+                        reactions_map = await _build_reactions_map(db, message_ids)
 
                         processed_history = []
                         for m in msgs:
@@ -547,12 +566,7 @@ async def websocket_chat_endpoint(
 
                         await db.commit()
 
-                        res_all = await db.execute(
-                            select(ChatMessageReaction).where(ChatMessageReaction.message_id == message_id)
-                        )
-                        reactions_data = [
-                            {"emoji": r.emoji, "user_id": r.user_id} for r in res_all.scalars().all()
-                        ]
+                        reactions_data = (await _build_reactions_map(db, [message_id])).get(message_id, [])
 
                         reaction_payload = {
                             "message_id": message_id,
@@ -1375,13 +1389,7 @@ async def get_chat_history(
 
     # Пакетно подгружаем реакции для всех сообщений истории, чтобы не делать запрос на каждое сообщение
     message_ids = [row.ChatMessage.id for row in db_rows]
-    reactions_map = {}
-    if message_ids:
-        res_reactions = await db.execute(
-            select(ChatMessageReaction).where(ChatMessageReaction.message_id.in_(message_ids))
-        )
-        for r in res_reactions.scalars().all():
-            reactions_map.setdefault(r.message_id, []).append({"emoji": r.emoji, "user_id": r.user_id})
+    reactions_map = await _build_reactions_map(db, message_ids)
 
     # Преобразуем в словари и добавим attachments для media_group
     messages = []

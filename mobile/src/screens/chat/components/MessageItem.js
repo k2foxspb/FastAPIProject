@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, Pressable, Animated, ActivityIndicator } from 'react-native';
 import { Swipeable } from 'react-native-gesture-handler';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -12,6 +12,7 @@ import { resolveMediaUri, getReplyPreviewText } from '../utils';
 import MediaPlaceholder from './MediaPlaceholder';
 import MessageText from './MessageText';
 import ReactionBar from './ReactionBar';
+import ReactionsListModal from './ReactionsListModal';
 
 // Одно сообщение в списке чата (текст, медиа, медиа-группа, голосовое, видео-кружок, файл, плейсхолдер загрузки)
 export default function MessageItem({
@@ -39,6 +40,7 @@ export default function MessageItem({
   onReact,
   isGroupChat = false,
 }) {
+  const [reactionsModalEmoji, setReactionsModalEmoji] = useState(null);
   const isImage = item.message_type === 'image';
   const isVideo = item.message_type === 'video';
   const isVoice = item.message_type === 'voice';
@@ -416,6 +418,7 @@ export default function MessageItem({
                 key={emoji}
                 activeOpacity={0.7}
                 onPress={() => onReact(item.id, emoji)}
+                onLongPress={() => setReactionsModalEmoji(emoji)}
                 style={[
                   styles.reactionBadge,
                   {
@@ -460,6 +463,15 @@ export default function MessageItem({
       </View>
     </Pressable>
   </Swipeable>
+      <ReactionsListModal
+        visible={!!reactionsModalEmoji}
+        emoji={reactionsModalEmoji}
+        reactions={(item.reactions || []).filter(r => r.emoji === reactionsModalEmoji)}
+        colors={colors}
+        currentUserId={currentUserId}
+        navigation={navigation}
+        onClose={() => setReactionsModalEmoji(null)}
+      />
     </>
   );
 }
