@@ -13,7 +13,8 @@
             "compileSdkVersion": 35,
             "targetSdkVersion": 35,
             "buildToolsVersion": "35.0.0",
-            "kotlinTargetJvmVersion": "17"
+            "kotlinTargetJvmVersion": "17",
+            "networkInspector": false
           }
         }
       ],

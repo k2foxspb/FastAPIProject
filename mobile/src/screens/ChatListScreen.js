@@ -1,5 +1,6 @@
 import React, { useCallback, useState } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, Image, RefreshControl } from 'react-native';
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useNotifications } from '../context/NotificationContext';
 import { useFocusEffect } from '@react-navigation/native';
 import { useTheme } from '../context/ThemeContext';
@@ -10,6 +11,10 @@ import { formatName, formatMessageTime, parseISODate, getAvatarUrl } from '../ut
 export default function ChatListScreen({ navigation }) {
   const { dialogs, fetchDialogs, isConnected } = useNotifications();
   const [refreshing, setRefreshing] = useState(false);
+  // Панель вкладок теперь всегда position:'absolute' (см. TabNavigator.js) и не резервирует место
+  // во flex-раскладке сама — поэтому список диалогов сам добавляет отступ под неё, чтобы последний
+  // элемент списка не оказался под панелью.
+  const tabBarHeight = useBottomTabBarHeight();
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -82,7 +87,7 @@ export default function ChatListScreen({ navigation }) {
         data={dialogs}
         keyExtractor={(item) => (item.user_id || Math.random()).toString()}
         renderItem={renderItem}
-        contentContainerStyle={styles.list}
+        contentContainerStyle={[styles.list, { paddingBottom: 10 + tabBarHeight }]}
         style={{ flex: 1, width: '100%' }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       />

@@ -6,7 +6,7 @@ import { API_BASE_URL } from '../constants';
 import VideoPlayer from './VideoPlayer';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
-import { subscribe, startDownload } from '../utils/downloadManager';
+import { subscribe, startDownload, checkCached, getState } from '../utils/downloadManager';
 
 const formatBytes = (bytes) => {
   if (!bytes || bytes <= 0) return '0 КБ';
@@ -44,13 +44,20 @@ const CachedMedia = ({
 
   const [localUri, setLocalUri] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [dlState, setDlState] = useState({
-    downloading: false,
-    downloadedBytes: 0,
-    totalBytes: 0,
-    cached: false,
-    localUri: null,
-  });
+  // Ленивая инициализация из глобального хранилища загрузок: если видео уже докачано
+  // (или качается) другим экземпляром CachedMedia для того же файла — сразу показываем
+  // актуальное состояние, а не "не скачано" на первом кадре.
+  const [dlState, setDlState] = useState(() => (
+    isVideo && remoteUri
+      ? getState(remoteUri)
+      : { downloading: false, downloadedBytes: 0, totalBytes: 0, cached: false, localUri: null }
+  ));
+  // Видео с удалённого сервера (http/https) считается готовым к показу только после
+  // полной докачки на диск — это исключает проигрывание потокового URL и, как следствие,
+  // переключение источника во время просмотра. Локальные файлы (file://, content://)
+  // готовы сразу, докачка для них не требуется.
+  const isRemoteHttp = /^https?:\/\//i.test(remoteUri || '');
+  const isVideoReady = !isVideo || !isRemoteHttp || (dlState.cached && !!dlState.localUri);
 
   // Subscribe to global download store for this video
   useEffect(() => {
@@ -77,6 +84,13 @@ const CachedMedia = ({
       startDownload(remoteUri, localFileUri, doneMarkerUri);
     }
   }, [remoteUri, isParentVisible, shouldPlay]);
+
+  // Проверяем при входе в чат (монтировании превью), скачано ли видео на телефон,
+  // чтобы значок сразу показывал актуальный статус, а не "не скачано" по умолчанию
+  useEffect(() => {
+    if (!isVideo || !remoteUri) return;
+    checkCached(remoteUri, localFileUri, doneMarkerUri);
+  }, [remoteUri]);
 
   // Initial load
   useEffect(() => {
@@ -126,25 +140,28 @@ const CachedMedia = ({
   // Video placeholder (not playing inline)
   if (isVideo && (!isParentVisible || isStatic || !shouldPlay)) {
     const handleVideoTap = () => {
-      if (onFullScreen) {
-        onFullScreen(dlState.localUri || localUri, item.message_type || item.type);
-        if (remoteUri) startDownload(remoteUri, localFileUri, doneMarkerUri);
+      if (isVideoReady) {
+        if (onFullScreen) onFullScreen(dlState.localUri || localUri, item.message_type || item.type);
+        return;
       }
+      // Видео ещё не докачано полностью — не открываем плеер сразу (иначе при одновременной
+      // докачке нескольких видео это приводило к ошибке). Просто запускаем/продолжаем загрузку —
+      // плеер не открывается автоматически, после докачки пользователь должен нажать на
+      // воспроизведение ещё раз.
+      if (remoteUri) startDownload(remoteUri, localFileUri, doneMarkerUri);
     };
 
     const { downloading, downloadedBytes, totalBytes, cached } = dlState;
 
     return (
       <TouchableOpacity onPress={handleVideoTap} style={[styles.thumbnail, style]} activeOpacity={0.85}>
-        <VideoPlayer
-          uri={dlState.localUri || localUri}
-          isMuted={true}
-          isLooping={false}
-          shouldPlay={false}
-          style={StyleSheet.absoluteFill}
-          useNativeControls={false}
-          resizeMode="cover"
-        />
+        {/* Не создаём здесь настоящий VideoPlayer/VideoView (shouldPlay всегда false для этого
+            превью) — раньше он всё равно инициализировал полноценный нативный плеер и decoder
+            только чтобы показать статичный первый кадр. В чате с несколькими видео-сообщениями
+            это означало по одному живому нативному плееру на КАЖДОЕ видео в истории одновременно,
+            что и приводило к OutOfMemoryError. Настоящий плеер теперь создаётся только при
+            открытии видео полноэкранно (ниже). */}
+        <View style={[StyleSheet.absoluteFill, styles.thumbnailPlaceholder]} />
         <View style={styles.playOverlay}>
           <View style={styles.playButtonCircle}>
             <MaterialIcons name="play-arrow" size={32} color="#fff" />
@@ -152,7 +169,7 @@ const CachedMedia = ({
         </View>
         <View style={styles.statusBadge} pointerEvents="none">
           {cached && !downloading ? (
-            <MaterialIcons name="check-circle" size={18} color="#4FC3F7" />
+            <MaterialIcons name="download-done" size={18} color="#4CAF50" />
           ) : downloading ? (
             <>
               <ActivityIndicator size={12} color="#4FC3F7" style={{ marginBottom: 2 }} />
@@ -183,16 +200,25 @@ const CachedMedia = ({
     return (
       <View style={[styles.thumbnailOuter, style]}>
         <View style={styles.thumbnailInner}>
-          <VideoPlayer
-            uri={dlState.localUri || localUri}
-            isMuted={isMuted}
-            isLooping={typeof isLooping === 'boolean' ? isLooping : !useNativeControls}
-            shouldPlay={shouldPlay}
-            style={StyleSheet.absoluteFill}
-            useNativeControls={useNativeControls}
-            resizeMode={resizeMode}
-            onPlayerReady={onPlayerReady}
-          />
+          {isVideoReady ? (
+            <VideoPlayer
+              uri={dlState.localUri || localUri}
+              isMuted={isMuted}
+              isLooping={typeof isLooping === 'boolean' ? isLooping : !useNativeControls}
+              shouldPlay={shouldPlay}
+              style={StyleSheet.absoluteFill}
+              useNativeControls={useNativeControls}
+              resizeMode={resizeMode}
+              onPlayerReady={onPlayerReady}
+            />
+          ) : (
+            // Пока файл не докачан полностью — не создаём плеер с потоковым URL вообще, чтобы
+            // видео не могло начать проигрываться и затем переключить источник на локальный
+            // файл (именно это раньше вызывало видимый рестарт воспроизведения с начала).
+            <View style={[StyleSheet.absoluteFill, styles.fullscreenWaitContainer]}>
+              <ActivityIndicator size="large" color="#fff" />
+            </View>
+          )}
           {onFullScreen && (
             <TouchableOpacity
               style={StyleSheet.absoluteFill}
@@ -254,6 +280,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#000',
     overflow: 'hidden',
   },
+  thumbnailPlaceholder: {
+    backgroundColor: '#000',
+  },
   playOverlay: {
     ...StyleSheet.absoluteFillObject,
     justifyContent: 'center',
@@ -313,6 +342,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  fullscreenWaitContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#000',
   },
   fullscreenBytesText: {
     color: '#4FC3F7',

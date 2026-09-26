@@ -258,17 +258,27 @@ export default function TabNavigator() {
           // чтобы освободить место под поле ввода сообщения.
           const routeName = getFocusedRouteNameFromRoute(route) ?? 'ChatList';
           const hideTabBar = routeName !== 'ChatList';
-          const options = {
+          return {
             title: 'Чат', 
             headerShown: false,
             tabBarBadge: unreadTotal > 0 ? unreadTotal : null,
+            // Панель вкладки "Чат" всегда position:'absolute' — то есть НЕ резервирует место во
+            // flex-раскладке ни на ChatList (где видима), ни на Chat (где скрыта). Раньше панель была
+            // обычной (не absolute) и только скрывалась через display:'none' на экране Chat — из-за
+            // этого при переключении она могла оставлять "фантомный" отступ внизу (известная особенность
+            // React Navigation при динамическом переключении tabBarStyle: мейнтейнеры сами рекомендуют
+            // position:'absolute', чтобы избежать "прыжка" раскладки), и поле ввода сообщения прилипало
+            // не к реальному низу экрана, а к границе этого невидимого отступа. Так как панель теперь
+            // всегда absolute, ChatListScreen сам добавляет отступ под неё через useBottomTabBarHeight().
+            // backgroundColor/borderTopColor повторены явно, так как заданный здесь tabBarStyle перестаёт
+            // наследовать тему из screenOptions родительского навигатора.
+            tabBarStyle: {
+              backgroundColor: colors.background,
+              borderTopColor: colors.border,
+              position: 'absolute',
+              ...(hideTabBar && { display: 'none' }),
+            },
           };
-          // tabBarStyle указываем только когда панель нужно скрыть, иначе (при undefined)
-          // React Navigation перестаёт наследовать тему из screenOptions родительского навигатора.
-          if (hideTabBar) {
-            options.tabBarStyle = { display: 'none' };
-          }
-          return options;
         }} 
       />
       <Tab.Screen name="Profile" component={ProfileStack} options={{ title: 'Профиль', headerShown: false }} />

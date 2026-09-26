@@ -45,16 +45,38 @@ const VideoPlayer = ({
 
   // Позиция воспроизведения, которую нужно восстановить после замены источника
   // (например, когда видео докачалось и поток переключается на локальный файл).
-  // Хранится в ref, чтобы её мог применить тот слушатель, который сработает первым —
-  // либо промис replaceAsync, либо событие statusChange('readyToPlay') —
-  // и видео не успевало "прыгнуть" на начало перед восстановлением позиции.
+  // Хранится в ref до тех пор, пока её не подтвердит player.status === 'readyToPlay' —
+  // единственный документированный у expo-video сигнал того, что буферизовано достаточно
+  // данных для воспроизведения. Событие sourceLoad для этого НЕ подходит: по документации
+  // оно означает только то, что загружены метаданные источника, и явно не гарантирует
+  // готовность данных к playback — присвоение currentTime в этот момент может быть молча
+  // проигнорировано нативной стороной, поэтому раньше это приводило к потере позиции
+  // (ref сбрасывался в sourceLoad раньше, чем readyToPlay успевал применить её по-настоящему).
   const pendingResumeTimeRef = useRef(null);
 
-  const applyPendingResumeTime = () => {
+  // Ранняя, не гарантированная попытка восстановить позицию сразу после замены источника.
+  // Не очищает pendingResumeTimeRef — если присвоение будет проигнорировано плеером,
+  // confirmSourceReady ниже повторит и подтвердит попытку, когда источник точно готов.
+  const tryApplyPendingResumeTime = () => {
+    const resumeTime = pendingResumeTimeRef.current;
+    if (resumeTime !== null && resumeTime > 0) {
+      try { player.currentTime = resumeTime; } catch (e) {}
+    }
+  };
+
+  // Финальное (подтверждённое) применение позиции и запуск воспроизведения при необходимости.
+  // Вызывается только когда player.status действительно 'readyToPlay' — только тогда ref
+  // окончательно очищается, чтобы не потерять отложенную позицию из-за недостоверной попытки.
+  const confirmSourceReady = () => {
     const resumeTime = pendingResumeTimeRef.current;
     if (resumeTime !== null) {
       pendingResumeTimeRef.current = null;
       try { if (resumeTime > 0) player.currentTime = resumeTime; } catch (e) {}
+    }
+    if (shouldPlayRef.current) {
+      setPlaybackAudioMode().finally(() => {
+        try { player.play(); } catch (e) {}
+      });
     }
   };
 
@@ -70,11 +92,13 @@ const VideoPlayer = ({
       pendingResumeTimeRef.current = resumeTime;
 
       const resumePlayback = () => {
-        applyPendingResumeTime();
-        if (shouldPlayRef.current) {
-          setPlaybackAudioMode().finally(() => {
-            try { player.play(); } catch (e) {}
-          });
+        tryApplyPendingResumeTime();
+        // Если плеер уже сообщает readyToPlay прямо сейчас (например, локальный файл открылся
+        // мгновенно и статус не будет меняться отдельным событием) — подтверждаем позицию и
+        // запускаем воспроизведение сразу. Иначе play() здесь НЕ вызываем: старт мог бы случиться
+        // с ещё не восстановленной позицией — ждём надёжного события readyToPlay ниже.
+        if (player.status === 'readyToPlay') {
+          confirmSourceReady();
         }
       };
 
@@ -91,16 +115,15 @@ const VideoPlayer = ({
     }
   }, [uri, player]);
 
-  // Status listener — play when ready if shouldPlay
+  // Status listener — play when ready if shouldPlay.
+  // readyToPlay — единственный надёжный сигнал того, что плеер загрузил достаточно данных для
+  // воспроизведения (см. документацию expo-video), поэтому именно здесь подтверждается
+  // отложенная позиция и запускается play(). confirmSourceReady идемпотентна, поэтому повторный
+  // вызов (например, если позиция уже была подтверждена в resumePlayback выше) безопасен.
   useEffect(() => {
     const sub = player.addListener('statusChange', ({ status }) => {
       if (status === 'readyToPlay' && shouldPlayRef.current) {
-        // Если к этому моменту позиция ещё не восстановлена (гонка с промисом replaceAsync),
-        // применяем её прямо здесь — до старта воспроизведения, чтобы избежать видимого рестарта с начала.
-        applyPendingResumeTime();
-        setPlaybackAudioMode().finally(() => {
-          try { player.play(); } catch (e) {}
-        });
+        confirmSourceReady();
       }
     });
     return () => sub.remove();

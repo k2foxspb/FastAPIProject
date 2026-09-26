@@ -18,6 +18,7 @@ export default function useChatHistory({
   markAsReadWs,
   getHistoryWs,
   onHistoryReceived,
+  onUploadProgressReceived,
   getCachedHistory,
   isChatConnected,
   restoreActiveUploads,
@@ -130,16 +131,7 @@ export default function useChatHistory({
           }
         }
       } 
-      // 2. Прогресс загрузки
-      else if (notifyType === 'upload_progress') {
-        const { message_id, progress, offset, total } = data;
-        setMessages(prev => prev.map(m => (
-          String(m.id) === String(message_id) && m.is_uploading && !m.file_path
-          ? { ...m, upload_progress: progress, upload_offset: offset, upload_total: total } 
-          : m
-        )));
-      } 
-      // 3. Завершение загрузки (message_updated)
+      // 2. Завершение загрузки (message_updated)
       else if (notifyType === 'message_updated') {
         setMessages(prev => {
           const idx = prev.findIndex(m => String(m.id) === String(data.id));
@@ -164,7 +156,7 @@ export default function useChatHistory({
           }
         });
       }
-      // 4. Удаление сообщения
+      // 3. Удаление сообщения
       else if (notifyType === 'message_deleted') {
         const msgId = data.message_id || data.id || lastNotify.message_id;
         const uploadId = data.upload_id || lastNotify.upload_id;
@@ -177,7 +169,7 @@ export default function useChatHistory({
           fetchDialogs();
         }
       } 
-      // 5. Прочтение сообщений
+      // 4. Прочтение сообщений
       else if (notifyType === 'messages_read' || notifyType === 'your_messages_read' || notifyType === 'mark_read') {
           const readerId = data.reader_id || lastNotify.reader_id;
           if (notifyType === 'your_messages_read' || notifyType === 'mark_read' || (notifyType === 'messages_read' && readerId && Number(readerId) === Number(userId))) {
@@ -186,7 +178,7 @@ export default function useChatHistory({
             ));
           }
       }
-      // 6. Статус пользователя
+      // 5. Статус пользователя
       else if (notifyType === 'user_status') {
           const { user_id, status, last_seen } = data;
           if (Number(user_id) === Number(userId)) {
@@ -197,6 +189,23 @@ export default function useChatHistory({
 
     lastProcessedNotificationRef.current = notifications[0];
   }, [notifications, userId, currentUserId]);
+
+  // Прогресс загрузки видео/файлов приходит на каждый чанк (десятки-сотни раз за одну загрузку),
+  // поэтому он раздаётся через отдельную лёгкую подписку в контексте, а не через общий массив
+  // notifications — это не даёт частым событиям вызывать лишние пересчёты и подвисания интерфейса.
+  useEffect(() => {
+    const unsubscribe = onUploadProgressReceived((payload) => {
+      const data = payload?.data;
+      if (!data) return;
+      const { message_id, progress, offset, total } = data;
+      setMessages(prev => prev.map(m => (
+        String(m.id) === String(message_id) && m.is_uploading && !m.file_path
+        ? { ...m, upload_progress: progress, upload_offset: offset, upload_total: total }
+        : m
+      )));
+    });
+    return () => unsubscribe();
+  }, [onUploadProgressReceived]);
 
   // Добавляем слушатель состояния приложения, чтобы помечать прочитанным при возврате в активный чат
   useEffect(() => {

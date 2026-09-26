@@ -34,7 +34,7 @@ export default function ChatScreen({ route, navigation }) {
   const {
     setActiveChatId, fetchDialogs, currentUserId, notifications, dialogs, clearUnread, currentUser,
     sendMessage: sendMessageWs, markAsReadWs, deleteMessageWs, bulkDeleteMessagesWs, getHistoryWs,
-    onHistoryReceived, onSearchResultsReceived, searchMessagesWs, getCachedHistory, isChatConnected,
+    onHistoryReceived, onSearchResultsReceived, onUploadProgressReceived, searchMessagesWs, getCachedHistory, isChatConnected,
     typingUsers, sendTypingStatus,
   } = useNotifications();
   const { userId, userName } = route.params;
@@ -83,6 +83,7 @@ export default function ChatScreen({ route, navigation }) {
     markAsReadWs,
     getHistoryWs,
     onHistoryReceived,
+    onUploadProgressReceived,
     getCachedHistory,
     isChatConnected,
     restoreActiveUploads: uploads.restoreActiveUploads,

@@ -113,14 +113,9 @@ export function getState(url) {
   };
 }
 
-export async function startDownload(url, localUri, doneMarkerUri) {
-  const entry = getEntry(url);
-
-  // Already downloading or cached — don't start again
-  if (entry.downloading) return;
-  if (entry.cached && entry.localUri) return;
-
-  // Check done marker
+// Проверяет done-маркер и сам файл на диске; если оба валидны — помечает entry как
+// закэшированный и оповещает подписчиков. Возвращает true, если файл уже на диске.
+async function tryMarkCachedFromDisk(entry, url, localUri, doneMarkerUri) {
   try {
     const markerInfo = await FileSystem.getInfoAsync(doneMarkerUri);
     if (markerInfo.exists) {
@@ -130,13 +125,34 @@ export async function startDownload(url, localUri, doneMarkerUri) {
         entry.localUri = fileInfo.uri;
         entry.downloading = false;
         notify(url);
-        return;
+        return true;
       } else {
         try { await FileSystem.deleteAsync(doneMarkerUri, { idempotent: true }); } catch (_) {}
         try { await FileSystem.deleteAsync(localUri, { idempotent: true }); } catch (_) {}
       }
     }
   } catch (_) {}
+  return false;
+}
+
+// Лёгкая проверка кэша на диске без запуска самой загрузки. Нужна, чтобы при входе
+// в чат значок статуса сразу показывал актуальное состояние ("скачано"/"не скачано"),
+// а не по умолчанию "не скачано" до первого открытия медиа на весь экран.
+export async function checkCached(url, localUri, doneMarkerUri) {
+  const entry = getEntry(url);
+  if (entry.cached || entry.downloading) return;
+  await tryMarkCachedFromDisk(entry, url, localUri, doneMarkerUri);
+}
+
+export async function startDownload(url, localUri, doneMarkerUri) {
+  const entry = getEntry(url);
+
+  // Already downloading or cached — don't start again
+  if (entry.downloading) return;
+  if (entry.cached && entry.localUri) return;
+
+  // Check done marker
+  if (await tryMarkCachedFromDisk(entry, url, localUri, doneMarkerUri)) return;
 
   // Delete any partial file — always start fresh
   try { await FileSystem.deleteAsync(localUri, { idempotent: true }); } catch (_) {}

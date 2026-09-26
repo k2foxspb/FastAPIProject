@@ -18,7 +18,7 @@ import { createVideoPlayer, VideoView } from 'expo-video';
 import * as FileSystem from 'expo-file-system/legacy';
 import { API_BASE_URL } from '../constants';
 import { setPlaybackAudioMode } from '../utils/audioSettings';
-import { subscribe, startDownload } from '../utils/downloadManager';
+import { subscribe, startDownload, checkCached } from '../utils/downloadManager';
 
 const INLINE_SIZE = 170;
 const MODAL_VIDEO_SIZE = 280;
@@ -125,9 +125,18 @@ const InlineCircleVideoContent = ({ uri }) => {
     setPlayer(p);
 
     return () => {
+      // Step 1: unmount VideoView (schedule state update) BEFORE releasing the player.
       setPlayer(null);
       playerRef.current = null;
-      try { p.release(); } catch (e) {}
+      // Step 2: release the player only on the next tick — same pattern as closeModal below.
+      // Releasing it synchronously here (before React commits the VideoView unmount) leaves a
+      // window where the still-mounted VideoView can be re-rendered/updated with a player that
+      // was already released, crashing with "Cannot use shared object that was already released".
+      // This matters a lot here specifically: this preview remounts frequently (uri changes,
+      // isParentVisible toggling during fast list scrolling), so the race is easy to hit.
+      setTimeout(() => {
+        try { p.release(); } catch (e) {}
+      }, 0);
     };
   }, [uri]);
 
@@ -178,6 +187,14 @@ export default function VideoNoteMessage({ item, isReceived, isParentVisible }) 
       }
     });
     return unsub;
+  }, [remoteUri]);
+
+  // Проверяем при входе в чат (монтировании), скачан ли видео-кружок на телефон,
+  // чтобы значок сразу показывал актуальный статус, а не "не скачано" по умолчанию
+  useEffect(() => {
+    if (!remoteUri) return;
+    const localUri = getLocalCacheUri(remoteUri);
+    checkCached(remoteUri, localUri, getDoneMarkerUri(localUri));
   }, [remoteUri]);
 
   // Wire up listeners whenever showVideoView changes (player is in ref)
@@ -428,7 +445,7 @@ export default function VideoNoteMessage({ item, isReceived, isParentVisible }) 
         </View>
         <View style={styles.inlineStatusBadge} pointerEvents="none">
           {dlState.cached && !dlState.downloading ? (
-            <MaterialIcons name="check-circle" size={16} color="#4FC3F7" />
+            <MaterialIcons name="download-done" size={16} color="#4CAF50" />
           ) : dlState.downloading ? (
             <>
               <View style={styles.inlineStatusRow}>

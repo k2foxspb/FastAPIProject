@@ -14,9 +14,16 @@ import { displayBundledMessage, parseNotificationData } from '../utils/notificat
 
 const NotificationContext = createContext();
 
+// Верхняя граница размера истории уведомлений в памяти. Без неё массив notifications
+// растёт всю сессию без ограничения (например, из-за keep-alive 'pong' раз в 30 секунд
+// или частых событий), а при каждом открытии чата целиком пересчитывается заново —
+// это и вызывало нарастающие подвисания при хорошей связи.
+const MAX_NOTIFICATIONS = 200;
+
 export const NotificationProvider = ({ children }) => {
   const [historyListeners] = useState(new Set());
   const [searchResultsListeners] = useState(new Set());
+  const [uploadProgressListeners] = useState(new Set());
 
   const getHistoryWs = useCallback((otherUserId, limit = 15, skip = 0) => {
     if (chatWs.current && chatWs.current.readyState === WebSocket.OPEN) {
@@ -42,6 +49,14 @@ export const NotificationProvider = ({ children }) => {
     searchResultsListeners.add(callback);
     return () => searchResultsListeners.delete(callback);
   }, [searchResultsListeners]);
+
+  // Прогресс загрузки приходит на каждый чанк файла (десятки-сотни раз для одного видео).
+  // Раздаём его через прямую подписку, а не через setNotifications/React state, чтобы такой
+  // частый поток событий не пересоздавал contextValue и не вызывал ре-рендер всего приложения.
+  const onUploadProgressReceived = useCallback((callback) => {
+    uploadProgressListeners.add(callback);
+    return () => uploadProgressListeners.delete(callback);
+  }, [uploadProgressListeners]);
 
   const searchMessagesWs = useCallback((otherUserId, query) => {
     if (chatWs.current && chatWs.current.readyState === WebSocket.OPEN) {
@@ -185,7 +200,7 @@ export const NotificationProvider = ({ children }) => {
       ))) {
         return prev;
       }
-      return [wrappedNotification, ...prev];
+      return [wrappedNotification, ...prev].slice(0, MAX_NOTIFICATIONS);
     });
 
     // Звуковое уведомление
@@ -339,15 +354,19 @@ export const NotificationProvider = ({ children }) => {
               [payload.user_id]: payload.is_typing ? Date.now() : 0
             }));
           } else if (msgType === 'upload_progress' && payload.data) {
-            // Прокидываем событие дальше, чтобы экраны могли обновить прогресс
-            setNotifications(prev => [payload, ...prev]);
+            // Лёгкая точечная подписка вместо накопления в notifications: событий прогресса может
+            // быть десятки-сотни на одну загрузку видео, и они не должны разрастать общий список
+            // уведомлений и вызывать ре-рендер всего приложения через контекст на каждый чанк.
+            uploadProgressListeners.forEach(cb => {
+              try { cb(payload); } catch (e) { console.error('Error in upload progress listener:', e); }
+            });
           } else if (msgType === 'message_updated' && payload.data) {
             // Прокидываем событие обновления сообщения
             // Мы вызываем handleNewMessage, который внутри добавит уведомление в список notifications
             console.log(`[NotificationContext] Received message_updated via Chat WS: id=${payload.data.id}, client_id=${payload.data.client_id}`);
             handleNewMessage(payload.data, payload);
           } else if (msgType === 'message_deleted') {
-            setNotifications(prev => [payload, ...prev]);
+            setNotifications(prev => [payload, ...prev].slice(0, MAX_NOTIFICATIONS));
           } else if (msgType === 'messages_read') {
             const otherId = payload.reader_id || payload.data?.reader_id;
             if (otherId) {
@@ -355,7 +374,7 @@ export const NotificationProvider = ({ children }) => {
                 Number(d.user_id) === Number(otherId) ? { ...d, unread_count: 0 } : d
               ));
               
-              setNotifications(prev => [payload, ...prev]);
+              setNotifications(prev => [payload, ...prev].slice(0, MAX_NOTIFICATIONS));
             }
           }
         } catch (err) {}
@@ -634,12 +653,17 @@ export const NotificationProvider = ({ children }) => {
           }
         }
 
-        setNotifications((prev) => {
-          if (payload.type === 'new_message' && prev.some(n => n.type === 'new_message' && String(n.data?.id) === String(payload.data?.id))) {
-            return prev;
-          }
-          return [payload, ...prev];
-        });
+        // 'pong' — это только ответ на keep-alive ping и не несёт полезной нагрузки для UI.
+        // Без этой проверки он бы каждые 30 секунд бесконечно копился в notifications, даже
+        // если пользователь ничего не делает в приложении.
+        if (payload.type !== 'pong') {
+          setNotifications((prev) => {
+            if (payload.type === 'new_message' && prev.some(n => n.type === 'new_message' && String(n.data?.id) === String(payload.data?.id))) {
+              return prev;
+            }
+            return [payload, ...prev].slice(0, MAX_NOTIFICATIONS);
+          });
+        }
       } catch (err) {
         console.error('Failed to parse notification message:', err);
       }
@@ -890,6 +914,7 @@ export const NotificationProvider = ({ children }) => {
     getHistoryWs,
     onHistoryReceived,
     onSearchResultsReceived,
+    onUploadProgressReceived,
     searchMessagesWs,
     markAsReadWs,
     deleteMessageWs,
@@ -921,6 +946,7 @@ export const NotificationProvider = ({ children }) => {
     getHistoryWs,
     onHistoryReceived,
     onSearchResultsReceived,
+    onUploadProgressReceived,
     searchMessagesWs,
     markAsReadWs,
     deleteMessageWs,
