@@ -273,6 +273,19 @@ export const chatApi = {
   sendMessage: (data, token) => api.post('/chat/message', data, { params: { token } }),
 };
 
+export const groupChatApi = {
+  createGroup: (name, memberIds = [], avatarUrl = null) => api.post('/chat/groups', { name, member_ids: memberIds, avatar_url: avatarUrl }),
+  getMyGroups: () => api.get('/chat/groups'),
+  getGroup: (groupId) => api.get(`/chat/groups/${groupId}`),
+  updateGroup: (groupId, data) => api.patch(`/chat/groups/${groupId}`, data),
+  addMembers: (groupId, userIds) => api.post(`/chat/groups/${groupId}/members`, { user_ids: userIds }),
+  removeMember: (groupId, userId) => api.delete(`/chat/groups/${groupId}/members/${userId}`),
+  promoteToAdmin: (groupId, userId) => api.post(`/chat/groups/${groupId}/admins/${userId}`),
+  demoteAdmin: (groupId, userId) => api.delete(`/chat/groups/${groupId}/admins/${userId}`),
+  leaveGroup: (groupId) => api.post(`/chat/groups/${groupId}/leave`),
+  deleteGroup: (groupId) => api.delete(`/chat/groups/${groupId}`),
+};
+
 export const cartApi = {
   getCart: () => api.get('/cart/'),
   addItem: (productId, quantity = 1) => api.post('/cart/items', { product_id: productId, quantity }),

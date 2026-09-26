@@ -3,7 +3,8 @@ from datetime import datetime
 from typing import Optional, Union
 
 class ChatMessageBase(BaseModel):
-    receiver_id: int
+    receiver_id: Optional[int] = None
+    group_id: Optional[int] = None # id группового чата (взаимоисключимо с receiver_id)
     message: Optional[str] = None
     file_path: Optional[str] = None
     attachments: Optional[list[dict]] = None
@@ -56,6 +57,7 @@ class ChatMessageResponse(ChatMessageBase):
     upload_total: Optional[int] = None
     deleted_by_sender: bool = False
     deleted_by_receiver: bool = False
+    group_id: Optional[int] = None
 
     class Config:
         from_attributes = True
@@ -97,3 +99,52 @@ class UploadStatusResponse(BaseModel):
 
 class BulkDeleteMessagesRequest(BaseModel):
     message_ids: list[int]
+
+# --- Групповые чаты ---
+
+class GroupChatCreate(BaseModel):
+    name: str
+    member_ids: list[int] = []
+    avatar_url: Optional[str] = None
+
+class GroupChatUpdate(BaseModel):
+    name: Optional[str] = None
+    avatar_url: Optional[str] = None
+
+class AddGroupMembersRequest(BaseModel):
+    user_ids: list[int]
+
+class GroupChatMemberResponse(BaseModel):
+    user_id: int
+    role: str # "owner", "admin", "member"
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    avatar_url: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+class GroupChatResponse(BaseModel):
+    id: int
+    name: str
+    avatar_url: Optional[str] = None
+    owner_id: int
+    my_role: Optional[str] = None
+    members_count: int = 0
+    last_message: Optional[str] = None
+    last_message_time: Optional[datetime] = None
+    unread_count: int = 0
+
+    class Config:
+        from_attributes = True
+
+class GroupChatDetailResponse(BaseModel):
+    id: int
+    name: str
+    avatar_url: Optional[str] = None
+    owner_id: int
+    my_role: Optional[str] = None
+    members: list[GroupChatMemberResponse] = []
+
+    class Config:
+        from_attributes = True

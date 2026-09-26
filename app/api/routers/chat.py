@@ -14,7 +14,7 @@ import jwt
 
 from app.core.config import SECRET_KEY, ALGORITHM
 from app.api.dependencies import get_async_db
-from app.models.chat import ChatMessage, FileUploadSession, ChatMessageReaction
+from app.models.chat import ChatMessage, FileUploadSession, ChatMessageReaction, GroupChatMember
 from app.models.users import User as UserModel
 from app.schemas.chat import (
     ChatMessageCreate, ChatMessageResponse, DialogResponse, 
@@ -181,7 +181,64 @@ async def websocket_chat_endpoint(
                     except Exception as e:
                         logger.error(f"WS get_history error: {e}")
                 continue
-                
+
+            if msg_type == "get_group_history":
+                group_id_raw = message_data.get("group_id")
+                limit = message_data.get("limit", 30)
+                skip = message_data.get("skip", 0)
+                if group_id_raw:
+                    try:
+                        from app.api.routers.group_chat import _get_membership
+                        group_id = int(group_id_raw)
+                        membership = await _get_membership(db, group_id, user_id)
+                        if not membership:
+                            await websocket.send_json({"type": "error", "message": "Вы не участник этой группы"})
+                            continue
+
+                        res_history = await db.execute(
+                            select(ChatMessage)
+                            .options(joinedload(ChatMessage.sender))
+                            .where(ChatMessage.group_id == group_id)
+                            .order_by(ChatMessage.timestamp.desc())
+                            .offset(skip)
+                            .limit(limit)
+                        )
+                        msgs = res_history.scalars().all()
+                        processed_history = []
+                        for m in msgs:
+                            item = {
+                                "id": m.id,
+                                "sender_id": m.sender_id,
+                                "sender_name": f"{m.sender.first_name or ''} {m.sender.last_name or ''}".strip() or "Пользователь" if m.sender else "Пользователь",
+                                "group_id": m.group_id,
+                                "message": m.message,
+                                "file_path": m.file_path,
+                                "message_type": m.message_type,
+                                "client_id": m.client_id,
+                                "duration": m.duration,
+                                "timestamp": m.timestamp.isoformat() if m.timestamp else None,
+                                "is_read": m.is_read,
+                                "forwarded_from_id": m.forwarded_from_id,
+                                "forwarded_from_name": m.forwarded_from_name,
+                                "comment": m.comment,
+                            }
+                            if m.message_type == "media_group" and m.file_path:
+                                try:
+                                    item["attachments"] = json.loads(m.file_path)
+                                except Exception:
+                                    item["attachments"] = []
+                            processed_history.append(item)
+
+                        await websocket.send_json({
+                            "type": "group_chat_history",
+                            "group_id": group_id,
+                            "data": processed_history,
+                            "skip": skip
+                        })
+                    except Exception as e:
+                        logger.error(f"WS get_group_history error: {e}")
+                continue
+
             logger.debug(f"Chat WS received message type '{msg_type}' from user {user_id}")
 
             if msg_type == "search_messages":
@@ -661,6 +718,110 @@ async def websocket_chat_endpoint(
                         )
                     else:
                         await db.commit()
+                continue
+
+            if msg_type == "group_message":
+                group_id_raw = message_data.get("group_id")
+                content = message_data.get("message")
+                file_path = message_data.get("file_path")
+                attachments = message_data.get("attachments")
+                message_type = message_data.get("message_type", "text")
+                client_id = message_data.get("client_id")
+                duration = message_data.get("duration")
+
+                if group_id_raw and (content or file_path or (attachments and len(attachments) > 0)):
+                    try:
+                        group_id = int(group_id_raw)
+                    except (ValueError, TypeError):
+                        logger.warning(f"Invalid group_id format: {group_id_raw}")
+                        continue
+
+                    from app.api.routers.group_chat import _get_membership
+                    membership = await _get_membership(db, group_id, user_id)
+                    if not membership:
+                        await websocket.send_json({"type": "error", "message": "Вы не участник этой группы"})
+                        continue
+
+                    if attachments and len(attachments) > 0:
+                        message_type = "media_group"
+                        try:
+                            file_path = json.dumps(attachments)
+                        except Exception as e:
+                            logger.error(f"Failed to serialize group attachments: {e}")
+                            file_path = None
+
+                    new_msg = ChatMessage(
+                        sender_id=user_id,
+                        group_id=group_id,
+                        message=content,
+                        file_path=file_path,
+                        message_type=message_type,
+                        client_id=client_id,
+                        duration=duration
+                    )
+                    db.add(new_msg)
+                    await db.commit()
+                    await db.refresh(new_msg)
+
+                    response_data = {
+                        "id": new_msg.id,
+                        "client_id": client_id,
+                        "sender_id": user_id,
+                        "sender_name": sender_name,
+                        "group_id": group_id,
+                        "message": content,
+                        "file_path": file_path,
+                        "message_type": message_type,
+                        "duration": duration,
+                        "timestamp": new_msg.timestamp.isoformat(),
+                        "is_read": 0
+                    }
+                    if message_type == "media_group":
+                        try:
+                            response_data["attachments"] = attachments or json.loads(file_path or "[]")
+                        except Exception:
+                            response_data["attachments"] = []
+
+                    # Получаем всех участников группы для рассылки
+                    members_res = await db.execute(
+                        select(GroupChatMember.user_id).where(GroupChatMember.group_id == group_id)
+                    )
+                    member_ids = [row[0] for row in members_res.all()]
+
+                    chat_event = {"type": "new_group_message", "data": response_data}
+                    await asyncio.gather(
+                        *[manager.send_personal_message(chat_event, mid) for mid in member_ids],
+                        *[notifications_manager.send_personal_message(chat_event, mid) for mid in member_ids],
+                        return_exceptions=True
+                    )
+
+                    # Push-уведомления остальным участникам группы, если они не в сети
+                    other_member_ids = [mid for mid in member_ids if mid != user_id]
+                    if other_member_ids:
+                        res_members = await db.execute(
+                            select(UserModel).where(UserModel.id.in_(other_member_ids))
+                        )
+                        for member_user in res_members.scalars().all():
+                            if member_user.fcm_token:
+                                if message_type == "image":
+                                    body = "🖼️ Фотография"
+                                elif message_type == "file":
+                                    body = "📁 Файл"
+                                elif message_type == "audio":
+                                    body = "🎤 Голосовое сообщение"
+                                else:
+                                    body = content if content else f"Отправил {message_type}"
+                                asyncio.create_task(send_fcm_notification(
+                                    token=member_user.fcm_token,
+                                    title=f"{sender_name} в группе",
+                                    body=body,
+                                    sender_id=user_id,
+                                    sender_avatar=sender_avatar,
+                                    data={
+                                        "group_id": str(group_id),
+                                        "message_id": str(new_msg.id)
+                                    }
+                                ))
                 continue
 
             # Стандартная отправка сообщения

@@ -9,7 +9,9 @@ class ChatMessage(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     sender_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    receiver_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    # Для личных сообщений заполнен receiver_id, для групповых - group_id (одно из двух)
+    receiver_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True)
+    group_id: Mapped[int] = mapped_column(Integer, ForeignKey("group_chats.id", ondelete="CASCADE"), nullable=True)
     message: Mapped[str] = mapped_column(String, nullable=True)
     file_path: Mapped[str] = mapped_column(String, nullable=True)
     message_type: Mapped[str] = mapped_column(String, default="text") # text, image, file
@@ -32,6 +34,35 @@ class ChatMessage(Base):
     receiver = relationship("User", foreign_keys=[receiver_id])
     reply_to = relationship("ChatMessage", remote_side=[id])
     forwarded_from = relationship("User", foreign_keys=[forwarded_from_id])
+    group = relationship("GroupChat", foreign_keys=[group_id])
+
+class GroupChat(Base):
+    __tablename__ = "group_chats"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    avatar_url: Mapped[str] = mapped_column(String, nullable=True)
+    owner_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    owner = relationship("User", foreign_keys=[owner_id])
+    members = relationship("GroupChatMember", back_populates="group", cascade="all, delete-orphan")
+
+class GroupChatMember(Base):
+    __tablename__ = "group_chat_members"
+    __table_args__ = (
+        UniqueConstraint("group_id", "user_id", name="uq_group_chat_member_group_user"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    group_id: Mapped[int] = mapped_column(Integer, ForeignKey("group_chats.id", ondelete="CASCADE"), nullable=False)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    # Роль участника в группе: "owner", "admin", "member"
+    role: Mapped[str] = mapped_column(String, default="member")
+    joined_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    group = relationship("GroupChat", back_populates="members")
+    user = relationship("User", foreign_keys=[user_id])
 
 class ChatMessageReaction(Base):
     __tablename__ = "chat_message_reactions"

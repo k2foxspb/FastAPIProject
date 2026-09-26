@@ -24,6 +24,8 @@ export const NotificationProvider = ({ children }) => {
   const [historyListeners] = useState(new Set());
   const [searchResultsListeners] = useState(new Set());
   const [uploadProgressListeners] = useState(new Set());
+  const [groupHistoryListeners] = useState(new Set());
+  const [groupMessageListeners] = useState(new Set());
 
   const getHistoryWs = useCallback((otherUserId, limit = 15, skip = 0) => {
     if (chatWs.current && chatWs.current.readyState === WebSocket.OPEN) {
@@ -49,6 +51,40 @@ export const NotificationProvider = ({ children }) => {
     searchResultsListeners.add(callback);
     return () => searchResultsListeners.delete(callback);
   }, [searchResultsListeners]);
+
+  const getGroupHistoryWs = useCallback((groupId, limit = 30, skip = 0) => {
+    if (chatWs.current && chatWs.current.readyState === WebSocket.OPEN) {
+      chatWs.current.send(JSON.stringify({
+        type: 'get_group_history',
+        group_id: groupId,
+        limit,
+        skip
+      }));
+      return true;
+    }
+    return false;
+  }, []);
+
+  const onGroupHistoryReceived = useCallback((callback) => {
+    groupHistoryListeners.add(callback);
+    return () => groupHistoryListeners.delete(callback);
+  }, [groupHistoryListeners]);
+
+  const onGroupMessageReceived = useCallback((callback) => {
+    groupMessageListeners.add(callback);
+    return () => groupMessageListeners.delete(callback);
+  }, [groupMessageListeners]);
+
+  const sendGroupMessageWs = useCallback((msgData) => {
+    const payload = { type: 'group_message', ...msgData };
+    if (chatWs.current && chatWs.current.readyState === WebSocket.OPEN) {
+      chatWs.current.send(JSON.stringify(payload));
+      return true;
+    }
+    pendingMessages.current.push(payload);
+    storage.getAccessToken().then(tok => { if (tok) connectChatWs(tok); });
+    return false;
+  }, []);
 
   // Прогресс загрузки приходит на каждый чанк файла (десятки-сотни раз для одного видео).
   // Раздаём его через прямую подписку, а не через setNotifications/React state, чтобы такой
@@ -378,6 +414,14 @@ export const NotificationProvider = ({ children }) => {
               
               setNotifications(prev => [payload, ...prev].slice(0, MAX_NOTIFICATIONS));
             }
+          } else if (msgType === 'group_chat_history') {
+            groupHistoryListeners.forEach(cb => {
+              try { cb(payload); } catch (e) { console.error('Error in group history listener:', e); }
+            });
+          } else if (msgType === 'new_group_message' && payload.data) {
+            groupMessageListeners.forEach(cb => {
+              try { cb(payload.data); } catch (e) { console.error('Error in group message listener:', e); }
+            });
           }
         } catch (err) {}
       };
@@ -934,6 +978,10 @@ export const NotificationProvider = ({ children }) => {
     deleteMessageWs,
     bulkDeleteMessagesWs,
     toggleReactionWs,
+    sendGroupMessageWs,
+    getGroupHistoryWs,
+    onGroupHistoryReceived,
+    onGroupMessageReceived,
     currentUser,
     loadUser,
     loadingUser,
@@ -967,6 +1015,10 @@ export const NotificationProvider = ({ children }) => {
     deleteMessageWs,
     bulkDeleteMessagesWs,
     toggleReactionWs,
+    sendGroupMessageWs,
+    getGroupHistoryWs,
+    onGroupHistoryReceived,
+    onGroupMessageReceived,
     currentUser,
     loadUser,
     loadingUser,

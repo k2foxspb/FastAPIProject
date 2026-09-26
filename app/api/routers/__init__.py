@@ -11,6 +11,7 @@ from app.api.routers import (
     payments,
     notifications,
     chat,
+    group_chat,
     tasks,
     admin,
     news,
@@ -48,6 +49,7 @@ for router, tags in protected_routers:
 # WebSockets не могут отправлять кастомные заголовки во время рукопожатия
 api_router.include_router(notifications.router, tags=["websocket"])
 api_router.include_router(chat.router, tags=["chat"])
+api_router.include_router(group_chat.router, tags=["group_chat"])
 api_router.include_router(testing.router, tags=["testing"])
 
 __all__ = ["api_router"]
