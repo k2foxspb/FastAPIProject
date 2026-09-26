@@ -19,6 +19,9 @@ export default function ChatInputBar({
   // ответ
   replyingToMessage,
   onCancelReply,
+  // пересылка
+  pendingForwardMessages,
+  onCancelForward,
   // вложения
   onPickDocument,
   onPickMedia,
@@ -58,6 +61,24 @@ export default function ChatInputBar({
         flexDirection: 'column'
       }
     ]}>
+      {pendingForwardMessages && pendingForwardMessages.length > 0 && (
+        <View style={styles.replyPreviewContainer}>
+          <MaterialIcons name="forward" size={20} color={colors.primary} style={{ marginRight: 10 }} />
+          <View style={styles.replyPreviewContent}>
+            <Text style={[styles.replyPreviewSender, { color: colors.primary }]} numberOfLines={1}>
+              Пересылка
+            </Text>
+            <Text style={[styles.replyPreviewText, { color: colors.textSecondary }]} numberOfLines={1}>
+              {pendingForwardMessages.length === 1
+                ? getReplyPreviewText(pendingForwardMessages[0])
+                : `${pendingForwardMessages.length} сообщений`}
+            </Text>
+          </View>
+          <TouchableOpacity onPress={onCancelForward} style={styles.replyPreviewClose}>
+            <MaterialIcons name="close" size={20} color={colors.textSecondary} />
+          </TouchableOpacity>
+        </View>
+      )}
       {replyingToMessage && (
         <View style={styles.replyPreviewContainer}>
           <View style={[styles.replyPreviewBorder, { backgroundColor: colors.primary }]} />
@@ -144,7 +165,7 @@ export default function ChatInputBar({
             />
           )}
 
-          {(inputText.trim() && !isAnyRecording) ? (
+          {((inputText.trim() || (pendingForwardMessages && pendingForwardMessages.length > 0)) && !isAnyRecording) ? (
             <TouchableOpacity onPress={onSendMessage} style={[styles.sendButton, { marginRight: 10 }]}>
               <MaterialIcons name="send" size={24} color={colors.primary} />
             </TouchableOpacity>

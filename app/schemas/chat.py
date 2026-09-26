@@ -13,6 +13,7 @@ class ChatMessageBase(BaseModel):
     reply_to_id: Optional[int] = None
     forwarded_from_id: Optional[int] = None # id исходного отправителя при пересылке
     forwarded_from_name: Optional[str] = None # имя исходного отправителя при пересылке
+    comment: Optional[str] = None # комментарий, добавленный при пересылке (в том же пузыре)
     is_uploading: bool = False
     upload_id: Optional[str] = None
     upload_progress: Optional[float] = None
@@ -42,6 +43,7 @@ class ChatMessageResponse(ChatMessageBase):
     reply_to: Optional[ChatMessageReply] = None
     forwarded_from_id: Optional[int] = None
     forwarded_from_name: Optional[str] = None
+    comment: Optional[str] = None
     is_uploading: bool = False
     upload_id: Optional[str] = None
     upload_progress: Optional[float] = None

@@ -83,6 +83,38 @@ export const formatStatus = (status, lastSeen) => {
   }
 };
 
+const MONTHS_GENITIVE = [
+  'января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
+  'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря',
+];
+
+const isSameCalendarDay = (a, b) => (
+  a.getFullYear() === b.getFullYear() &&
+  a.getMonth() === b.getMonth() &&
+  a.getDate() === b.getDate()
+);
+
+// Формируем подпись разделителя дат в чате: "Сегодня" / "Вчера" / "Позавчера",
+// иначе "{день} {месяц}" (и год в конце, если сообщение не из текущего года).
+export const formatDateSeparator = (date) => {
+  if (!date) return '';
+
+  const now = new Date();
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  const dayBeforeYesterday = new Date(now);
+  dayBeforeYesterday.setDate(now.getDate() - 2);
+
+  if (isSameCalendarDay(date, now)) return 'Сегодня';
+  if (isSameCalendarDay(date, yesterday)) return 'Вчера';
+  if (isSameCalendarDay(date, dayBeforeYesterday)) return 'Позавчера';
+
+  const day = date.getDate();
+  const month = MONTHS_GENITIVE[date.getMonth()];
+  const isCurrentYear = date.getFullYear() === now.getFullYear();
+  return isCurrentYear ? `${day} ${month}` : `${day} ${month} ${date.getFullYear()}`;
+};
+
 export const formatFileSize = (bytes) => {
   if (bytes === 0 || !bytes) return '0 B';
   const k = 1024;

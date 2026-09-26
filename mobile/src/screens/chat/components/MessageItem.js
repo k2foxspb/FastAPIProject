@@ -6,7 +6,7 @@ import CachedMedia from '../../../components/CachedMedia';
 import VoiceMessage from '../../../components/VoiceMessage';
 import FileMessage from '../../../components/FileMessage';
 import VideoNoteMessage from '../../../components/VideoNoteMessage';
-import { formatFileSize, parseISODate, formatMessageTime } from '../../../utils/formatters';
+import { formatFileSize, parseISODate, formatMessageTime, formatDateSeparator } from '../../../utils/formatters';
 import { styles } from '../styles';
 import { resolveMediaUri, getReplyPreviewText } from '../utils';
 import MediaPlaceholder from './MediaPlaceholder';
@@ -102,6 +102,16 @@ export default function MessageItem({
   const isGrouped = prevMsg && Number(prevMsg.sender_id) === Number(item.sender_id) && 
                     currentMsgDate && prevMsgDate && (currentMsgDate - prevMsgDate) < 120000;
 
+  // Разделитель дат: показываем над сообщением, если это первое сообщение своего дня
+  // (prevMsg — это messages[index + 1], т.е. хронологически более старое сообщение,
+  // отображаемое выше текущего, т.к. FlatList инвертирован)
+  const showDateSeparator = currentMsgDate && (
+    !prevMsgDate ||
+    currentMsgDate.getFullYear() !== prevMsgDate.getFullYear() ||
+    currentMsgDate.getMonth() !== prevMsgDate.getMonth() ||
+    currentMsgDate.getDate() !== prevMsgDate.getDate()
+  );
+
   const handleFullScreen = (uri, type) => {
     if (selectionMode) {
       onPress(item.id);
@@ -126,6 +136,16 @@ export default function MessageItem({
   };
 
   return (
+    <>
+      {showDateSeparator && (
+        <View style={styles.dateSeparatorWrapper}>
+          <View style={[styles.dateSeparatorBubble, { backgroundColor: colors.surface }]}>
+            <Text style={[styles.dateSeparatorText, { color: colors.textSecondary }]}>
+              {formatDateSeparator(currentMsgDate)}
+            </Text>
+          </View>
+        </View>
+      )}
     <Swipeable
       renderLeftActions={renderLeftActions}
       onSwipeableOpen={(direction, swipeable) => {
@@ -341,6 +361,21 @@ export default function MessageItem({
             />
           </View>
         )}
+        {/* Комментарий, добавленный при пересылке — показываем в том же пузыре, что и пересланное сообщение */}
+        {item.forwarded_from_id && item.comment && (
+          <View style={[
+            styles.forwardedCommentContainer,
+            { borderTopColor: isReceived ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.2)' }
+          ]}>
+            <MessageText
+              message={item.comment}
+              isReceived={isReceived}
+              searchQuery={searchQuery}
+              isSearching={isSearching}
+              colors={colors}
+            />
+          </View>
+        )}
         <View style={styles.messageFooter}>
           <Text style={[
             styles.messageTime, 
@@ -366,5 +401,6 @@ export default function MessageItem({
       </View>
     </Pressable>
   </Swipeable>
+    </>
   );
 }

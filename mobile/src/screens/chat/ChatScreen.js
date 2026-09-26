@@ -44,6 +44,7 @@ export default function ChatScreen({ route, navigation }) {
   const [messages, setMessages] = useState([]);
   const [inputText, setInputText] = useState('');
   const [replyingToMessage, setReplyingToMessage] = useState(null);
+  const [pendingForwardMessages, setPendingForwardMessages] = useState(null);
   const [inputMode, setInputMode] = useState('audio'); // 'audio' or 'video'
   const [isKeyboardVisible, setKeyboardVisible] = useState(false);
   const [viewableItems, setViewableItems] = useState([]);
@@ -100,6 +101,8 @@ export default function ChatScreen({ route, navigation }) {
     currentUserId,
     currentUser,
     interlocutor,
+    dialogs,
+    navigation,
     deleteMessageWs,
     bulkDeleteMessagesWs,
     sendMessageWs,
@@ -160,6 +163,19 @@ export default function ChatScreen({ route, navigation }) {
     };
   }, [userId, setActiveChatId]);
 
+  // Если в чат перешли из пересылки сообщений — забираем их из параметров навигации и
+  // показываем превью над полем ввода, чтобы пользователь мог дописать комментарий перед отправкой.
+  useEffect(() => {
+    if (route.params?.pendingForwardMessages) {
+      setPendingForwardMessages(route.params.pendingForwardMessages);
+      navigation.setParams({ pendingForwardMessages: undefined });
+    }
+  }, [route.params?.pendingForwardMessages]);
+
+  const handleCancelForward = () => {
+    setPendingForwardMessages(null);
+  };
+
   const handleReply = (message) => {
     setReplyingToMessage(message);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -172,6 +188,28 @@ export default function ChatScreen({ route, navigation }) {
   const sendMessage = async () => {
     if (selectionMode) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+
+    // Если есть пересылаемые сообщения — отправляем их. Комментарий, набранный пользователем,
+    // не отправляется отдельным сообщением, а прикрепляется к ПОСЛЕДНЕМУ пересылаемому сообщению,
+    // чтобы отображаться в одном пузыре вместе с пересланным контентом.
+    if (pendingForwardMessages && pendingForwardMessages.length > 0) {
+      const commentText = inputText.trim();
+      const lastIdx = pendingForwardMessages.length - 1;
+      pendingForwardMessages.forEach((msgData, idx) => {
+        const finalMsgData = (commentText && idx === lastIdx)
+          ? { ...msgData, comment: commentText }
+          : msgData;
+        setMessages(prev => [buildOptimisticMessage(finalMsgData, currentUserId), ...prev]);
+        const sent = sendMessageWs(finalMsgData);
+        if (!sent) {
+          console.log('[ChatScreen] Forwarded message added to pending queue in context');
+        }
+      });
+      setPendingForwardMessages(null);
+      setInputText('');
+      return;
+    }
+
     if (inputText.trim()) {
       const msgData = {
         receiver_id: userId,
@@ -395,6 +433,8 @@ export default function ChatScreen({ route, navigation }) {
           onSendMessage={sendMessage}
           replyingToMessage={replyingToMessage}
           onCancelReply={() => setReplyingToMessage(null)}
+          pendingForwardMessages={pendingForwardMessages}
+          onCancelForward={handleCancelForward}
           onPickDocument={handlePickDocument}
           onPickMedia={handlePickMedia}
           inputMode={inputMode}

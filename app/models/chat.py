@@ -25,6 +25,8 @@ class ChatMessage(Base):
     # Пересылка: id и имя исходного отправителя сообщения (для отметки "Переслано от" и ссылки на профиль)
     forwarded_from_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
     forwarded_from_name: Mapped[str] = mapped_column(String, nullable=True)
+    # Комментарий, добавленный при пересылке (отображается в том же пузыре, что и пересланное сообщение)
+    comment: Mapped[str] = mapped_column(String, nullable=True)
 
     sender = relationship("User", foreign_keys=[sender_id])
     receiver = relationship("User", foreign_keys=[receiver_id])

@@ -13,6 +13,8 @@ export default function useMessageSelection({
   currentUserId,
   currentUser,
   interlocutor,
+  dialogs,
+  navigation,
   deleteMessageWs,
   bulkDeleteMessagesWs,
   sendMessageWs,
@@ -164,6 +166,29 @@ export default function useMessageSelection({
 
     if (messagesToForward.length === 0) return;
 
+    setForwardModalVisible(false);
+
+    // Если выбран ровно один собеседник — не отправляем сразу, а переходим в чат к нему,
+    // показывая пересылаемые сообщения превью над полем ввода, куда можно дописать комментарий.
+    if (receiverIds.length === 1) {
+      const receiverId = receiverIds[0];
+      const forwardMessagesData = messagesToForward.map(message => (
+        buildForwardMessageData(message, receiverId, resolveSenderName(message))
+      ));
+      clearSelection();
+
+      const targetDialog = (dialogs || []).find(d => Number(d.user_id) === Number(receiverId));
+      const targetUserName = targetDialog ? formatName(targetDialog) : undefined;
+
+      navigation.navigate('Chat', {
+        userId: receiverId,
+        userName: targetUserName,
+        pendingForwardMessages: forwardMessagesData,
+      });
+      return;
+    }
+
+    // Несколько получателей — общий комментарий не имеет смысла, отправляем сразу всем.
     let hasFailures = false;
     receiverIds.forEach(receiverId => {
       messagesToForward.forEach(message => {
@@ -173,7 +198,6 @@ export default function useMessageSelection({
       });
     });
 
-    setForwardModalVisible(false);
     clearSelection();
 
     if (hasFailures) {

@@ -595,6 +595,24 @@ export const styles = StyleSheet.create({
     fontWeight: 'bold',
     marginLeft: 4,
   },
+  forwardedCommentContainer: {
+    marginTop: 6,
+    paddingTop: 6,
+    borderTopWidth: 1,
+  },
+  dateSeparatorWrapper: {
+    alignItems: 'center',
+    marginVertical: 10,
+  },
+  dateSeparatorBubble: {
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 12,
+  },
+  dateSeparatorText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
 });
 
 export default styles;
