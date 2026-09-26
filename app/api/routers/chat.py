@@ -71,6 +71,156 @@ class ChatManager:
 
 manager = ChatManager()
 
+
+def _sender_display_name(sender) -> str:
+    if not sender:
+        return "Пользователь"
+    name = f"{getattr(sender, 'first_name', '') or ''} {getattr(sender, 'last_name', '') or ''}".strip()
+    return name or "Пользователь"
+
+
+async def _fetch_reply_to_data(db: AsyncSession, reply_to_id) -> Optional[dict]:
+    """Общая подгрузка цитируемого сообщения для личных и групповых чатов."""
+    if not reply_to_id:
+        return None
+    try:
+        reply_res = await db.execute(
+            select(ChatMessage, UserModel.first_name, UserModel.last_name)
+            .join(UserModel, ChatMessage.sender_id == UserModel.id)
+            .where(ChatMessage.id == int(reply_to_id))
+        )
+        reply_row = reply_res.first()
+        if reply_row:
+            r_msg, r_fname, r_lname = reply_row
+            return {
+                "id": r_msg.id,
+                "message": r_msg.message,
+                "message_type": r_msg.message_type,
+                "sender_id": r_msg.sender_id,
+                "sender_name": f"{r_fname or ''} {r_lname or ''}".strip() or "Пользователь",
+            }
+    except Exception as e:
+        logger.error(f"Error fetching reply_to message: {e}")
+    return None
+
+
+def _format_chat_message_dict(
+    m: ChatMessage,
+    *,
+    reactions: Optional[list] = None,
+    sender_name: Optional[str] = None,
+    reply_to_data: Optional[dict] = None,
+    upload_offset=None,
+    upload_total=None,
+    include_upload_fields: bool = False,
+    timestamp_as_iso: bool = True,
+) -> dict:
+    """Сериализация ChatMessage в dict — общая для личных и групповых сообщений."""
+    ts = m.timestamp
+    if timestamp_as_iso and isinstance(ts, datetime):
+        ts = ts.isoformat()
+
+    item = {
+        "id": m.id,
+        "sender_id": m.sender_id,
+        "receiver_id": m.receiver_id,
+        "group_id": m.group_id,
+        "message": m.message,
+        "file_path": m.file_path,
+        "message_type": m.message_type,
+        "client_id": m.client_id,
+        "duration": m.duration,
+        "timestamp": ts,
+        "is_read": m.is_read,
+        "reply_to_id": m.reply_to_id,
+        "reply_to": reply_to_data,
+        "forwarded_from_id": m.forwarded_from_id,
+        "forwarded_from_name": m.forwarded_from_name,
+        "comment": getattr(m, "comment", None),
+        "reactions": reactions if reactions is not None else [],
+    }
+
+    if sender_name is not None:
+        item["sender_name"] = sender_name
+    elif getattr(m, "sender", None) is not None:
+        item["sender_name"] = _sender_display_name(m.sender)
+
+    if include_upload_fields:
+        item["is_uploading"] = getattr(m, "is_uploading", False)
+        item["upload_id"] = getattr(m, "upload_id", None)
+        item["upload_offset"] = upload_offset
+        item["upload_total"] = upload_total
+        item["upload_progress"] = (upload_offset / upload_total) if upload_offset and upload_total else 0
+
+    if m.message_type == "media_group" and m.file_path:
+        try:
+            item["attachments"] = json.loads(m.file_path)
+        except Exception:
+            item["attachments"] = []
+
+    return item
+
+
+async def _get_group_member_ids(db: AsyncSession, group_id: int) -> List[int]:
+    members_res = await db.execute(
+        select(GroupChatMember.user_id).where(GroupChatMember.group_id == group_id)
+    )
+    return [row[0] for row in members_res.all()]
+
+
+async def _broadcast_to_users(event: dict, user_ids: List[int], include_notifications: bool = True):
+    """Рассылка события списку пользователей через chat WS и (опционально) notifications WS."""
+    tasks = []
+    for uid in user_ids:
+        if uid is None:
+            continue
+        tasks.append(manager.send_personal_message(event, uid))
+        if include_notifications:
+            tasks.append(notifications_manager.send_personal_message(event, uid))
+    if tasks:
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+
+def _build_delete_event(message_id: int, sender_id: int, receiver_id, group_id, deleted_for_all: bool) -> dict:
+    payload = {
+        "message_id": message_id,
+        "sender_id": sender_id,
+        "receiver_id": receiver_id,
+        "group_id": group_id,
+        "deleted_for_all": deleted_for_all,
+    }
+    return {
+        "type": "message_deleted",
+        **payload,
+        # data — чтобы клиентский обработчик уведомлений не отбрасывал событие
+        "data": payload,
+    }
+
+
+def _cleanup_message_files(file_path: str, message_type: str, root_dir: str):
+    """Физическое удаление файлов сообщения (одиночный файл или media_group)."""
+    if not file_path:
+        return
+    try:
+        if message_type == "media_group":
+            try:
+                attachments = json.loads(file_path)
+                for att in attachments:
+                    att_path = att.get("file_path")
+                    if att_path:
+                        abs_path = os.path.join(root_dir, att_path.lstrip("/"))
+                        if os.path.exists(abs_path):
+                            os.remove(abs_path)
+            except Exception:
+                pass
+        else:
+            abs_path = os.path.join(root_dir, file_path.lstrip("/"))
+            if os.path.exists(abs_path):
+                os.remove(abs_path)
+    except Exception as e:
+        logger.error(f"Error deleting chat file: {e}")
+
+
 async def get_user_from_token(token: str, db: AsyncSession):
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
@@ -197,37 +347,61 @@ async def websocket_chat_endpoint(
 
                         res_history = await db.execute(
                             select(ChatMessage)
-                            .options(joinedload(ChatMessage.sender))
-                            .where(ChatMessage.group_id == group_id)
+                            .options(
+                                joinedload(ChatMessage.sender),
+                                joinedload(ChatMessage.reply_to).joinedload(ChatMessage.sender),
+                            )
+                            .where(
+                                ChatMessage.group_id == group_id,
+                                # Soft-delete «для всех» в группе — через deleted_by_sender
+                                ChatMessage.deleted_by_sender == False,
+                            )
+                            .where(
+                                or_(
+                                    ChatMessage.is_uploading == False,
+                                    ChatMessage.timestamp >= datetime.utcnow() - timedelta(hours=1),
+                                )
+                            )
                             .order_by(ChatMessage.timestamp.desc())
                             .offset(skip)
                             .limit(limit)
                         )
-                        msgs = res_history.scalars().all()
+                        msgs = res_history.scalars().unique().all()
+
+                        message_ids = [m.id for m in msgs]
+                        reactions_map = {}
+                        if message_ids:
+                            res_reactions = await db.execute(
+                                select(ChatMessageReaction).where(
+                                    ChatMessageReaction.message_id.in_(message_ids)
+                                )
+                            )
+                            for r in res_reactions.scalars().all():
+                                reactions_map.setdefault(r.message_id, []).append(
+                                    {"emoji": r.emoji, "user_id": r.user_id}
+                                )
+
                         processed_history = []
                         for m in msgs:
-                            item = {
-                                "id": m.id,
-                                "sender_id": m.sender_id,
-                                "sender_name": f"{m.sender.first_name or ''} {m.sender.last_name or ''}".strip() or "Пользователь" if m.sender else "Пользователь",
-                                "group_id": m.group_id,
-                                "message": m.message,
-                                "file_path": m.file_path,
-                                "message_type": m.message_type,
-                                "client_id": m.client_id,
-                                "duration": m.duration,
-                                "timestamp": m.timestamp.isoformat() if m.timestamp else None,
-                                "is_read": m.is_read,
-                                "forwarded_from_id": m.forwarded_from_id,
-                                "forwarded_from_name": m.forwarded_from_name,
-                                "comment": m.comment,
-                            }
-                            if m.message_type == "media_group" and m.file_path:
-                                try:
-                                    item["attachments"] = json.loads(m.file_path)
-                                except Exception:
-                                    item["attachments"] = []
-                            processed_history.append(item)
+                            reply_to_data = None
+                            if m.reply_to:
+                                r = m.reply_to
+                                reply_to_data = {
+                                    "id": r.id,
+                                    "message": r.message,
+                                    "message_type": r.message_type,
+                                    "sender_id": r.sender_id,
+                                    "sender_name": _sender_display_name(r.sender),
+                                }
+                            processed_history.append(
+                                _format_chat_message_dict(
+                                    m,
+                                    reactions=reactions_map.get(m.id, []),
+                                    reply_to_data=reply_to_data,
+                                    include_upload_fields=True,
+                                    timestamp_as_iso=True,
+                                )
+                            )
 
                         await websocket.send_json({
                             "type": "group_chat_history",
@@ -339,9 +513,21 @@ async def websocket_chat_endpoint(
                     result = await db.execute(select(ChatMessage).where(ChatMessage.id == message_id))
                     message = result.scalar_one_or_none()
 
-                    if message and (message.sender_id == user_id or message.receiver_id == user_id):
-                        other_id = message.receiver_id if message.sender_id == user_id else message.sender_id
+                    can_react = False
+                    target_user_ids: List[int] = []
+                    if message:
+                        if message.group_id is not None:
+                            from app.api.routers.group_chat import _get_membership
+                            membership = await _get_membership(db, message.group_id, user_id)
+                            if membership:
+                                can_react = True
+                                target_user_ids = await _get_group_member_ids(db, message.group_id)
+                        elif message.sender_id == user_id or message.receiver_id == user_id:
+                            can_react = True
+                            other_id = message.receiver_id if message.sender_id == user_id else message.sender_id
+                            target_user_ids = [uid for uid in (user_id, other_id) if uid is not None]
 
+                    if message and can_react:
                         res_reaction = await db.execute(
                             select(ChatMessageReaction).where(
                                 ChatMessageReaction.message_id == message_id,
@@ -368,18 +554,18 @@ async def websocket_chat_endpoint(
                             {"emoji": r.emoji, "user_id": r.user_id} for r in res_all.scalars().all()
                         ]
 
-                        reaction_event = {
-                            "type": "reaction_updated",
+                        reaction_payload = {
                             "message_id": message_id,
                             "reactions": reactions_data,
-                            # Дублируем в data, чтобы пройти общую проверку "есть ли data" в обработчике уведомлений на клиенте
-                            "data": {"message_id": message_id, "reactions": reactions_data}
+                            "group_id": message.group_id,
                         }
-                        await asyncio.gather(
-                            manager.send_personal_message(reaction_event, user_id),
-                            manager.send_personal_message(reaction_event, other_id),
-                            return_exceptions=True
-                        )
+                        reaction_event = {
+                            "type": "reaction_updated",
+                            **reaction_payload,
+                            # Дублируем в data, чтобы пройти общую проверку "есть ли data" в обработчике уведомлений на клиенте
+                            "data": reaction_payload,
+                        }
+                        await _broadcast_to_users(reaction_event, target_user_ids, include_notifications=False)
                 continue
 
             if msg_type == "delete_message":
@@ -390,80 +576,69 @@ async def websocket_chat_endpoint(
                     except (ValueError, TypeError):
                         logger.warning(f"Invalid message_id format in WS delete: {message_id_raw}")
                         continue
-                        
+
                     result = await db.execute(select(ChatMessage).where(ChatMessage.id == message_id))
                     message = result.scalar_one_or_none()
 
                     if message:
+                        is_group = message.group_id is not None
                         is_sender = message.sender_id == user_id
-                        is_receiver = message.receiver_id == user_id
+                        can_delete = False
+                        delete_for_all = False
+                        target_user_ids: List[int] = []
 
-                        if is_sender or is_receiver:
+                        if is_group:
+                            from app.api.routers.group_chat import _get_membership
+                            membership = await _get_membership(db, message.group_id, user_id)
+                            if membership:
+                                is_moderator = membership.role in ("owner", "admin")
+                                # В группе: автор или owner/admin удаляют «для всех»
+                                if is_sender or is_moderator:
+                                    can_delete = True
+                                    delete_for_all = True
+                                    target_user_ids = await _get_group_member_ids(db, message.group_id)
+                        else:
+                            is_receiver = message.receiver_id == user_id
+                            if is_sender or is_receiver:
+                                can_delete = True
+                                delete_for_all = is_sender
+                                if delete_for_all:
+                                    target_user_ids = [uid for uid in (message.receiver_id, user_id) if uid is not None]
+                                else:
+                                    target_user_ids = [user_id]
+
+                        if can_delete:
                             receiver_id = message.receiver_id
                             sender_id = message.sender_id
+                            group_id = message.group_id
                             file_path = message.file_path
+                            message_type = message.message_type
 
-                            if is_sender:
-                                # Вместо физического удаления используем soft delete для обоих сторон
-                                # Это позволяет избежать проблем с reply_to_id и ссылочной целостностью
+                            if delete_for_all:
+                                # Soft delete для всех (личные: sender; группы: sender или модератор)
                                 message.deleted_by_sender = True
                                 message.deleted_by_receiver = True
-                                logger.info(f"WS: Message {message_id} soft-deleted for all by sender {user_id}")
+                                logger.info(f"WS: Message {message_id} soft-deleted for all by user {user_id}")
                             else:
                                 message.deleted_by_receiver = True
                                 logger.info(f"WS: Message {message_id} soft-deleted for receiver {user_id}")
-                            
+
                             await db.commit()
 
-                            # Если удалено отправителем ("для всех") и есть файл — удаляем его физически
-                            if is_sender and file_path:
+                            if delete_for_all and file_path:
                                 try:
-                                    # Очищаем контент сообщения, чтобы он не занимал место и не светился в логах
                                     message.message = "[Сообщение удалено]"
                                     message.file_path = None
                                     await db.commit()
-                                    
                                     root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-                                    # Если это JSON список (media_group), удаляем все файлы
-                                    if message.message_type == "media_group":
-                                        try:
-                                            attachments = json.loads(file_path)
-                                            for att in attachments:
-                                                att_path = att.get("file_path")
-                                                if att_path:
-                                                    abs_path = os.path.join(root_dir, att_path.lstrip("/"))
-                                                    if os.path.exists(abs_path):
-                                                        os.remove(abs_path)
-                                        except: pass
-                                    else:
-                                        abs_path = os.path.join(root_dir, file_path.lstrip("/"))
-                                        if os.path.exists(abs_path):
-                                            os.remove(abs_path)
+                                    _cleanup_message_files(file_path, message_type, root_dir)
                                 except Exception as e:
                                     logger.error(f"Error deleting chat file via WS: {e}")
 
-                            delete_event = {
-                                "type": "message_deleted",
-                                "message_id": message_id,
-                                "sender_id": sender_id,
-                                "receiver_id": receiver_id,
-                                "deleted_for_all": is_sender
-                            }
-                            
-                            if is_sender:
-                                await asyncio.gather(
-                                    manager.send_personal_message(delete_event, receiver_id),
-                                    manager.send_personal_message(delete_event, user_id),
-                                    notifications_manager.send_personal_message(delete_event, receiver_id),
-                                    notifications_manager.send_personal_message(delete_event, user_id),
-                                    return_exceptions=True
-                                )
-                            else:
-                                await asyncio.gather(
-                                    manager.send_personal_message(delete_event, user_id),
-                                    notifications_manager.send_personal_message(delete_event, user_id),
-                                    return_exceptions=True
-                                )
+                            delete_event = _build_delete_event(
+                                message_id, sender_id, receiver_id, group_id, delete_for_all
+                            )
+                            await _broadcast_to_users(delete_event, target_user_ids)
                 continue
 
             if msg_type == "bulk_delete":
@@ -474,80 +649,72 @@ async def websocket_chat_endpoint(
                     except (ValueError, TypeError):
                         logger.warning(f"Invalid message_ids format in WS bulk delete")
                         continue
-                        
+
                     result = await db.execute(
-                        select(ChatMessage).where(
-                            ChatMessage.id.in_(message_ids),
-                            or_(
-                                ChatMessage.sender_id == user_id,
-                                ChatMessage.receiver_id == user_id
-                            )
-                        )
+                        select(ChatMessage).where(ChatMessage.id.in_(message_ids))
                     )
-                    messages = result.scalars().all()
-                    
-                    if messages:
+                    candidates = result.scalars().all()
+
+                    if candidates:
+                        from app.api.routers.group_chat import _get_membership
                         root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-                        
-                        for msg in messages:
-                            m_receiver_id = msg.receiver_id
-                            m_sender_id = msg.sender_id
-                            m_file_path = msg.file_path
+                        membership_cache = {}
+
+                        for msg in candidates:
                             m_id = msg.id
-                            
+                            m_sender_id = msg.sender_id
+                            m_receiver_id = msg.receiver_id
+                            m_group_id = msg.group_id
+                            m_file_path = msg.file_path
                             m_is_sender = m_sender_id == user_id
-                            
-                            if m_is_sender:
-                                # Soft delete для всех
+                            is_group = m_group_id is not None
+
+                            can_delete = False
+                            delete_for_all = False
+                            target_user_ids: List[int] = []
+
+                            if is_group:
+                                if m_group_id not in membership_cache:
+                                    membership_cache[m_group_id] = await _get_membership(db, m_group_id, user_id)
+                                membership = membership_cache[m_group_id]
+                                if not membership:
+                                    continue
+                                is_moderator = membership.role in ("owner", "admin")
+                                if m_is_sender or is_moderator:
+                                    can_delete = True
+                                    delete_for_all = True
+                                    target_user_ids = await _get_group_member_ids(db, m_group_id)
+                            else:
+                                is_receiver = m_receiver_id == user_id
+                                if m_is_sender or is_receiver:
+                                    can_delete = True
+                                    delete_for_all = m_is_sender
+                                    if delete_for_all:
+                                        target_user_ids = [uid for uid in (m_receiver_id, user_id) if uid is not None]
+                                    else:
+                                        target_user_ids = [user_id]
+
+                            if not can_delete:
+                                continue
+
+                            if delete_for_all:
                                 msg.deleted_by_sender = True
                                 msg.deleted_by_receiver = True
                                 if m_file_path:
                                     try:
                                         msg.message = "[Сообщение удалено]"
                                         msg.file_path = None
-                                        
-                                        # Если это JSON список (media_group), удаляем все файлы
-                                        if msg.message_type == "media_group":
-                                            try:
-                                                attachments = json.loads(m_file_path)
-                                                for att in attachments:
-                                                    att_path = att.get("file_path")
-                                                    if att_path:
-                                                        abs_path = os.path.join(root_dir, att_path.lstrip("/"))
-                                                        if os.path.exists(abs_path):
-                                                            os.remove(abs_path)
-                                            except: pass
-                                        else:
-                                            m_abs_path = os.path.join(root_dir, m_file_path.lstrip("/"))
-                                            if os.path.exists(m_abs_path):
-                                                os.remove(m_abs_path)
+                                        _cleanup_message_files(m_file_path, msg.message_type, root_dir)
                                     except Exception as e:
                                         logger.error(f"Error bulk deleting chat file via WS: {e}")
                             else:
                                 msg.deleted_by_receiver = True
 
-                            m_delete_event = {
-                                "type": "message_deleted",
-                                "message_id": m_id,
-                                "sender_id": m_sender_id,
-                                "receiver_id": m_receiver_id,
-                                "deleted_for_all": m_is_sender
-                            }
-                            
-                            if m_is_sender:
-                                await asyncio.gather(
-                                    manager.send_personal_message(m_delete_event, m_receiver_id),
-                                    manager.send_personal_message(m_delete_event, user_id),
-                                    notifications_manager.send_personal_message(m_delete_event, m_receiver_id),
-                                    notifications_manager.send_personal_message(m_delete_event, user_id),
-                                    return_exceptions=True
-                                )
-                            else:
-                                await asyncio.gather(
-                                    manager.send_personal_message(m_delete_event, user_id),
-                                    notifications_manager.send_personal_message(m_delete_event, user_id),
-                                    return_exceptions=True
-                                )
+                            m_delete_event = _build_delete_event(
+                                m_id, m_sender_id, m_receiver_id, m_group_id, delete_for_all
+                            )
+                            await _broadcast_to_users(m_delete_event, target_user_ids)
+
                         await db.commit()
                 continue
 
@@ -728,8 +895,12 @@ async def websocket_chat_endpoint(
                 message_type = message_data.get("message_type", "text")
                 client_id = message_data.get("client_id")
                 duration = message_data.get("duration")
+                reply_to_id = message_data.get("reply_to_id")
+                forwarded_from_id = message_data.get("forwarded_from_id")
+                forwarded_from_name = message_data.get("forwarded_from_name")
+                comment = message_data.get("comment")
 
-                if group_id_raw and (content or file_path or (attachments and len(attachments) > 0)):
+                if group_id_raw and (content or file_path or (attachments and len(attachments) > 0) or comment):
                     try:
                         group_id = int(group_id_raw)
                     except (ValueError, TypeError):
@@ -750,52 +921,79 @@ async def websocket_chat_endpoint(
                             logger.error(f"Failed to serialize group attachments: {e}")
                             file_path = None
 
-                    new_msg = ChatMessage(
-                        sender_id=user_id,
-                        group_id=group_id,
-                        message=content,
-                        file_path=file_path,
-                        message_type=message_type,
-                        client_id=client_id,
-                        duration=duration
-                    )
-                    db.add(new_msg)
+                    # Ищем placeholder / уже созданное сообщение по client_id (оптимистичные обновления)
+                    existing_msg = None
+                    if client_id:
+                        time_limit = datetime.utcnow() - timedelta(hours=24)
+                        res_existing = await db.execute(
+                            select(ChatMessage).where(
+                                ChatMessage.client_id == client_id,
+                                ChatMessage.sender_id == user_id,
+                                ChatMessage.timestamp >= time_limit
+                            )
+                        )
+                        existing_msgs = res_existing.scalars().all()
+                        if existing_msgs:
+                            existing_msg = existing_msgs[0]
+                            if len(existing_msgs) > 1:
+                                for extra_ph in existing_msgs[1:]:
+                                    await db.delete(extra_ph)
+
+                    if existing_msg:
+                        existing_msg.message = content
+                        existing_msg.file_path = file_path
+                        existing_msg.message_type = message_type
+                        existing_msg.duration = duration
+                        existing_msg.reply_to_id = reply_to_id
+                        existing_msg.forwarded_from_id = forwarded_from_id
+                        existing_msg.forwarded_from_name = forwarded_from_name
+                        existing_msg.comment = comment
+                        existing_msg.group_id = group_id
+                        existing_msg.is_uploading = False
+                        existing_msg.upload_id = None
+                        existing_msg.timestamp = datetime.utcnow()
+                        new_msg = existing_msg
+                    else:
+                        new_msg = ChatMessage(
+                            sender_id=user_id,
+                            group_id=group_id,
+                            message=content,
+                            file_path=file_path,
+                            message_type=message_type,
+                            client_id=client_id,
+                            duration=duration,
+                            reply_to_id=reply_to_id,
+                            forwarded_from_id=forwarded_from_id,
+                            forwarded_from_name=forwarded_from_name,
+                            comment=comment,
+                        )
+                        db.add(new_msg)
+
                     await db.commit()
                     await db.refresh(new_msg)
 
-                    response_data = {
-                        "id": new_msg.id,
-                        "client_id": client_id,
-                        "sender_id": user_id,
-                        "sender_name": sender_name,
-                        "group_id": group_id,
-                        "message": content,
-                        "file_path": file_path,
-                        "message_type": message_type,
-                        "duration": duration,
-                        "timestamp": new_msg.timestamp.isoformat(),
-                        "is_read": 0
-                    }
+                    reply_to_data = await _fetch_reply_to_data(db, reply_to_id)
+
+                    response_data = _format_chat_message_dict(
+                        new_msg,
+                        reactions=[],
+                        sender_name=sender_name,
+                        reply_to_data=reply_to_data,
+                        timestamp_as_iso=True,
+                    )
+                    # Гарантируем client_id из запроса (на случай placeholder)
+                    response_data["client_id"] = client_id or response_data.get("client_id")
                     if message_type == "media_group":
                         try:
                             response_data["attachments"] = attachments or json.loads(file_path or "[]")
                         except Exception:
                             response_data["attachments"] = []
 
-                    # Получаем всех участников группы для рассылки
-                    members_res = await db.execute(
-                        select(GroupChatMember.user_id).where(GroupChatMember.group_id == group_id)
-                    )
-                    member_ids = [row[0] for row in members_res.all()]
-
+                    member_ids = await _get_group_member_ids(db, group_id)
                     chat_event = {"type": "new_group_message", "data": response_data}
-                    await asyncio.gather(
-                        *[manager.send_personal_message(chat_event, mid) for mid in member_ids],
-                        *[notifications_manager.send_personal_message(chat_event, mid) for mid in member_ids],
-                        return_exceptions=True
-                    )
+                    await _broadcast_to_users(chat_event, member_ids)
 
-                    # Push-уведомления остальным участникам группы, если они не в сети
+                    # Push-уведомления остальным участникам группы
                     other_member_ids = [mid for mid in member_ids if mid != user_id]
                     if other_member_ids:
                         res_members = await db.execute(
@@ -805,9 +1003,11 @@ async def websocket_chat_endpoint(
                             if member_user.fcm_token:
                                 if message_type == "image":
                                     body = "🖼️ Фотография"
+                                elif message_type == "video_note":
+                                    body = "📹 Видеосообщение"
                                 elif message_type == "file":
                                     body = "📁 Файл"
-                                elif message_type == "audio":
+                                elif message_type in ("audio", "voice"):
                                     body = "🎤 Голосовое сообщение"
                                 else:
                                     body = content if content else f"Отправил {message_type}"
@@ -915,67 +1115,31 @@ async def websocket_chat_endpoint(
                 await db.refresh(new_msg)
 
                 # Готовим данные отвечаемого сообщения, если оно есть
-                reply_to_data = None
-                if reply_to_id:
-                    try:
-                        reply_res = await db.execute(
-                            select(ChatMessage, UserModel.first_name, UserModel.last_name)
-                            .join(UserModel, ChatMessage.sender_id == UserModel.id)
-                            .where(ChatMessage.id == reply_to_id)
-                        )
-                        reply_row = reply_res.first()
-                        if reply_row:
-                            r_msg, r_fname, r_lname = reply_row
-                            reply_to_data = {
-                                "id": r_msg.id,
-                                "message": r_msg.message,
-                                "message_type": r_msg.message_type,
-                                "sender_id": r_msg.sender_id,
-                                "sender_name": f"{r_fname} {r_lname}".strip() or "Пользователь"
-                            }
-                    except Exception as e:
-                        logger.error(f"Error fetching reply_to message: {e}")
-
-                # sender_name is already fetched once above the loop
+                reply_to_data = await _fetch_reply_to_data(db, reply_to_id)
 
                 # Готовим данные ответа
-                response_data = {
-                    "id": new_msg.id,
-                    "client_id": client_id,  # Возвращаем client_id для фронтенда
-                    "sender_id": user_id,
-                    "sender_name": sender_name,
-                    "receiver_id": receiver_id,
-                    "message": content,
-                    "file_path": file_path,
-                    "message_type": message_type,
-                    "duration": duration,
-                    "reply_to_id": reply_to_id,
-                    "reply_to": reply_to_data,
-                    "forwarded_from_id": forwarded_from_id,
-                    "forwarded_from_name": forwarded_from_name,
-                    "comment": comment,
-                    "timestamp": new_msg.timestamp.isoformat(),
-                    "is_read": 0
-                }
+                response_data = _format_chat_message_dict(
+                    new_msg,
+                    reactions=[],
+                    sender_name=sender_name,
+                    reply_to_data=reply_to_data,
+                    timestamp_as_iso=True,
+                )
+                response_data["client_id"] = client_id or response_data.get("client_id")
+                response_data["receiver_id"] = receiver_id
                 # В ответ добавляем attachments как список, если это media_group
                 if message_type == "media_group":
                     try:
                         response_data["attachments"] = attachments or json.loads(file_path or "[]")
                     except Exception:
                         response_data["attachments"] = []
-                
+
                 # Рассылаем сообщения всем участникам параллельно для минимальной задержки
                 chat_event = {
                     "type": "new_message",
                     "data": response_data
                 }
-                await asyncio.gather(
-                    manager.send_personal_message(chat_event, receiver_id),
-                    manager.send_personal_message(chat_event, user_id),
-                    notifications_manager.send_personal_message(chat_event, receiver_id),
-                    notifications_manager.send_personal_message(chat_event, user_id),
-                    return_exceptions=True
-                )
+                await _broadcast_to_users(chat_event, [receiver_id, user_id])
 
                 # Отправляем Пуш через FCM, если получатель не подключен к WebSocket
                 # Находим получателя, чтобы взять его fcm_token
@@ -1432,74 +1596,63 @@ async def delete_message(
     if not message:
         raise HTTPException(status_code=404, detail="Message not found")
 
+    is_group = message.group_id is not None
     is_sender = message.sender_id == user_id
-    is_receiver = message.receiver_id == user_id
+    can_delete = False
+    delete_for_all = False
+    target_user_ids: List[int] = []
 
-    if not is_sender and not is_receiver:
+    if is_group:
+        from app.api.routers.group_chat import _get_membership
+        membership = await _get_membership(db, message.group_id, user_id)
+        if not membership:
+            raise HTTPException(status_code=403, detail="You are not a member of this group")
+        is_moderator = membership.role in ("owner", "admin")
+        if is_sender or is_moderator:
+            can_delete = True
+            delete_for_all = True
+            target_user_ids = await _get_group_member_ids(db, message.group_id)
+    else:
+        is_receiver = message.receiver_id == user_id
+        if is_sender or is_receiver:
+            can_delete = True
+            delete_for_all = is_sender
+            if delete_for_all:
+                target_user_ids = [uid for uid in (message.receiver_id, user_id) if uid is not None]
+            else:
+                target_user_ids = [user_id]
+
+    if not can_delete:
         raise HTTPException(status_code=403, detail="You can only delete messages you are involved in")
 
-    # Сохраняем информацию для уведомления перед удалением
     receiver_id = message.receiver_id
     sender_id = message.sender_id
+    group_id = message.group_id
     file_path = message.file_path
+    message_type = message.message_type
 
-    if is_sender:
-        # Soft delete для обоих сторон (удаление "для всех")
+    if delete_for_all:
         message.deleted_by_sender = True
         message.deleted_by_receiver = True
-        logger.info(f"API: Message {message_id} soft-deleted for all by sender {user_id}")
+        logger.info(f"API: Message {message_id} soft-deleted for all by user {user_id}")
     else:
-        # Удаление только для себя (получателя)
         message.deleted_by_receiver = True
         logger.info(f"API: Message {message_id} soft-deleted for receiver {user_id}")
-    
+
     await db.commit()
 
-    # Если удаляет отправитель ("для всех") и есть файл — удаляем его физически
-    if is_sender and file_path:
+    if delete_for_all and file_path:
         try:
-            # Очищаем контент
             message.message = "[Сообщение удалено]"
             message.file_path = None
             await db.commit()
-
             root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-            if message.message_type == "media_group":
-                try:
-                    attachments = json.loads(file_path)
-                    for att in attachments:
-                        att_path = att.get("file_path")
-                        if att_path:
-                            abs_path = os.path.join(root_dir, att_path.lstrip("/"))
-                            if os.path.exists(abs_path):
-                                os.remove(abs_path)
-                except: pass
-            else:
-                abs_path = os.path.join(root_dir, file_path.lstrip("/"))
-                if os.path.exists(abs_path):
-                    os.remove(abs_path)
+            _cleanup_message_files(file_path, message_type, root_dir)
         except Exception as e:
             logger.error(f"Error deleting chat file: {e}")
 
-    # Уведомляем участников через WebSocket чата
-    delete_event = {
-        "type": "message_deleted",
-        "message_id": message_id,
-        "sender_id": sender_id,
-        "receiver_id": receiver_id,
-        "deleted_for_all": is_sender
-    }
-    
-    # Если удалено для всех, уведомляем обоих. 
-    # Если только для себя, уведомляем только себя (чтобы интерфейс обновился)
-    if is_sender:
-        await manager.send_personal_message(delete_event, receiver_id)
-        await manager.send_personal_message(delete_event, user_id)
-        await notifications_manager.send_personal_message(delete_event, receiver_id)
-        await notifications_manager.send_personal_message(delete_event, user_id)
-    else:
-        await manager.send_personal_message(delete_event, user_id)
-        await notifications_manager.send_personal_message(delete_event, user_id)
+    delete_event = _build_delete_event(message_id, sender_id, receiver_id, group_id, delete_for_all)
+    await _broadcast_to_users(delete_event, target_user_ids)
 
     return {"status": "ok"}
 
@@ -1514,78 +1667,71 @@ async def bulk_delete_messages(
         raise HTTPException(status_code=401, detail="Invalid token")
 
     result = await db.execute(
-        select(ChatMessage).where(
-            ChatMessage.id.in_(request.message_ids),
-            or_(
-                ChatMessage.sender_id == user_id,
-                ChatMessage.receiver_id == user_id
-            )
-        )
+        select(ChatMessage).where(ChatMessage.id.in_(request.message_ids))
     )
-    messages = result.scalars().all()
-    
-    if not messages:
+    candidates = result.scalars().all()
+
+    if not candidates:
         return {"status": "ok", "deleted_count": 0}
 
+    from app.api.routers.group_chat import _get_membership
     root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    
+    membership_cache = {}
     deleted_ids = []
-    for msg in messages:
-        receiver_id = msg.receiver_id
-        sender_id = msg.sender_id
-        file_path = msg.file_path
+
+    for msg in candidates:
         message_id = msg.id
-        
+        sender_id = msg.sender_id
+        receiver_id = msg.receiver_id
+        group_id = msg.group_id
+        file_path = msg.file_path
         is_sender = sender_id == user_id
-        
-        if is_sender:
-            # Soft delete для всех
+        is_group = group_id is not None
+
+        can_delete = False
+        delete_for_all = False
+        target_user_ids: List[int] = []
+
+        if is_group:
+            if group_id not in membership_cache:
+                membership_cache[group_id] = await _get_membership(db, group_id, user_id)
+            membership = membership_cache[group_id]
+            if not membership:
+                continue
+            is_moderator = membership.role in ("owner", "admin")
+            if is_sender or is_moderator:
+                can_delete = True
+                delete_for_all = True
+                target_user_ids = await _get_group_member_ids(db, group_id)
+        else:
+            is_receiver = receiver_id == user_id
+            if is_sender or is_receiver:
+                can_delete = True
+                delete_for_all = is_sender
+                if delete_for_all:
+                    target_user_ids = [uid for uid in (receiver_id, user_id) if uid is not None]
+                else:
+                    target_user_ids = [user_id]
+
+        if not can_delete:
+            continue
+
+        if delete_for_all:
             msg.deleted_by_sender = True
             msg.deleted_by_receiver = True
-            # Удаляем файлы
             if file_path:
                 try:
                     msg.message = "[Сообщение удалено]"
                     msg.file_path = None
-                    # Если это JSON список (media_group), удаляем все файлы
-                    if msg.message_type == "media_group":
-                        try:
-                            attachments = json.loads(file_path)
-                            for att in attachments:
-                                att_path = att.get("file_path")
-                                if att_path:
-                                    abs_path = os.path.join(root_dir, att_path.lstrip("/"))
-                                    if os.path.exists(abs_path):
-                                        os.remove(abs_path)
-                        except: pass
-                    else:
-                        abs_path = os.path.join(root_dir, file_path.lstrip("/"))
-                        if os.path.exists(abs_path):
-                            os.remove(abs_path)
+                    _cleanup_message_files(file_path, msg.message_type, root_dir)
                 except Exception as e:
                     logger.error(f"Error deleting chat file: {e}")
         else:
             msg.deleted_by_receiver = True
 
         deleted_ids.append(message_id)
-        
-        # Уведомляем участников
-        delete_event = {
-            "type": "message_deleted",
-            "message_id": message_id,
-            "sender_id": sender_id,
-            "receiver_id": receiver_id,
-            "deleted_for_all": is_sender
-        }
-        
-        if is_sender:
-            await manager.send_personal_message(delete_event, receiver_id)
-            await manager.send_personal_message(delete_event, user_id)
-            await notifications_manager.send_personal_message(delete_event, receiver_id)
-            await notifications_manager.send_personal_message(delete_event, user_id)
-        else:
-            await manager.send_personal_message(delete_event, user_id)
-            await notifications_manager.send_personal_message(delete_event, user_id)
+        delete_event = _build_delete_event(message_id, sender_id, receiver_id, group_id, delete_for_all)
+        await _broadcast_to_users(delete_event, target_user_ids)
 
     await db.commit()
     return {"status": "ok", "deleted_count": len(deleted_ids)}

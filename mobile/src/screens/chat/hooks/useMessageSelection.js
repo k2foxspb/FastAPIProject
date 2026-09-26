@@ -4,7 +4,8 @@ import * as Haptics from 'expo-haptics';
 import { buildForwardMessageData } from '../utils';
 import { formatName } from '../../../utils/formatters';
 
-// Режим множественного выделения сообщений: удаление и пересылка в другие чаты
+// Режим множественного выделения сообщений: удаление, реакции и пересылка.
+// Работает и в личном, и в групповом чате (isGroupChat / canModerate).
 export default function useMessageSelection({
   messages,
   setMessages,
@@ -19,14 +20,30 @@ export default function useMessageSelection({
   bulkDeleteMessagesWs,
   sendMessageWs,
   toggleReactionWs,
+  isGroupChat = false,
+  canModerate = false,
+  // Опционально: имя отправителя из сообщения (для групп sender_name уже приходит с бэка)
+  resolveSenderName: resolveSenderNameProp,
 }) {
   // Надежно вычисляем имя+фамилию отправителя сообщения (не зависит от того,
   // пришло ли сообщение по WS "живьем" (там есть sender_name) или из истории чата (там его нет)).
-  const resolveSenderName = (message) => (
-    Number(message.sender_id) === Number(currentUserId)
-      ? formatName(currentUser)
-      : formatName(interlocutor)
-  );
+  const resolveSenderName = (message) => {
+    if (typeof resolveSenderNameProp === 'function') {
+      return resolveSenderNameProp(message);
+    }
+    if (message?.sender_name) return message.sender_name;
+    if (message?.forwarded_from_name && message?.forwarded_from_id) {
+      // не используем как имя текущего отправителя
+    }
+    if (Number(message.sender_id) === Number(currentUserId)) {
+      return formatName(currentUser);
+    }
+    if (!isGroupChat) {
+      return formatName(interlocutor);
+    }
+    return 'Пользователь';
+  };
+
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState([]);
   const [isForwardModalVisible, setForwardModalVisible] = useState(false);
@@ -67,17 +84,29 @@ export default function useMessageSelection({
     if (!message) return;
 
     const isOwner = Number(message.sender_id) === Number(currentUserId);
-    
+    const canDelete = isGroupChat
+      ? (isOwner || canModerate)
+      : true;
+
+    if (!canDelete) {
+      Alert.alert('Недостаточно прав', 'Вы можете удалять только свои сообщения.');
+      return;
+    }
+
+    const confirmText = isGroupChat
+      ? 'Удалить это сообщение для всех участников группы?'
+      : (isOwner
+        ? 'Удалить это сообщение для всех участников?'
+        : 'Удалить это сообщение для себя? У собеседника оно останется.');
+
     Alert.alert(
       'Удалить сообщение?',
-      isOwner 
-        ? 'Удалить это сообщение для всех участников?' 
-        : 'Удалить это сообщение для себя? У собеседника оно останется.',
+      confirmText,
       [
         { text: 'Отмена', style: 'cancel' },
-        { 
-          text: 'Удалить', 
-          style: 'destructive', 
+        {
+          text: 'Удалить',
+          style: 'destructive',
           onPress: async () => {
             try {
               const sent = deleteMessageWs(messageId);
@@ -86,9 +115,10 @@ export default function useMessageSelection({
                 return;
               }
 
-              // Локально обновляем список сообщений
               setMessages(prev => prev.filter(m => String(m.id) !== String(messageId)));
-              setSkip(prev => Math.max(0, prev - 1));
+              if (typeof setSkip === 'function') {
+                setSkip(prev => Math.max(0, prev - 1));
+              }
             } catch (error) {
               console.error('Failed to delete message', error);
               Alert.alert('Ошибка', 'Не удалось удалить сообщение');
@@ -101,12 +131,25 @@ export default function useMessageSelection({
 
   const handleBulkDelete = () => {
     if (selectedIds.length === 0) return;
-    
-    const ownCount = messages.filter(m => selectedIds.includes(m.id) && m.sender_id !== userId).length;
+
+    const selectedMessages = messages.filter(m => selectedIds.includes(m.id));
+    const ownCount = selectedMessages.filter(
+      m => Number(m.sender_id) === Number(currentUserId)
+    ).length;
     const othersCount = selectedIds.length - ownCount;
-    
+
+    if (isGroupChat && !canModerate && othersCount > 0) {
+      Alert.alert(
+        'Недостаточно прав',
+        'В группе можно удалять только свои сообщения (чужие — только админ/владелец).'
+      );
+      return;
+    }
+
     let message = `Удалить выбранные сообщения (${selectedIds.length})?`;
-    if (ownCount > 0 && othersCount > 0) {
+    if (isGroupChat) {
+      message = `Удалить выбранные сообщения (${selectedIds.length}) для всех участников группы?`;
+    } else if (ownCount > 0 && othersCount > 0) {
       message = `Удалить ${selectedIds.length} сообщений? Ваши сообщения (${ownCount}) удалятся у всех, а чужие (${othersCount}) — только у вас.`;
     } else if (ownCount > 0) {
       message = `Удалить ваши сообщения (${ownCount}) для всех участников?`;
@@ -119,22 +162,35 @@ export default function useMessageSelection({
       message,
       [
         { text: 'Отмена', style: 'cancel' },
-        { 
-          text: 'Удалить', 
-          style: 'destructive', 
+        {
+          text: 'Удалить',
+          style: 'destructive',
           onPress: async () => {
             try {
-              const sent = bulkDeleteMessagesWs(selectedIds);
+              // В группе без прав модератора отправляем только свои
+              const idsToSend = isGroupChat && !canModerate
+                ? selectedMessages
+                    .filter(m => Number(m.sender_id) === Number(currentUserId))
+                    .map(m => m.id)
+                : selectedIds;
+
+              if (idsToSend.length === 0) {
+                Alert.alert('Недостаточно прав', 'Нет сообщений, которые можно удалить.');
+                return;
+              }
+
+              const sent = bulkDeleteMessagesWs(idsToSend);
               if (!sent) {
                 Alert.alert('Ошибка', 'Не удалось отправить запрос на удаление. Проверьте соединение.');
                 return;
               }
 
-              // Локально обновляем список сообщений, чтобы чат сразу отразил удаление
-              const removedCount = selectedIds.length;
-              const idsToDelete = selectedIds.map(id => String(id));
+              const removedCount = idsToSend.length;
+              const idsToDelete = idsToSend.map(id => String(id));
               setMessages(prev => prev.filter(m => !idsToDelete.includes(String(m.id))));
-              setSkip(prev => Math.max(0, prev - removedCount));
+              if (typeof setSkip === 'function') {
+                setSkip(prev => Math.max(0, prev - removedCount));
+              }
 
               setSelectionMode(false);
               setSelectedIds([]);

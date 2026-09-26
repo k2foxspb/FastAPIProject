@@ -1,35 +1,48 @@
 import React, { useCallback, useState } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, Image, RefreshControl } from 'react-native';
+import { Ionicons as Icon } from '@expo/vector-icons';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useNotifications } from '../context/NotificationContext';
 import { useFocusEffect } from '@react-navigation/native';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
 import { API_BASE_URL } from '../constants';
+import { groupChatApi } from '../api';
 import { formatName, formatMessageTime, parseISODate, getAvatarUrl } from '../utils/formatters';
 
 export default function ChatListScreen({ navigation }) {
   const { dialogs, fetchDialogs, isConnected } = useNotifications();
   const [refreshing, setRefreshing] = useState(false);
+  const [groups, setGroups] = useState([]);
   // Панель вкладок теперь всегда position:'absolute' (см. TabNavigator.js) и не резервирует место
   // во flex-раскладке сама — поэтому список диалогов сам добавляет отступ под неё, чтобы последний
   // элемент списка не оказался под панелью.
   const tabBarHeight = useBottomTabBarHeight();
 
+  const fetchGroups = useCallback(async () => {
+    try {
+      const res = await groupChatApi.getMyGroups();
+      setGroups(res.data || []);
+    } catch (e) {
+      console.error('[ChatListScreen] Failed to fetch groups:', e);
+    }
+  }, []);
+
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await fetchDialogs();
+    await Promise.all([fetchDialogs(), fetchGroups()]);
     setRefreshing(false);
-  }, [fetchDialogs]);
+  }, [fetchDialogs, fetchGroups]);
   const { theme } = useTheme();
   const colors = themeConstants[theme];
 
   useFocusEffect(
     useCallback(() => {
-      // Всегда обновляем список диалогов при фокусе на экран, 
+      // Всегда обновляем список диалогов и групп при фокусе на экран,
       // чтобы гарантировать актуальность статусов и последних сообщений
       fetchDialogs();
-    }, [fetchDialogs])
+      fetchGroups();
+    }, [fetchDialogs, fetchGroups])
   );
 
 
@@ -38,6 +51,7 @@ export default function ChatListScreen({ navigation }) {
   };
 
   const renderItem = ({ item }) => {
+    const isGroup = item.isGroup;
     return (
       <TouchableOpacity 
         style={[styles.dialogItem, { 
@@ -46,15 +60,27 @@ export default function ChatListScreen({ navigation }) {
           minHeight: 80,
           width: '100%',
         }]}
-        onPress={() => navigation.navigate('Chat', { userId: item.user_id, userName: formatName(item) })}
+        onPress={() => (
+          isGroup
+            ? navigation.navigate('GroupChat', { groupId: item.id, groupName: item.name })
+            : navigation.navigate('Chat', { userId: item.user_id, userName: formatName(item) })
+        )}
       >
-        <Image 
-          source={{ uri: getAvatarUrl(item.avatar_url) }} 
-          style={styles.avatar} 
-        />
+        {isGroup ? (
+          <View style={[styles.avatar, styles.groupAvatar, { backgroundColor: colors.primary }]}>
+            <Icon name="people" size={26} color="#fff" />
+          </View>
+        ) : (
+          <Image 
+            source={{ uri: getAvatarUrl(item.avatar_url) }} 
+            style={styles.avatar} 
+          />
+        )}
         <View style={styles.content}>
           <View style={styles.header}>
-            <Text style={[styles.email, { color: colors.text }]} numberOfLines={1}>{formatName(item) || 'Имя не загружено'}</Text>
+            <Text style={[styles.email, { color: colors.text }]} numberOfLines={1}>
+              {isGroup ? item.name : (formatName(item) || 'Имя не загружено')}
+            </Text>
             <Text style={[styles.time, { color: colors.textSecondary }]}>
               {formatTime(item.last_message_time)}
             </Text>
@@ -72,25 +98,42 @@ export default function ChatListScreen({ navigation }) {
     );
   };
 
-  if (dialogs.length === 0) {
-    return (
-      <View style={[styles.center, { backgroundColor: colors.background }]}>
-        <Text style={{ color: colors.text }}>У вас пока нет активных чатов.</Text>
-        <Text style={[styles.hint, { color: colors.textSecondary }]}>Используйте поиск пользователей, чтобы начать общение.</Text>
-      </View>
-    );
-  }
+  const combinedData = [
+    ...groups.map(g => ({ ...g, isGroup: true })),
+    ...dialogs,
+  ].sort((a, b) => {
+    const aTime = a.last_message_time ? new Date(a.last_message_time).getTime() : 0;
+    const bTime = b.last_message_time ? new Date(b.last_message_time).getTime() : 0;
+    return bTime - aTime;
+  });
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background, flex: 1 }]}>
-      <FlatList
-        data={dialogs}
-        keyExtractor={(item) => (item.user_id || Math.random()).toString()}
-        renderItem={renderItem}
-        contentContainerStyle={[styles.list, { paddingBottom: 10 + tabBarHeight }]}
-        style={{ flex: 1, width: '100%' }}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-      />
+      <TouchableOpacity
+        style={[styles.createGroupButton, { borderBottomColor: colors.border }]}
+        onPress={() => navigation.navigate('CreateGroup')}
+      >
+        <View style={[styles.createGroupIcon, { backgroundColor: colors.primary }]}>
+          <Icon name="people" size={20} color="#fff" />
+        </View>
+        <Text style={[styles.createGroupText, { color: colors.primary }]}>Новая группа</Text>
+      </TouchableOpacity>
+
+      {combinedData.length === 0 ? (
+        <View style={styles.center}>
+          <Text style={{ color: colors.text }}>У вас пока нет активных чатов.</Text>
+          <Text style={[styles.hint, { color: colors.textSecondary }]}>Используйте поиск пользователей, чтобы начать общение.</Text>
+        </View>
+      ) : (
+        <FlatList
+          data={combinedData}
+          keyExtractor={(item) => (item.isGroup ? `group-${item.id}` : (item.user_id || Math.random())).toString()}
+          renderItem={renderItem}
+          contentContainerStyle={[styles.list, { paddingBottom: 10 + tabBarHeight }]}
+          style={{ flex: 1, width: '100%' }}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        />
+      )}
     </View>
   );
 }
@@ -124,5 +167,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 5
   },
-  badgeText: { color: '#fff', fontSize: 12, fontWeight: 'bold' }
+  badgeText: { color: '#fff', fontSize: 12, fontWeight: 'bold' },
+  groupAvatar: { justifyContent: 'center', alignItems: 'center' },
+  createGroupButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 15,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+  },
+  createGroupIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  createGroupText: { fontSize: 15, fontWeight: '600' },
 });

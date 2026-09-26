@@ -15,6 +15,10 @@ import UserProfileScreen from '../screens/UserProfileScreen';
 import UserMediaScreen from '../screens/UserMediaScreen';
 import ChatListScreen from '../screens/ChatListScreen';
 import ChatScreen from '../screens/chat/ChatScreen';
+import CreateGroupScreen from '../screens/chat/CreateGroupScreen';
+import GroupChatScreen from '../screens/chat/GroupChatScreen';
+import GroupInfoScreen from '../screens/chat/GroupInfoScreen';
+import AddGroupMembersScreen from '../screens/chat/AddGroupMembersScreen';
 import FeedScreen from '../screens/FeedScreen';
 import CartScreen from '../screens/CartScreen';
 import OrdersScreen from '../screens/OrdersScreen';
@@ -81,6 +85,26 @@ function ChatStack() {
           title: 'Фотография',
           headerShown: false // Скрываем стандартный заголовок, экран сам рисует свой оверлей на весь экран
         }} 
+      />
+      <Stack.Screen
+        name="CreateGroup"
+        component={CreateGroupScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="GroupChat"
+        component={GroupChatScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="GroupInfo"
+        component={GroupInfoScreen}
+        options={{ title: 'Информация о группе' }}
+      />
+      <Stack.Screen
+        name="AddGroupMembers"
+        component={AddGroupMembersScreen}
+        options={{ headerShown: false }}
       />
     </Stack.Navigator>
   );

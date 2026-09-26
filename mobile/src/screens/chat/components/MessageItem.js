@@ -37,6 +37,7 @@ export default function MessageItem({
   navigation,
   showReactionBar,
   onReact,
+  isGroupChat = false,
 }) {
   const isImage = item.message_type === 'image';
   const isVideo = item.message_type === 'video';
@@ -46,8 +47,11 @@ export default function MessageItem({
   const isFile = item.message_type === 'file';
   const isMediaGroup = item.message_type === 'media_group';
   const isMedia = isImage || isVideo || isVoice || isAudio || isVideoNote || isMediaGroup || isFile;
-  const isReceived = Number(item.sender_id) === Number(userId);
   const isOwner = Number(item.sender_id) === Number(currentUserId);
+  // В личном чате входящие — от собеседника (userId); в группе — всё, что не от нас
+  const isReceived = isGroupChat
+    ? !isOwner
+    : Number(item.sender_id) === Number(userId);
 
   // Входящий (и исходящий) плейсхолдер загрузки для собеседника
   if (item?.is_uploading && !item?.file_path) {
@@ -214,6 +218,17 @@ export default function MessageItem({
               isGrouped && (isReceived ? { borderTopLeftRadius: 18 } : { borderTopRightRadius: 18 })
             ]}
           >
+        {isGroupChat && isReceived && !isGrouped && !!item.sender_name && (
+          <TouchableOpacity
+            activeOpacity={0.7}
+            onPress={() => item.sender_id && navigation?.navigate('UserProfile', { userId: item.sender_id })}
+            style={{ marginBottom: 2 }}
+          >
+            <Text style={[styles.replyMessageSender, { color: colors.primary }]} numberOfLines={1}>
+              {item.sender_name}
+            </Text>
+          </TouchableOpacity>
+        )}
         {item.forwarded_from_id && (
           <TouchableOpacity
             activeOpacity={0.7}

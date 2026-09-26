@@ -13,6 +13,12 @@ export default function ChatHeader({
   userName,
   interlocutor,
   isPartnerTyping,
+  // групповой режим
+  isGroupChat = false,
+  groupId,
+  groupName,
+  membersCount,
+  onGroupInfoPress,
   // выделение
   selectionMode,
   selectedIds,
@@ -99,36 +105,70 @@ export default function ChatHeader({
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
             <MaterialIcons name="arrow-back" size={24} color={colors.text} />
           </TouchableOpacity>
-          <TouchableOpacity 
-            style={styles.headerInfo} 
-            onPress={() => navigation.navigate('UserProfile', { userId: userId })}
-          >
-            <View style={styles.headerAvatarContainer}>
-              <Image 
-                source={{ uri: getAvatarUrl(interlocutor?.avatar_preview_url || interlocutor?.avatar_url) }} 
-                style={styles.headerAvatar} 
-              />
-              {interlocutor?.status === 'online' && (
-                <View style={[styles.headerOnlineBadge, { backgroundColor: '#4CAF50', borderColor: colors.background }]} />
-              )}
-            </View>
-            <View>
-              <Text style={[styles.headerTitle, { color: colors.text }]}>{formatName(interlocutor) || userName}</Text>
-              {isPartnerTyping ? (
-                <Text style={[styles.headerStatus, { color: colors.primary, fontWeight: 'bold' }]}>печатает...</Text>
-              ) : interlocutor && (
-                <Text style={[styles.headerStatus, { color: colors.textSecondary }]}>
-                  {formatStatus(interlocutor.status, interlocutor.last_seen)}
+          {isGroupChat ? (
+            <TouchableOpacity
+              style={styles.headerInfo}
+              onPress={onGroupInfoPress || (() => navigation.navigate('GroupInfo', { groupId }))}
+            >
+              <View style={[styles.headerAvatarContainer, styles.headerAvatar, {
+                backgroundColor: colors.primary + '22',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }]}>
+                <MaterialIcons name="group" size={22} color={colors.primary} />
+              </View>
+              <View>
+                <Text style={[styles.headerTitle, { color: colors.text }]} numberOfLines={1}>
+                  {groupName || 'Группа'}
                 </Text>
-              )}
-            </View>
-          </TouchableOpacity>
-          <TouchableOpacity 
-            style={styles.headerIconButton} 
-            onPress={onToggleSearch}
-          >
-            <MaterialIcons name="search" size={24} color={colors.text} />
-          </TouchableOpacity>
+                <Text style={[styles.headerStatus, { color: colors.textSecondary }]}>
+                  {typeof membersCount === 'number'
+                    ? `${membersCount} ${membersCount === 1 ? 'участник' : (membersCount < 5 ? 'участника' : 'участников')}`
+                    : 'Групповой чат'}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              style={styles.headerInfo}
+              onPress={() => navigation.navigate('UserProfile', { userId: userId })}
+            >
+              <View style={styles.headerAvatarContainer}>
+                <Image
+                  source={{ uri: getAvatarUrl(interlocutor?.avatar_preview_url || interlocutor?.avatar_url) }}
+                  style={styles.headerAvatar}
+                />
+                {interlocutor?.status === 'online' && (
+                  <View style={[styles.headerOnlineBadge, { backgroundColor: '#4CAF50', borderColor: colors.background }]} />
+                )}
+              </View>
+              <View>
+                <Text style={[styles.headerTitle, { color: colors.text }]}>{formatName(interlocutor) || userName}</Text>
+                {isPartnerTyping ? (
+                  <Text style={[styles.headerStatus, { color: colors.primary, fontWeight: 'bold' }]}>печатает...</Text>
+                ) : interlocutor && (
+                  <Text style={[styles.headerStatus, { color: colors.textSecondary }]}>
+                    {formatStatus(interlocutor.status, interlocutor.last_seen)}
+                  </Text>
+                )}
+              </View>
+            </TouchableOpacity>
+          )}
+          {isGroupChat ? (
+            <TouchableOpacity
+              style={styles.headerIconButton}
+              onPress={onGroupInfoPress || (() => navigation.navigate('GroupInfo', { groupId }))}
+            >
+              <MaterialIcons name="info-outline" size={24} color={colors.text} />
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              style={styles.headerIconButton}
+              onPress={onToggleSearch}
+            >
+              <MaterialIcons name="search" size={24} color={colors.text} />
+            </TouchableOpacity>
+          )}
         </View>
       )}
     </View>

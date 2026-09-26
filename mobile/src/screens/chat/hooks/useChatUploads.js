@@ -15,7 +15,17 @@ export default function useChatUploads({
   replyingToMessage,
   setReplyingToMessage,
   isMounted,
+  // Групповой режим: вместо receiver_id шлём group_id через sendGroupMessageWs
+  groupId = null,
+  sendGroupMessageWs = null,
 }) {
+  const isGroupChat = !!groupId;
+  const sendChatMessage = isGroupChat ? sendGroupMessageWs : sendMessageWs;
+  const buildTargetFields = () => (
+    isGroupChat ? { group_id: groupId } : { receiver_id: userId }
+  );
+  // Для группы не создаём personal placeholder на бэке — загружаем файл без receiver_id
+  const uploadReceiverId = isGroupChat ? null : userId;
   const [uploadingProgress, setUploadingProgress] = useState(null);
   const [uploadingData, setUploadingData] = useState(emptyUploadingData());
   const [activeUploadId, setActiveUploadId] = useState(null);
@@ -36,13 +46,13 @@ export default function useChatUploads({
     if (!uploadId) return;
     console.log('[ChatScreen] Cancelling upload:', uploadId);
     uploadManager.cancelUpload(uploadId);
-    if (isChatConnected) {
+    if (isChatConnected && !isGroupChat && sendMessageWs) {
       sendMessageWs({ type: 'upload_cancelled', upload_id: uploadId });
     }
     setUploadingProgress(null);
     setActiveUploadId(null);
     setUploadingData(emptyUploadingData());
-  }, [isChatConnected, sendMessageWs]);
+  }, [isChatConnected, sendMessageWs, isGroupChat]);
 
   // Проверка активных загрузок (например, после перезахода в чат)
   const restoreActiveUploads = useCallback((receiverId) => {
@@ -108,25 +118,42 @@ export default function useChatUploads({
             });
           }
 
-          // Для одиночных голосовых сообщений отправляем здесь
-          // Для медиа и документов теперь отправляем вручную в функциях загрузки
-          // Если есть hasPlaceholder, значит бэкенд сам обновит сообщение
-          if (autoSendOnUpload && !batchMode && !isVideoNoteUploadRef.current && !extra?.hasPlaceholder) { 
+          // Для одиночных голосовых/медиа: в личном чате hasPlaceholder значит бэкенд сам обновит;
+          // в группе placeholder'а нет — всегда отправляем group_message после аплоада.
+          const shouldAutoSend = autoSendOnUpload
+            && !batchMode
+            && !isVideoNoteUploadRef.current
+            && (isGroupChat || !extra?.hasPlaceholder);
+
+          if (shouldAutoSend && result?.file_path && sendChatMessage) {
             const clientId = extra?.clientId || generateClientId();
             const msgData = {
-              receiver_id: userId,
+              ...buildTargetFields(),
               file_path: result.file_path,
-              message_type: result.message_type,
+              message_type: result.message_type || extra?.messageType || 'file',
               client_id: clientId,
+              duration: extra?.duration,
               reply_to_id: replyingToMessage ? replyingToMessage.id : null
             };
-            
-            // Оптимистичное добавление
+
             setMessages(prev => [buildOptimisticMessage(msgData, currentUserId, replyingToMessage), ...prev]);
             setReplyingToMessage(null);
-
-            sendMessageWs(msgData);
-          } 
+            sendChatMessage(msgData);
+          } else if (isGroupChat && isVideoNoteUploadRef.current && result?.file_path && sendChatMessage) {
+            // Видеосообщение в группе — после аплоада шлём сами
+            const clientId = extra?.clientId || generateClientId();
+            const msgData = {
+              ...buildTargetFields(),
+              file_path: result.file_path,
+              message_type: 'video_note',
+              client_id: clientId,
+              duration: extra?.duration,
+              reply_to_id: replyingToMessage ? replyingToMessage.id : null
+            };
+            setMessages(prev => [buildOptimisticMessage(msgData, currentUserId, replyingToMessage), ...prev]);
+            setReplyingToMessage(null);
+            sendChatMessage(msgData);
+          }
           resetUploadState();
         } else if (status === 'error') {
           resetUploadState();
@@ -137,7 +164,7 @@ export default function useChatUploads({
       });
       return () => unsubscribe();
     }
-  }, [activeUploadId, userId, autoSendOnUpload, replyingToMessage]);
+  }, [activeUploadId, userId, groupId, autoSendOnUpload, replyingToMessage, isGroupChat, sendChatMessage, batchMode]);
 
   const beginBatch = (count) => {
     setBatchMode(true);
@@ -174,12 +201,13 @@ export default function useChatUploads({
         uri,
         name,
         mimeType,
-        userId,
-        (uid) => { 
+        uploadReceiverId,
+        (uid) => {
           setActiveUploadId(uid);
         },
         {}, // apiOptions
-        { clientId, hasPlaceholder: true, type: mt, messageType: mt }
+        // В группе нет personal placeholder — hasPlaceholder только для личных
+        { clientId, hasPlaceholder: !isGroupChat, type: mt, messageType: mt }
       );
 
       if (res && res.status === 'completed') {
@@ -193,29 +221,32 @@ export default function useChatUploads({
 
   // Отправка финального сообщения после загрузки всех вложений
   const finalizeBatch = (attachmentsLocal, clientId) => {
-    if (attachmentsLocal.length === 0) return;
+    if (attachmentsLocal.length === 0 || !sendChatMessage) return;
 
     const isSingle = attachmentsLocal.length === 1;
-    const msgData = isSingle 
+    const msgData = isSingle
       ? {
-          receiver_id: userId,
+          ...buildTargetFields(),
           file_path: attachmentsLocal[0].file_path,
           message_type: attachmentsLocal[0].type,
-          client_id: clientId
+          client_id: clientId,
+          reply_to_id: replyingToMessage ? replyingToMessage.id : null,
         }
       : {
-          receiver_id: userId,
+          ...buildTargetFields(),
           attachments: attachmentsLocal,
           message_type: 'media_group',
-          client_id: clientId
+          client_id: clientId,
+          reply_to_id: replyingToMessage ? replyingToMessage.id : null,
         };
 
-    // Для media_group нужно добавить оптимистичное сообщение и отправить финальное уведомление
-    if (!isSingle) {
-      setMessages(prev => [buildOptimisticMessage(msgData, currentUserId), ...prev]);
-      sendMessageWs(msgData);
+    // В личном чате одиночный файл уже закрывается placeholder'ом на бэке.
+    // В группе placeholder'а нет — всегда отправляем сами. Media_group — всегда сами.
+    if (!isSingle || isGroupChat) {
+      setMessages(prev => [buildOptimisticMessage(msgData, currentUserId, replyingToMessage), ...prev]);
+      sendChatMessage(msgData);
+      setReplyingToMessage(null);
     }
-    // Для одиночного медиа-файла бэкенд уже создал плейсхолдер и завершил сообщение сам.
   };
 
   const pickAndUploadDocument = async () => {
@@ -320,12 +351,12 @@ export default function useChatUploads({
         uri,
         filename,
         'video/mp4',
-        userId,
+        uploadReceiverId,
         (id) => {
           setActiveUploadId(id);
         },
         {}, // apiOptions
-        { clientId, hasPlaceholder: true, isVideoNote: true, type: 'video_note', messageType: 'video_note', duration }
+        { clientId, hasPlaceholder: !isGroupChat, isVideoNote: true, type: 'video_note', messageType: 'video_note', duration }
       );
     } catch (err) {
       console.error('[ChatScreen] handleSendVideoNote error:', err);
@@ -356,12 +387,12 @@ export default function useChatUploads({
         uri,
         fileName,
         mimeType,
-        userId,
+        uploadReceiverId,
         (upload_id) => {
           setActiveUploadId(upload_id);
         },
         {}, // apiOptions
-        { clientId, hasPlaceholder: true, type: 'voice', messageType: 'voice', duration }
+        { clientId, hasPlaceholder: !isGroupChat, type: 'voice', messageType: 'voice', duration }
       );
       return true;
     } catch (error) {

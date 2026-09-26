@@ -650,10 +650,11 @@ export const NotificationProvider = ({ children }) => {
         }
 
         if (payload.type === 'message_deleted') {
-          const msgId = payload.message_id || payload.data?.id;
-          if (msgId) {
-             // Мы не знаем, было ли это последнее сообщение, 
-             // поэтому для надежности обновляем список диалогов через API
+          const msgId = payload.message_id || payload.data?.message_id || payload.data?.id;
+          const isGroupDelete = !!(payload.group_id || payload.data?.group_id);
+          if (msgId && !isGroupDelete) {
+             // Для личных чатов обновляем список диалогов.
+             // Групповые удаления не затрагивают /dialogs.
              fetchDialogs();
           }
         }

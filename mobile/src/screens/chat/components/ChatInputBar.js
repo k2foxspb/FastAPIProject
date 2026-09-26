@@ -84,7 +84,9 @@ export default function ChatInputBar({
           <View style={[styles.replyPreviewBorder, { backgroundColor: colors.primary }]} />
           <View style={styles.replyPreviewContent}>
             <Text style={[styles.replyPreviewSender, { color: colors.primary }]} numberOfLines={1}>
-              {Number(replyingToMessage.sender_id) === Number(currentUserId) ? 'Вы' : (interlocutor?.first_name || 'Собеседник')}
+              {Number(replyingToMessage.sender_id) === Number(currentUserId)
+                ? 'Вы'
+                : (replyingToMessage.sender_name || interlocutor?.first_name || 'Собеседник')}
             </Text>
             <Text style={[styles.replyPreviewText, { color: colors.textSecondary }]} numberOfLines={1}>
               {getReplyPreviewText(replyingToMessage)}
