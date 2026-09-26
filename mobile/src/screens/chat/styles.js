@@ -613,6 +613,49 @@ export const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
   },
+  reactionBarWrapper: {
+    flexDirection: 'row',
+    alignSelf: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 24,
+    borderWidth: 1,
+    marginBottom: 6,
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.15,
+    shadowRadius: 3,
+  },
+  reactionBarEmojiButton: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  reactionBarEmojiText: {
+    fontSize: 24,
+  },
+  reactionsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: 4,
+  },
+  reactionBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 10,
+    marginRight: 4,
+    marginTop: 2,
+  },
+  reactionBadgeEmoji: {
+    fontSize: 13,
+  },
+  reactionBadgeCount: {
+    fontSize: 11,
+    fontWeight: '600',
+    marginLeft: 3,
+  },
 });
 
 export default styles;

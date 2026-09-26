@@ -18,6 +18,7 @@ export default function useMessageSelection({
   deleteMessageWs,
   bulkDeleteMessagesWs,
   sendMessageWs,
+  toggleReactionWs,
 }) {
   // Надежно вычисляем имя+фамилию отправителя сообщения (не зависит от того,
   // пришло ли сообщение по WS "живьем" (там есть sender_name) или из истории чата (там его нет)).
@@ -147,6 +148,36 @@ export default function useMessageSelection({
     );
   };
 
+  // Реакция смайликом на одно сообщение (панель показывается над сообщением при его выделении)
+  const handleReact = (messageId, emoji) => {
+    if (!messageId || !emoji) return;
+
+    // Оптимистично обновляем локальный список реакций до ответа сервера
+    setMessages(prev => prev.map(m => {
+      if (String(m.id) !== String(messageId)) return m;
+      const prevReactions = m.reactions || [];
+      const myExisting = prevReactions.find(r => Number(r.user_id) === Number(currentUserId));
+      let nextReactions;
+      if (myExisting && myExisting.emoji === emoji) {
+        nextReactions = prevReactions.filter(r => Number(r.user_id) !== Number(currentUserId));
+      } else if (myExisting) {
+        nextReactions = prevReactions.map(r => (
+          Number(r.user_id) === Number(currentUserId) ? { ...r, emoji } : r
+        ));
+      } else {
+        nextReactions = [...prevReactions, { emoji, user_id: currentUserId }];
+      }
+      return { ...m, reactions: nextReactions };
+    }));
+
+    const sent = toggleReactionWs(messageId, emoji);
+    if (!sent) {
+      Alert.alert('Ошибка', 'Не удалось отправить реакцию. Проверьте соединение.');
+    }
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    clearSelection();
+  };
+
   const openForwardModal = () => {
     if (selectedIds.length === 0) return;
     setForwardModalVisible(true);
@@ -214,6 +245,7 @@ export default function useMessageSelection({
     handleLongPressMessage,
     handleDeleteMessage,
     handleBulkDelete,
+    handleReact,
     isForwardModalVisible,
     openForwardModal,
     closeForwardModal,

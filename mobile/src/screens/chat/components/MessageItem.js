@@ -11,6 +11,7 @@ import { styles } from '../styles';
 import { resolveMediaUri, getReplyPreviewText } from '../utils';
 import MediaPlaceholder from './MediaPlaceholder';
 import MessageText from './MessageText';
+import ReactionBar from './ReactionBar';
 
 // Одно сообщение в списке чата (текст, медиа, медиа-группа, голосовое, видео-кружок, файл, плейсхолдер загрузки)
 export default function MessageItem({
@@ -34,6 +35,8 @@ export default function MessageItem({
   onOpenFullScreen,
   onScrollToMessage,
   navigation,
+  showReactionBar,
+  onReact,
 }) {
   const isImage = item.message_type === 'image';
   const isVideo = item.message_type === 'video';
@@ -112,6 +115,16 @@ export default function MessageItem({
     currentMsgDate.getDate() !== prevMsgDate.getDate()
   );
 
+  // Группируем реакции по эмодзи: [{ emoji, count, isMine }]
+  const groupedReactions = (item.reactions && item.reactions.length > 0)
+    ? Object.values(item.reactions.reduce((acc, r) => {
+        if (!acc[r.emoji]) acc[r.emoji] = { emoji: r.emoji, count: 0, isMine: false };
+        acc[r.emoji].count += 1;
+        if (Number(r.user_id) === Number(currentUserId)) acc[r.emoji].isMine = true;
+        return acc;
+      }, {}))
+    : [];
+
   const handleFullScreen = (uri, type) => {
     if (selectionMode) {
       onPress(item.id);
@@ -144,6 +157,11 @@ export default function MessageItem({
               {formatDateSeparator(currentMsgDate)}
             </Text>
           </View>
+        </View>
+      )}
+      {showReactionBar && (
+        <View style={[styles.messageWrapper, isReceived ? styles.receivedWrapper : styles.sentWrapper]}>
+          <ReactionBar colors={colors} onSelect={(emoji) => onReact(item.id, emoji)} />
         </View>
       )}
     <Swipeable
@@ -374,6 +392,32 @@ export default function MessageItem({
               isSearching={isSearching}
               colors={colors}
             />
+          </View>
+        )}
+        {groupedReactions.length > 0 && (
+          <View style={styles.reactionsRow}>
+            {groupedReactions.map(({ emoji, count, isMine }) => (
+              <TouchableOpacity
+                key={emoji}
+                activeOpacity={0.7}
+                onPress={() => onReact(item.id, emoji)}
+                style={[
+                  styles.reactionBadge,
+                  {
+                    backgroundColor: isMine ? colors.primary + '30' : (isReceived ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.15)'),
+                    borderWidth: isMine ? 1 : 0,
+                    borderColor: colors.primary,
+                  }
+                ]}
+              >
+                <Text style={styles.reactionBadgeEmoji}>{emoji}</Text>
+                {count > 1 && (
+                  <Text style={[styles.reactionBadgeCount, { color: isReceived ? colors.textSecondary : 'rgba(255,255,255,0.9)' }]}>
+                    {count}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            ))}
           </View>
         )}
         <View style={styles.messageFooter}>

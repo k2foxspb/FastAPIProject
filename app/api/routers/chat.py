@@ -14,7 +14,7 @@ import jwt
 
 from app.core.config import SECRET_KEY, ALGORITHM
 from app.api.dependencies import get_async_db
-from app.models.chat import ChatMessage, FileUploadSession
+from app.models.chat import ChatMessage, FileUploadSession, ChatMessageReaction
 from app.models.users import User as UserModel
 from app.schemas.chat import (
     ChatMessageCreate, ChatMessageResponse, DialogResponse, 
@@ -267,6 +267,62 @@ async def websocket_chat_endpoint(
                         "user_id": user_id,
                         "is_typing": is_typing
                     }, int(other_user_id))
+                continue
+
+            if msg_type == "toggle_reaction":
+                message_id_raw = message_data.get("message_id")
+                emoji = message_data.get("emoji")
+                if message_id_raw and emoji:
+                    try:
+                        message_id = int(message_id_raw)
+                    except (ValueError, TypeError):
+                        logger.warning(f"Invalid message_id format in WS toggle_reaction: {message_id_raw}")
+                        continue
+
+                    result = await db.execute(select(ChatMessage).where(ChatMessage.id == message_id))
+                    message = result.scalar_one_or_none()
+
+                    if message and (message.sender_id == user_id or message.receiver_id == user_id):
+                        other_id = message.receiver_id if message.sender_id == user_id else message.sender_id
+
+                        res_reaction = await db.execute(
+                            select(ChatMessageReaction).where(
+                                ChatMessageReaction.message_id == message_id,
+                                ChatMessageReaction.user_id == user_id
+                            )
+                        )
+                        existing_reaction = res_reaction.scalar_one_or_none()
+
+                        if existing_reaction and existing_reaction.emoji == emoji:
+                            # Повторный тап тем же смайликом — снимаем реакцию
+                            await db.delete(existing_reaction)
+                        elif existing_reaction:
+                            # Другой смайлик — заменяем предыдущую реакцию пользователя
+                            existing_reaction.emoji = emoji
+                        else:
+                            db.add(ChatMessageReaction(message_id=message_id, user_id=user_id, emoji=emoji))
+
+                        await db.commit()
+
+                        res_all = await db.execute(
+                            select(ChatMessageReaction).where(ChatMessageReaction.message_id == message_id)
+                        )
+                        reactions_data = [
+                            {"emoji": r.emoji, "user_id": r.user_id} for r in res_all.scalars().all()
+                        ]
+
+                        reaction_event = {
+                            "type": "reaction_updated",
+                            "message_id": message_id,
+                            "reactions": reactions_data,
+                            # Дублируем в data, чтобы пройти общую проверку "есть ли data" в обработчике уведомлений на клиенте
+                            "data": {"message_id": message_id, "reactions": reactions_data}
+                        }
+                        await asyncio.gather(
+                            manager.send_personal_message(reaction_event, user_id),
+                            manager.send_personal_message(reaction_event, other_id),
+                            return_exceptions=True
+                        )
                 continue
 
             if msg_type == "delete_message":
@@ -992,6 +1048,16 @@ async def get_chat_history(
     )
     db_rows = result.all()
 
+    # Пакетно подгружаем реакции для всех сообщений истории, чтобы не делать запрос на каждое сообщение
+    message_ids = [row.ChatMessage.id for row in db_rows]
+    reactions_map = {}
+    if message_ids:
+        res_reactions = await db.execute(
+            select(ChatMessageReaction).where(ChatMessageReaction.message_id.in_(message_ids))
+        )
+        for r in res_reactions.scalars().all():
+            reactions_map.setdefault(r.message_id, []).append({"emoji": r.emoji, "user_id": r.user_id})
+
     # Преобразуем в словари и добавим attachments для media_group
     messages = []
     for row in db_rows:
@@ -1011,6 +1077,7 @@ async def get_chat_history(
             "forwarded_from_id": m.forwarded_from_id,
             "forwarded_from_name": m.forwarded_from_name,
             "comment": getattr(m, 'comment', None),
+            "reactions": reactions_map.get(m.id, []),
             "is_uploading": getattr(m, 'is_uploading', False),
             "upload_id": getattr(m, 'upload_id', None),
             "upload_offset": row.upload_offset,

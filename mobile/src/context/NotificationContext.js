@@ -367,6 +367,8 @@ export const NotificationProvider = ({ children }) => {
             handleNewMessage(payload.data, payload);
           } else if (msgType === 'message_deleted') {
             setNotifications(prev => [payload, ...prev].slice(0, MAX_NOTIFICATIONS));
+          } else if (msgType === 'reaction_updated') {
+            setNotifications(prev => [payload, ...prev].slice(0, MAX_NOTIFICATIONS));
           } else if (msgType === 'messages_read') {
             const otherId = payload.reader_id || payload.data?.reader_id;
             if (otherId) {
@@ -444,6 +446,18 @@ export const NotificationProvider = ({ children }) => {
       chatWs.current.send(JSON.stringify({
         type: 'delete_message',
         message_id: messageId
+      }));
+      return true;
+    }
+    return false;
+  }, []);
+
+  const toggleReactionWs = useCallback((messageId, emoji) => {
+    if (chatWs.current && chatWs.current.readyState === WebSocket.OPEN) {
+      chatWs.current.send(JSON.stringify({
+        type: 'toggle_reaction',
+        message_id: messageId,
+        emoji
       }));
       return true;
     }
@@ -919,6 +933,7 @@ export const NotificationProvider = ({ children }) => {
     markAsReadWs,
     deleteMessageWs,
     bulkDeleteMessagesWs,
+    toggleReactionWs,
     currentUser,
     loadUser,
     loadingUser,
@@ -951,6 +966,7 @@ export const NotificationProvider = ({ children }) => {
     markAsReadWs,
     deleteMessageWs,
     bulkDeleteMessagesWs,
+    toggleReactionWs,
     currentUser,
     loadUser,
     loadingUser,

@@ -169,6 +169,16 @@ export default function useChatHistory({
           fetchDialogs();
         }
       } 
+      // 3.1 Обновление реакций на сообщение
+      else if (notifyType === 'reaction_updated') {
+        const msgId = lastNotify.message_id;
+        const reactions = lastNotify.reactions;
+        if (msgId !== undefined && msgId !== null) {
+          setMessages(prev => prev.map(m => (
+            String(m.id) === String(msgId) ? { ...m, reactions } : m
+          )));
+        }
+      }
       // 4. Прочтение сообщений
       else if (notifyType === 'messages_read' || notifyType === 'your_messages_read' || notifyType === 'mark_read') {
           const readerId = data.reader_id || lastNotify.reader_id;

@@ -1,4 +1,4 @@
-from sqlalchemy import Integer, String, ForeignKey, DateTime, Boolean
+from sqlalchemy import Integer, String, ForeignKey, DateTime, Boolean, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from datetime import datetime
 
@@ -32,6 +32,23 @@ class ChatMessage(Base):
     receiver = relationship("User", foreign_keys=[receiver_id])
     reply_to = relationship("ChatMessage", remote_side=[id])
     forwarded_from = relationship("User", foreign_keys=[forwarded_from_id])
+
+class ChatMessageReaction(Base):
+    __tablename__ = "chat_message_reactions"
+    __table_args__ = (
+        # У пользователя может быть только одна реакция на сообщение
+        # (повторный тап тем же смайликом снимает её, другим — заменяет)
+        UniqueConstraint("message_id", "user_id", name="uq_chat_message_reaction_message_user"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    message_id: Mapped[int] = mapped_column(Integer, ForeignKey("chat_messages.id", ondelete="CASCADE"), nullable=False)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    emoji: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    message = relationship("ChatMessage", foreign_keys=[message_id])
+    user = relationship("User", foreign_keys=[user_id])
 
 class FileUploadSession(Base):
     __tablename__ = "file_upload_sessions"

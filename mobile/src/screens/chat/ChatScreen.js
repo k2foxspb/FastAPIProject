@@ -35,7 +35,7 @@ export default function ChatScreen({ route, navigation }) {
   const colors = themeConstants[theme];
   const {
     setActiveChatId, fetchDialogs, currentUserId, notifications, dialogs, clearUnread, currentUser,
-    sendMessage: sendMessageWs, markAsReadWs, deleteMessageWs, bulkDeleteMessagesWs, getHistoryWs,
+    sendMessage: sendMessageWs, markAsReadWs, deleteMessageWs, bulkDeleteMessagesWs, toggleReactionWs, getHistoryWs,
     onHistoryReceived, onSearchResultsReceived, onUploadProgressReceived, searchMessagesWs, getCachedHistory, isChatConnected,
     typingUsers, sendTypingStatus,
   } = useNotifications();
@@ -106,6 +106,7 @@ export default function ChatScreen({ route, navigation }) {
     deleteMessageWs,
     bulkDeleteMessagesWs,
     sendMessageWs,
+    toggleReactionWs,
   });
   const { selectionMode, selectedIds } = selection;
 
@@ -298,6 +299,8 @@ export default function ChatScreen({ route, navigation }) {
       onOpenFullScreen={openFullScreen}
       onScrollToMessage={search.scrollToMessageById}
       navigation={navigation}
+      showReactionBar={selectionMode && selectedIds.length === 1 && selectedIds[0] === item.id}
+      onReact={selection.handleReact}
     />
   );
 

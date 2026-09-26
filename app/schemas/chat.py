@@ -23,6 +23,10 @@ class ChatMessageBase(BaseModel):
 class ChatMessageCreate(ChatMessageBase):
     pass
 
+class MessageReactionItem(BaseModel):
+    emoji: str
+    user_id: int
+
 class ChatMessageReply(BaseModel):
     id: int
     message: Optional[str] = None
@@ -44,6 +48,7 @@ class ChatMessageResponse(ChatMessageBase):
     forwarded_from_id: Optional[int] = None
     forwarded_from_name: Optional[str] = None
     comment: Optional[str] = None
+    reactions: Optional[list[MessageReactionItem]] = None
     is_uploading: bool = False
     upload_id: Optional[str] = None
     upload_progress: Optional[float] = None
