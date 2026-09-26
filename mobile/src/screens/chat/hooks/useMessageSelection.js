@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Alert } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { buildForwardMessageData } from '../utils';
+import { formatName } from '../../../utils/formatters';
 
 // Режим множественного выделения сообщений: удаление и пересылка в другие чаты
 export default function useMessageSelection({
@@ -10,10 +11,19 @@ export default function useMessageSelection({
   setSkip,
   userId,
   currentUserId,
+  currentUser,
+  interlocutor,
   deleteMessageWs,
   bulkDeleteMessagesWs,
   sendMessageWs,
 }) {
+  // Надежно вычисляем имя+фамилию отправителя сообщения (не зависит от того,
+  // пришло ли сообщение по WS "живьем" (там есть sender_name) или из истории чата (там его нет)).
+  const resolveSenderName = (message) => (
+    Number(message.sender_id) === Number(currentUserId)
+      ? formatName(currentUser)
+      : formatName(interlocutor)
+  );
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState([]);
   const [isForwardModalVisible, setForwardModalVisible] = useState(false);
@@ -157,7 +167,7 @@ export default function useMessageSelection({
     let hasFailures = false;
     receiverIds.forEach(receiverId => {
       messagesToForward.forEach(message => {
-        const msgData = buildForwardMessageData(message, receiverId);
+        const msgData = buildForwardMessageData(message, receiverId, resolveSenderName(message));
         const sent = sendMessageWs(msgData);
         if (!sent) hasFailures = true;
       });

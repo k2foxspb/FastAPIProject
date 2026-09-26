@@ -98,6 +98,8 @@ export default function ChatScreen({ route, navigation }) {
     setSkip: history.setSkip,
     userId,
     currentUserId,
+    currentUser,
+    interlocutor,
     deleteMessageWs,
     bulkDeleteMessagesWs,
     sendMessageWs,

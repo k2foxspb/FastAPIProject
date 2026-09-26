@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { View, Image, TouchableOpacity, StyleSheet, ActivityIndicator, Text } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { cacheDirectory, getInfoAsync, createDownloadResumable } from 'expo-file-system/legacy';
+import { cacheDirectory, getInfoAsync, createDownloadResumable, copyAsync } from 'expo-file-system/legacy';
+import * as VideoThumbnails from 'expo-video-thumbnails';
 import { API_BASE_URL } from '../constants';
 import VideoPlayer from './VideoPlayer';
 import { useTheme } from '../context/ThemeContext';
@@ -41,9 +42,15 @@ const CachedMedia = ({
   const fileName = item.file_path ? item.file_path.split('/').pop() : 'unknown';
   const localFileUri = `${cacheDirectory}${fileName}`;
   const doneMarkerUri = `${localFileUri}.done`;
+  const thumbFileUri = `${cacheDirectory}thumb_${fileName}.jpg`;
 
   const [localUri, setLocalUri] = useState(null);
   const [loading, setLoading] = useState(true);
+  // Статичный кадр видео для превью (чтобы не показывать чёрный прямоугольник вместо
+  // реального содержимого ролика). Генерируется один раз и кешируется на диске —
+  // полноценный VideoPlayer при этом НЕ создаётся, поэтому проблема с OutOfMemoryError
+  // при большом числе видео в чате не возвращается.
+  const [thumbUri, setThumbUri] = useState(null);
   // Ленивая инициализация из глобального хранилища загрузок: если видео уже докачано
   // (или качается) другим экземпляром CachedMedia для того же файла — сразу показываем
   // актуальное состояние, а не "не скачано" на первом кадре.
@@ -90,6 +97,32 @@ const CachedMedia = ({
   useEffect(() => {
     if (!isVideo || !remoteUri) return;
     checkCached(remoteUri, localFileUri, doneMarkerUri);
+  }, [remoteUri]);
+
+  // Генерируем и кешируем статичный кадр видео для превью. Кадр берётся один раз с
+  // удалённого/локального источника через expo-video-thumbnails (без запуска VideoPlayer),
+  // поэтому это не приводит к OutOfMemoryError даже при большом числе видео в чате.
+  useEffect(() => {
+    if (!isVideo || !remoteUri) return;
+    let cancelled = false;
+
+    const loadThumbnail = async () => {
+      try {
+        const info = await getInfoAsync(thumbFileUri);
+        if (info.exists) {
+          if (!cancelled) setThumbUri(thumbFileUri);
+          return;
+        }
+        const { uri } = await VideoThumbnails.getThumbnailAsync(remoteUri, { time: 0 });
+        await copyAsync({ from: uri, to: thumbFileUri });
+        if (!cancelled) setThumbUri(thumbFileUri);
+      } catch (e) {
+        console.log('[CachedMedia] thumbnail generation error:', e);
+      }
+    };
+
+    loadThumbnail();
+    return () => { cancelled = true; };
   }, [remoteUri]);
 
   // Initial load
@@ -160,8 +193,13 @@ const CachedMedia = ({
             только чтобы показать статичный первый кадр. В чате с несколькими видео-сообщениями
             это означало по одному живому нативному плееру на КАЖДОЕ видео в истории одновременно,
             что и приводило к OutOfMemoryError. Настоящий плеер теперь создаётся только при
-            открытии видео полноэкранно (ниже). */}
-        <View style={[StyleSheet.absoluteFill, styles.thumbnailPlaceholder]} />
+            открытии видео полноэкранно (ниже). Вместо этого показываем заранее сгенерированный
+            и закешированный статичный кадр видео (thumbUri) через обычный Image. */}
+        {thumbUri ? (
+          <Image source={{ uri: thumbUri }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+        ) : (
+          <View style={[StyleSheet.absoluteFill, styles.thumbnailPlaceholder]} />
+        )}
         <View style={styles.playOverlay}>
           <View style={styles.playButtonCircle}>
             <MaterialIcons name="play-arrow" size={32} color="#fff" />

@@ -64,13 +64,15 @@ export const buildOptimisticMessage = (msgData, currentUserId, replyTo = null) =
 // Собираем данные для пересылки сообщения другому пользователю.
 // Переиспользуем уже загруженные файлы (file_path/attachments), поэтому повторная загрузка не нужна.
 // Если пересылаемое сообщение уже было переслано ранее, сохраняем ссылку на самого первого автора (не переписываем цепочку).
-export const buildForwardMessageData = (message, receiverId) => {
+// resolvedSenderName — надежно вычисленное имя+фамилия отправителя (см. useMessageSelection),
+// используется как fallback, если у сообщения нет своего sender_name/forwarded_from_name (например, оно пришло из истории чата).
+export const buildForwardMessageData = (message, receiverId, resolvedSenderName) => {
   const msgData = {
     receiver_id: receiverId,
     client_id: generateClientId(),
     message_type: message.message_type || 'text',
     forwarded_from_id: message.forwarded_from_id || message.sender_id,
-    forwarded_from_name: message.forwarded_from_name || message.sender_name,
+    forwarded_from_name: message.forwarded_from_name || message.sender_name || resolvedSenderName,
   };
 
   if (message.message) {

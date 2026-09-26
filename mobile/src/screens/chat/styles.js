@@ -138,7 +138,7 @@ export const styles = StyleSheet.create({
   },
   messageWrapper: {
     flexDirection: 'row',
-    marginVertical: 5,
+    marginVertical: 3,
     paddingHorizontal: 10,
     alignItems: 'flex-end',
   },
@@ -158,7 +158,8 @@ export const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   messageBubble: { 
-    padding: 12, 
+    paddingHorizontal: 10,
+    paddingVertical: 8,
     borderRadius: 18, 
     maxWidth: '85%',
     ...getShadow('#000', { width: 0, height: 1 }, 0.1, 2, 1),
@@ -173,16 +174,16 @@ export const styles = StyleSheet.create({
     borderBottomLeftRadius: 2, 
     elevation: 1 
   },
-  messageText: { fontSize: 16, lineHeight: 22 },
+  messageText: { fontSize: 13, lineHeight: 18 },
   messageFooter: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'flex-end',
-    marginTop: 2,
+    marginTop: 1,
     alignSelf: 'flex-end',
   },
   messageTime: {
-    fontSize: 10,
+    fontSize: 9,
     marginRight: 4,
   },
   statusIcon: {
