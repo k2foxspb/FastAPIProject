@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, StyleSheet, TouchableOpacity, Alert, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
+import { View, Text, TextInput, StyleSheet, TouchableOpacity, Alert, Platform, ScrollView } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { usersApi } from '../api';
 import { useTheme } from '../context/ThemeContext';
@@ -35,9 +36,8 @@ export default function CreateAlbumScreen({ navigation }) {
   return (
     <KeyboardAvoidingView 
       style={{ flex: 1, backgroundColor: colors.background }}
-      behavior="padding" 
+      behavior="padding"
       keyboardVerticalOffset={90}
-      enabled={Platform.OS !== 'web'}
     >
       <ScrollView 
         style={[styles.container, { backgroundColor: colors.background }]}

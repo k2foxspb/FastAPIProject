@@ -12,9 +12,9 @@ import {
   Switch, 
   Platform,
   ActivityIndicator,
-  KeyboardAvoidingView,
   RefreshControl
 } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
@@ -218,9 +218,8 @@ export default function AlbumDetailScreen({ route, navigation }) {
   return (
     <KeyboardAvoidingView 
       style={{ flex: 1, backgroundColor: colors.background }}
-      behavior="padding" 
+      behavior="padding"
       keyboardVerticalOffset={90}
-      enabled={Platform.OS !== 'web'}
     >
       <ScrollView
         style={[styles.container, { backgroundColor: colors.background }]}

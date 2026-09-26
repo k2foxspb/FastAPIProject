@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image, TextInput, Alert, ActivityIndicator, Platform, Switch, ScrollView, KeyboardAvoidingView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Image, TextInput, Alert, ActivityIndicator, Platform, Switch, ScrollView } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getShadow } from '../utils/shadowStyles';
 import * as ImagePicker from 'expo-image-picker';
@@ -95,9 +96,8 @@ export default function UploadPhotoScreen({ route, navigation }) {
   return (
     <KeyboardAvoidingView 
       style={{ flex: 1, backgroundColor: colors.background }}
-      behavior="padding" 
+      behavior="padding"
       keyboardVerticalOffset={90}
-      enabled={Platform.OS !== 'web'}
     >
       <ScrollView 
         style={[styles.container, { backgroundColor: colors.background }]}

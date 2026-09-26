@@ -86,7 +86,7 @@
         "foregroundImage": "./assets/logo1024.png",
         "backgroundColor": "#ffffff"
       },
-      "softwareKeyboardLayoutMode": "resize",
+      "softwareKeyboardLayoutMode": "pan",
       "package": "com.k2foxspb.fokinfun",
       "googleServicesFile": "./google-services.json",
       "intentFilters": [

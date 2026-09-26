@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Alert, ActivityIndicator, Image, Modal, FlatList, TouchableWithoutFeedback, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Alert, ActivityIndicator, Image, Modal, FlatList, TouchableWithoutFeedback, Platform } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { productsApi, usersApi } from '../api';
@@ -228,9 +229,8 @@ export default function EditProductScreen({ route, navigation }) {
   return (
     <KeyboardAvoidingView 
       style={{ flex: 1, backgroundColor: colors.background }}
-      behavior="padding" 
+      behavior="padding"
       keyboardVerticalOffset={90}
-      enabled={Platform.OS !== 'web'}
     >
       <ScrollView style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={styles.form}>

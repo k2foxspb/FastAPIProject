@@ -10,10 +10,10 @@ import {
     Animated,
     Dimensions,
     TextInput,
-    KeyboardAvoidingView,
     Platform,
     Image
 } from 'react-native';
+import {KeyboardAvoidingView} from 'react-native-keyboard-controller';
 import {
     getApp,
     getApps,
@@ -452,9 +452,8 @@ export default function LoginScreen({navigation, route}) {
     return (
         <KeyboardAvoidingView
             style={[styles.container, {backgroundColor: colors.background, flex: 1}]}
-            behavior="padding" 
+            behavior="padding"
             keyboardVerticalOffset={90}
-            enabled={Platform.OS !== 'web'}
         >
             <ReCaptcha ref={recaptchaRef} onVerify={handleRecaptchaVerify}/>
             <Animated.View

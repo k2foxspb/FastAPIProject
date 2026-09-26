@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, Image, Alert, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, Image, Alert, ScrollView, Platform } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { usersApi } from '../api';
@@ -80,9 +81,8 @@ export default function EditProfileScreen({ route, navigation }) {
   return (
     <KeyboardAvoidingView 
       style={{ flex: 1, backgroundColor: colors.background }}
-      behavior="padding" 
+      behavior="padding"
       keyboardVerticalOffset={90}
-      enabled={Platform.OS !== 'web'}
     >
       <ScrollView style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={styles.header}>

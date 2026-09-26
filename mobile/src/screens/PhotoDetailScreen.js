@@ -12,9 +12,9 @@ import {
   ActivityIndicator,
   StatusBar,
   TextInput,
-  KeyboardAvoidingView,
   Platform
 } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { usersApi } from '../api';
@@ -418,9 +418,8 @@ export default function PhotoDetailScreen({ route, navigation }) {
 
       <KeyboardAvoidingView 
         style={StyleSheet.absoluteFill}
-        behavior="padding" 
-        keyboardVerticalOffset={90}
-        enabled={Platform.OS !== 'web'}
+        behavior="padding"
+        keyboardVerticalOffset={0}
         pointerEvents="box-none"
       >
         {/* Верхняя панель управления */}

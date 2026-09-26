@@ -12,9 +12,9 @@ import {
   TextInput, 
   Dimensions, 
   Platform, 
-  KeyboardAvoidingView,
   RefreshControl 
 } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { productsApi, usersApi, cartApi } from '../api';
 import { getFullUrl } from '../utils/urlHelper';
@@ -261,9 +261,8 @@ export default function ProductDetailScreen({ route, navigation }) {
   return (
     <KeyboardAvoidingView 
       style={{ flex: 1, backgroundColor: colors.background }}
-      behavior="padding" 
+      behavior="padding"
       keyboardVerticalOffset={90}
-      enabled={Platform.OS !== 'web'}
     >
       <ScrollView
         style={[styles.container, { backgroundColor: colors.background }]}

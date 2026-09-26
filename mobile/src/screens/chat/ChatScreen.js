@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, FlatList, TouchableOpacity, KeyboardAvoidingView, Platform, Keyboard } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, Platform, Keyboard } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import notifee from '@notifee/react-native';
 import * as Haptics from 'expo-haptics';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -259,13 +260,15 @@ export default function ChatScreen({ route, navigation }) {
 
   return (
     <KeyboardAvoidingView 
-      behavior="padding" 
+      // KeyboardAvoidingView из react-native-keyboard-controller (не из react-native) — он
+      // работает надёжно на обеих платформах даже при включённом edge-to-edge на Android
+      // (SDK 54), в отличие от стандартного, который под edge-to-edge вообще не компенсировал
+      // клавиатуру, из-за чего поле ввода не следовало за клавиатурой. windowSoftInputMode
+      // остаётся "pan" (см. app.json) — именно эта комбинация рекомендована документацией Expo
+      // для экранов с Bottom Tab Navigator.
+      behavior="padding"
       style={[styles.container, { backgroundColor: colors.background, flex: 1 }]}
       keyboardVerticalOffset={0}
-      // Это управляемый (managed) Expo-проект без собственного AndroidManifest.xml,
-      // поэтому предполагать принудительный windowSoftInputMode="adjustResize" от Expo нельзя —
-      // компенсация клавиатуры должна выполняться самим KeyboardAvoidingView на обеих платформах.
-      enabled={Platform.OS !== 'web'}
     >
       <ChatHeader
         colors={colors}

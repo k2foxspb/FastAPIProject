@@ -1,6 +1,8 @@
 import { initializeFirebase } from './src/utils/firebaseInit'; // Гарантированная инициализация
 import React, { useEffect } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { KeyboardProvider } from 'react-native-keyboard-controller';
 import * as Linking from 'expo-linking';
 import { Alert } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
@@ -123,10 +125,17 @@ function AppContent() {
 
 export default function App() {
   return (
-    <ThemeProvider>
-      <NotificationProvider>
-        <AppContent />
-      </NotificationProvider>
-    </ThemeProvider>
+    <SafeAreaProvider>
+      {/* KeyboardProvider из react-native-keyboard-controller обеспечивает надёжную работу
+          KeyboardAvoidingView на Android при включённом edge-to-edge (SDK 54) — обычный
+          KeyboardAvoidingView из react-native под edge-to-edge не отрабатывает надёжно. */}
+      <KeyboardProvider>
+        <ThemeProvider>
+          <NotificationProvider>
+            <AppContent />
+          </NotificationProvider>
+        </ThemeProvider>
+      </KeyboardProvider>
+    </SafeAreaProvider>
   );
 }
