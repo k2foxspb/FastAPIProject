@@ -81,4 +81,12 @@ class EmployeeResponse(BaseModel):
     is_active: bool
     workshop_id: Optional[int] = None
     section_id: Optional[int] = None
+    avatar_url: Optional[str] = None
     model_config = ConfigDict(from_attributes=True)
+
+
+class EmployeeHierarchyResponse(BaseModel):
+    """Начальники и подчинённые конкретного сотрудника по иерархии ролей."""
+    user: EmployeeResponse
+    superiors: list[EmployeeResponse] = Field(default_factory=list)
+    subordinates: list[EmployeeResponse] = Field(default_factory=list)
