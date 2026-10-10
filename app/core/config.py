@@ -68,6 +68,8 @@ elif IS_PRODUCTION:
         "fokin.fun",
         "fokin.fan",
         "web",  # Для внутренних запросов Docker
+        "localhost",  # Для healthcheck внутри контейнера (urlopen на localhost:8000)
+        "127.0.0.1",  # Для healthcheck внутри контейнера
     ]
 else:
     ALLOWED_HOSTS = [
