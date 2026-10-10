@@ -12,6 +12,7 @@ import { resolveMediaUri, getReplyPreviewText } from '../utils';
 import MediaPlaceholder from './MediaPlaceholder';
 import MessageText from './MessageText';
 import ReactionBar from './ReactionBar';
+import ReactionBadge from './ReactionBadge';
 import ReactionsListModal from './ReactionsListModal';
 
 // Одно сообщение в списке чата (текст, медиа, медиа-группа, голосовое, видео-кружок, файл, плейсхолдер загрузки)
@@ -414,27 +415,16 @@ export default function MessageItem({
         {groupedReactions.length > 0 && (
           <View style={styles.reactionsRow}>
             {groupedReactions.map(({ emoji, count, isMine }) => (
-              <TouchableOpacity
+              <ReactionBadge
                 key={emoji}
-                activeOpacity={0.7}
+                emoji={emoji}
+                count={count}
+                isMine={isMine}
+                isReceived={isReceived}
+                colors={colors}
                 onPress={() => onReact(item.id, emoji)}
                 onLongPress={() => setReactionsModalEmoji(emoji)}
-                style={[
-                  styles.reactionBadge,
-                  {
-                    backgroundColor: isMine ? colors.primary + '30' : (isReceived ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.15)'),
-                    borderWidth: isMine ? 1 : 0,
-                    borderColor: colors.primary,
-                  }
-                ]}
-              >
-                <Text style={styles.reactionBadgeEmoji}>{emoji}</Text>
-                {count > 1 && (
-                  <Text style={[styles.reactionBadgeCount, { color: isReceived ? colors.textSecondary : 'rgba(255,255,255,0.9)' }]}>
-                    {count}
-                  </Text>
-                )}
-              </TouchableOpacity>
+              />
             ))}
           </View>
         )}

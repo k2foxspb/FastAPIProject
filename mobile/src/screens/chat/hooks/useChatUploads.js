@@ -97,7 +97,10 @@ export default function useChatUploads({
         if (loaded !== undefined) setUploadingData(prev => ({ ...prev, loaded, total, ...extra }));
         
         if (status === 'completed') {
-          // Fallback: Обновляем сообщение в локальном стейте, если WS еще не прислал обновление
+          // Fallback: Обновляем сообщение в локальном стейте, если WS еще не прислал обновление.
+          // Если же плейсхолдер от сервера еще не успел дойти по WS (гонка при быстрой загрузке,
+          // например, короткого видео-кружка, укладывающегося в один чанк), добавляем готовое
+          // сообщение сами — иначе оно "пропадает" из чата до следующего сообщения или перезахода.
           if (result && result.file_path) {
             setMessages(prev => {
               const uploadIdMatch = prev.findIndex(m => m.upload_id === activeUploadId);
@@ -114,6 +117,20 @@ export default function useChatUploads({
                 };
                 return newMsgs;
               }
+
+              if (extra?.hasPlaceholder && !isGroupChat) {
+                const clientId = extra?.clientId || generateClientId();
+                const msgData = {
+                  ...buildTargetFields(),
+                  file_path: result.file_path,
+                  message_type: result.message_type || extra?.messageType || 'file',
+                  client_id: clientId,
+                  duration: extra?.duration,
+                  reply_to_id: replyingToMessage ? replyingToMessage.id : null
+                };
+                return [buildOptimisticMessage(msgData, currentUserId, replyingToMessage), ...prev];
+              }
+
               return prev;
             });
           }

@@ -77,6 +77,16 @@ export default function useChatHistory({
             if (data.client_id && msgSenderId === myIdNum) {
                const existingIdx = prev.findIndex(m => (m.client_id && m.client_id === data.client_id) || (m.id && String(m.id) === String(data.client_id)));
                if (existingIdx !== -1) {
+                 const existing = prev[existingIdx];
+                 // Запоздавший плейсхолдер (is_uploading, без file_path) не должен откатывать
+                 // уже завершенное локально сообщение (например, кружок, показанный раньше, чем
+                 // пришло это уведомление) обратно в состояние загрузки.
+                 const isIncomingWorse = existing.file_path && !existing.is_uploading && data.is_uploading && !data.file_path;
+                 if (isIncomingWorse) {
+                   const synced = [...prev];
+                   synced[existingIdx] = { ...existing, id: data.id ?? existing.id, upload_id: data.upload_id ?? existing.upload_id };
+                   return synced;
+                 }
                  const updated = [...prev];
                  updated[existingIdx] = { 
                    ...data, 
