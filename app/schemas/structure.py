@@ -58,6 +58,14 @@ class EmployeeCreate(BaseModel):
     section_id: Optional[int] = None
 
 
+class EmployeeAssign(BaseModel):
+    """Назначение производственной роли уже существующему пользователю системы."""
+    user_id: int
+    role: str = Field(description=f"Одна из ролей: {', '.join(PRODUCTION_ROLES)}")
+    workshop_id: Optional[int] = None
+    section_id: Optional[int] = None
+
+
 class EmployeeRoleUpdate(BaseModel):
     role: str = Field(description=f"Одна из ролей: {', '.join(PRODUCTION_ROLES)}")
 

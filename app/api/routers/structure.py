@@ -11,6 +11,7 @@ from app.core.roles import (
     ROLE_WORKER,
     PRODUCTION_ROLES,
     ROLE_LABELS_RU,
+    is_production_role,
     get_role_scope,
     get_role_level,
     get_assignable_roles,
@@ -29,6 +30,7 @@ from app.schemas.structure import (
     SectionCreate,
     SectionUpdate,
     EmployeeCreate,
+    EmployeeAssign,
     EmployeeRoleUpdate,
     EmployeeAssignmentUpdate,
     EmployeeResponse,
@@ -354,6 +356,60 @@ async def create_employee(
         raise HTTPException(status_code=400, detail="User with this email or phone number already exists")
     await db.refresh(new_user)
     return new_user
+
+
+@router.post("/employees/assign", response_model=EmployeeResponse, status_code=status.HTTP_201_CREATED)
+async def assign_employee(
+    data: EmployeeAssign,
+    current_user: UserModel = Depends(get_current_production_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Назначает производственную роль уже существующему пользователю системы
+    (вместо регистрации нового). Пользователь может назначить только роль
+    ниже своей и только в своей зоне ответственности; если целевой
+    пользователь уже состоит в иерархии, дополнительно проверяется, что
+    текущий пользователь имеет право им управлять (правило 3).
+    """
+    if not can_assign_role(current_user.role, data.role):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You cannot assign this role")
+
+    result = await db.execute(select(UserModel).where(UserModel.id == data.user_id))
+    target = result.scalar_one_or_none()
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if target.id == current_user.id:
+        raise HTTPException(status_code=400, detail="You cannot assign a role to yourself")
+
+    if is_production_role(target.role) and not can_manage_user(_to_scoped(current_user), _to_scoped(target)):
+        raise HTTPException(status_code=403, detail="Not enough permissions to manage this user")
+
+    resolved_workshop_id, resolved_section_id = await _resolve_section_and_workshop(
+        db, data.section_id, data.workshop_id
+    )
+
+    target_scope = get_role_scope(data.role)
+    if target_scope == "workshop" and resolved_workshop_id is None:
+        raise HTTPException(status_code=400, detail="workshop_id is required for this role")
+    if target_scope == "section" and resolved_section_id is None:
+        raise HTTPException(status_code=400, detail="section_id is required for this role")
+
+    # Проверка области ответственности текущего пользователя
+    if current_user.role != ROLE_OWNER:
+        if current_user.role == ROLE_SHOP_CHIEF:
+            if resolved_workshop_id != current_user.workshop_id:
+                raise HTTPException(status_code=403, detail="Outside of your workshop")
+        else:
+            if resolved_section_id != current_user.section_id:
+                raise HTTPException(status_code=403, detail="Outside of your section")
+
+    target.role = data.role
+    target.workshop_id = resolved_workshop_id
+    target.section_id = resolved_section_id
+    await db.commit()
+    await db.refresh(target)
+    return target
 
 
 @router.patch("/employees/{user_id}/role", response_model=EmployeeResponse)
