@@ -32,6 +32,7 @@ from app.schemas.structure import (
     EmployeeRoleUpdate,
     EmployeeAssignmentUpdate,
     EmployeeResponse,
+    EmployeeHierarchyResponse,
     MoveWorkerRequest,
 )
 
@@ -240,6 +241,51 @@ async def list_employees(
             )
         )
     return result.scalars().all()
+
+
+@router.get("/employees/{user_id}/hierarchy", response_model=EmployeeHierarchyResponse)
+async def get_employee_hierarchy(
+    user_id: int,
+    current_user: UserModel = Depends(get_current_production_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Возвращает начальников и подчинённых указанного сотрудника по иерархии ролей.
+    Доступно, если текущий пользователь может просматривать целевого пользователя
+    (владелец видит всех, остальные - в пределах своей зоны ответственности),
+    либо если это собственный профиль пользователя.
+    """
+    result = await db.execute(select(UserModel).where(UserModel.id == user_id))
+    target = result.scalar_one_or_none()
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if current_user.id != target.id and not can_view_user(_to_scoped(current_user), _to_scoped(target)):
+        raise HTTPException(status_code=403, detail="Not enough permissions to view this user's hierarchy")
+
+    all_res = await db.execute(select(UserModel).where(UserModel.role.in_(PRODUCTION_ROLES)))
+    all_employees = all_res.scalars().all()
+
+    target_scoped = _to_scoped(target)
+    superiors = [
+        u for u in all_employees
+        if u.id != target.id and can_manage_user(_to_scoped(u), target_scoped)
+    ]
+    subordinates = [
+        u for u in all_employees
+        if u.id != target.id and can_manage_user(target_scoped, _to_scoped(u))
+    ]
+
+    # Сортируем по уровню иерархии: начальники - от самого верхнего к ближайшему,
+    # подчинённые - от ближайшего к самому нижнему.
+    superiors.sort(key=lambda u: get_role_level(u.role))
+    subordinates.sort(key=lambda u: get_role_level(u.role))
+
+    return EmployeeHierarchyResponse(
+        user=EmployeeResponse.model_validate(target),
+        superiors=[EmployeeResponse.model_validate(u) for u in superiors],
+        subordinates=[EmployeeResponse.model_validate(u) for u in subordinates],
+    )
 
 
 async def _resolve_section_and_workshop(db: AsyncSession, section_id: int | None, workshop_id: int | None):
