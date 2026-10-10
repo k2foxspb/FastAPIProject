@@ -58,7 +58,7 @@ services:
 
   redis:
     restart: unless-stopped
-    image: redis:7.2-alpine
+    image: redis:7.4-alpine
     user: "0:0"
     expose:
       - "6379"
