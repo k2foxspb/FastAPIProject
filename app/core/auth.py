@@ -205,6 +205,17 @@ async def get_current_buyer(current_user: UserModel = Depends(get_current_user))
     return current_user
 
 
+async def get_current_production_user(current_user: UserModel = Depends(get_current_user)):
+    """
+    Проверяет, что пользователь имеет одну из ролей производственной иерархии
+    (владелец, начальник цеха/участка, мастер, помощник мастера, рабочий).
+    """
+    from app.core.roles import is_production_role
+    if not is_production_role(current_user.role):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied: not a production role")
+    return current_user
+
+
 def check_admin_permission(model_name: str):
     """
     Зависимость для проверки прав админа на конкретную модель.

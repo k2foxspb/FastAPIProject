@@ -16,6 +16,8 @@ from app.api.routers import (
     admin,
     news,
     testing,
+    structure,
+    announcements,
 )
 
 # Основной роутер для API v1
@@ -29,6 +31,8 @@ public_routers = [
     (tasks.router, ["tasks"]),
     (news.router, ["news"]),
     (admin.router, ["admin"]),
+    (structure.router, ["organization"]),
+    (announcements.router, ["announcements"]),
 ]
 
 # Роутеры, которые требуют защиты App Check (опционально)

@@ -10,6 +10,7 @@ if TYPE_CHECKING:
     from app.models.reviews import Reviews
     from app.models.cart_items import CartItem
     from app.models.orders import Order
+    from app.models.structure import Workshop, Section
 
 class User(Base):
     __tablename__ = "users"
@@ -21,9 +22,16 @@ class User(Base):
     first_name: Mapped[str | None] = mapped_column(String, nullable=True)
     last_name: Mapped[str | None] = mapped_column(String, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    role: Mapped[str] = mapped_column(String, default="buyer")  # "buyer", "seller", "admin", "owner"
+    role: Mapped[str] = mapped_column(String, default="buyer")
+    # Роли интернет-магазина: "buyer", "seller", "admin", "owner".
+    # Роли производственной иерархии: "owner", "shop_chief", "section_chief",
+    # "master", "assistant_master", "worker" (см. app.core.roles).
     status: Mapped[str] = mapped_column(String, default="offline", nullable=True)
     last_seen: Mapped[str] = mapped_column(String, nullable=True)
+
+    # Привязка к производственной структуре (цех/участок)
+    workshop_id: Mapped[int | None] = mapped_column(ForeignKey("workshops.id", ondelete="SET NULL"), nullable=True)
+    section_id: Mapped[int | None] = mapped_column(ForeignKey("sections.id", ondelete="SET NULL"), nullable=True)
 
     avatar_url: Mapped[str | None] = mapped_column(String, nullable=True)
     avatar_preview_url: Mapped[str | None] = mapped_column(String, nullable=True)
@@ -41,6 +49,8 @@ class User(Base):
     album_comments: Mapped[list["PhotoAlbumComment"]] = relationship("PhotoAlbumComment", back_populates="user", cascade="all, delete-orphan")
     album_reactions: Mapped[list["PhotoAlbumReaction"]] = relationship("PhotoAlbumReaction", back_populates="user", cascade="all, delete-orphan")
     admin_permissions: Mapped[list["AdminPermission"]] = relationship("AdminPermission", back_populates="admin", cascade="all, delete-orphan")
+    workshop: Mapped["Workshop | None"] = relationship("Workshop", back_populates="employees", foreign_keys=[workshop_id])
+    section: Mapped["Section | None"] = relationship("Section", back_populates="employees", foreign_keys=[section_id])
 
     # Friends relationships
     sent_friend_requests: Mapped[list["Friendship"]] = relationship(
