@@ -12,10 +12,12 @@ from app.core.roles import (
     PRODUCTION_ROLES,
     ROLE_LABELS_RU,
     get_role_scope,
+    get_role_level,
     get_assignable_roles,
     can_assign_role,
     can_manage_user,
     can_move_worker,
+    can_view_user,
 )
 from app.models.users import User as UserModel
 from app.models.structure import Workshop as WorkshopModel, Section as SectionModel
