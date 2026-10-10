@@ -5,6 +5,7 @@ import { Ionicons as Icon } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
 import { usersApi } from '../api';
+import { canAccessOrgAdmin, canManageWorkshops, canManageSections } from '../constants/roles';
 
 import { useNotifications } from '../context/NotificationContext';
 
@@ -24,8 +25,12 @@ export default function AdminScreen({ navigation }) {
     }
   }, [currentUser, loadingUser]);
 
+  // Пункты производственной иерархии (цеха/участки/сотрудники) видны в зависимости от роли
+  // пользователя в иерархии (см. app/core/roles.py) - это и есть "открытие по ролям".
   const adminMenu = [
-    { title: 'Пользователи и Роли', icon: 'people-outline', screen: 'AdminUsers', ownerOnly: true },
+    { title: 'Цеха и участки', icon: 'business-outline', screen: 'AdminWorkshops', visible: canManageWorkshops(role) || canManageSections(role) },
+    { title: 'Сотрудники', icon: 'people-circle-outline', screen: 'AdminEmployees', visible: canAccessOrgAdmin(role) },
+    { title: 'Пользователи магазина', icon: 'people-outline', screen: 'AdminUsers', ownerOnly: true },
     { title: 'Модерация', icon: 'shield-outline', screen: 'AdminModeration' },
     { title: 'Новости', icon: 'newspaper-outline', screen: 'AdminNews' },
     { title: 'Категории', icon: 'list-outline', screen: 'AdminCategories' },
@@ -37,7 +42,10 @@ export default function AdminScreen({ navigation }) {
     { title: 'Логи', icon: 'document-text-outline', screen: 'AdminLogs', ownerOnly: true },
   ];
 
-  const filteredMenu = adminMenu.filter(item => !item.ownerOnly || role === 'owner');
+  const filteredMenu = adminMenu.filter(item => {
+    if (item.visible !== undefined) return item.visible;
+    return !item.ownerOnly || role === 'owner';
+  });
 
   return (
     <ScrollView style={[styles.container, { backgroundColor: colors.background }]}>

@@ -422,11 +422,13 @@ export default function PhotoDetailScreen({ route, navigation }) {
         keyboardVerticalOffset={0}
         pointerEvents="box-none"
       >
-        {/* Верхняя панель управления */}
+        {/* Верхняя панель управления. paddingTop считаем от реального отступа безопасной зоны
+            (insets.top), а не фиксированным числом — иначе на телефонах с "чёлкой"/Dynamic
+            Island панель наезжает на системную область сверху. */}
         <View style={[
           styles.header, 
           (showDescription || selectionMode) ? { backgroundColor: 'rgba(0,0,0,0.8)' } : { backgroundColor: 'transparent' },
-          { zIndex: 50 }
+          { zIndex: 50, paddingTop: insets.top + 10 }
         ]}>
           <TouchableOpacity 
             style={styles.backButton} 
@@ -624,7 +626,9 @@ const styles = StyleSheet.create({
     top: 0, 
     left: 0, 
     right: 0, 
-    paddingTop: 40,
+    // paddingTop переопределяется инлайн через insets.top (см. JSX выше),
+    // базовое значение здесь — лишь запасной вариант до получения insets.
+    paddingTop: 10,
     paddingBottom: 10,
     paddingHorizontal: 20,
     flexDirection: 'row', 

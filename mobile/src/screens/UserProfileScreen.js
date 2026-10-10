@@ -9,6 +9,7 @@ import { useTheme } from '../context/ThemeContext';
 import { useNotifications } from '../context/NotificationContext';
 import { theme as themeConstants } from '../constants/theme';
 import { formatStatus, formatName, getAvatarUrl, stripHtml } from '../utils/formatters';
+import { isProductionRole } from '../constants/roles';
 
 export default function UserProfileScreen({ route, navigation }) {
   const { theme } = useTheme();
@@ -246,6 +247,16 @@ export default function UserProfileScreen({ route, navigation }) {
             <Text style={styles.messageBtnText}>Написать</Text>
           </TouchableOpacity>
         </View>
+
+        {isProductionRole(user.role) && (
+          <TouchableOpacity 
+            style={[styles.hierarchyBtn, { borderColor: colors.primary, borderWidth: 1 }]}
+            onPress={() => navigation.navigate('UserHierarchy', { userId: user.id, userName: formatName(user) })}
+          >
+            <Icon name="git-network-outline" size={18} color={colors.primary} />
+            <Text style={[styles.hierarchyBtnText, { color: colors.primary }]}>Подчинённые и начальники</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       <View style={styles.section}>
@@ -346,6 +357,16 @@ const styles = StyleSheet.create({
     alignItems: 'center'
   },
   messageBtnText: { color: '#fff', marginLeft: 5, fontWeight: '600' },
+  hierarchyBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 15,
+    paddingVertical: 10,
+    borderRadius: 20,
+    marginTop: 10,
+  },
+  hierarchyBtnText: { marginLeft: 8, fontWeight: '600' },
   section: { padding: 20 },
   sectionTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 15 },
   album: { marginBottom: 20 },

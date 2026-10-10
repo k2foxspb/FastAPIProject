@@ -302,7 +302,9 @@ export const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    paddingTop: 40,
+    // paddingTop переопределяется инлайн через insets.top в FullScreenMediaViewer.js,
+    // базовое значение здесь — лишь запасной вариант до получения insets.
+    paddingTop: 10,
     paddingHorizontal: 16,
     paddingBottom: 10,
     flexDirection: 'row',

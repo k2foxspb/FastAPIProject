@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, FlatList, TouchableOpacity, Modal, Pressable, StyleSheet } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import CachedMedia from '../../../components/CachedMedia';
 import { styles } from '../styles';
 import { formatMediaTime, formatBytesRu, isVideoMedia } from '../utils';
@@ -36,6 +37,9 @@ export default function FullScreenMediaViewer({
   const currentMedia = fullScreenMedia?.list[currentMediaIndex];
   const isCurrentVideo = isVideoMedia(currentMedia);
   const displayedPosition = isSeekingFullScreen ? (seekingPositionFullScreen ?? fullScreenPosition) : fullScreenPosition;
+  // Модалка рисует собственные контролы без системного заголовка, поэтому верхний отступ
+  // под статус-бар/чёлку добавляем вручную через insets.top (см. SafeAreaScreen).
+  const insets = useSafeAreaInsets();
 
   return (
     <Modal
@@ -45,7 +49,7 @@ export default function FullScreenMediaViewer({
     >
       <View style={styles.fullScreenContainer}>
         {showFullScreenControls && (
-          <View style={styles.fullScreenControlsTop}>
+          <View style={[styles.fullScreenControlsTop, { paddingTop: insets.top + 10 }]}>
             <TouchableOpacity 
               style={styles.fullScreenIconButton} 
               onPress={onDownload}

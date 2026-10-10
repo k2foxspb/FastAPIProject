@@ -4,16 +4,20 @@ import {
   StyleSheet, ActivityIndicator, Alert
 } from 'react-native';
 import { Ionicons as Icon } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { groupChatApi } from '../../api';
 import { useTheme } from '../../context/ThemeContext';
 import { theme as themeConstants } from '../../constants/theme';
 import { formatName, getAvatarUrl } from '../../utils/formatters';
 
 // Экран выбора друзей для добавления в уже существующую группу (владелец/админ).
+// Без стандартного заголовка навигатора (headerShown: false), поэтому верхний отступ
+// под статус-бар/чёлку добавляем вручную через insets.top.
 export default function AddGroupMembersScreen({ route, navigation }) {
   const { groupId, candidates } = route.params;
   const { theme } = useTheme();
   const colors = themeConstants[theme];
+  const insets = useSafeAreaInsets();
 
   const [selectedIds, setSelectedIds] = useState([]);
   const [saving, setSaving] = useState(false);
@@ -63,7 +67,7 @@ export default function AddGroupMembersScreen({ route, navigation }) {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.header, { borderBottomColor: colors.border }]}>
+      <View style={[styles.header, { borderBottomColor: colors.border, paddingTop: insets.top + 12 }]}>
         <Text style={[styles.headerTitle, { color: colors.text }]}>
           Добавить участников {selectedIds.length > 0 ? `(${selectedIds.length})` : ''}
         </Text>

@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useRef } from 'react';
 import { getShadow } from '../utils/shadowStyles';
-import { View, Text, StyleSheet, Image, FlatList, ScrollView, TouchableOpacity, Modal, TouchableWithoutFeedback, Switch, Alert, Platform, Linking, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, Image, FlatList, ScrollView, TouchableOpacity, Modal, TouchableWithoutFeedback, Switch, Alert, Platform, Linking, RefreshControl, Dimensions } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import api, { usersApi, newsApi, setAuthToken } from '../api';
 import { API_BASE_URL } from '../constants';
@@ -11,6 +12,7 @@ import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
 import { storage } from '../utils/storage';
 import { formatName, getFullUrl } from '../utils/formatters';
+import { isProductionRole, getRoleLabel, getRoleIcon, canAccessOrgAdmin } from '../constants/roles';
 import { SkeletonItem, NewsSkeleton } from '../components/SkeletonLoader';
 import { requestAllAppPermissions } from '../utils/permissions';
 
@@ -27,6 +29,7 @@ export default function ProfileScreen({ navigation }) {
   const { disconnect, currentUser, loadingUser, loadUser } = useNotifications();
   const { theme, isDark, toggleTheme, isSystemTheme, useSystemThemeSetting } = useTheme();
   const colors = themeConstants[theme];
+  const insets = useSafeAreaInsets();
 
   const handleLogout = async () => {
     setSettingsVisible(false);
@@ -358,25 +361,17 @@ export default function ProfileScreen({ navigation }) {
             style={styles.avatar} 
           />
           <View style={[styles.roleBadge, { backgroundColor: colors.primary }]}>
-            <Icon name={user.role === 'admin' || user.role === 'owner' ? "shield-checkmark" : user.role === 'seller' ? "storefront" : "person"} size={12} color="#fff" />
+            <Icon name={getRoleIcon(user.role)} size={12} color="#fff" />
           </View>
         </TouchableOpacity>
         <Text style={[styles.name, { color: colors.text }]}>{formatName(user)}</Text>
-        
+
         <View style={styles.statsContainer}>
           <View style={styles.statItem}>
-            <Text style={[styles.statValue, { color: colors.text }]}>{posts.length}</Text>
-            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Постов</Text>
-          </View>
-          <View style={[styles.statItem, { borderLeftWidth: 1, borderRightWidth: 1, borderColor: colors.border }]}>
-            <Text style={[styles.statValue, { color: colors.text }]}>{user.albums?.length || 0}</Text>
-            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Альбомов</Text>
-          </View>
-          <View style={styles.statItem}>
             <Text style={[styles.statValue, { color: colors.text, fontSize: 14 }]}>
-              {user.role === 'buyer' ? 'Клиент' : user.role === 'seller' ? 'Продавец' : 'Админ'}
+              {getRoleLabel(user.role)}
             </Text>
-            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Статус</Text>
+            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Должность</Text>
           </View>
         </View>
       </View>
@@ -390,7 +385,10 @@ export default function ProfileScreen({ navigation }) {
         <TouchableWithoutFeedback onPress={() => setSettingsVisible(false)}>
           <View style={styles.modalOverlay}>
             <TouchableWithoutFeedback>
-              <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
+              <View style={[
+                styles.modalContent,
+                { backgroundColor: colors.surface, maxHeight: Dimensions.get('window').height - insets.top - 20 },
+              ]}>
                 <View style={styles.modalHeader}>
                   <Text style={[styles.modalTitle, { color: colors.text }]}>Настройки</Text>
                   <TouchableOpacity onPress={() => setSettingsVisible(false)}>
@@ -398,7 +396,9 @@ export default function ProfileScreen({ navigation }) {
                   </TouchableOpacity>
                 </View>
 
-                {user.role === 'admin' || user.role === 'owner' ? (
+                <ScrollView showsVerticalScrollIndicator={false}>
+
+                {user.role === 'admin' || user.role === 'owner' || canAccessOrgAdmin(user.role) ? (
                   <TouchableOpacity 
                     style={[styles.menuItem, { borderBottomWidth: 1, borderBottomColor: colors.border }]} 
                     onPress={() => {
@@ -408,6 +408,19 @@ export default function ProfileScreen({ navigation }) {
                   >
                     <Icon name="shield-checkmark-outline" size={22} color={colors.primary} />
                     <Text style={[styles.menuItemText, { color: colors.text }]}>Админ-панель</Text>
+                  </TouchableOpacity>
+                ) : null}
+
+                {isProductionRole(user.role) ? (
+                  <TouchableOpacity 
+                    style={[styles.menuItem, { borderBottomWidth: 1, borderBottomColor: colors.border }]} 
+                    onPress={() => {
+                      setSettingsVisible(false);
+                      navigation.navigate('UserHierarchy', { userId: user.id, userName: formatName(user) });
+                    }}
+                  >
+                    <Icon name="git-network-outline" size={22} color={colors.primary} />
+                    <Text style={[styles.menuItemText, { color: colors.text }]}>Подчинённые и начальники</Text>
                   </TouchableOpacity>
                 ) : null}
 
@@ -543,6 +556,7 @@ export default function ProfileScreen({ navigation }) {
                   <Icon name="log-out-outline" size={22} color={colors.error} />
                   <Text style={[styles.menuItemText, { color: colors.error }]}>Выйти из аккаунта</Text>
                 </TouchableOpacity>
+                </ScrollView>
               </View>
             </TouchableWithoutFeedback>
           </View>

@@ -12,6 +12,7 @@ import UploadPhotoScreen from '../screens/UploadPhotoScreen';
 import EditProfileScreen from '../screens/EditProfileScreen';
 import UsersScreen from '../screens/UsersScreen';
 import UserProfileScreen from '../screens/UserProfileScreen';
+import UserHierarchyScreen from '../screens/UserHierarchyScreen';
 import UserMediaScreen from '../screens/UserMediaScreen';
 import ChatListScreen from '../screens/ChatListScreen';
 import ChatScreen from '../screens/chat/ChatScreen';
@@ -31,6 +32,9 @@ import LoginScreen from '../screens/LoginScreen';
 import WebViewScreen from '../screens/WebViewScreen';
 import AdminScreen from '../screens/AdminScreen';
 import AdminUsersScreen from '../screens/AdminUsersScreen';
+import AdminWorkshopsScreen from '../screens/AdminWorkshopsScreen';
+import AdminSectionsScreen from '../screens/AdminSectionsScreen';
+import AdminEmployeesScreen from '../screens/AdminEmployeesScreen';
 import AdminModerationScreen from '../screens/AdminModerationScreen';
 import AdminNewsScreen from '../screens/AdminNewsScreen';
 import AdminChatsScreen from '../screens/AdminChatsScreen';
@@ -77,6 +81,7 @@ function ChatStack() {
         })} 
       />
       <Stack.Screen name="UserProfile" component={UserProfileScreen} options={{ title: 'Профиль пользователя' }} />
+      <Stack.Screen name="UserHierarchy" component={UserHierarchyScreen} options={{ title: 'Иерархия' }} />
       <Stack.Screen name="UserMedia" component={UserMediaScreen} options={{ title: 'Медиафайлы' }} />
       <Stack.Screen 
         name="PhotoDetail" 
@@ -139,6 +144,9 @@ function ProfileStack() {
       <Stack.Screen name="EditProfile" component={EditProfileScreen} options={{ title: 'Редактировать профиль' }} />
       <Stack.Screen name="Admin" component={AdminScreen} options={{ title: 'Админка' }} />
       <Stack.Screen name="AdminUsers" component={AdminUsersScreen} options={{ title: 'Пользователи' }} />
+      <Stack.Screen name="AdminWorkshops" component={AdminWorkshopsScreen} options={{ title: 'Цеха' }} />
+      <Stack.Screen name="AdminSections" component={AdminSectionsScreen} options={{ title: 'Участки' }} />
+      <Stack.Screen name="AdminEmployees" component={AdminEmployeesScreen} options={{ title: 'Сотрудники' }} />
       <Stack.Screen name="AdminModeration" component={AdminModerationScreen} options={{ title: 'Модерация' }} />
       <Stack.Screen name="AdminNews" component={AdminNewsScreen} options={{ title: 'Новости' }} />
       <Stack.Screen name="AdminCategories" component={AdminCategoriesScreen} options={{ title: 'Категории' }} />
@@ -153,6 +161,7 @@ function ProfileStack() {
       <Stack.Screen name="MyLikes" component={MyLikesScreen} options={{ title: 'Понравилось' }} />
       <Stack.Screen name="MyReviews" component={MyReviewsScreen} options={{ title: 'Мои отзывы' }} />
       <Stack.Screen name="UserProfile" component={UserProfileScreen} options={{ title: 'Профиль пользователя' }} />
+      <Stack.Screen name="UserHierarchy" component={UserHierarchyScreen} options={{ title: 'Иерархия' }} />
       <Stack.Screen name="WebView" component={WebViewScreen} />
       <Stack.Screen name="VerifyEmail" component={LoginScreen} options={{ title: 'Подтверждение' }} />
       <Stack.Screen name="VerifyEmailBridge" component={LoginScreen} options={{ title: 'Подтверждение' }} />
@@ -185,6 +194,7 @@ function UsersStack() {
     >
       <Stack.Screen name="UsersMain" component={UsersScreen} options={{ title: 'Пользователи' }} />
       <Stack.Screen name="UserProfile" component={UserProfileScreen} options={{ title: 'Профиль пользователя' }} />
+      <Stack.Screen name="UserHierarchy" component={UserHierarchyScreen} options={{ title: 'Иерархия' }} />
       <Stack.Screen name="UserMedia" component={UserMediaScreen} options={{ title: 'Медиафайлы' }} />
       <Stack.Screen 
         name="PhotoDetail" 
@@ -217,6 +227,7 @@ function FeedStack() {
       <Stack.Screen name="EditProduct" component={EditProductScreen} options={{ title: 'Товар' }} />
       <Stack.Screen name="ProductDetail" component={ProductDetailScreen} options={{ title: 'О товаре' }} />
       <Stack.Screen name="UserProfile" component={UserProfileScreen} options={{ title: 'Профиль пользователя' }} />
+      <Stack.Screen name="UserHierarchy" component={UserHierarchyScreen} options={{ title: 'Иерархия' }} />
       <Stack.Screen name="UserMedia" component={UserMediaScreen} options={{ title: 'Медиафайлы' }} />
     </Stack.Navigator>
   );

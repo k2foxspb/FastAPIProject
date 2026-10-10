@@ -199,6 +199,26 @@ export const usersApi = {
   getMyPhotoComments: () => api.get('/users/me/photo-comments'),
 };
 
+export const orgApi = {
+  getAssignableRoles: () => api.get('/org/roles/assignable'),
+  getWorkshops: (workshopId) => api.get('/org/workshops', { params: { workshop_id: workshopId } }),
+  createWorkshop: (data) => api.post('/org/workshops', data),
+  updateWorkshop: (workshopId, data) => api.patch(`/org/workshops/${workshopId}`, data),
+  deleteWorkshop: (workshopId) => api.delete(`/org/workshops/${workshopId}`),
+  getSections: (workshopId) => api.get('/org/sections', { params: { workshop_id: workshopId } }),
+  createSection: (data) => api.post('/org/sections', data),
+  updateSection: (sectionId, data) => api.patch(`/org/sections/${sectionId}`, data),
+  deleteSection: (sectionId) => api.delete(`/org/sections/${sectionId}`),
+  getEmployees: () => api.get('/org/employees'),
+  getEmployeeHierarchy: (userId) => api.get(`/org/employees/${userId}/hierarchy`),
+  createEmployee: (data) => api.post('/org/employees', data),
+  assignEmployee: (data) => api.post('/org/employees/assign', data),
+  updateEmployeeRole: (userId, role) => api.patch(`/org/employees/${userId}/role`, { role }),
+  updateEmployeeAssignment: (userId, data) => api.patch(`/org/employees/${userId}/assignment`, data),
+  deleteEmployee: (userId) => api.delete(`/org/employees/${userId}`),
+  moveWorker: (userId, sectionId) => api.post(`/org/employees/${userId}/move`, { section_id: sectionId }),
+};
+
 export const productsApi = {
   getProducts: (params) => api.get('/products/', { params }),
   getProduct: (id) => api.get(`/products/${id}`),
