@@ -28,7 +28,7 @@ services:
       context: .
       dockerfile: app/Dockerfile.prod.yml
     # Запускаем миграции, инициализацию БД и сервер Gunicorn
-    command: sh -c "alembic upgrade head && python -m app.init_db && gunicorn app.main:app --workers 4 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000"
+    command: sh -c "alembic upgrade head && python -m app.init_db && gunicorn app.main:app --workers 2 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000"
     volumes:
       - media_data:/home/fast/app/media
     env_file:
@@ -41,9 +41,9 @@ services:
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
     depends_on:
       db:
         condition: service_healthy
