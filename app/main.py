@@ -10,6 +10,8 @@ from app.core.config import ENABLE_API_DOCS
 from app.api.routers import api_router
 from app.api.routers.health import router as health_router
 from app.api.routers.seo import router as seo_router
+from app.database import async_session_maker
+from app.core.roles import load_positions_cache
 
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -52,6 +54,17 @@ def create_application() -> FastAPI:
     app.include_router(api_router, prefix="")
     app.include_router(health_router)
     app.include_router(seo_router)
+
+    @app.on_event("startup")
+    async def _load_positions_on_startup():
+        # Должности производственной иерархии теперь хранятся в БД
+        # (см. app.core.roles) - подгружаем их в кэш при старте, чтобы не
+        # делать синхронный запрос к БД внутри каждой проверки иерархии.
+        try:
+            async with async_session_maker() as session:
+                await load_positions_cache(session)
+        except Exception as e:
+            logger.warning(f"Could not preload positions cache on startup: {e}")
 
 
     # Static files (media)
