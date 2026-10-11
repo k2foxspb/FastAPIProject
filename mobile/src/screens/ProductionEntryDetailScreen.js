@@ -120,7 +120,8 @@ export default function ProductionEntryDetailScreen({ navigation, route }) {
           <Text style={[styles.employeeName, { color: colors.text }]}>{formatName(entry.user)}</Text>
           <Text style={[styles.date, { color: colors.textSecondary }]}>{entry.date}</Text>
           <Text style={[styles.hours, { color: colors.textSecondary }]}>
-            Часы из табеля за этот день: {entry.hours != null ? entry.hours : '—'}
+            Основное время: {entry.base_hours != null ? entry.base_hours : '—'} ч
+            {entry.overtime_hours > 0 ? `, сверхурочное: ${entry.overtime_hours} ч` : ''}
           </Text>
           <View style={[styles.statusBadge, { backgroundColor: (STATUS_COLORS[entry.status] || colors.border) + '22', alignSelf: 'flex-start' }]}>
             <Text style={[styles.statusText, { color: STATUS_COLORS[entry.status] || colors.textSecondary }]}>

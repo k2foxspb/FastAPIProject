@@ -1,4 +1,5 @@
 from datetime import datetime
+from decimal import Decimal
 from pydantic import BaseModel, EmailStr, Field, ConfigDict, field_validator
 from typing import Any, Optional
 
@@ -10,12 +11,17 @@ class UserCreate(BaseModel):
     last_name: str | None = Field(default=None, description="Фамилия")
     role: str = Field(default="worker", pattern="^(worker|assistant_master|master|section_chief|shop_chief|admin|owner)$",
                       description="Роль: производственная иерархия, 'admin' или 'owner'")
+    tab_number: str | None = Field(default=None, max_length=50, description="Табельный номер сотрудника")
+    work_schedule_hours: Decimal | None = Field(default=Decimal("8"), ge=0, le=24,
+                                                 description="График работы - часов в день (например 8 или 7.2)")
 
 
 class UserUpdate(BaseModel):
     email: EmailStr | None = None
     first_name: str | None = None
     last_name: str | None = None
+    tab_number: str | None = None
+    work_schedule_hours: Decimal | None = None
 
 class ReactorInfo(BaseModel):
     id: int
@@ -378,6 +384,8 @@ class User(BaseModel):
     role: str = "worker"
     status: Optional[str] = "offline"
     last_seen: Optional[str] = None
+    tab_number: Optional[str] = None
+    work_schedule_hours: Optional[Decimal] = None
     avatar_url: Optional[str] = None
     avatar_preview_url: Optional[str] = None
     fcm_token: Optional[str] = None
@@ -405,6 +413,8 @@ class User(BaseModel):
                     "role": obj.get("role", "worker"),
                     "status": obj.get("status", "offline"),
                     "last_seen": obj.get("last_seen"),
+                    "tab_number": obj.get("tab_number"),
+                    "work_schedule_hours": obj.get("work_schedule_hours"),
                     "avatar_url": obj.get("avatar_url"),
                     "avatar_preview_url": obj.get("avatar_preview_url"),
                     "fcm_token": obj.get("fcm_token"),
@@ -428,6 +438,8 @@ class User(BaseModel):
                 "role": str(getattr(obj, "role", "worker")),
                 "status": str(getattr(obj, "status", "offline")),
                 "last_seen": getattr(obj, "last_seen", None),
+                "tab_number": getattr(obj, "tab_number", None),
+                "work_schedule_hours": getattr(obj, "work_schedule_hours", None),
                 "avatar_url": getattr(obj, "avatar_url", None),
                 "avatar_preview_url": getattr(obj, "avatar_preview_url", None),
                 "fcm_token": getattr(obj, "fcm_token", None),

@@ -42,9 +42,6 @@ const DAY_COL_WIDTH = 44;
 // друга (раньше ячейка имени была выше ячейки дня из-за своего контента, и
 // строки расходились по вертикали при скролле вниз).
 const ROW_HEIGHT = 66;
-// Норма рабочего дня, после которой часы считаются сверхурочными - должна
-// совпадать с TIMESHEET_DAY_NORM_HOURS на бэкенде (app/api/routers/timesheet.py).
-const NORM_HOURS = 8;
 
 // Сводная таблица подчинённых вышестоящего пользователя: по строкам -
 // сотрудники, по столбцам - дни месяца с часами из табеля и статусом
@@ -63,7 +60,8 @@ export default function TabelSubordinatesTableScreen({ navigation }) {
 
   const [hoursModalVisible, setHoursModalVisible] = useState(false);
   const [hoursModalTarget, setHoursModalTarget] = useState(null); // { userId, userName, date }
-  const [hoursValue, setHoursValue] = useState('');
+  const [baseHoursValue, setBaseHoursValue] = useState('');
+  const [overtimeHoursValue, setOvertimeHoursValue] = useState('');
   const [savingHours, setSavingHours] = useState(false);
   const [exporting, setExporting] = useState(false);
 
@@ -96,7 +94,8 @@ export default function TabelSubordinatesTableScreen({ navigation }) {
 
   const openHoursModal = (user, day) => {
     setHoursModalTarget({ userId: user.id, userName: formatName(user), date: day.date });
-    setHoursValue(day.hours > 0 ? String(day.hours) : '');
+    setBaseHoursValue(day.base_hours > 0 ? String(day.base_hours) : '');
+    setOvertimeHoursValue(day.overtime_hours > 0 ? String(day.overtime_hours) : '');
     setHoursModalVisible(true);
   };
 
@@ -113,17 +112,24 @@ export default function TabelSubordinatesTableScreen({ navigation }) {
   };
 
   const saveHours = async () => {
-    const hoursValueStr = hoursValue.replace(',', '.').trim();
-    const parsed = hoursValueStr === '' ? 0 : parseFloat(hoursValueStr);
-    if (isNaN(parsed) || parsed < 0 || parsed > 24) {
-      Alert.alert('Ошибка', 'Часы должны быть числом от 0 до 24');
+    const baseStr = baseHoursValue.replace(',', '.').trim();
+    const overtimeStr = overtimeHoursValue.replace(',', '.').trim();
+    const parsedBase = baseStr === '' ? 0 : parseFloat(baseStr);
+    const parsedOvertime = overtimeStr === '' ? 0 : parseFloat(overtimeStr);
+    if (isNaN(parsedBase) || parsedBase < 0 || parsedBase > 24) {
+      Alert.alert('Ошибка', 'Основное время должно быть числом от 0 до 24');
+      return;
+    }
+    if (isNaN(parsedOvertime) || parsedOvertime < 0 || parsedOvertime > 24) {
+      Alert.alert('Ошибка', 'Сверхурочное время должно быть числом от 0 до 24');
       return;
     }
     setSavingHours(true);
     try {
       await timesheetApi.upsertTimesheetDay(hoursModalTarget.userId, {
         date: hoursModalTarget.date,
-        hours: parsed,
+        hours: parsedBase,
+        overtime_hours: parsedOvertime,
         comment: '',
       });
       setHoursModalVisible(false);
@@ -257,9 +263,8 @@ export default function TabelSubordinatesTableScreen({ navigation }) {
                       const dayNum = parseInt(day.date.split('-')[2], 10);
                       const weekend = isWeekend(year, month, dayNum);
                       const statusColor = day.status ? (STATUS_COLORS[day.status] || colors.border) : null;
-                      const hours = day.hours || 0;
-                      const baseHours = Math.min(hours, NORM_HOURS);
-                      const overtimeHours = Math.max(hours - NORM_HOURS, 0);
+                      const baseHours = day.base_hours || 0;
+                      const overtimeHours = day.overtime_hours || 0;
                       return (
                         <TouchableOpacity
                           key={day.date}
@@ -316,15 +321,24 @@ export default function TabelSubordinatesTableScreen({ navigation }) {
                   <Text style={[styles.modalTitle, { color: colors.text }]}>
                     {hoursModalTarget?.userName} · {hoursModalTarget?.date}
                   </Text>
-                  <Text style={[styles.modalLabel, { color: colors.textSecondary }]}>Часы за день</Text>
+                  <Text style={[styles.modalLabel, { color: colors.textSecondary }]}>Основное время</Text>
                   <TextInput
                     style={[styles.modalInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]}
-                    value={hoursValue}
-                    onChangeText={setHoursValue}
+                    value={baseHoursValue}
+                    onChangeText={setBaseHoursValue}
                     keyboardType="decimal-pad"
                     placeholder="0"
                     placeholderTextColor={colors.textSecondary}
                     autoFocus
+                  />
+                  <Text style={[styles.modalLabel, { color: colors.textSecondary, marginTop: 10 }]}>Сверхурочное время</Text>
+                  <TextInput
+                    style={[styles.modalInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]}
+                    value={overtimeHoursValue}
+                    onChangeText={setOvertimeHoursValue}
+                    keyboardType="decimal-pad"
+                    placeholder="0"
+                    placeholderTextColor={colors.textSecondary}
                   />
                   <TouchableOpacity
                     style={[styles.modalSaveBtn, { backgroundColor: colors.primary }]}

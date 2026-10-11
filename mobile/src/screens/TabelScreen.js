@@ -125,7 +125,8 @@ export default function TabelScreen({ navigation, route }) {
     navigation.navigate('ProductionEntryForm', {
       date: day.date,
       entryId: day.entry?.id,
-      hours: day.hours,
+      baseHours: day.baseHours,
+      overtimeHours: day.overtimeHours,
       userId: targetUser.id,
       isOwnTimesheet,
       canEditHours,
@@ -182,6 +183,8 @@ export default function TabelScreen({ navigation, route }) {
         day,
         weekday: mondayFirstWeekday(year, month, day),
         hours: info?.hours ?? 0,
+        baseHours: info?.base_hours ?? 0,
+        overtimeHours: info?.overtime_hours ?? 0,
         entry: info?.entry || null,
       });
     }
@@ -237,8 +240,11 @@ export default function TabelScreen({ navigation, route }) {
       >
         <Text style={[styles.cellDay, { color: weekend ? '#DC2626' : colors.text }]}>{cell.day}</Text>
         <Text style={[styles.cellHours, { color: colors.textSecondary }]}>
-          {cell.hours > 0 ? `${cell.hours} ч` : '—'}
+          {cell.baseHours > 0 ? `${cell.baseHours} ч` : '—'}
         </Text>
+        {cell.overtimeHours > 0 && (
+          <Text style={[styles.cellOvertime, { color: '#F59E0B' }]}>+{cell.overtimeHours}</Text>
+        )}
         {statusColor && <View style={[styles.statusDot, { backgroundColor: statusColor }]} />}
       </TouchableOpacity>
     );
@@ -370,6 +376,7 @@ const styles = StyleSheet.create({
   },
   cellDay: { fontSize: 13, fontWeight: '700' },
   cellHours: { fontSize: 11, marginTop: 2 },
+  cellOvertime: { fontSize: 10, marginTop: 1, fontWeight: '600' },
   statusDot: { position: 'absolute', top: 4, right: 4, width: 7, height: 7, borderRadius: 3.5 },
   legend: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 15, justifyContent: 'center' },
   legendItem: { flexDirection: 'row', alignItems: 'center', marginHorizontal: 8, marginBottom: 6 },

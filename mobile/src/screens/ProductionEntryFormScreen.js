@@ -29,7 +29,8 @@ export default function ProductionEntryFormScreen({ navigation, route }) {
   const [status, setStatus] = useState('draft');
   const [reviewerComment, setReviewerComment] = useState(null);
   const [canEdit, setCanEdit] = useState(true);
-  const [hours, setHours] = useState(String(route.params.hours ?? ''));
+  const [baseHours, setBaseHours] = useState(String(route.params.baseHours ?? ''));
+  const [overtimeHours, setOvertimeHours] = useState(String(route.params.overtimeHours ?? ''));
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [savingHours, setSavingHours] = useState(false);
@@ -48,7 +49,8 @@ export default function ProductionEntryFormScreen({ navigation, route }) {
         setStatus(entry.status);
         setReviewerComment(entry.reviewer_comment);
         setCanEdit(entry.can_edit);
-        setHours(String(entry.hours ?? ''));
+        setBaseHours(String(entry.base_hours ?? ''));
+        setOvertimeHours(String(entry.overtime_hours ?? ''));
         setItems(entry.items.map(i => ({
           product_id: i.product_id,
           product_name: i.product?.name || '',
@@ -134,15 +136,23 @@ export default function ProductionEntryFormScreen({ navigation, route }) {
   };
 
   const saveHours = async () => {
-    const hoursValue = hours.replace(',', '.').trim();
-    const parsed = hoursValue === '' ? 0 : parseFloat(hoursValue);
-    if (isNaN(parsed) || parsed < 0 || parsed > 24) {
-      Alert.alert('Ошибка', 'Часы должны быть числом от 0 до 24');
+    const baseValue = baseHours.replace(',', '.').trim();
+    const overtimeValue = overtimeHours.replace(',', '.').trim();
+    const parsedBase = baseValue === '' ? 0 : parseFloat(baseValue);
+    const parsedOvertime = overtimeValue === '' ? 0 : parseFloat(overtimeValue);
+    if (isNaN(parsedBase) || parsedBase < 0 || parsedBase > 24) {
+      Alert.alert('Ошибка', 'Основное время должно быть числом от 0 до 24');
+      return;
+    }
+    if (isNaN(parsedOvertime) || parsedOvertime < 0 || parsedOvertime > 24) {
+      Alert.alert('Ошибка', 'Сверхурочное время должно быть числом от 0 до 24');
       return;
     }
     setSavingHours(true);
     try {
-      await timesheetApi.upsertTimesheetDay(userId, { date, hours: parsed, comment: '' });
+      await timesheetApi.upsertTimesheetDay(userId, {
+        date, hours: parsedBase, overtime_hours: parsedOvertime, comment: '',
+      });
     } catch (err) {
       Alert.alert('Ошибка', err.response?.data?.detail || 'Не удалось сохранить часы');
     } finally {
@@ -183,14 +193,28 @@ export default function ProductionEntryFormScreen({ navigation, route }) {
         <Text style={[styles.dateLabel, { color: colors.text }]}>{date}</Text>
 
         <View style={styles.hoursRow}>
-          <Text style={[styles.hoursLabel, { color: colors.textSecondary }]}>Часы за день:</Text>
+          <Text style={[styles.hoursLabel, { color: colors.textSecondary }]}>Основное время:</Text>
           <TextInput
             style={[
               styles.hoursInput,
               { color: colors.text, borderColor: colors.border, backgroundColor: colors.surface },
             ]}
-            value={hours}
-            onChangeText={setHours}
+            value={baseHours}
+            onChangeText={setBaseHours}
+            onBlur={saveHours}
+            keyboardType="decimal-pad"
+            placeholder="0"
+            placeholderTextColor={colors.textSecondary}
+            editable={canEditHours}
+          />
+          <Text style={[styles.hoursLabel, { color: colors.textSecondary, marginLeft: 16 }]}>Сверхурочное:</Text>
+          <TextInput
+            style={[
+              styles.hoursInput,
+              { color: colors.text, borderColor: colors.border, backgroundColor: colors.surface },
+            ]}
+            value={overtimeHours}
+            onChangeText={setOvertimeHours}
             onBlur={saveHours}
             keyboardType="decimal-pad"
             placeholder="0"
@@ -310,7 +334,7 @@ const styles = StyleSheet.create({
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   header: { padding: 15, borderBottomWidth: 1 },
   dateLabel: { fontSize: 18, fontWeight: '700' },
-  hoursRow: { flexDirection: 'row', alignItems: 'center', marginTop: 10 },
+  hoursRow: { flexDirection: 'row', alignItems: 'center', marginTop: 10, flexWrap: 'wrap' },
   hoursLabel: { fontSize: 13, marginRight: 8 },
   hoursInput: { width: 70, height: 38, borderWidth: 1, borderRadius: 8, textAlign: 'center' },
   statusLabel: { fontSize: 13, fontWeight: 'bold', marginTop: 8 },

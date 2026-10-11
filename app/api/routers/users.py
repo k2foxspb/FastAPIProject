@@ -58,6 +58,7 @@ from firebase_admin import auth as firebase_auth
 from PIL import Image
 from fastapi import UploadFile, File, Form
 from datetime import datetime
+from decimal import Decimal, InvalidOperation
 from app.utils import storage
 
 from sqlalchemy.orm import selectinload
@@ -340,6 +341,8 @@ async def update_me(
     phone_number: str | None = Form(None),
     first_name: str | None = Form(None),
     last_name: str | None = Form(None),
+    tab_number: str | None = Form(None),
+    work_schedule_hours: str | None = Form(None),
     avatar: UploadFile = File(None),
     current_user: UserModel = Depends(get_current_user),
     db: AsyncSession = Depends(get_async_db)
@@ -367,6 +370,13 @@ async def update_me(
         current_user.first_name = first_name
     if last_name is not None:
         current_user.last_name = last_name
+    if tab_number is not None:
+        current_user.tab_number = tab_number
+    if work_schedule_hours is not None:
+        try:
+            current_user.work_schedule_hours = Decimal(work_schedule_hours.replace(',', '.'))
+        except InvalidOperation:
+            raise HTTPException(status_code=400, detail="Некорректное значение графика работы")
     
     if avatar:
         # Сохраняем аватарку (используем существующую функцию сохранения фото)
@@ -429,6 +439,8 @@ async def create_user(
     first_name: str = Form(...),
     last_name: str = Form(...),
     role: str = Form("worker"),
+    tab_number: str | None = Form(None),
+    work_schedule_hours: str | None = Form("8"),
     avatar: UploadFile = File(None)
 ):
     """
@@ -465,6 +477,15 @@ async def create_user(
         except Exception as e:
             print(f"Error saving registration avatar: {e}")
 
+    # Табельный номер и график работы указываются уже при регистрации
+    parsed_work_schedule_hours = Decimal("8")
+    if work_schedule_hours is not None and str(work_schedule_hours).strip() != "":
+        try:
+            parsed_work_schedule_hours = Decimal(str(work_schedule_hours).replace(',', '.'))
+        except InvalidOperation:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                                detail="Некорректное значение графика работы")
+
     # Создание объекта пользователя
     db_user = UserModel(
         email=email,
@@ -473,6 +494,8 @@ async def create_user(
         first_name=first_name,
         last_name=last_name,
         role=role,
+        tab_number=tab_number,
+        work_schedule_hours=parsed_work_schedule_hours,
         is_active=True,
         avatar_url=avatar_url,
         avatar_preview_url=avatar_preview_url

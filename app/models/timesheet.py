@@ -55,6 +55,10 @@ class TimesheetEntry(Base):
     # чтобы в сводных таблицах/выгрузке не приходилось высчитывать его
     # автоматически по норме рабочего дня.
     overtime_hours: Mapped[float] = mapped_column(Numeric(5, 2), nullable=False, default=0)
+    # Текстовая отметка вместо часов - например "Больничный лист", "Отпуск",
+    # "Прогул" и т.п. Если заполнена, UI показывает её вместо числа часов,
+    # а сами часы при этом могут оставаться нулевыми.
+    text_value: Mapped[str | None] = mapped_column(String(100), nullable=True)
     comment: Mapped[str | None] = mapped_column(String, nullable=True)
 
     created_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)

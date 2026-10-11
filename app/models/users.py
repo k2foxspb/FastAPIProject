@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import Boolean, Integer, String, ForeignKey, DateTime
+from sqlalchemy import Boolean, Integer, String, ForeignKey, DateTime, Numeric
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from typing import TYPE_CHECKING
@@ -24,6 +24,12 @@ class User(Base):
     # "assistant_master", "worker" — см. app.core.roles).
     status: Mapped[str] = mapped_column(String, default="offline", nullable=True)
     last_seen: Mapped[str] = mapped_column(String, nullable=True)
+
+    # Табельный номер сотрудника (указывается при регистрации/оформлении).
+    tab_number: Mapped[str | None] = mapped_column(String, nullable=True)
+    # График работы - сколько часов в день обычно работает сотрудник
+    # (например 8 или 7.2 при сокращённом дне).
+    work_schedule_hours: Mapped[float | None] = mapped_column(Numeric(4, 2), nullable=True, default=8)
 
     # Привязка к производственной структуре (цех/участок)
     workshop_id: Mapped[int | None] = mapped_column(ForeignKey("workshops.id", ondelete="SET NULL"), nullable=True)
