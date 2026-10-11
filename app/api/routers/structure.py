@@ -140,6 +140,45 @@ async def create_position(
     return position
 
 
+@router.patch("/positions/reorder", response_model=list[PositionSchema])
+async def reorder_positions(
+    data: PositionReorderRequest,
+    owner: UserModel = Depends(get_current_owner),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Задаёт новую иерархию должностей списком пар (id, level)."""
+    # Этот маршрут должен быть объявлен раньше PATCH /positions/{position_id},
+    # иначе FastAPI будет пытаться распарсить "reorder" как int position_id
+    # и отвечать 422 Unprocessable Entity вместо вызова этого обработчика.
+    ids = [item.id for item in data.positions]
+    result = await db.execute(select(PositionModel).where(PositionModel.id.in_(ids)))
+    positions_by_id = {p.id: p for p in result.scalars().all()}
+    if len(positions_by_id) != len(ids):
+        raise HTTPException(status_code=404, detail="Some positions were not found")
+
+    levels = [item.level for item in data.positions]
+    if len(set(levels)) != len(levels):
+        raise HTTPException(status_code=400, detail="Levels must be unique")
+
+    # Поле level в БД уникально, поэтому при перестановке (например, простой
+    # swap двух соседних должностей) прямое присвоение новых значений может
+    # на мгновение столкнуться со старым значением ещё не обновлённой строки
+    # и упасть с ошибкой уникальности. Поэтому сначала переводим все
+    # затрагиваемые должности на заведомо свободные временные (отрицательные)
+    # уровни одним flush, и только потом проставляем финальные значения.
+    for item in data.positions:
+        positions_by_id[item.id].level = -(item.id)
+    await db.flush()
+
+    for item in data.positions:
+        positions_by_id[item.id].level = item.level
+    await db.commit()
+    await load_positions_cache(db)
+
+    result = await db.execute(select(PositionModel).order_by(PositionModel.level.asc()))
+    return result.scalars().all()
+
+
 @router.patch("/positions/{position_id}", response_model=PositionSchema)
 async def update_position(
     position_id: int,
@@ -169,42 +208,6 @@ async def update_position(
     await db.refresh(position)
     await load_positions_cache(db)
     return position
-
-
-@router.patch("/positions/reorder", response_model=list[PositionSchema])
-async def reorder_positions(
-    data: PositionReorderRequest,
-    owner: UserModel = Depends(get_current_owner),
-    db: AsyncSession = Depends(get_async_db),
-):
-    """Задаёт новую иерархию должностей списком пар (id, level)."""
-    ids = [item.id for item in data.positions]
-    result = await db.execute(select(PositionModel).where(PositionModel.id.in_(ids)))
-    positions_by_id = {p.id: p for p in result.scalars().all()}
-    if len(positions_by_id) != len(ids):
-        raise HTTPException(status_code=404, detail="Some positions were not found")
-
-    levels = [item.level for item in data.positions]
-    if len(set(levels)) != len(levels):
-        raise HTTPException(status_code=400, detail="Levels must be unique")
-
-    # Поле level в БД уникально, поэтому при перестановке (например, простой
-    # swap двух соседних должностей) прямое присвоение новых значений может
-    # на мгновение столкнуться со старым значением ещё не обновлённой строки
-    # и упасть с ошибкой уникальности. Поэтому сначала переводим все
-    # затрагиваемые должности на заведомо свободные временные (отрицательные)
-    # уровни одним flush, и только потом проставляем финальные значения.
-    for item in data.positions:
-        positions_by_id[item.id].level = -(item.id)
-    await db.flush()
-
-    for item in data.positions:
-        positions_by_id[item.id].level = item.level
-    await db.commit()
-    await load_positions_cache(db)
-
-    result = await db.execute(select(PositionModel).order_by(PositionModel.level.asc()))
-    return result.scalars().all()
 
 
 @router.delete("/positions/{position_id}", status_code=status.HTTP_204_NO_CONTENT)
