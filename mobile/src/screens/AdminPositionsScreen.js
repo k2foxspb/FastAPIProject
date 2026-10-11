@@ -22,8 +22,10 @@ const getScopeLabel = (scope) => SCOPE_OPTIONS.find(o => o.value === scope)?.lab
 // Список должностей производственной иерархии. Должности больше не
 // захардкожены в коде - владелец может создавать новые, менять их название,
 // область ответственности и место в иерархии (см. GET/POST/PATCH /org/positions
-// в app/api/routers/structure.py). Системные должности (владелец, рабочий)
-// нельзя удалить - на них завязана часть бизнес-логики.
+// в app/api/routers/structure.py). Системную должность "Владелец" удалить
+// нельзя - на ней завязана часть бизнес-логики. На самом нижнем уровне
+// (область "Только себя") можно создать сколько угодно разных должностей -
+// они делят один и тот же уровень иерархии и равноправны между собой.
 export default function AdminPositionsScreen() {
   const { theme } = useTheme();
   const colors = themeConstants[theme];
@@ -114,8 +116,27 @@ export default function AdminPositionsScreen() {
     const reordered = [...positions];
     [reordered[index], reordered[targetIndex]] = [reordered[targetIndex], reordered[index]];
 
+    // Должностям со scope="self" (самый нижний уровень) нельзя назначать
+    // отдельный уникальный level на каждую - они все делят один и тот же
+    // (самый низкий) уровень, иначе неограниченное число должностей на
+    // нижнем уровне развалилось бы при первой же перестановке.
+    let level = 0;
+    let selfLevel = null;
+    const payload = reordered.map((p) => {
+      if (p.scope === 'self') {
+        if (selfLevel === null) {
+          selfLevel = level;
+          level += 1;
+        }
+        return { id: p.id, level: selfLevel };
+      }
+      const assignedLevel = level;
+      level += 1;
+      return { id: p.id, level: assignedLevel };
+    });
+
     try {
-      await orgApi.reorderPositions(reordered.map((p, i) => ({ id: p.id, level: i })));
+      await orgApi.reorderPositions(payload);
       await fetchPositions();
     } catch (err) {
       Alert.alert('Ошибка', err.response?.data?.detail || 'Не удалось изменить иерархию');

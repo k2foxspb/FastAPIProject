@@ -20,10 +20,14 @@ class Position(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     code: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
-    level: Mapped[int] = mapped_column(Integer, nullable=False, unique=True)
+    # level больше не обязан быть уникальным: на самом нижнем уровне
+    # иерархии (scope="self") можно завести сколько угодно разных
+    # должностей с одним и тем же level - они равноправны и не управляют
+    # друг другом (см. проверку уникальности в app/api/routers/structure.py).
+    level: Mapped[int] = mapped_column(Integer, nullable=False)
     # Область ответственности: "global", "workshop", "section" или "self".
     scope: Mapped[str] = mapped_column(String(20), nullable=False, default="section")
-    # Системные должности (владелец, рабочий) нельзя удалить и переименовать код.
+    # Системные должности (сейчас - только владелец) нельзя удалить и переименовать код.
     is_system: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 

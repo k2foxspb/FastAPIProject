@@ -14,7 +14,6 @@ from app.core.roles import (
     ScopedUser,
     ROLE_OWNER,
     ROLE_SHOP_CHIEF,
-    ROLE_WORKER,
     get_production_roles,
     get_role_label,
     is_production_role,
@@ -128,14 +127,30 @@ async def create_position(
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Position with this code already exists")
 
+    # Должности со scope="self" - это самый нижний уровень иерархии (их
+    # обладатели никем не управляют), поэтому на нём можно завести сколько
+    # угодно разных должностей с одним и тем же level: они равноправны и
+    # не конфликтуют друг с другом. Для всех остальных уровней level должен
+    # оставаться уникальным, чтобы иерархия была однозначной.
     level = data.level
     if level is None:
         max_level_res = await db.execute(select(func.max(PositionModel.level)))
         max_level = max_level_res.scalar()
-        level = (max_level if max_level is not None else -1) + 1
+        if max_level is None:
+            level = 0
+        elif data.scope == "self":
+            bottom_res = await db.execute(select(PositionModel).where(PositionModel.level == max_level))
+            bottom_positions = bottom_res.scalars().all()
+            if bottom_positions and all(p.scope == "self" for p in bottom_positions):
+                level = max_level
+            else:
+                level = max_level + 1
+        else:
+            level = max_level + 1
     else:
         level_taken = await db.execute(select(PositionModel).where(PositionModel.level == level))
-        if level_taken.scalar_one_or_none():
+        conflicting = level_taken.scalars().all()
+        if conflicting and not (data.scope == "self" and all(p.scope == "self" for p in conflicting)):
             raise HTTPException(status_code=400, detail="A position with this level already exists")
 
     position = PositionModel(code=data.code, name=data.name, level=level, scope=data.scope, is_system=False)
@@ -162,14 +177,19 @@ async def reorder_positions(
     if len(positions_by_id) != len(ids):
         raise HTTPException(status_code=404, detail="Some positions were not found")
 
-    levels = [item.level for item in data.positions]
-    if len(set(levels)) != len(levels):
-        raise HTTPException(status_code=400, detail="Levels must be unique")
+    # Уровень обязан быть уникальным, кроме должностей со scope="self"
+    # (самый нижний уровень иерархии) - среди них допускаются повторы,
+    # чтобы на нижнем уровне можно было держать сколько угодно должностей.
+    level_counts: dict[int, int] = {}
+    for item in data.positions:
+        level_counts[item.level] = level_counts.get(item.level, 0) + 1
+    for item in data.positions:
+        if level_counts[item.level] > 1 and positions_by_id[item.id].scope != "self":
+            raise HTTPException(status_code=400, detail="Levels must be unique")
 
-    # Поле level в БД уникально, поэтому при перестановке (например, простой
-    # swap двух соседних должностей) прямое присвоение новых значений может
-    # на мгновение столкнуться со старым значением ещё не обновлённой строки
-    # и упасть с ошибкой уникальности. Поэтому сначала переводим все
+    # На случай, если среди перестраиваемых должностей встречаются
+    # неодинаковые объекты с совпадающими промежуточными значениями level
+    # (например, при swap двух соседних должностей), сначала переводим все
     # затрагиваемые должности на заведомо свободные временные (отрицательные)
     # уровни одним flush, и только потом проставляем финальные значения.
     for item in data.positions:
@@ -205,7 +225,11 @@ async def update_position(
         level_taken = await db.execute(
             select(PositionModel).where(PositionModel.level == data.level, PositionModel.id != position_id)
         )
-        if level_taken.scalar_one_or_none():
+        conflicting = level_taken.scalars().all()
+        new_scope = data.scope if data.scope is not None else position.scope
+        # Как и при создании: должности со scope="self" (самый нижний
+        # уровень) могут делить один и тот же level без ограничений.
+        if conflicting and not (new_scope == "self" and all(p.scope == "self" for p in conflicting)):
             raise HTTPException(status_code=400, detail="A position with this level already exists")
 
     for field, value in data.model_dump(exclude_unset=True).items():
@@ -684,13 +708,16 @@ async def move_worker(
     current_user: UserModel = Depends(get_current_production_user),
     db: AsyncSession = Depends(get_async_db),
 ):
-    """Перемещает рабочего на другой участок с проверкой прав иерархии."""
+    """Перемещает сотрудника самого нижнего уровня иерархии на другой участок с проверкой прав иерархии."""
     result = await db.execute(select(UserModel).where(UserModel.id == user_id))
     worker = result.scalar_one_or_none()
     if not worker:
         raise HTTPException(status_code=404, detail="Worker not found")
 
-    if worker.role != ROLE_WORKER:
+    # Не привязываемся к конкретной должности "worker" - перемещать между
+    # участками можно любого сотрудника с должностью самого нижнего уровня
+    # иерархии (scope="self"), которых теперь может быть сколько угодно.
+    if get_role_scope(worker.role) != "self":
         raise HTTPException(status_code=400, detail="Only workers can be moved between sections")
 
     section_res = await db.execute(select(SectionModel).where(SectionModel.id == data.section_id))
