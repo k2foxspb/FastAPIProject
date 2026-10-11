@@ -14,7 +14,7 @@ from app.models.news import News as NewsModel
 from app.models.chat import ChatMessage as ChatMessageModel, FileUploadSession
 from app.schemas.users import User as UserSchema, AdminPermissionCreate, AdminPermission as AdminPermissionSchema, AppVersionResponse, AppLogRequest
 from app.schemas.chat import ChatMessageResponse, DialogResponse, UploadInitRequest, UploadSessionResponse, UploadStatusResponse
-from app.api.dependencies import get_async_db
+from app.api.dependencies import get_async_db, refresh_positions_cache_dep
 from app.core.auth import get_current_owner, get_current_admin, check_admin_permission
 from app.core.roles import get_production_roles
 
@@ -67,7 +67,8 @@ async def update_user_role(
     user_id: int,
     role: str,
     owner: UserModel = Depends(get_current_owner),
-    db: AsyncSession = Depends(get_async_db)
+    db: AsyncSession = Depends(get_async_db),
+    _positions_refreshed: None = Depends(refresh_positions_cache_dep),
 ):
     """Изменяет роль пользователя. Только владелец может назначать админов или передавать владение."""
     # "buyer" - роль обычного пользователя системы (не входит в производственную

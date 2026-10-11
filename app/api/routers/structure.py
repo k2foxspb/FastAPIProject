@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_, func
 
-from app.api.dependencies import get_async_db
+from app.api.dependencies import get_async_db, refresh_positions_cache_dep
 from app.core.auth import get_current_production_user, get_current_owner, hash_password
 from app.core.roles import (
     ScopedUser,
@@ -43,7 +43,17 @@ from app.schemas.structure import (
     PositionReorderRequest,
 )
 
-router = APIRouter(prefix="/org", tags=["organization"])
+router = APIRouter(
+    prefix="/org",
+    tags=["organization"],
+    # Обновляем кэш должностей перед обработкой КАЖДОГО запроса к /org/*.
+    # Это нужно, потому что в production приложение запускается несколькими
+    # worker-процессами, и без этой зависимости создание/изменение должности
+    # в одном воркере не было бы видно остальным, пока они сами не вызовут
+    # load_positions_cache - из-за чего только что созданную должность было
+    # невозможно назначить сотруднику, если запрос обрабатывал другой воркер.
+    dependencies=[Depends(refresh_positions_cache_dep)],
+)
 
 
 def _to_scoped(user: UserModel) -> ScopedUser:

@@ -1,3 +1,4 @@
+from fastapi import Depends
 from app.models.users import Friendship as FriendshipModel
 from sqlalchemy import select
 from collections.abc import AsyncGenerator
@@ -10,6 +11,23 @@ async def get_async_db() -> AsyncGenerator[AsyncSession, None]:
     """
     async with async_session_maker() as session:
         yield session
+
+
+async def refresh_positions_cache_dep(db: AsyncSession = Depends(get_async_db)) -> None:
+    """
+    Перечитывает кэш должностей (app.core.roles) из БД перед обработкой запроса.
+
+    Приложение в production запускается несколькими worker-процессами
+    (gunicorn --workers N), а кэш должностей хранится в памяти каждого
+    процесса отдельно. Из-за этого создание/изменение/удаление должности,
+    обработанное одним воркером, не было видно остальным до их собственного
+    вызова load_positions_cache - в результате только что добавленная
+    должность могла оказаться недоступна для назначения сотруднику, если
+    запрос на назначение попадал на другой воркер. Эта зависимость
+    гарантирует, что кэш актуален перед любой проверкой иерархии ролей.
+    """
+    from app.core.roles import load_positions_cache
+    await load_positions_cache(db)
 
 
 async def get_friendship_status(user1_id: int, user2_id: int, db: AsyncSession) -> str | None:
