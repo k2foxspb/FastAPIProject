@@ -1,26 +1,44 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { getShadow } from '../utils/shadowStyles';
-import { View, Text, StyleSheet, Image, FlatList, ScrollView, TouchableOpacity, ActivityIndicator, Platform, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, Image, FlatList, ScrollView, TouchableOpacity, ActivityIndicator, Platform, RefreshControl, Alert, Modal, TouchableWithoutFeedback } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { usersApi, adminApi, newsApi } from '../api';
+import { usersApi, adminApi, newsApi, orgApi } from '../api';
 import { API_BASE_URL } from '../constants';
 import { Ionicons as Icon } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import { useNotifications } from '../context/NotificationContext';
 import { theme as themeConstants } from '../constants/theme';
 import { formatStatus, formatName, getAvatarUrl, stripHtml } from '../utils/formatters';
-import { isProductionRole } from '../constants/roles';
+import { isProductionRole, canManageUserClient, getRoleScope, getRoleLabel } from '../constants/roles';
 
 export default function UserProfileScreen({ route, navigation }) {
   const { theme } = useTheme();
   const colors = themeConstants[theme];
   const { userId, isAdminView } = route.params;
-  const { userStatuses } = useNotifications();
+  const { userStatuses, currentUser } = useNotifications();
   const [user, setUser] = useState(null);
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [pickerState, setPickerState] = useState(null);
+  const [assigningRole, setAssigningRole] = useState(false);
+
+  // Показывает модальное окно выбора варианта (роль/цех/участок) и
+  // возвращает промис с выбранным значением (или null при отмене).
+  const showChoice = (title, options, message) => new Promise((resolve) => {
+    if (!options.length) {
+      resolve(null);
+      return;
+    }
+    setPickerState({ title, message, options, resolve });
+  });
+
+  const resolvePicker = (value) => {
+    const resolve = pickerState?.resolve;
+    setPickerState(null);
+    if (resolve) resolve(value);
+  };
 
   // Применяем WebSocket статус к текущему пользователю
   useEffect(() => {
@@ -85,6 +103,100 @@ export default function UserProfileScreen({ route, navigation }) {
     if (user.friendship_status === 'requested_by_them') return 'Принять заявку';
     if (user.friendship_status === 'accepted') return 'Удалить из друзей';
     return 'Добавить в друзья';
+  };
+
+  // Назначение должности прямо в профиле подчинённого: доступно, только
+  // если текущий пользователь может управлять этим пользователем по
+  // иерархии (см. can_manage_user в app/core/roles.py). Если у подчинённого
+  // ещё нет должности - запрашиваем цех/участок по области ответственности
+  // новой роли, как при создании сотрудника; если должность уже есть -
+  // просто меняем роль (назначение остаётся прежним).
+  const assignRole = async () => {
+    let roles;
+    try {
+      const rolesRes = await orgApi.getAssignableRoles();
+      roles = rolesRes.data;
+    } catch (err) {
+      Alert.alert('Ошибка', 'Не удалось получить список доступных должностей');
+      return;
+    }
+    if (!roles || roles.length === 0) {
+      Alert.alert('Недоступно', 'У вас нет прав назначать должности');
+      return;
+    }
+
+    const role = await showChoice(
+      'Назначить должность',
+      roles.map(r => ({ label: r.label, value: r.value })),
+      `Текущая должность: ${getRoleLabel(user.role)}`
+    );
+    if (!role) return;
+
+    try {
+      if (isProductionRole(user.role)) {
+        await orgApi.updateEmployeeRole(user.id, role);
+      } else {
+        let workshopId = null;
+        let sectionId = null;
+
+        if (getRoleScope(role) === 'workshop') {
+          const wsRes = await orgApi.getWorkshops();
+          const workshops = wsRes.data;
+          if (workshops.length === 0) {
+            Alert.alert('Нет цехов', 'Сначала создайте цех в разделе "Цеха и участки"');
+            return;
+          }
+          workshopId = await showChoice('Выберите цех', workshops.map(w => ({ label: w.name, value: w.id })));
+          if (!workshopId) return;
+        } else if (getRoleScope(role) === 'section') {
+          if (getRoleScope(currentUser.role) === 'global') {
+            const wsRes = await orgApi.getWorkshops();
+            const workshops = wsRes.data;
+            if (workshops.length === 0) {
+              Alert.alert('Нет цехов', 'Сначала создайте цех и участок в разделе "Цеха и участки"');
+              return;
+            }
+            workshopId = await showChoice('Выберите цех', workshops.map(w => ({ label: w.name, value: w.id })));
+            if (!workshopId) return;
+
+            const secRes = await orgApi.getSections(workshopId);
+            const sections = secRes.data;
+            if (sections.length === 0) {
+              Alert.alert('Нет участков', 'В этом цехе ещё нет участков');
+              return;
+            }
+            sectionId = await showChoice('Выберите участок', sections.map(s => ({ label: s.name, value: s.id })));
+            if (!sectionId) return;
+          } else if (getRoleScope(currentUser.role) === 'workshop') {
+            const secRes = await orgApi.getSections();
+            const sections = secRes.data;
+            if (sections.length === 0) {
+              Alert.alert('Нет участков', 'Сначала создайте участок в разделе "Цеха и участки"');
+              return;
+            }
+            sectionId = await showChoice('Выберите участок', sections.map(s => ({ label: s.name, value: s.id })));
+            if (!sectionId) return;
+            workshopId = currentUser.workshop_id;
+          } else {
+            sectionId = currentUser.section_id;
+            workshopId = currentUser.workshop_id;
+          }
+        }
+
+        setAssigningRole(true);
+        await orgApi.assignEmployee({
+          user_id: user.id,
+          role,
+          workshop_id: workshopId,
+          section_id: sectionId,
+        });
+      }
+      await fetchUser();
+    } catch (err) {
+      Alert.alert('Ошибка', err.response?.data?.detail || 'Не удалось назначить должность');
+    } finally {
+      setAssigningRole(false);
+    }
   };
 
   const openAvatarAlbum = () => {
@@ -257,7 +369,55 @@ export default function UserProfileScreen({ route, navigation }) {
             <Text style={[styles.hierarchyBtnText, { color: colors.primary }]}>Сотрудники</Text>
           </TouchableOpacity>
         )}
+
+        {canManageUserClient(currentUser, user) && (
+          <TouchableOpacity 
+            style={[styles.hierarchyBtn, { borderColor: colors.primary, borderWidth: 1 }]}
+            onPress={assignRole}
+            disabled={assigningRole}
+          >
+            {assigningRole ? (
+              <ActivityIndicator size="small" color={colors.primary} />
+            ) : (
+              <Icon name="ribbon-outline" size={18} color={colors.primary} />
+            )}
+            <Text style={[styles.hierarchyBtnText, { color: colors.primary }]}>Назначить должность</Text>
+          </TouchableOpacity>
+        )}
       </View>
+
+      <Modal visible={!!pickerState} transparent animationType="fade" onRequestClose={() => resolvePicker(null)}>
+        <TouchableWithoutFeedback onPress={() => resolvePicker(null)}>
+          <View style={styles.modalOverlay}>
+            <TouchableWithoutFeedback>
+              <View style={[styles.pickerContent, { backgroundColor: colors.surface }]}>
+                <View style={styles.pickerHeader}>
+                  <Text style={[styles.pickerTitle, { color: colors.text }]}>{pickerState?.title}</Text>
+                  <TouchableOpacity onPress={() => resolvePicker(null)}>
+                    <Icon name="close" size={24} color={colors.text} />
+                  </TouchableOpacity>
+                </View>
+                {!!pickerState?.message && (
+                  <Text style={[styles.pickerMessage, { color: colors.textSecondary }]}>{pickerState.message}</Text>
+                )}
+                <FlatList
+                  data={pickerState?.options || []}
+                  keyExtractor={(item, index) => `${item.value}-${index}`}
+                  style={styles.pickerList}
+                  renderItem={({ item }) => (
+                    <TouchableOpacity
+                      style={[styles.pickerRow, { borderColor: colors.border }]}
+                      onPress={() => resolvePicker(item.value)}
+                    >
+                      <Text style={{ color: colors.text, fontSize: 16, fontWeight: '500' }}>{item.label}</Text>
+                    </TouchableOpacity>
+                  )}
+                />
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
 
       <View style={styles.section}>
         <TouchableOpacity 
@@ -364,44 +524,4 @@ const styles = StyleSheet.create({
     paddingHorizontal: 15,
     paddingVertical: 10,
     borderRadius: 20,
-    marginTop: 10,
-  },
-  hierarchyBtnText: { marginLeft: 8, fontWeight: '600' },
-  section: { padding: 20 },
-  sectionTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 15 },
-  album: { marginBottom: 20 },
-  albumTitle: { fontSize: 16, fontWeight: '500', marginBottom: 8 },
-  photo: { width: 100, height: 100, marginRight: 10, borderRadius: 5 },
-  photoGrid: { flexDirection: 'row', flexWrap: 'wrap' },
-  gridPhotoContainer: { position: 'relative' },
-  gridPhoto: { width: 100, height: 100, margin: 5, borderRadius: 5 },
-  privateBadge: {
-    position: 'absolute',
-    top: 10,
-    right: 10,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    borderRadius: 10,
-    padding: 2
-  },
-  errorText: { marginBottom: 10 },
-  retryBtn: { padding: 10, borderRadius: 5 },
-  retryText: { color: '#fff' },
-  activityButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 15, borderRadius: 12, borderWidth: 1, ...getShadow('#000', { width: 0, height: 1 }, 0.1, 2, 2) },
-  activityButtonText: { marginLeft: 10, fontWeight: 'bold', fontSize: 14 },
-  postCard: { borderRadius: 12, marginBottom: 16, borderWidth: 1, overflow: 'hidden', ...getShadow('#000', { width: 0, height: 1 }, 0.1, 2, 3) },
-  postAuthorHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 10, borderBottomWidth: 0.5, borderBottomColor: 'rgba(0,0,0,0.05)' },
-  authorInfo: { flexDirection: 'row', alignItems: 'center' },
-  authorAvatar: { width: 32, height: 32, borderRadius: 16, marginRight: 8 },
-  authorName: { fontSize: 13, fontWeight: 'bold' },
-  postContentRow: { flexDirection: 'row', padding: 10 },
-  postThumbnail: { width: 70, height: 70, borderRadius: 8, marginRight: 12 },
-  postTextContainer: { flex: 1, justifyContent: 'center' },
-  postTitle: { fontSize: 15, fontWeight: 'bold', marginBottom: 2 },
-  postContent: { fontSize: 13, lineHeight: 18 },
-  postFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 10, paddingBottom: 10 },
-  postDate: { fontSize: 10 },
-  reactionsRow: { flexDirection: 'row', alignItems: 'center' },
-  reactionItem: { flexDirection: 'row', alignItems: 'center' },
-  reactionCount: { fontSize: 11, marginLeft: 4 },
-  emptyText: { textAlign: 'center', marginTop: 10, fontStyle: 'italic' },
-});
+ 

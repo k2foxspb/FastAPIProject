@@ -12,7 +12,7 @@ import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
 import { storage } from '../utils/storage';
 import { formatName, getFullUrl } from '../utils/formatters';
-import { isProductionRole, getRoleLabel, getRoleIcon, canAccessOrgAdmin } from '../constants/roles';
+import { isProductionRole, getRoleLabel, getRoleIcon } from '../constants/roles';
 import { SkeletonItem, NewsSkeleton } from '../components/SkeletonLoader';
 import { requestAllAppPermissions } from '../utils/permissions';
 
@@ -408,7 +408,7 @@ export default function ProfileScreen({ navigation }) {
 
                 <ScrollView showsVerticalScrollIndicator={false}>
 
-                {user.role === 'admin' || user.role === 'owner' || canAccessOrgAdmin(user.role) ? (
+                {user.role === 'admin' || user.role === 'owner' ? (
                   <TouchableOpacity 
                     style={[styles.menuItem, { borderBottomWidth: 1, borderBottomColor: colors.border }]} 
                     onPress={() => {

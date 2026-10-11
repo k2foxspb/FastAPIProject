@@ -199,6 +199,18 @@ async def get_current_production_user(current_user: UserModel = Depends(get_curr
     return current_user
 
 
+async def get_current_admin_or_production_user(current_user: UserModel = Depends(get_current_user)):
+    """
+    Проверяет, что пользователь либо администратор/владелец (для раздела
+    администрирования: модерация должностей, цехов и участков), либо
+    состоит в производственной иерархии (для управления своими подчинёнными).
+    """
+    from app.core.roles import is_production_role
+    if current_user.role in ("admin", "owner") or is_production_role(current_user.role):
+        return current_user
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+
+
 def check_admin_permission(model_name: str):
     """
     Зависимость для проверки прав админа на конкретную модель.

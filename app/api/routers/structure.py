@@ -3,7 +3,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_, func
 
 from app.api.dependencies import get_async_db, refresh_positions_cache_dep
-from app.core.auth import get_current_production_user, get_current_owner, hash_password
+from app.core.auth import (
+    get_current_production_user,
+    get_current_owner,
+    get_current_admin,
+    get_current_admin_or_production_user,
+    hash_password,
+)
 from app.core.roles import (
     ScopedUser,
     ROLE_OWNER,
@@ -75,7 +81,7 @@ async def get_assignable_roles_endpoint(
 
 @router.get("/positions", response_model=list[PositionSchema])
 async def list_positions(
-    current_user: UserModel = Depends(get_current_production_user),
+    current_user: UserModel = Depends(get_current_admin_or_production_user),
     db: AsyncSession = Depends(get_async_db),
 ):
     """Возвращает все должности производственной иерархии, отсортированные по уровню."""
@@ -111,10 +117,10 @@ async def list_positions(
 @router.post("/positions", response_model=PositionSchema, status_code=status.HTTP_201_CREATED)
 async def create_position(
     data: PositionCreate,
-    owner: UserModel = Depends(get_current_owner),
+    admin: UserModel = Depends(get_current_admin),
     db: AsyncSession = Depends(get_async_db),
 ):
-    """Создаёт новую должность. Доступно только владельцу."""
+    """Создаёт новую должность. Доступно владельцу и администратору."""
     if data.scope not in ("global", "workshop", "section", "self"):
         raise HTTPException(status_code=400, detail="Invalid scope")
 
@@ -143,7 +149,7 @@ async def create_position(
 @router.patch("/positions/reorder", response_model=list[PositionSchema])
 async def reorder_positions(
     data: PositionReorderRequest,
-    owner: UserModel = Depends(get_current_owner),
+    admin: UserModel = Depends(get_current_admin),
     db: AsyncSession = Depends(get_async_db),
 ):
     """Задаёт новую иерархию должностей списком пар (id, level)."""
@@ -183,7 +189,7 @@ async def reorder_positions(
 async def update_position(
     position_id: int,
     data: PositionUpdate,
-    owner: UserModel = Depends(get_current_owner),
+    admin: UserModel = Depends(get_current_admin),
     db: AsyncSession = Depends(get_async_db),
 ):
     """Переименовывает должность или меняет её область ответственности/уровень. Код изменить нельзя."""
@@ -213,7 +219,7 @@ async def update_position(
 @router.delete("/positions/{position_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_position(
     position_id: int,
-    owner: UserModel = Depends(get_current_owner),
+    admin: UserModel = Depends(get_current_admin),
     db: AsyncSession = Depends(get_async_db),
 ):
     """Удаляет должность. Системные должности и должности, назначенные хотя бы одному пользователю, удалить нельзя."""
@@ -239,11 +245,11 @@ async def delete_position(
 
 @router.get("/workshops", response_model=list[WorkshopSchema])
 async def list_workshops(
-    current_user: UserModel = Depends(get_current_production_user),
+    current_user: UserModel = Depends(get_current_admin_or_production_user),
     db: AsyncSession = Depends(get_async_db),
 ):
-    """Возвращает доступные пользователю цеха (владелец видит все, остальные - только свой)."""
-    if current_user.role == ROLE_OWNER:
+    """Возвращает доступные пользователю цеха (владелец и администратор видят все, остальные - только свой)."""
+    if current_user.role in (ROLE_OWNER, "admin"):
         result = await db.execute(select(WorkshopModel))
     elif current_user.workshop_id is not None:
         result = await db.execute(select(WorkshopModel).where(WorkshopModel.id == current_user.workshop_id))
@@ -255,10 +261,10 @@ async def list_workshops(
 @router.post("/workshops", response_model=WorkshopSchema, status_code=status.HTTP_201_CREATED)
 async def create_workshop(
     data: WorkshopCreate,
-    owner: UserModel = Depends(get_current_owner),
+    admin: UserModel = Depends(get_current_admin),
     db: AsyncSession = Depends(get_async_db),
 ):
-    """Создать цех. Доступно только владельцу."""
+    """Создать цех. Доступно владельцу и администратору."""
     workshop = WorkshopModel(name=data.name, description=data.description)
     db.add(workshop)
     await db.commit()
@@ -270,7 +276,7 @@ async def create_workshop(
 async def update_workshop(
     workshop_id: int,
     data: WorkshopUpdate,
-    owner: UserModel = Depends(get_current_owner),
+    admin: UserModel = Depends(get_current_admin),
     db: AsyncSession = Depends(get_async_db),
 ):
     result = await db.execute(select(WorkshopModel).where(WorkshopModel.id == workshop_id))
@@ -287,7 +293,7 @@ async def update_workshop(
 @router.delete("/workshops/{workshop_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_workshop(
     workshop_id: int,
-    owner: UserModel = Depends(get_current_owner),
+    admin: UserModel = Depends(get_current_admin),
     db: AsyncSession = Depends(get_async_db),
 ):
     result = await db.execute(select(WorkshopModel).where(WorkshopModel.id == workshop_id))
@@ -304,12 +310,12 @@ async def delete_workshop(
 @router.get("/sections", response_model=list[SectionSchema])
 async def list_sections(
     workshop_id: int | None = None,
-    current_user: UserModel = Depends(get_current_production_user),
+    current_user: UserModel = Depends(get_current_admin_or_production_user),
     db: AsyncSession = Depends(get_async_db),
 ):
     """Возвращает доступные пользователю участки."""
     query = select(SectionModel)
-    if current_user.role == ROLE_OWNER:
+    if current_user.role in (ROLE_OWNER, "admin"):
         if workshop_id is not None:
             query = query.where(SectionModel.workshop_id == workshop_id)
     elif current_user.role == ROLE_SHOP_CHIEF:
@@ -327,7 +333,7 @@ async def list_sections(
 
 async def _ensure_can_manage_workshop(current_user: UserModel, workshop_id: int):
     """Проверяет, что пользователь может управлять участками данного цеха."""
-    if current_user.role == ROLE_OWNER:
+    if current_user.role in (ROLE_OWNER, "admin"):
         return
     if current_user.role == ROLE_SHOP_CHIEF and current_user.workshop_id == workshop_id:
         return
@@ -337,10 +343,10 @@ async def _ensure_can_manage_workshop(current_user: UserModel, workshop_id: int)
 @router.post("/sections", response_model=SectionSchema, status_code=status.HTTP_201_CREATED)
 async def create_section(
     data: SectionCreate,
-    current_user: UserModel = Depends(get_current_production_user),
+    current_user: UserModel = Depends(get_current_admin_or_production_user),
     db: AsyncSession = Depends(get_async_db),
 ):
-    """Создать участок. Доступно владельцу или начальнику соответствующего цеха."""
+    """Создать участок. Доступно владельцу, администратору или начальнику соответствующего цеха."""
     await _ensure_can_manage_workshop(current_user, data.workshop_id)
 
     workshop_res = await db.execute(select(WorkshopModel).where(WorkshopModel.id == data.workshop_id))
@@ -358,7 +364,7 @@ async def create_section(
 async def update_section(
     section_id: int,
     data: SectionUpdate,
-    current_user: UserModel = Depends(get_current_production_user),
+    current_user: UserModel = Depends(get_current_admin_or_production_user),
     db: AsyncSession = Depends(get_async_db),
 ):
     result = await db.execute(select(SectionModel).where(SectionModel.id == section_id))
@@ -378,7 +384,7 @@ async def update_section(
 @router.delete("/sections/{section_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_section(
     section_id: int,
-    current_user: UserModel = Depends(get_current_production_user),
+    current_user: UserModel = Depends(get_current_admin_or_production_user),
     db: AsyncSession = Depends(get_async_db),
 ):
     result = await db.execute(select(SectionModel).where(SectionModel.id == section_id))

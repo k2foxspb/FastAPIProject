@@ -127,10 +127,12 @@ export const canViewUserClient = (current, target) => {
 // видит админ-панель производственной иерархии.
 export const canAccessOrgAdmin = (role) => isProductionRole(role) && getRoleScope(role) !== 'self';
 
-// Создавать/редактировать/удалять цеха, а также управлять должностями
-// может только владелец (см. app/core/roles.py).
-export const canManageWorkshops = (role) => role === 'owner';
+// Создавать/редактировать/удалять цеха и должности, а также модерировать
+// участки может владелец или администратор (см. app/core/roles.py и
+// app/api/routers/structure.py). Начальник цеха дополнительно может
+// управлять участками своего цеха.
+export const canManageWorkshops = (role) => role === 'owner' || role === 'admin';
 
-export const canManageSections = (role) => role === 'owner' || getRoleScope(role) === 'workshop';
+export const canManageSections = (role) => role === 'owner' || role === 'admin' || getRoleScope(role) === 'workshop';
 
-export const canManagePositions = (role) => role === 'owner';
+export const canManagePositions = (role) => role === 'owner' || role === 'admin';
