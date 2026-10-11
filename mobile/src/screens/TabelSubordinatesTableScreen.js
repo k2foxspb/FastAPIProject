@@ -10,7 +10,7 @@ import * as Sharing from 'expo-sharing';
 import { timesheetApi } from '../api';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
-import { formatName } from '../utils/formatters';
+import { formatName, formatTimesheetDate } from '../utils/formatters';
 import { getPositionLabel } from '../constants/roles';
 import { storage } from '../utils/storage';
 
@@ -330,7 +330,7 @@ export default function TabelSubordinatesTableScreen({ navigation }) {
               <TouchableWithoutFeedback>
                 <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
                   <Text style={[styles.modalTitle, { color: colors.text }]}>
-                    {hoursModalTarget?.userName} · {hoursModalTarget?.date}
+                    {hoursModalTarget?.userName} · {formatTimesheetDate(hoursModalTarget?.date)}
                   </Text>
                   <Text style={[styles.modalLabel, { color: colors.textSecondary }]}>Основное время</Text>
                   <TextInput

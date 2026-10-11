@@ -24,6 +24,7 @@ from app.core.roles import get_table_role_label
 from app.api.routers.notifications import manager as notification_manager
 from app.core.fcm import send_fcm_notification
 from app.models.users import User as UserModel
+from app.models.structure import Workshop as WorkshopModel
 from app.models.timesheet import (
     TimesheetEntry as TimesheetEntryModel,
     Product as ProductModel,
@@ -86,7 +87,91 @@ def _default_base_hours(user: UserModel | None, day: date) -> Decimal:
     return Decimal(str(user.work_schedule_hours))
 
 
-def _fill_timesheet_grid_sheet(ws, year: int, month: int, rows: list[dict]) -> None:
+_MONTH_NAMES_RU = [
+    "", "Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
+    "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь",
+]
+
+
+def _compute_month_totals(year: int, month: int, row_data: dict) -> tuple[Decimal, Decimal, Decimal, Decimal]:
+    """
+    Считает по одному сотруднику за месяц: сумму основного времени, сумму
+    сверхурочного времени, сумму часов, отработанных в выходные дни, и общий
+    итог (основное + сверхурочное). Текстовые отметки (например больничный)
+    в подсчёт часов не включаются.
+    """
+    last_day = calendar.monthrange(year, month)[1]
+    hours_by_date = row_data["hours_by_date"]
+    base_sum = Decimal("0")
+    overtime_sum = Decimal("0")
+    weekend_sum = Decimal("0")
+    for d in range(1, last_day + 1):
+        cur_date = date(year, month, d)
+        default_base = _default_base_hours(row_data.get("user"), cur_date)
+        base_hours, overtime_hours, text_value = hours_by_date.get(
+            cur_date, (default_base, Decimal("0"), None)
+        )
+        if text_value:
+            continue
+        base_sum += base_hours
+        overtime_sum += overtime_hours
+        if cur_date.weekday() in (5, 6):
+            weekend_sum += base_hours + overtime_hours
+    return base_sum, overtime_sum, weekend_sum, base_sum + overtime_sum
+
+
+async def _get_workshop_label(db: AsyncSession, workshop_id: int | None) -> str | None:
+    """Возвращает подпись "Цех № {id} «{название}»" для шапки Excel-выгрузки табеля."""
+    if workshop_id is None:
+        return None
+    result = await db.execute(select(WorkshopModel).where(WorkshopModel.id == workshop_id))
+    workshop = result.scalar_one_or_none()
+    if not workshop:
+        return None
+    return f"Цех № {workshop.id} «{workshop.name}»"
+
+
+def _write_export_summary_header(ws, workshop_label: str | None, year: int, month: int, rows: list[dict]) -> int:
+    """
+    Пишет в начале листа шапку выгрузки табеля: номер и название цеха, месяц
+    и год, а также суммарные по всем сотрудникам из `rows` часы - общее
+    отработанное время, отдельно основное, отдельно сверхурочное и отдельно
+    за выходные. Возвращает номер строки, с которой должна начинаться сама
+    таблица табеля.
+    """
+    from openpyxl.styles import Font
+
+    total_base = Decimal("0")
+    total_overtime = Decimal("0")
+    total_weekend = Decimal("0")
+    for row_data in rows:
+        base_sum, overtime_sum, weekend_sum, _ = _compute_month_totals(year, month, row_data)
+        total_base += base_sum
+        total_overtime += overtime_sum
+        total_weekend += weekend_sum
+    total_all = total_base + total_overtime
+
+    row = 1
+    if workshop_label:
+        ws.cell(row=row, column=1, value=workshop_label).font = Font(bold=True, size=13)
+        row += 1
+    ws.cell(
+        row=row, column=1,
+        value=f"Табель учёта рабочего времени за {_MONTH_NAMES_RU[month]} {year} года",
+    ).font = Font(bold=True, size=12)
+    row += 1
+    ws.cell(row=row, column=1, value=f"Общее отработанное время всех работников: {float(total_all)} ч.").font = Font(bold=True)
+    row += 1
+    ws.cell(row=row, column=1, value=f"в т.ч. основное время: {float(total_base)} ч.")
+    row += 1
+    ws.cell(row=row, column=1, value=f"в т.ч. сверхурочное время: {float(total_overtime)} ч.")
+    row += 1
+    ws.cell(row=row, column=1, value=f"в т.ч. время, отработанное в выходные: {float(total_weekend)} ч.")
+    row += 2  # пустая строка-разделитель перед таблицей
+    return row
+
+
+def _fill_timesheet_grid_sheet(ws, year: int, month: int, rows: list[dict], start_row: int = 1) -> None:
     """
     Заполняет лист в формате классического табеля учёта рабочего времени:
     по дням месяца с разбивкой каждой строки сотрудника на "основное" и
@@ -102,6 +187,10 @@ def _fill_timesheet_grid_sheet(ws, year: int, month: int, rows: list[dict]) -> N
       hours_by_date (dict[date, tuple[Decimal, Decimal, str | None]] -
         (основное, сверхурочное, текстовая отметка вместо часов)),
       products_total (Decimal)
+
+    start_row: номер строки, с которой начинаются заголовки таблицы (по
+      умолчанию 1) - используется, когда перед таблицей на листе уже
+      выведена шапка с итогами (см. _write_export_summary_header).
     """
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
@@ -139,7 +228,7 @@ def _fill_timesheet_grid_sheet(ws, year: int, month: int, rows: list[dict]) -> N
     products_col = len(headers)
 
     for idx, title in enumerate(headers, start=1):
-        cell = ws.cell(row=1, column=idx, value=title)
+        cell = ws.cell(row=start_row, column=idx, value=title)
         cell.font = Font(bold=True)
         cell.alignment = center
         cell.border = thin_border
@@ -147,25 +236,16 @@ def _fill_timesheet_grid_sheet(ws, year: int, month: int, rows: list[dict]) -> N
 
     weekend_days = {d for d in days if date(year, month, d).weekday() in (5, 6)}
     for d in weekend_days:
-        ws.cell(row=1, column=day_col_index[d]).fill = weekend_fill
+        ws.cell(row=start_row, column=day_col_index[d]).fill = weekend_fill
 
-    row_num = 2
+    row_num = start_row + 1
     for row_data in rows:
         hours_by_date = row_data["hours_by_date"]
 
         # Общее количество отработанных часов за месяц (основное + сверхурочное
         # суммарно) считается один раз на сотрудника и выводится только в
         # первой (основной) подстроке - аналогично "Приборы, всего".
-        total_month_hours = Decimal("0")
-        for d in days:
-            cur_date = date(year, month, d)
-            default_base = _default_base_hours(row_data.get("user"), cur_date)
-            base_hours, overtime_hours, text_value = hours_by_date.get(
-                cur_date, (default_base, Decimal("0"), None)
-            )
-            if text_value:
-                continue
-            total_month_hours += base_hours + overtime_hours
+        _, _, _, total_month_hours = _compute_month_totals(year, month, row_data)
 
         for label in ("основное", "сверхурочное"):
             is_first = label == "основное"
@@ -227,8 +307,8 @@ def _fill_timesheet_grid_sheet(ws, year: int, month: int, rows: list[dict]) -> N
 
     ws.column_dimensions["D"].width = 28
     for d in days:
-        ws.column_dimensions[ws.cell(row=1, column=day_col_index[d]).column_letter].width = 6
-    ws.freeze_panes = "F2"
+        ws.column_dimensions[ws.cell(row=start_row, column=day_col_index[d]).column_letter].width = 6
+    ws.freeze_panes = f"F{start_row + 1}"
 
 
 # ------------------------------------------------------------------
@@ -596,10 +676,13 @@ async def export_subordinates_summary_excel(
         for idx, user in enumerate(subordinates)
     ]
 
+    workshop_label = await _get_workshop_label(db, current_user.workshop_id)
+
     wb = Workbook()
     ws_timesheet = wb.active
     ws_timesheet.title = "Табель"
-    _fill_timesheet_grid_sheet(ws_timesheet, year, month, rows)
+    table_start_row = _write_export_summary_header(ws_timesheet, workshop_label, year, month, rows)
+    _fill_timesheet_grid_sheet(ws_timesheet, year, month, rows, start_row=table_start_row)
 
     buffer = io.BytesIO()
     wb.save(buffer)
@@ -978,10 +1061,7 @@ async def export_timesheet_excel(
         Decimal("0"),
     )
 
-    wb = Workbook()
-    ws_timesheet = wb.active
-    ws_timesheet.title = "Табель"
-    _fill_timesheet_grid_sheet(ws_timesheet, year, month, [{
+    rows = [{
         "number": 1,
         "tab_number": target.id,
         "grade": get_table_role_label(target.role),
@@ -989,7 +1069,14 @@ async def export_timesheet_excel(
         "hours_by_date": hours_by_date,
         "products_total": products_total,
         "user": target,
-    }])
+    }]
+    workshop_label = await _get_workshop_label(db, target.workshop_id)
+
+    wb = Workbook()
+    ws_timesheet = wb.active
+    ws_timesheet.title = "Табель"
+    table_start_row = _write_export_summary_header(ws_timesheet, workshop_label, year, month, rows)
+    _fill_timesheet_grid_sheet(ws_timesheet, year, month, rows, start_row=table_start_row)
 
     buffer = io.BytesIO()
     wb.save(buffer)

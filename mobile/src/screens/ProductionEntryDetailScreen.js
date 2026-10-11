@@ -9,7 +9,7 @@ import { timesheetApi } from '../api';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
 import { useNotifications } from '../context/NotificationContext';
-import { formatName } from '../utils/formatters';
+import { formatName, formatTimesheetDate } from '../utils/formatters';
 
 const STATUS_LABELS = {
   draft: 'Черновик',
@@ -118,7 +118,7 @@ export default function ProductionEntryDetailScreen({ navigation, route }) {
       <ScrollView contentContainerStyle={styles.scroll}>
         <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <Text style={[styles.employeeName, { color: colors.text }]}>{formatName(entry.user)}</Text>
-          <Text style={[styles.date, { color: colors.textSecondary }]}>{entry.date}</Text>
+          <Text style={[styles.date, { color: colors.textSecondary }]}>{formatTimesheetDate(entry.date)}</Text>
           <Text style={[styles.hours, { color: colors.textSecondary }]}>
             Основное время: {entry.base_hours != null ? entry.base_hours : '—'} ч
             {entry.overtime_hours > 0 ? `, сверхурочное: ${entry.overtime_hours} ч` : ''}

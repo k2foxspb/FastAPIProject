@@ -115,6 +115,16 @@ export const formatDateSeparator = (date) => {
   return isCurrentYear ? `${day} ${month}` : `${day} ${month} ${date.getFullYear()}`;
 };
 
+// Переводит дату табеля из формата "YYYY-MM-DD" (как приходит от API) в
+// привычный формат "число.месяц.год", например "03.10.2026".
+export const formatTimesheetDate = (dateStr) => {
+  if (!dateStr) return '';
+  const match = String(dateStr).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return dateStr;
+  const [, year, month, day] = match;
+  return `${day}.${month}.${year}`;
+};
+
 export const formatFileSize = (bytes) => {
   if (bytes === 0 || !bytes) return '0 B';
   const k = 1024;

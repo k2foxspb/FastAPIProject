@@ -5,7 +5,7 @@ import { Ionicons as Icon } from '@expo/vector-icons';
 import { timesheetApi } from '../api';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
-import { formatName } from '../utils/formatters';
+import { formatName, formatTimesheetDate } from '../utils/formatters';
 
 // Список записей о сданной продукции, ожидающих согласования, видимых
 // текущему пользователю по иерархии должностей (см. GET /timesheet/production/entries/pending).
@@ -59,7 +59,7 @@ export default function ProductionApprovalListScreen({ navigation }) {
             >
               <View style={styles.cardHeader}>
                 <Text style={[styles.employeeName, { color: colors.text }]}>{formatName(item.user)}</Text>
-                <Text style={[styles.date, { color: colors.textSecondary }]}>{item.date}</Text>
+                <Text style={[styles.date, { color: colors.textSecondary }]}>{formatTimesheetDate(item.date)}</Text>
               </View>
               <Text style={[styles.items, { color: colors.textSecondary }]} numberOfLines={2}>{itemsSummary || '—'}</Text>
               <Text style={[styles.hours, { color: colors.textSecondary }]}>Часы за день: {item.hours ?? '—'}</Text>

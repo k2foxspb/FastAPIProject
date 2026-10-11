@@ -8,6 +8,7 @@ import { Ionicons as Icon } from '@expo/vector-icons';
 import { timesheetApi } from '../api';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
+import { formatTimesheetDate } from '../utils/formatters';
 
 const STATUS_LABELS = {
   draft: 'Черновик',
@@ -208,7 +209,7 @@ export default function ProductionEntryFormScreen({ navigation, route }) {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <View style={[styles.header, { borderBottomColor: colors.border }]}>
-        <Text style={[styles.dateLabel, { color: colors.text }]}>{date}</Text>
+        <Text style={[styles.dateLabel, { color: colors.text }]}>{formatTimesheetDate(date)}</Text>
 
         <View style={styles.hoursRow}>
           <Text style={[styles.hoursLabel, { color: colors.textSecondary }]}>Основное время:</Text>
