@@ -49,7 +49,12 @@ class TimesheetEntry(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     date: Mapped[date_type] = mapped_column(Date, nullable=False)
+    # Основное (не сверхурочное) время за день.
     hours: Mapped[float] = mapped_column(Numeric(5, 2), nullable=False, default=0)
+    # Сверхурочное время за день - вводится явно (отдельно от основного),
+    # чтобы в сводных таблицах/выгрузке не приходилось высчитывать его
+    # автоматически по норме рабочего дня.
+    overtime_hours: Mapped[float] = mapped_column(Numeric(5, 2), nullable=False, default=0)
     comment: Mapped[str | None] = mapped_column(String, nullable=True)
 
     created_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)

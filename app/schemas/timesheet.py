@@ -8,7 +8,8 @@ from typing import Optional
 
 class TimesheetEntryUpsert(BaseModel):
     date: date_type
-    hours: Decimal = Field(ge=0, le=24)
+    hours: Decimal = Field(ge=0, le=24, description="Основное время за день")
+    overtime_hours: Decimal = Field(default=Decimal("0"), ge=0, le=24, description="Сверхурочное время за день")
     comment: Optional[str] = None
 
 
@@ -17,6 +18,7 @@ class TimesheetEntry(BaseModel):
     user_id: int
     date: date_type
     hours: Decimal
+    overtime_hours: Decimal = Decimal("0")
     comment: Optional[str] = None
     created_at: datetime
     updated_at: datetime
@@ -118,7 +120,9 @@ class ProductionEntry(BaseModel):
     user: Optional[EmployeeBrief] = None
     date: date_type
     status: str
-    hours: Optional[Decimal] = Field(default=None, description="Часы из табеля за этот день")
+    hours: Optional[Decimal] = Field(default=None, description="Суммарные часы из табеля за этот день (основное + сверхурочное)")
+    base_hours: Optional[Decimal] = Field(default=None, description="Основное время из табеля за этот день")
+    overtime_hours: Optional[Decimal] = Field(default=None, description="Сверхурочное время из табеля за этот день")
     items: list[ProductionEntryItem] = Field(default_factory=list)
     reviewer_id: Optional[int] = None
     reviewer: Optional[EmployeeBrief] = None
@@ -139,6 +143,8 @@ class DayTimesheetInfo(BaseModel):
     """Один день в таблице вкладки 'Количество сданной продукции'."""
     date: date_type
     hours: Decimal = Decimal("0")
+    base_hours: Decimal = Decimal("0")
+    overtime_hours: Decimal = Decimal("0")
     entry: Optional[ProductionEntry] = None
 
 
@@ -148,6 +154,8 @@ class SubordinateDay(BaseModel):
     """Один день в сводной таблице подчинённого: часы из табеля + статус продукции."""
     date: date_type
     hours: Decimal = Decimal("0")
+    base_hours: Decimal = Decimal("0")
+    overtime_hours: Decimal = Decimal("0")
     status: Optional[str] = None
     entry_id: Optional[int] = None
 

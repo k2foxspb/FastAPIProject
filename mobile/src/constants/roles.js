@@ -75,6 +75,16 @@ export const getRoleLabel = (role) => {
   return ROLE_LABELS_RU_STATIC[role] || role;
 };
 
+// Название должности для табличных представлений табеля (сводная таблица
+// подчинённых, экспорт в Excel): только должности производственной
+// иерархии, без алиасов старых системных ролей (admin/seller/buyer) - если
+// роль в иерархию не входит, показываем "Должность не задана" вместо
+// технического кода роли или ярлыка "Администратор".
+export const getPositionLabel = (role) => {
+  const position = positionsCache.find(p => p.code === role);
+  return position ? position.name : 'Должность не задана';
+};
+
 export const getRoleIcon = (role) => ROLE_ICONS[role] || 'person';
 
 export const getRoleScope = (role) => {

@@ -73,20 +73,19 @@ def _month_bounds(year: int, month: int) -> tuple[date, date]:
     return date(year, month, 1), date(year, month, last_day)
 
 
-# Стандартная норма рабочего дня, после которой часы считаются сверхурочными
-TIMESHEET_DAY_NORM_HOURS = Decimal("8")
-
-
 def _fill_timesheet_grid_sheet(ws, year: int, month: int, rows: list[dict]) -> None:
     """
     Заполняет лист в формате классического табеля учёта рабочего времени:
     по дням месяца с разбивкой каждой строки сотрудника на "основное" и
-    "сверхурочное" время, подытогами за 1-ю половину месяца и за весь месяц,
-    количеством выходных и общим количеством сданных приборов в конце строки.
+    "сверхурочное" время (значения берутся напрямую из табеля, т.к. они
+    вводятся сотрудником/руководителем явно, а не высчитываются по норме),
+    подытогами за 1-ю половину месяца и за весь месяц, количеством выходных
+    и общим количеством сданных приборов в конце строки.
 
     rows: список словарей с ключами:
       number, tab_number, grade, fio,
-      hours_by_date (dict[date, Decimal]), products_total (Decimal)
+      hours_by_date (dict[date, tuple[Decimal, Decimal]] - (основное, сверхурочное)),
+      products_total (Decimal)
     """
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
@@ -149,11 +148,8 @@ def _fill_timesheet_grid_sheet(ws, year: int, month: int, rows: list[dict]) -> N
             month_hours_sum = Decimal("0")
 
             for d in days:
-                hours = hours_by_date.get(date(year, month, d), Decimal("0"))
-                if is_first:
-                    value = min(hours, TIMESHEET_DAY_NORM_HOURS)
-                else:
-                    value = max(hours - TIMESHEET_DAY_NORM_HOURS, Decimal("0"))
+                base_hours, overtime_hours = hours_by_date.get(date(year, month, d), (Decimal("0"), Decimal("0")))
+                value = base_hours if is_first else overtime_hours
 
                 cell = ws.cell(row=row_num, column=day_col_index[d])
                 cell.border = thin_border
@@ -238,6 +234,7 @@ async def upsert_timesheet_day(
             user_id=user_id,
             date=data.date,
             hours=data.hours,
+            overtime_hours=data.overtime_hours,
             comment=data.comment,
             created_by_id=current_user.id,
             updated_by_id=current_user.id,
@@ -245,6 +242,7 @@ async def upsert_timesheet_day(
         db.add(entry)
     else:
         entry.hours = data.hours
+        entry.overtime_hours = data.overtime_hours
         entry.comment = data.comment
         entry.updated_by_id = current_user.id
 

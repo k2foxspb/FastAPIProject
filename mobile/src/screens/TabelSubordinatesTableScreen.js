@@ -11,7 +11,7 @@ import { timesheetApi } from '../api';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
 import { formatName } from '../utils/formatters';
-import { getRoleLabel } from '../constants/roles';
+import { getPositionLabel } from '../constants/roles';
 import { storage } from '../utils/storage';
 
 const pad2 = (n) => String(n).padStart(2, '0');
@@ -37,6 +37,14 @@ const isWeekend = (year, month, day) => {
 
 const NAME_COL_WIDTH = 150;
 const DAY_COL_WIDTH = 44;
+// Фиксированная высота строки сотрудника - одна и та же для ячейки имени и
+// для ячейки дня, чтобы колонка имён и сетка часов шли строго друг напротив
+// друга (раньше ячейка имени была выше ячейки дня из-за своего контента, и
+// строки расходились по вертикали при скролле вниз).
+const ROW_HEIGHT = 66;
+// Норма рабочего дня, после которой часы считаются сверхурочными - должна
+// совпадать с TIMESHEET_DAY_NORM_HOURS на бэкенде (app/api/routers/timesheet.py).
+const NORM_HOURS = 8;
 
 // Сводная таблица подчинённых вышестоящего пользователя: по строкам -
 // сотрудники, по столбцам - дни месяца с часами из табеля и статусом
@@ -206,7 +214,7 @@ export default function TabelSubordinatesTableScreen({ navigation }) {
                     {formatName(s.user)}
                   </Text>
                   <Text style={[styles.roleText, { color: colors.textSecondary }]} numberOfLines={1}>
-                    {getRoleLabel(s.user.role)}
+                    {getPositionLabel(s.user.role)}
                   </Text>
                   <View style={styles.nameFooterRow}>
                     <Text style={[styles.totalHoursText, { color: colors.textSecondary }]}>
@@ -249,6 +257,9 @@ export default function TabelSubordinatesTableScreen({ navigation }) {
                       const dayNum = parseInt(day.date.split('-')[2], 10);
                       const weekend = isWeekend(year, month, dayNum);
                       const statusColor = day.status ? (STATUS_COLORS[day.status] || colors.border) : null;
+                      const hours = day.hours || 0;
+                      const baseHours = Math.min(hours, NORM_HOURS);
+                      const overtimeHours = Math.max(hours - NORM_HOURS, 0);
                       return (
                         <TouchableOpacity
                           key={day.date}
@@ -259,8 +270,11 @@ export default function TabelSubordinatesTableScreen({ navigation }) {
                           onPress={() => handleCellPress(s.user, day)}
                           onLongPress={() => handleCellLongPress(s.user, day)}
                         >
-                          <Text style={[styles.dayCellText, { color: colors.text }]}>
-                            {day.hours > 0 ? day.hours : '—'}
+                          <Text style={[styles.dayCellBaseText, { color: colors.text }]}>
+                            {baseHours > 0 ? baseHours : '—'}
+                          </Text>
+                          <Text style={[styles.dayCellOvertimeText, { color: overtimeHours > 0 ? '#F59E0B' : colors.textSecondary }]}>
+                            {overtimeHours > 0 ? `+${overtimeHours}` : ''}
                           </Text>
                           {statusColor && <View style={[styles.statusDot, { backgroundColor: statusColor }]} />}
                         </TouchableOpacity>
@@ -288,7 +302,7 @@ export default function TabelSubordinatesTableScreen({ navigation }) {
             ))}
           </View>
           <Text style={[styles.hint, { color: colors.textSecondary }]}>
-            Нажмите на ячейку с продукцией, чтобы открыть согласование. Долгое нажатие на любую ячейку - изменить часы.
+            В ячейке дня верхнее число - основное время, нижнее (со знаком "+") - сверхурочное. Нажмите на ячейку с продукцией, чтобы открыть согласование. Долгое нажатие на любую ячейку - изменить часы.
           </Text>
         </ScrollView>
       )}
@@ -337,7 +351,7 @@ const styles = StyleSheet.create({
   exportBtn: { marginLeft: 20, padding: 4 },
   cornerCell: { height: 40, borderWidth: 1, justifyContent: 'center', paddingHorizontal: 10 },
   headerText: { fontSize: 12, fontWeight: '600' },
-  nameCell: { minHeight: 56, borderWidth: 1, borderTopWidth: 0, justifyContent: 'center', paddingHorizontal: 10, paddingVertical: 6 },
+  nameCell: { height: ROW_HEIGHT, overflow: 'hidden', borderWidth: 1, borderTopWidth: 0, justifyContent: 'center', paddingHorizontal: 10, paddingVertical: 6 },
   nameText: { fontSize: 13, fontWeight: '700' },
   roleText: { fontSize: 11, marginTop: 1 },
   nameFooterRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 },
@@ -346,8 +360,11 @@ const styles = StyleSheet.create({
   pendingBadgeText: { color: '#fff', fontSize: 10, fontWeight: 'bold' },
   dayHeaderCell: { width: DAY_COL_WIDTH, height: 40, borderWidth: 1, justifyContent: 'center', alignItems: 'center' },
   dayHeaderText: { fontSize: 12, fontWeight: '600' },
-  dayCell: { width: DAY_COL_WIDTH, minHeight: 56, borderWidth: 1, justifyContent: 'center', alignItems: 'center' },
-  dayCellText: { fontSize: 13 },
+  // Высота строго совпадает с nameCell (ROW_HEIGHT), чтобы строка часов
+  // сотрудника всегда шла напротив строки с его именем.
+  dayCell: { width: DAY_COL_WIDTH, height: ROW_HEIGHT, borderWidth: 1, justifyContent: 'center', alignItems: 'center' },
+  dayCellBaseText: { fontSize: 13, fontWeight: '600' },
+  dayCellOvertimeText: { fontSize: 11, marginTop: 2 },
   statusDot: { position: 'absolute', top: 4, right: 4, width: 7, height: 7, borderRadius: 3.5 },
   legend: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 15, justifyContent: 'center', paddingHorizontal: 15 },
   legendItem: { flexDirection: 'row', alignItems: 'center', marginHorizontal: 8, marginBottom: 6 },
