@@ -178,9 +178,6 @@ export default function UsersScreen({ navigation }) {
         <View style={styles.userInfo}>
           <Text style={[styles.userName, { color: colors.text }]}>{formatName(item)}</Text>
           <View style={styles.roleStatus}>
-            {item.role !== 'buyer' && (
-              <Text style={[styles.userRole, { color: colors.textSecondary }]}>{item.role} • </Text>
-            )}
             <Text style={[styles.statusText, { color: colors.textSecondary }]}>{formatStatus(item.status, item.last_seen)}</Text>
             <Text style={[styles.statusText, { color: colors.primary, fontWeight: 'bold' }]}>{getFriendshipText()}</Text>
           </View>
@@ -296,7 +293,6 @@ const styles = StyleSheet.create({
   userInfo: { flex: 1 },
   userName: { fontSize: 16, fontWeight: '500' },
   roleStatus: { flexDirection: 'row', alignItems: 'center' },
-  userRole: { fontSize: 12, color: 'gray' },
   statusText: { fontSize: 12, color: 'gray' },
   requestButtons: { flexDirection: 'row' },
   actionButton: { width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center', marginLeft: 10 },

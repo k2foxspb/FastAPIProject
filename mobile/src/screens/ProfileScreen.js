@@ -573,7 +573,7 @@ export default function ProfileScreen({ navigation }) {
             onPress={() => navigation.navigate('MyLikes')}
           >
             <Icon name="heart" size={24} color={colors.error} />
-            <Text style={[styles.activityButtonText, { color:    ors.text }]}>Понравилось</Text>
+            <Text style={[styles.activityButtonText, { color: colors.text }]}>Понравилось</Text>
           </TouchableOpacity>
           <TouchableOpacity 
             style={[styles.activityButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
@@ -839,18 +839,6 @@ const styles = StyleSheet.create({
   postThumbnail: { width: 70, height: 70, borderRadius: 8, marginRight: 12 },
   postTextContainer: { flex: 1, justifyContent: 'center' },
   postHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
-  postTitle: { fontSize: 15, fontWeight: 'bold', marginBottom: 2 },
-  postContent: { fontSize: 13, lineHeight: 18 },
-  postFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 10, paddingBottom: 10 },
-  postDate: { fontSize: 10 },
-  reactionsRow: { flexDirection: 'row', alignItems: 'center' },
-  reactionItem: { flexDirection: 'row', alignItems: 'center' },
-  reactionCount: { fontSize: 11, marginLeft: 4 },
-  pendingBadge: { backgroundColor: 'rgba(255, 165, 0, 0.2)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
-  pendingText: { color: '#FFA500', fontSize: 10, fontWeight: 'bold' },
-  emptyText: { textAlign: 'center', marginTop: 10, fontStyle: 'italic' },
-});
- },
   postTitle: { fontSize: 15, fontWeight: 'bold', marginBottom: 2 },
   postContent: { fontSize: 13, lineHeight: 18 },
   postFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 10, paddingBottom: 10 },
