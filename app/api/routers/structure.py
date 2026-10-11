@@ -178,6 +178,16 @@ async def reorder_positions(
     if len(set(levels)) != len(levels):
         raise HTTPException(status_code=400, detail="Levels must be unique")
 
+    # Поле level в БД уникально, поэтому при перестановке (например, простой
+    # swap двух соседних должностей) прямое присвоение новых значений может
+    # на мгновение столкнуться со старым значением ещё не обновлённой строки
+    # и упасть с ошибкой уникальности. Поэтому сначала переводим все
+    # затрагиваемые должности на заведомо свободные временные (отрицательные)
+    # уровни одним flush, и только потом проставляем финальные значения.
+    for item in data.positions:
+        positions_by_id[item.id].level = -(item.id)
+    await db.flush()
+
     for item in data.positions:
         positions_by_id[item.id].level = item.level
     await db.commit()
