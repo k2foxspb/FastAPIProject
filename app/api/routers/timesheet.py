@@ -18,6 +18,7 @@ from app.core.production import (
     can_review_production,
     can_edit_production_entry,
     find_nearest_supervisors,
+    get_subordinates,
 )
 from app.api.routers.notifications import manager as notification_manager
 from app.core.fcm import send_fcm_notification
@@ -44,6 +45,9 @@ from app.schemas.timesheet import (
     ProductionEntry as ProductionEntrySchema,
     ProductionEntryDetail as ProductionEntryDetailSchema,
     DayTimesheetInfo,
+    SubordinateSummary,
+    SubordinateDay,
+    EmployeeBrief,
 )
 
 router = APIRouter(prefix="/timesheet", tags=["timesheet"])
@@ -273,6 +277,74 @@ async def _notify_supervisors(db: AsyncSession, entry: ProductionEntryModel, hou
                 data=message,
                 sender_id=entry.user_id,
             ))
+
+
+@router.get("/subordinates/summary", response_model=list[SubordinateSummary])
+async def get_subordinates_summary(
+    year: int,
+    month: int,
+    current_user: UserModel = Depends(get_current_production_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Сводная таблица по всем подчинённым текущего пользователя за месяц: часы
+    из табеля по каждому дню и статус сданной продукции - чтобы видеть всех
+    подчинённых сразу и переходить к редактированию часов/согласованию.
+    """
+    subordinates = await get_subordinates(db, current_user)
+    if not subordinates:
+        return []
+
+    sub_ids = [u.id for u in subordinates]
+    start, end = _month_bounds(year, month)
+
+    hours_result = await db.execute(
+        select(TimesheetEntryModel).where(
+            TimesheetEntryModel.user_id.in_(sub_ids),
+            TimesheetEntryModel.date >= start,
+            TimesheetEntryModel.date <= end,
+        )
+    )
+    hours_by_key: dict[tuple[int, date], Decimal] = {
+        (e.user_id, e.date): e.hours for e in hours_result.scalars().all()
+    }
+
+    entries_result = await db.execute(
+        select(ProductionEntryModel).where(
+            ProductionEntryModel.user_id.in_(sub_ids),
+            ProductionEntryModel.date >= start,
+            ProductionEntryModel.date <= end,
+        )
+    )
+    entries_by_key: dict[tuple[int, date], ProductionEntryModel] = {
+        (e.user_id, e.date): e for e in entries_result.scalars().all()
+    }
+
+    summaries = []
+    for user in subordinates:
+        days = []
+        total_hours = Decimal("0")
+        pending_count = 0
+        for day_num in range(1, end.day + 1):
+            day = date(year, month, day_num)
+            hours = hours_by_key.get((user.id, day), Decimal("0"))
+            total_hours += hours
+            entry = entries_by_key.get((user.id, day))
+            if entry is not None and entry.status == PRODUCTION_STATUS_PENDING:
+                pending_count += 1
+            days.append(SubordinateDay(
+                date=day,
+                hours=hours,
+                status=entry.status if entry else None,
+                entry_id=entry.id if entry else None,
+            ))
+        summaries.append(SubordinateSummary(
+            user=EmployeeBrief.model_validate(user),
+            days=days,
+            total_hours=total_hours,
+            pending_count=pending_count,
+        ))
+    return summaries
 
 
 @router.get("/production/entries/pending", response_model=list[ProductionEntrySchema])

@@ -140,3 +140,25 @@ class DayTimesheetInfo(BaseModel):
     date: date_type
     hours: Decimal = Decimal("0")
     entry: Optional[ProductionEntry] = None
+
+
+# --- Сводная таблица по подчинённым ---
+
+class SubordinateDay(BaseModel):
+    """Один день в сводной таблице подчинённого: часы из табеля + статус продукции."""
+    date: date_type
+    hours: Decimal = Decimal("0")
+    status: Optional[str] = None
+    entry_id: Optional[int] = None
+
+
+class SubordinateSummary(BaseModel):
+    """
+    Строка сводной таблицы подчинённых вышестоящего пользователя: часы по
+    каждому дню месяца и статусы сданной продукции, чтобы видеть всех
+    подчинённых сразу и переходить к редактированию/согласованию.
+    """
+    user: EmployeeBrief
+    days: list[SubordinateDay] = Field(default_factory=list)
+    total_hours: Decimal = Decimal("0")
+    pending_count: int = 0

@@ -61,6 +61,23 @@ def can_edit_production_entry(current: UserModel, owner: UserModel, status: str)
     return can_manage_user(to_scoped(current), to_scoped(owner))
 
 
+async def get_subordinates(db: AsyncSession, current: UserModel) -> list[UserModel]:
+    """
+    Возвращает всех подчинённых текущего пользователя по иерархии должностей
+    (строго ниже по уровню и в пределах зоны ответственности) - используется
+    для сводной таблицы часов/продукции по подчинённым.
+    """
+    result = await db.execute(select(UserModel).where(UserModel.is_active == True))
+    candidates = result.scalars().all()
+    scoped_current = to_scoped(current)
+    subordinates = [
+        u for u in candidates
+        if u.id != current.id and can_manage_user(scoped_current, to_scoped(u))
+    ]
+    subordinates.sort(key=lambda u: get_role_level(u.role))
+    return subordinates
+
+
 async def find_nearest_supervisors(db: AsyncSession, target: UserModel) -> list[UserModel]:
     """
     Находит ближайшего вышестоящего пользователя (пользователей, если на
