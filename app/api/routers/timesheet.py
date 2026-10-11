@@ -853,7 +853,7 @@ async def reject_production_entry(
     await db.commit()
 
     entry = await _load_entry(db, entry.id)
-    base_hours, overtime_hours = await _get_hours_for_date(db, entry.user_id, entry.date)
+    base_hours, overtime_hours, text_value = await _get_hours_for_date(db, entry.user_id, entry.date)
 
     message = {
         "type": "production_entry_rejected",
@@ -871,7 +871,7 @@ async def reject_production_entry(
             sender_id=current_user.id,
         ))
 
-    return _entry_to_schema(entry, current_user, base_hours, overtime_hours)
+    return _entry_to_schema(entry, current_user, base_hours, overtime_hours, text_value)
 
 
 # ------------------------------------------------------------------
@@ -905,7 +905,7 @@ async def export_timesheet_excel(
             TimesheetEntryModel.date <= end,
         )
     )
-    hours_by_date = {e.date: (e.hours, e.overtime_hours) for e in hours_result.scalars().all()}
+    hours_by_date = {e.date: (e.hours, e.overtime_hours, e.text_value) for e in hours_result.scalars().all()}
 
     entries_result = await db.execute(
         select(ProductionEntryModel)
@@ -943,19 +943,20 @@ async def export_timesheet_excel(
     }])
 
     ws_production = wb.create_sheet("Продукция")
-    ws_production.append(["Дата", "Часы", "Продукция", "Количество", "Статус", "Комментарий сотрудника", "Комментарий руководителя"])
+    ws_production.append(["Дата", "Часы", "Отметка", "Продукция", "Количество", "Статус", "Комментарий сотрудника", "Комментарий руководителя"])
     for day_num in range(1, end.day + 1):
         day = date(year, month, day_num)
-        base_hours, overtime_hours = hours_by_date.get(day, (Decimal("0"), Decimal("0")))
+        base_hours, overtime_hours, text_value = hours_by_date.get(day, (Decimal("0"), Decimal("0"), None))
         hours = base_hours + overtime_hours
         entry = entries_by_date.get(day)
         if entry is None or not entry.items:
-            ws_production.append([day.isoformat(), float(hours), "", "", "", "", ""])
+            ws_production.append([day.isoformat(), float(hours), text_value or "", "", "", "", "", ""])
             continue
         for item in entry.items:
             ws_production.append([
                 day.isoformat(),
                 float(hours),
+                text_value or "",
                 item.product.name if item.product else "",
                 float(item.quantity),
                 status_labels.get(entry.status, entry.status),
