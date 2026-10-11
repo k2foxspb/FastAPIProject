@@ -73,6 +73,19 @@ def _month_bounds(year: int, month: int) -> tuple[date, date]:
     return date(year, month, 1), date(year, month, last_day)
 
 
+def _default_base_hours(user: UserModel | None, day: date) -> Decimal:
+    """
+    Часы по умолчанию для дня, за который ещё нет записи в табеле - берутся
+    из графика работы пользователя (work_schedule_hours), заданного им при
+    регистрации/в профиле. По выходным (суббота, воскресенье) по умолчанию 0.
+    """
+    if day.weekday() >= 5:
+        return Decimal("0")
+    if user is None or user.work_schedule_hours is None:
+        return Decimal("0")
+    return Decimal(str(user.work_schedule_hours))
+
+
 def _fill_timesheet_grid_sheet(ws, year: int, month: int, rows: list[dict]) -> None:
     """
     Заполняет лист в формате классического табеля учёта рабочего времени:
@@ -149,8 +162,10 @@ def _fill_timesheet_grid_sheet(ws, year: int, month: int, rows: list[dict]) -> N
             month_hours_sum = Decimal("0")
 
             for d in days:
+                cur_date = date(year, month, d)
+                default_base = _default_base_hours(row_data.get("user"), cur_date)
                 base_hours, overtime_hours, text_value = hours_by_date.get(
-                    date(year, month, d), (Decimal("0"), Decimal("0"), None)
+                    cur_date, (default_base, Decimal("0"), None)
                 )
                 value = base_hours if is_first else overtime_hours
 
@@ -350,18 +365,22 @@ async def _load_entry(db: AsyncSession, entry_id: int) -> ProductionEntryModel:
     return entry
 
 
-async def _get_hours_for_date(db: AsyncSession, user_id: int, day: date) -> tuple[Decimal, Decimal, str | None]:
-    """Возвращает (основное, сверхурочное, текстовая отметка) из табеля за день."""
+async def _get_hours_for_date(db: AsyncSession, user: UserModel, day: date) -> tuple[Decimal, Decimal, str | None]:
+    """
+    Возвращает (основное, сверхурочное, текстовая отметка) из табеля за день.
+    Если записи в табеле ещё нет, основное время по умолчанию берётся из
+    графика работы пользователя (work_schedule_hours).
+    """
     result = await db.execute(
         select(
             TimesheetEntryModel.hours, TimesheetEntryModel.overtime_hours, TimesheetEntryModel.text_value
         ).where(
-            TimesheetEntryModel.user_id == user_id, TimesheetEntryModel.date == day
+            TimesheetEntryModel.user_id == user.id, TimesheetEntryModel.date == day
         )
     )
     row = result.one_or_none()
     if row is None:
-        return Decimal("0"), Decimal("0"), None
+        return _default_base_hours(user, day), Decimal("0"), None
     base_hours, overtime_hours, text_value = row
     return base_hours or Decimal("0"), overtime_hours or Decimal("0"), text_value
 
@@ -463,7 +482,9 @@ async def get_subordinates_summary(
         pending_count = 0
         for day_num in range(1, end.day + 1):
             day = date(year, month, day_num)
-            base_hours, overtime_hours, text_value = hours_by_key.get((user.id, day), (Decimal("0"), Decimal("0"), None))
+            base_hours, overtime_hours, text_value = hours_by_key.get(
+                (user.id, day), (_default_base_hours(user, day), Decimal("0"), None)
+            )
             hours = base_hours + overtime_hours
             total_hours += hours
             entry = entries_by_key.get((user.id, day))
@@ -541,6 +562,7 @@ async def export_subordinates_summary_excel(
             "fio": _user_name(user),
             "hours_by_date": hours_by_user.get(user.id, {}),
             "products_total": products_by_user.get(user.id, Decimal("0")),
+            "user": user,
         }
         for idx, user in enumerate(subordinates)
     ]
@@ -586,7 +608,7 @@ async def list_pending_entries(
 
     schemas = []
     for entry in visible:
-        base_hours, overtime_hours, text_value = await _get_hours_for_date(db, entry.user_id, entry.date)
+        base_hours, overtime_hours, text_value = await _get_hours_for_date(db, entry.user, entry.date)
         schemas.append(_entry_to_schema(entry, current_user, base_hours, overtime_hours, text_value))
     return schemas
 
@@ -637,7 +659,9 @@ async def get_user_production_month(
     days = []
     for day_num in range(1, end.day + 1):
         day = date(year, month, day_num)
-        base_hours, overtime_hours, text_value = hours_by_date.get(day, (Decimal("0"), Decimal("0"), None))
+        base_hours, overtime_hours, text_value = hours_by_date.get(
+            day, (_default_base_hours(target, day), Decimal("0"), None)
+        )
         entry = entries_by_date.get(day)
         entry_schema = _entry_to_schema(entry, current_user, base_hours, overtime_hours, text_value) if entry else None
         days.append(DayTimesheetInfo(
@@ -657,7 +681,7 @@ async def get_production_entry(
     if not (can_view_timesheet(current_user, entry.user)):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
 
-    base_hours, overtime_hours, text_value = await _get_hours_for_date(db, entry.user_id, entry.date)
+    base_hours, overtime_hours, text_value = await _get_hours_for_date(db, entry.user, entry.date)
     schema = ProductionEntryDetailSchema.model_validate(entry)
     schema.base_hours = base_hours
     schema.overtime_hours = overtime_hours
@@ -746,7 +770,7 @@ async def upsert_production_entry(
     await db.commit()
 
     entry = await _load_entry(db, entry.id)
-    base_hours, overtime_hours, text_value = await _get_hours_for_date(db, entry.user_id, entry.date)
+    base_hours, overtime_hours, text_value = await _get_hours_for_date(db, entry.user, entry.date)
 
     if submit:
         await _notify_supervisors(db, entry, base_hours + overtime_hours, resubmit=was_rejected)
@@ -781,7 +805,7 @@ async def submit_production_entry(
     await db.commit()
 
     entry = await _load_entry(db, entry.id)
-    base_hours, overtime_hours, text_value = await _get_hours_for_date(db, entry.user_id, entry.date)
+    base_hours, overtime_hours, text_value = await _get_hours_for_date(db, entry.user, entry.date)
     await _notify_supervisors(db, entry, base_hours + overtime_hours, resubmit=was_rejected)
     return _entry_to_schema(entry, current_user, base_hours, overtime_hours, text_value)
 
@@ -808,7 +832,7 @@ async def approve_production_entry(
     await db.commit()
 
     entry = await _load_entry(db, entry.id)
-    base_hours, overtime_hours, text_value = await _get_hours_for_date(db, entry.user_id, entry.date)
+    base_hours, overtime_hours, text_value = await _get_hours_for_date(db, entry.user, entry.date)
 
     message = {
         "type": "production_entry_approved",
@@ -853,7 +877,7 @@ async def reject_production_entry(
     await db.commit()
 
     entry = await _load_entry(db, entry.id)
-    base_hours, overtime_hours, text_value = await _get_hours_for_date(db, entry.user_id, entry.date)
+    base_hours, overtime_hours, text_value = await _get_hours_for_date(db, entry.user, entry.date)
 
     message = {
         "type": "production_entry_rejected",
@@ -940,13 +964,16 @@ async def export_timesheet_excel(
         "fio": _user_name(target),
         "hours_by_date": hours_by_date,
         "products_total": products_total,
+        "user": target,
     }])
 
     ws_production = wb.create_sheet("Продукция")
     ws_production.append(["Дата", "Часы", "Отметка", "Продукция", "Количество", "Статус", "Комментарий сотрудника", "Комментарий руководителя"])
     for day_num in range(1, end.day + 1):
         day = date(year, month, day_num)
-        base_hours, overtime_hours, text_value = hours_by_date.get(day, (Decimal("0"), Decimal("0"), None))
+        base_hours, overtime_hours, text_value = hours_by_date.get(
+            day, (_default_base_hours(target, day), Decimal("0"), None)
+        )
         hours = base_hours + overtime_hours
         entry = entries_by_date.get(day)
         if entry is None or not entry.items:
