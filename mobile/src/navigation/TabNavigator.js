@@ -81,7 +81,7 @@ function ChatStack() {
         })} 
       />
       <Stack.Screen name="UserProfile" component={UserProfileScreen} options={{ title: 'Профиль пользователя' }} />
-      <Stack.Screen name="UserHierarchy" component={UserHierarchyScreen} options={{ title: 'Иерархия' }} />
+      <Stack.Screen name="UserHierarchy" component={UserHierarchyScreen} options={{ title: 'Сотрудники' }} />
       <Stack.Screen name="UserMedia" component={UserMediaScreen} options={{ title: 'Медиафайлы' }} />
       <Stack.Screen 
         name="PhotoDetail" 
@@ -158,7 +158,7 @@ function ProfileStack() {
       <Stack.Screen name="MyLikes" component={MyLikesScreen} options={{ title: 'Понравилось' }} />
       <Stack.Screen name="MyReviews" component={MyReviewsScreen} options={{ title: 'Мои отзывы' }} />
       <Stack.Screen name="UserProfile" component={UserProfileScreen} options={{ title: 'Профиль пользователя' }} />
-      <Stack.Screen name="UserHierarchy" component={UserHierarchyScreen} options={{ title: 'Иерархия' }} />
+      <Stack.Screen name="UserHierarchy" component={UserHierarchyScreen} options={{ title: 'Сотрудники' }} />
       <Stack.Screen name="WebView" component={WebViewScreen} />
       <Stack.Screen name="VerifyEmail" component={LoginScreen} options={{ title: 'Подтверждение' }} />
       <Stack.Screen name="VerifyEmailBridge" component={LoginScreen} options={{ title: 'Подтверждение' }} />
@@ -213,7 +213,7 @@ function UsersStack() {
     >
       <Stack.Screen name="UsersMain" component={UsersScreen} options={{ title: 'Пользователи' }} />
       <Stack.Screen name="UserProfile" component={UserProfileScreen} options={{ title: 'Профиль пользователя' }} />
-      <Stack.Screen name="UserHierarchy" component={UserHierarchyScreen} options={{ title: 'Иерархия' }} />
+      <Stack.Screen name="UserHierarchy" component={UserHierarchyScreen} options={{ title: 'Сотрудники' }} />
       <Stack.Screen name="UserMedia" component={UserMediaScreen} options={{ title: 'Медиафайлы' }} />
       <Stack.Screen 
         name="PhotoDetail" 
@@ -243,7 +243,7 @@ function FeedStack() {
       <Stack.Screen name="NewsDetail" component={NewsDetailScreen} options={{ title: 'Новость' }} />
       <Stack.Screen name="EditNews" component={EditNewsScreen} options={{ title: 'Редактировать новость' }} />
       <Stack.Screen name="UserProfile" component={UserProfileScreen} options={{ title: 'Профиль пользователя' }} />
-      <Stack.Screen name="UserHierarchy" component={UserHierarchyScreen} options={{ title: 'Иерархия' }} />
+      <Stack.Screen name="UserHierarchy" component={UserHierarchyScreen} options={{ title: 'Сотрудники' }} />
       <Stack.Screen name="UserMedia" component={UserMediaScreen} options={{ title: 'Медиафайлы' }} />
     </Stack.Navigator>
   );

@@ -374,6 +374,16 @@ export default function ProfileScreen({ navigation }) {
             <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Должность</Text>
           </View>
         </View>
+
+        {isProductionRole(user.role) ? (
+          <TouchableOpacity
+            style={[styles.hierarchyBtn, { borderColor: colors.primary, borderWidth: 1 }]}
+            onPress={() => navigation.navigate('UserHierarchy', { userId: user.id, userName: formatName(user) })}
+          >
+            <Icon name="git-network-outline" size={18} color={colors.primary} />
+            <Text style={[styles.hierarchyBtnText, { color: colors.primary }]}>Сотрудники</Text>
+          </TouchableOpacity>
+        ) : null}
       </View>
 
       <Modal
@@ -408,19 +418,6 @@ export default function ProfileScreen({ navigation }) {
                   >
                     <Icon name="shield-checkmark-outline" size={22} color={colors.primary} />
                     <Text style={[styles.menuItemText, { color: colors.text }]}>Админ-панель</Text>
-                  </TouchableOpacity>
-                ) : null}
-
-                {isProductionRole(user.role) ? (
-                  <TouchableOpacity 
-                    style={[styles.menuItem, { borderBottomWidth: 1, borderBottomColor: colors.border }]} 
-                    onPress={() => {
-                      setSettingsVisible(false);
-                      navigation.navigate('UserHierarchy', { userId: user.id, userName: formatName(user) });
-                    }}
-                  >
-                    <Icon name="git-network-outline" size={22} color={colors.primary} />
-                    <Text style={[styles.menuItemText, { color: colors.text }]}>Подчинённые и начальники</Text>
                   </TouchableOpacity>
                 ) : null}
 
@@ -640,6 +637,16 @@ const styles = StyleSheet.create({
   statValue: { fontSize: 18, fontWeight: '700' },
   statLabel: { fontSize: 12, marginTop: 2 },
   role: { color: 'gray' },
+  hierarchyBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 15,
+    paddingVertical: 10,
+    borderRadius: 20,
+    marginTop: 15,
+  },
+  hierarchyBtnText: { marginLeft: 8, fontWeight: '600' },
   section: { padding: 20 },
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
   sectionTitle: { fontSize: 18, fontWeight: 'bold' },

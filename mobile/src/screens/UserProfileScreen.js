@@ -254,7 +254,7 @@ export default function UserProfileScreen({ route, navigation }) {
             onPress={() => navigation.navigate('UserHierarchy', { userId: user.id, userName: formatName(user) })}
           >
             <Icon name="git-network-outline" size={18} color={colors.primary} />
-            <Text style={[styles.hierarchyBtnText, { color: colors.primary }]}>Подчинённые и начальники</Text>
+            <Text style={[styles.hierarchyBtnText, { color: colors.primary }]}>Сотрудники</Text>
           </TouchableOpacity>
         )}
       </View>

@@ -12,6 +12,7 @@ from app.core.roles import (
     can_manage_user,
     can_view_user,
     get_role_level,
+    get_role_scope,
 )
 from app.models.users import User as UserModel
 
@@ -61,11 +62,16 @@ def can_edit_production_entry(current: UserModel, owner: UserModel, status: str)
     return can_manage_user(to_scoped(current), to_scoped(owner))
 
 
-async def get_subordinates(db: AsyncSession, current: UserModel) -> list[UserModel]:
+async def get_subordinates(db: AsyncSession, current: UserModel, include_self: bool = False) -> list[UserModel]:
     """
     Возвращает всех подчинённых текущего пользователя по иерархии должностей
     (строго ниже по уровню и в пределах зоны ответственности) - используется
     для сводной таблицы часов/продукции по подчинённым.
+
+    Если include_self=True и у текущего пользователя должность с зоной
+    ответственности "workshop" или "global" (начальник цеха и выше), он сам
+    добавляется в список - такие пользователи должны видеть и свою строку
+    в сводной таблице подчинённых, а не только строки своих подчинённых.
     """
     result = await db.execute(select(UserModel).where(UserModel.is_active == True))
     candidates = result.scalars().all()
@@ -74,6 +80,8 @@ async def get_subordinates(db: AsyncSession, current: UserModel) -> list[UserMod
         u for u in candidates
         if u.id != current.id and can_manage_user(scoped_current, to_scoped(u))
     ]
+    if include_self and get_role_scope(current.role) in ("global", "workshop"):
+        subordinates.append(current)
     subordinates.sort(key=lambda u: get_role_level(u.role))
     return subordinates
 

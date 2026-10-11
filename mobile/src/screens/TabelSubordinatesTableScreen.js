@@ -62,6 +62,7 @@ export default function TabelSubordinatesTableScreen({ navigation }) {
   const [hoursModalTarget, setHoursModalTarget] = useState(null); // { userId, userName, date }
   const [baseHoursValue, setBaseHoursValue] = useState('');
   const [overtimeHoursValue, setOvertimeHoursValue] = useState('');
+  const [textValueInput, setTextValueInput] = useState('');
   const [savingHours, setSavingHours] = useState(false);
   const [exporting, setExporting] = useState(false);
 
@@ -96,6 +97,7 @@ export default function TabelSubordinatesTableScreen({ navigation }) {
     setHoursModalTarget({ userId: user.id, userName: formatName(user), date: day.date });
     setBaseHoursValue(day.base_hours > 0 ? String(day.base_hours) : '');
     setOvertimeHoursValue(day.overtime_hours > 0 ? String(day.overtime_hours) : '');
+    setTextValueInput(day.text_value || '');
     setHoursModalVisible(true);
   };
 
@@ -130,6 +132,7 @@ export default function TabelSubordinatesTableScreen({ navigation }) {
         date: hoursModalTarget.date,
         hours: parsedBase,
         overtime_hours: parsedOvertime,
+        text_value: textValueInput || null,
         comment: '',
       });
       setHoursModalVisible(false);
@@ -275,12 +278,20 @@ export default function TabelSubordinatesTableScreen({ navigation }) {
                           onPress={() => handleCellPress(s.user, day)}
                           onLongPress={() => handleCellLongPress(s.user, day)}
                         >
-                          <Text style={[styles.dayCellBaseText, { color: colors.text }]}>
-                            {baseHours > 0 ? baseHours : '—'}
-                          </Text>
-                          <Text style={[styles.dayCellOvertimeText, { color: overtimeHours > 0 ? '#F59E0B' : colors.textSecondary }]}>
-                            {overtimeHours > 0 ? `+${overtimeHours}` : ''}
-                          </Text>
+                          {day.text_value ? (
+                            <Text style={[styles.dayCellTextValue, { color: colors.primary }]} numberOfLines={2}>
+                              {day.text_value}
+                            </Text>
+                          ) : (
+                            <>
+                              <Text style={[styles.dayCellBaseText, { color: colors.text }]}>
+                                {baseHours > 0 ? baseHours : '—'}
+                              </Text>
+                              <Text style={[styles.dayCellOvertimeText, { color: overtimeHours > 0 ? '#F59E0B' : colors.textSecondary }]}>
+                                {overtimeHours > 0 ? `+${overtimeHours}` : ''}
+                              </Text>
+                            </>
+                          )}
                           {statusColor && <View style={[styles.statusDot, { backgroundColor: statusColor }]} />}
                         </TouchableOpacity>
                       );
@@ -340,6 +351,14 @@ export default function TabelSubordinatesTableScreen({ navigation }) {
                     placeholder="0"
                     placeholderTextColor={colors.textSecondary}
                   />
+                  <Text style={[styles.modalLabel, { color: colors.textSecondary, marginTop: 10 }]}>Отметка вместо часов (например, больничный)</Text>
+                  <TextInput
+                    style={[styles.modalInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]}
+                    value={textValueInput}
+                    onChangeText={setTextValueInput}
+                    placeholder="Например, Больничный лист"
+                    placeholderTextColor={colors.textSecondary}
+                  />
                   <TouchableOpacity
                     style={[styles.modalSaveBtn, { backgroundColor: colors.primary }]}
                     onPress={saveHours}
@@ -379,6 +398,7 @@ const styles = StyleSheet.create({
   dayCell: { width: DAY_COL_WIDTH, height: ROW_HEIGHT, borderWidth: 1, justifyContent: 'center', alignItems: 'center' },
   dayCellBaseText: { fontSize: 13, fontWeight: '600' },
   dayCellOvertimeText: { fontSize: 11, marginTop: 2 },
+  dayCellTextValue: { fontSize: 9, fontWeight: '600', textAlign: 'center' },
   statusDot: { position: 'absolute', top: 4, right: 4, width: 7, height: 7, borderRadius: 3.5 },
   legend: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 15, justifyContent: 'center', paddingHorizontal: 15 },
   legendItem: { flexDirection: 'row', alignItems: 'center', marginHorizontal: 8, marginBottom: 6 },

@@ -92,8 +92,10 @@ def _fill_timesheet_grid_sheet(ws, year: int, month: int, rows: list[dict]) -> N
     по дням месяца с разбивкой каждой строки сотрудника на "основное" и
     "сверхурочное" время (значения берутся напрямую из табеля, т.к. они
     вводятся сотрудником/руководителем явно, а не высчитываются по норме),
-    подытогами за 1-ю половину месяца и за весь месяц, количеством выходных
-    и общим количеством сданных приборов в конце строки.
+    подытогами за 1-ю половину месяца и за весь месяц, количеством часов,
+    отработанных в выходные дни, общим количеством отработанных часов за
+    месяц (основное + сверхурочное) и общим количеством сданных приборов
+    в конце строки.
 
     rows: список словарей с ключами:
       number, tab_number, grade, fio,
@@ -129,8 +131,10 @@ def _fill_timesheet_grid_sheet(ws, year: int, month: int, rows: list[dict]) -> N
     month_days_col = len(headers)
     headers.append("За месяц\n(часы)")
     month_hours_col = len(headers)
-    headers.append("Выходные")
+    headers.append("Выходные\n(часы)")
     weekend_col = len(headers)
+    headers.append("Итого отработано\n(часов)")
+    total_hours_col = len(headers)
     headers.append("Приборы, всего")
     products_col = len(headers)
 
@@ -148,6 +152,21 @@ def _fill_timesheet_grid_sheet(ws, year: int, month: int, rows: list[dict]) -> N
     row_num = 2
     for row_data in rows:
         hours_by_date = row_data["hours_by_date"]
+
+        # Общее количество отработанных часов за месяц (основное + сверхурочное
+        # суммарно) считается один раз на сотрудника и выводится только в
+        # первой (основной) подстроке - аналогично "Приборы, всего".
+        total_month_hours = Decimal("0")
+        for d in days:
+            cur_date = date(year, month, d)
+            default_base = _default_base_hours(row_data.get("user"), cur_date)
+            base_hours, overtime_hours, text_value = hours_by_date.get(
+                cur_date, (default_base, Decimal("0"), None)
+            )
+            if text_value:
+                continue
+            total_month_hours += base_hours + overtime_hours
+
         for label in ("основное", "сверхурочное"):
             is_first = label == "основное"
             ws.cell(row=row_num, column=1, value=row_data["number"] if is_first else None).border = thin_border
@@ -160,6 +179,7 @@ def _fill_timesheet_grid_sheet(ws, year: int, month: int, rows: list[dict]) -> N
             half_hours_sum = Decimal("0")
             month_days_count = 0
             month_hours_sum = Decimal("0")
+            weekend_hours_sum = Decimal("0")
 
             for d in days:
                 cur_date = date(year, month, d)
@@ -185,12 +205,19 @@ def _fill_timesheet_grid_sheet(ws, year: int, month: int, rows: list[dict]) -> N
                     if d <= half:
                         half_days_count += 1
                         half_hours_sum += value
+                    if d in weekend_days:
+                        weekend_hours_sum += value
 
             ws.cell(row=row_num, column=half_days_col, value=half_days_count).border = thin_border
             ws.cell(row=row_num, column=half_hours_col, value=float(half_hours_sum)).border = thin_border
             ws.cell(row=row_num, column=month_days_col, value=month_days_count).border = thin_border
             ws.cell(row=row_num, column=month_hours_col, value=float(month_hours_sum)).border = thin_border
-            ws.cell(row=row_num, column=weekend_col, value=len(weekend_days) if is_first else None).border = thin_border
+            # Часы, отработанные в выходные дни (а не просто их количество).
+            ws.cell(row=row_num, column=weekend_col, value=float(weekend_hours_sum)).border = thin_border
+            ws.cell(
+                row=row_num, column=total_hours_col,
+                value=float(total_month_hours) if is_first else None,
+            ).border = thin_border
             ws.cell(
                 row=row_num, column=products_col,
                 value=float(row_data["products_total"]) if is_first else None,
@@ -445,8 +472,9 @@ async def get_subordinates_summary(
     Сводная таблица по всем подчинённым текущего пользователя за месяц: часы
     из табеля по каждому дню и статус сданной продукции - чтобы видеть всех
     подчинённых сразу и переходить к редактированию часов/согласованию.
+    Начальник цеха и выше видит в этой таблице и свою собственную строку.
     """
-    subordinates = await get_subordinates(db, current_user)
+    subordinates = await get_subordinates(db, current_user, include_self=True)
     if not subordinates:
         return []
 
@@ -519,11 +547,12 @@ async def export_subordinates_summary_excel(
     Выгружает в Excel сводный табель по всем подчинённым текущего
     пользователя за месяц - по строкам сотрудники (с разбивкой на
     "основное"/"сверхурочное" время), в конце строки - общее количество
-    сданных приборов за месяц.
+    сданных приборов за месяц. Начальник цеха и выше попадает в выгрузку и
+    своей собственной строкой.
     """
     from openpyxl import Workbook
 
-    subordinates = await get_subordinates(db, current_user)
+    subordinates = await get_subordinates(db, current_user, include_self=True)
     if not subordinates:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No subordinates found")
 
@@ -911,8 +940,10 @@ async def export_timesheet_excel(
     db: AsyncSession = Depends(get_async_db),
 ):
     """
-    Выгружает табель и сданную продукцию пользователя за месяц в Excel
-    (два листа: "Табель" и "Продукция").
+    Выгружает табель пользователя за месяц в Excel - один лист "Табель" в
+    том же формате сводной сетки, что и выгрузка таблицы подчинённых
+    (/timesheet/subordinates/summary/export), чтобы выгрузка только своего
+    табеля выглядела так же, как строка в таблице подчинённых.
     """
     from openpyxl import Workbook
 
@@ -942,13 +973,6 @@ async def export_timesheet_excel(
     )
     entries_by_date = {e.date: e for e in entries_result.scalars().all()}
 
-    status_labels = {
-        PRODUCTION_STATUS_DRAFT: "Черновик",
-        PRODUCTION_STATUS_PENDING: "На согласовании",
-        PRODUCTION_STATUS_APPROVED: "Подтверждено",
-        PRODUCTION_STATUS_REJECTED: "Отклонено",
-    }
-
     products_total = sum(
         (item.quantity for entry in entries_by_date.values() for item in entry.items),
         Decimal("0"),
@@ -966,30 +990,6 @@ async def export_timesheet_excel(
         "products_total": products_total,
         "user": target,
     }])
-
-    ws_production = wb.create_sheet("Продукция")
-    ws_production.append(["Дата", "Часы", "Отметка", "Продукция", "Количество", "Статус", "Комментарий сотрудника", "Комментарий руководителя"])
-    for day_num in range(1, end.day + 1):
-        day = date(year, month, day_num)
-        base_hours, overtime_hours, text_value = hours_by_date.get(
-            day, (_default_base_hours(target, day), Decimal("0"), None)
-        )
-        hours = base_hours + overtime_hours
-        entry = entries_by_date.get(day)
-        if entry is None or not entry.items:
-            ws_production.append([day.isoformat(), float(hours), text_value or "", "", "", "", "", ""])
-            continue
-        for item in entry.items:
-            ws_production.append([
-                day.isoformat(),
-                float(hours),
-                text_value or "",
-                item.product.name if item.product else "",
-                float(item.quantity),
-                status_labels.get(entry.status, entry.status),
-                item.comment or "",
-                entry.reviewer_comment or "",
-            ])
 
     buffer = io.BytesIO()
     wb.save(buffer)

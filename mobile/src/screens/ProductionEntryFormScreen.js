@@ -16,6 +16,10 @@ const STATUS_LABELS = {
   rejected: 'Отклонено',
 };
 
+// Частые текстовые отметки, которые можно поставить вместо часов за день
+// (например больничный лист, отпуск и т.п.) - свободный ввод текста тоже доступен.
+const TEXT_VALUE_PRESETS = ['Больничный лист', 'Отпуск', 'Отгул', 'Выходной'];
+
 // Экран одного дня в календаре табеля: позволяет выставить часы за день и,
 // если это собственный табель сотрудника, добавить/отредактировать позиции
 // сданной продукции (см. POST /timesheet/production и PUT /timesheet/{user_id}).
@@ -31,6 +35,7 @@ export default function ProductionEntryFormScreen({ navigation, route }) {
   const [canEdit, setCanEdit] = useState(true);
   const [baseHours, setBaseHours] = useState(String(route.params.baseHours ?? ''));
   const [overtimeHours, setOvertimeHours] = useState(String(route.params.overtimeHours ?? ''));
+  const [textValue, setTextValue] = useState(route.params.textValue || '');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [savingHours, setSavingHours] = useState(false);
@@ -51,6 +56,7 @@ export default function ProductionEntryFormScreen({ navigation, route }) {
         setCanEdit(entry.can_edit);
         setBaseHours(String(entry.base_hours ?? ''));
         setOvertimeHours(String(entry.overtime_hours ?? ''));
+        setTextValue(entry.text_value || '');
         setItems(entry.items.map(i => ({
           product_id: i.product_id,
           product_name: i.product?.name || '',
@@ -151,13 +157,25 @@ export default function ProductionEntryFormScreen({ navigation, route }) {
     setSavingHours(true);
     try {
       await timesheetApi.upsertTimesheetDay(userId, {
-        date, hours: parsedBase, overtime_hours: parsedOvertime, comment: '',
+        date, hours: parsedBase, overtime_hours: parsedOvertime, text_value: textValue || null, comment: '',
       });
     } catch (err) {
       Alert.alert('Ошибка', err.response?.data?.detail || 'Не удалось сохранить часы');
     } finally {
       setSavingHours(false);
     }
+  };
+
+  const chooseTextPreset = () => {
+    Alert.alert(
+      'Текстовая отметка',
+      'Выберите вариант или введите свой',
+      [
+        ...TEXT_VALUE_PRESETS.map(preset => ({ text: preset, onPress: () => setTextValue(preset) })),
+        { text: 'Очистить', onPress: () => setTextValue(''), style: 'destructive' },
+        { text: 'Отмена', style: 'cancel' },
+      ]
+    );
   };
 
   const handleSave = async (submit) => {
@@ -222,6 +240,27 @@ export default function ProductionEntryFormScreen({ navigation, route }) {
             editable={canEditHours}
           />
           {savingHours && <ActivityIndicator size="small" color={colors.primary} style={{ marginLeft: 8 }} />}
+        </View>
+
+        <View style={styles.hoursRow}>
+          <Text style={[styles.hoursLabel, { color: colors.textSecondary }]}>Отметка вместо часов:</Text>
+          <TextInput
+            style={[
+              styles.textValueInput,
+              { color: colors.text, borderColor: colors.border, backgroundColor: colors.surface },
+            ]}
+            value={textValue}
+            onChangeText={setTextValue}
+            onBlur={saveHours}
+            placeholder="Например, больничный лист"
+            placeholderTextColor={colors.textSecondary}
+            editable={canEditHours}
+          />
+          {canEditHours && (
+            <TouchableOpacity onPress={chooseTextPreset} style={{ marginLeft: 8 }}>
+              <Icon name="list" size={22} color={colors.primary} />
+            </TouchableOpacity>
+          )}
         </View>
 
         {isOwnTimesheet && (
@@ -337,6 +376,7 @@ const styles = StyleSheet.create({
   hoursRow: { flexDirection: 'row', alignItems: 'center', marginTop: 10, flexWrap: 'wrap' },
   hoursLabel: { fontSize: 13, marginRight: 8 },
   hoursInput: { width: 70, height: 38, borderWidth: 1, borderRadius: 8, textAlign: 'center' },
+  textValueInput: { flex: 1, height: 38, borderWidth: 1, borderRadius: 8, paddingHorizontal: 10 },
   statusLabel: { fontSize: 13, fontWeight: 'bold', marginTop: 8 },
   rejectComment: { fontSize: 13, marginTop: 6, fontStyle: 'italic' },
   readOnlyHint: { fontSize: 12, marginTop: 6, fontStyle: 'italic' },

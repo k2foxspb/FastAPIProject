@@ -18,6 +18,10 @@ export default function EditProfileScreen({ route, navigation }) {
   const [phoneNumber, setPhoneNumber] = useState(user.phone_number || '');
   const [firstName, setFirstName] = useState(user.first_name || '');
   const [lastName, setLastName] = useState(user.last_name || '');
+  const [tabNumber, setTabNumber] = useState(user.tab_number || '');
+  const [workScheduleHours, setWorkScheduleHours] = useState(
+    user.work_schedule_hours !== undefined && user.work_schedule_hours !== null ? String(user.work_schedule_hours) : '8'
+  );
   const [avatar, setAvatar] = useState(null);
   const [loading, setLoading] = useState(false);
 
@@ -42,6 +46,9 @@ export default function EditProfileScreen({ route, navigation }) {
       if (phoneNumber !== (user.phone_number || '')) formData.append('phone_number', phoneNumber);
       if (firstName !== (user.first_name || '')) formData.append('first_name', firstName);
       if (lastName !== (user.last_name || '')) formData.append('last_name', lastName);
+      if (tabNumber !== (user.tab_number || '')) formData.append('tab_number', tabNumber);
+      const initialSchedule = user.work_schedule_hours !== undefined && user.work_schedule_hours !== null ? String(user.work_schedule_hours) : '8';
+      if (workScheduleHours !== initialSchedule) formData.append('work_schedule_hours', workScheduleHours.replace(',', '.'));
       
       // Если данных для обновления нет, просто выходим
       if (formData._parts && formData._parts.length === 0 && !avatar) {
@@ -135,6 +142,25 @@ export default function EditProfileScreen({ route, navigation }) {
           onChangeText={setLastName}
           placeholder="Фамилия"
           placeholderTextColor={colors.textSecondary}
+        />
+
+        <Text style={[styles.label, { color: colors.textSecondary }]}>Табельный номер</Text>
+        <TextInput 
+          style={[styles.input, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]}
+          value={tabNumber}
+          onChangeText={setTabNumber}
+          placeholder="Например, 1234"
+          placeholderTextColor={colors.textSecondary}
+        />
+
+        <Text style={[styles.label, { color: colors.textSecondary }]}>График работы (часов в день)</Text>
+        <TextInput 
+          style={[styles.input, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]}
+          value={workScheduleHours}
+          onChangeText={setWorkScheduleHours}
+          placeholder="Например, 8 или 7.2"
+          placeholderTextColor={colors.textSecondary}
+          keyboardType="decimal-pad"
         />
       </View>
     </ScrollView>
