@@ -23,6 +23,7 @@ import AddGroupMembersScreen from '../screens/chat/AddGroupMembersScreen';
 import FeedScreen from '../screens/FeedScreen';
 import TabelScreen from '../screens/TabelScreen';
 import TabelEmployeePickerScreen from '../screens/TabelEmployeePickerScreen';
+import TabelSubordinatesTableScreen from '../screens/TabelSubordinatesTableScreen';
 import ProductionEntryFormScreen from '../screens/ProductionEntryFormScreen';
 import ProductionApprovalListScreen from '../screens/ProductionApprovalListScreen';
 import ProductionEntryDetailScreen from '../screens/ProductionEntryDetailScreen';
@@ -190,6 +191,7 @@ function TabelStack() {
     >
       <Stack.Screen name="TabelMain" component={TabelScreen} options={{ title: 'Табель' }} />
       <Stack.Screen name="TabelEmployeePicker" component={TabelEmployeePickerScreen} options={{ title: 'Выбор сотрудника' }} />
+      <Stack.Screen name="TabelSubordinatesTable" component={TabelSubordinatesTableScreen} options={{ title: 'Таблица подчинённых' }} />
       <Stack.Screen name="ProductionEntryForm" component={ProductionEntryFormScreen} options={{ title: 'Сданная продукция' }} />
       <Stack.Screen name="ProductionApprovalList" component={ProductionApprovalListScreen} options={{ title: 'На согласовании' }} />
       <Stack.Screen name="ProductionEntryDetail" component={ProductionEntryDetailScreen} options={{ title: 'Согласование' }} />

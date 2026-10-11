@@ -37,7 +37,7 @@ const daysInMonth = (year, month) => new Date(year, month, 0).getDate();
 const mondayFirstWeekday = (year, month, day) => (new Date(year, month - 1, day).getDay() + 6) % 7;
 const isWeekend = (weekdayIndex) => weekdayIndex === 5 || weekdayIndex === 6; // сб, вс
 
-export default function TabelScreen({ navigation }) {
+export default function TabelScreen({ navigation, route }) {
   const { theme } = useTheme();
   const colors = themeConstants[theme];
   const { currentUser, loadingUser } = useNotifications();
@@ -55,7 +55,9 @@ export default function TabelScreen({ navigation }) {
   React.useEffect(() => {
     if (currentUser) {
       loadPositions();
-      setTargetUser(prev => prev || currentUser);
+      // Если экран открыт из таблицы подчинённых с конкретным сотрудником -
+      // показываем сразу его табель, иначе по умолчанию свой собственный.
+      setTargetUser(prev => prev || route.params?.employee || currentUser);
     }
   }, [currentUser]);
 
@@ -254,6 +256,14 @@ export default function TabelScreen({ navigation }) {
           {canPickEmployee && (
             <TouchableOpacity style={styles.headerIconBtn} onPress={openEmployeePicker}>
               <Icon name="people-outline" size={22} color={colors.primary} />
+            </TouchableOpacity>
+          )}
+          {canPickEmployee && (
+            <TouchableOpacity
+              style={styles.headerIconBtn}
+              onPress={() => navigation.navigate('TabelSubordinatesTable')}
+            >
+              <Icon name="grid-outline" size={22} color={colors.primary} />
             </TouchableOpacity>
           )}
           {canPickEmployee && (

@@ -313,6 +313,9 @@ export const timesheetApi = {
   approveProductionEntry: (entryId) => api.post(`/timesheet/production/entry/${entryId}/approve`),
   rejectProductionEntry: (entryId, comment) => api.post(`/timesheet/production/entry/${entryId}/reject`, { comment }),
   getPendingEntries: () => api.get('/timesheet/production/entries/pending'),
+
+  // Сводная таблица по подчинённым (часы по дням + статусы продукции)
+  getSubordinatesSummary: (year, month) => api.get('/timesheet/subordinates/summary', { params: { year, month } }),
 };
 
 // ---------------------------------------------------------------------------
