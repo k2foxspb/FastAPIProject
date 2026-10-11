@@ -9,7 +9,7 @@ import { useTheme } from '../context/ThemeContext';
 import { useNotifications } from '../context/NotificationContext';
 import { theme as themeConstants } from '../constants/theme';
 import { formatStatus, formatName, getAvatarUrl, stripHtml } from '../utils/formatters';
-import { isProductionRole, canManageUserClient, getRoleScope, getRoleLabel } from '../constants/roles';
+import { isProductionRole, canManageUserClient, getRoleScope, getRoleLabel, getRoleIcon } from '../constants/roles';
 
 export default function UserProfileScreen({ route, navigation }) {
   const { theme } = useTheme();
@@ -329,61 +329,82 @@ export default function UserProfileScreen({ route, navigation }) {
           {user.status === 'online' && (
             <View style={[styles.onlineBadge, { backgroundColor: '#4CAF50', borderColor: colors.background }]} />
           )}
+          {isProductionRole(user.role) && (
+            <View style={[styles.roleBadge, { backgroundColor: colors.primary, borderColor: colors.background }]}>
+              <Icon name={getRoleIcon(user.role)} size={12} color="#fff" />
+            </View>
+          )}
         </TouchableOpacity>
         <Text style={[styles.name, { color: colors.text }]}>{formatName(user)}</Text>
-        <View style={styles.roleContainer}>
-          {user.role !== 'buyer' && (
-            <Text style={[styles.role, { color: colors.textSecondary }]}>{user.role} • </Text>
-          )}
-          <Text style={[styles.statusText, { color: colors.textSecondary }]}>{formatStatus(user.status, user.last_seen)}</Text>
-        </View>
-        
-        <View style={styles.actionButtons}>
+        <Text style={[styles.statusText, { color: colors.textSecondary }]}>{formatStatus(user.status, user.last_seen)}</Text>
+
+        {isProductionRole(user.role) && (
+          <View style={styles.statsContainer}>
+            <View style={styles.statItem}>
+              <Text style={[styles.statValue, { color: colors.text }]}>{getRoleLabel(user.role)}</Text>
+              <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Должность</Text>
+            </View>
+            {user.workshop_name && (
+              <View style={styles.statItem}>
+                <Text style={[styles.statValue, { color: colors.text }]}>{user.workshop_name}</Text>
+                <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Цех</Text>
+              </View>
+            )}
+            {getRoleScope(user.role) === 'section' && user.section_name && (
+              <View style={styles.statItem}>
+                <Text style={[styles.statValue, { color: colors.text }]}>{user.section_name}</Text>
+                <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Участок</Text>
+              </View>
+            )}
+          </View>
+        )}
+
+        <View style={styles.actionsGrid}>
           <TouchableOpacity 
-            style={[styles.friendBtn, { borderColor: colors.primary, borderWidth: 1 }]}
+            style={[styles.actionBtn, { borderColor: colors.primary, borderWidth: 1 }]}
             onPress={handleFriendAction}
           >
             <Icon 
               name={user.friendship_status === 'accepted' ? "person-remove-outline" : "person-add-outline"} 
-              size={20} 
+              size={18} 
               color={colors.primary} 
             />
-            <Text style={[styles.friendBtnText, { color: colors.primary }]}>{getFriendButtonLabel()}</Text>
+            <Text style={[styles.actionBtnText, { color: colors.primary }]}>{getFriendButtonLabel()}</Text>
           </TouchableOpacity>
 
           <TouchableOpacity 
-            style={[styles.messageBtn, { backgroundColor: colors.primary }]}
+            style={[styles.actionBtn, { backgroundColor: colors.primary }]}
             onPress={() => navigation.navigate('Messages', { screen: 'Chat', params: { userId: user.id, userName: formatName(user) }, initial: false })}
           >
-            <Icon name="chatbubble-ellipses-outline" size={20} color="#fff" />
-            <Text style={styles.messageBtnText}>Написать</Text>
+            <Icon name="chatbubble-ellipses-outline" size={18} color="#fff" />
+            <Text style={[styles.actionBtnText, { color: '#fff' }]}>Написать</Text>
           </TouchableOpacity>
+
+          {isProductionRole(user.role) && (
+            <TouchableOpacity 
+              style={[styles.actionBtn, { borderColor: colors.primary, borderWidth: 1 }]}
+              onPress={() => navigation.navigate('UserHierarchy', { userId: user.id, userName: formatName(user) })}
+            >
+              <Icon name="git-network-outline" size={18} color={colors.primary} />
+              <Text style={[styles.actionBtnText, { color: colors.primary }]}>Сотрудники</Text>
+            </TouchableOpacity>
+          )}
+
+          {canManageUserClient(currentUser, user) && (
+            <TouchableOpacity 
+              style={[styles.actionBtn, { borderColor: colors.primary, borderWidth: 1 }]}
+              onPress={assignRole}
+              disabled={assigningRole}
+            >
+              {assigningRole ? (
+                <ActivityIndicator size="small" color={colors.primary} />
+              ) : (
+                <Icon name="ribbon-outline" size={18} color={colors.primary} />
+              )}
+              <Text style={[styles.actionBtnText, { color: colors.primary }]}>Назначить должность</Text>
+            </TouchableOpacity>
+          )}
         </View>
-
-        {isProductionRole(user.role) && (
-          <TouchableOpacity 
-            style={[styles.hierarchyBtn, { borderColor: colors.primary, borderWidth: 1 }]}
-            onPress={() => navigation.navigate('UserHierarchy', { userId: user.id, userName: formatName(user) })}
-          >
-            <Icon name="git-network-outline" size={18} color={colors.primary} />
-            <Text style={[styles.hierarchyBtnText, { color: colors.primary }]}>Сотрудники</Text>
-          </TouchableOpacity>
-        )}
-
-        {canManageUserClient(currentUser, user) && (
-          <TouchableOpacity 
-            style={[styles.hierarchyBtn, { borderColor: colors.primary, borderWidth: 1 }]}
-            onPress={assignRole}
-            disabled={assigningRole}
-          >
-            {assigningRole ? (
-              <ActivityIndicator size="small" color={colors.primary} />
-            ) : (
-              <Icon name="ribbon-outline" size={18} color={colors.primary} />
-            )}
-            <Text style={[styles.hierarchyBtnText, { color: colors.primary }]}>Назначить должность</Text>
-          </TouchableOpacity>
-        )}
       </View>
 
       <Modal visible={!!pickerState} transparent animationType="fade" onRequestClose={() => resolvePicker(null)}>
@@ -495,38 +516,40 @@ const styles = StyleSheet.create({
     borderWidth: 3,
     zIndex: 1
   },
-  name: { fontSize: 20, fontWeight: 'bold' },
-  roleContainer: { flexDirection: 'row', alignItems: 'center', marginBottom: 15 },
-  role: { },
-  statusText: { },
-  actionButtons: { flexDirection: 'row', width: '100%', justifyContent: 'center' },
-  friendBtn: { 
-    flexDirection: 'row', 
-    paddingHorizontal: 15, 
-    paddingVertical: 10, 
-    borderRadius: 20,
+  roleBadge: {
+    position: 'absolute',
+    bottom: 10,
+    right: 0,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 10
+    borderWidth: 2,
   },
-  friendBtnText: { marginLeft: 5, fontWeight: '600' },
-  messageBtn: { 
-    flexDirection: 'row', 
-    paddingHorizontal: 15, 
-    paddingVertical: 10, 
-    borderRadius: 20,
-    alignItems: 'center'
+  name: { fontSize: 20, fontWeight: 'bold', marginBottom: 2 },
+  statusText: { fontSize: 13, marginBottom: 10 },
+  statsContainer: { flexDirection: 'row', width: '100%', justifyContent: 'center', marginBottom: 10 },
+  statItem: { alignItems: 'center', justifyContent: 'center', paddingVertical: 5 },
+  statValue: { fontSize: 16, fontWeight: '700' },
+  statLabel: { fontSize: 12, marginTop: 2 },
+  actionsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    width: '100%',
+    marginTop: 5,
   },
-  messageBtnText: { color: '#fff', marginLeft: 5, fontWeight: '600' },
-  hierarchyBtn: {
+  actionBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 15,
+    paddingHorizontal: 14,
     paddingVertical: 10,
     borderRadius: 20,
-    marginTop: 10,
+    margin: 5,
   },
-  hierarchyBtnText: { marginLeft: 8, fontWeight: '600' },
+  actionBtnText: { marginLeft: 8, fontWeight: '600', fontSize: 13 },
   section: { padding: 20 },
   sectionTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 15 },
   album: { marginBottom: 20 },

@@ -53,7 +53,9 @@ async def get_user_profile_admin(
     result = await db.execute(
         select(UserModel).where(UserModel.id == user_id).options(
             selectinload(UserModel.photos),
-            selectinload(UserModel.albums).selectinload(PhotoAlbumModel.photos)
+            selectinload(UserModel.albums).selectinload(PhotoAlbumModel.photos),
+            selectinload(UserModel.workshop),
+            selectinload(UserModel.section)
         )
     )
     user = result.scalar_one_or_none()

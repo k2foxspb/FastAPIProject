@@ -12,7 +12,7 @@ import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
 import { storage } from '../utils/storage';
 import { formatName, getFullUrl } from '../utils/formatters';
-import { isProductionRole, getRoleLabel, getRoleIcon } from '../constants/roles';
+import { isProductionRole, getRoleLabel, getRoleIcon, getRoleScope } from '../constants/roles';
 import { SkeletonItem, NewsSkeleton } from '../components/SkeletonLoader';
 import { requestAllAppPermissions } from '../utils/permissions';
 
@@ -373,6 +373,22 @@ export default function ProfileScreen({ navigation }) {
             </Text>
             <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Должность</Text>
           </View>
+          {user.workshop_name && (
+            <View style={styles.statItem}>
+              <Text style={[styles.statValue, { color: colors.text, fontSize: 14 }]}>
+                {user.workshop_name}
+              </Text>
+              <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Цех</Text>
+            </View>
+          )}
+          {getRoleScope(user.role) === 'section' && user.section_name && (
+            <View style={styles.statItem}>
+              <Text style={[styles.statValue, { color: colors.text, fontSize: 14 }]}>
+                {user.section_name}
+              </Text>
+              <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Участок</Text>
+            </View>
+          )}
         </View>
 
         {isProductionRole(user.role) ? (
@@ -557,7 +573,7 @@ export default function ProfileScreen({ navigation }) {
             onPress={() => navigation.navigate('MyLikes')}
           >
             <Icon name="heart" size={24} color={colors.error} />
-            <Text style={[styles.activityButtonText, { color: colors.text }]}>Понравилось</Text>
+            <Text style={[styles.activityButtonText, { color:    ors.text }]}>Понравилось</Text>
           </TouchableOpacity>
           <TouchableOpacity 
             style={[styles.activityButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
@@ -823,6 +839,18 @@ const styles = StyleSheet.create({
   postThumbnail: { width: 70, height: 70, borderRadius: 8, marginRight: 12 },
   postTextContainer: { flex: 1, justifyContent: 'center' },
   postHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
+  postTitle: { fontSize: 15, fontWeight: 'bold', marginBottom: 2 },
+  postContent: { fontSize: 13, lineHeight: 18 },
+  postFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 10, paddingBottom: 10 },
+  postDate: { fontSize: 10 },
+  reactionsRow: { flexDirection: 'row', alignItems: 'center' },
+  reactionItem: { flexDirection: 'row', alignItems: 'center' },
+  reactionCount: { fontSize: 11, marginLeft: 4 },
+  pendingBadge: { backgroundColor: 'rgba(255, 165, 0, 0.2)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
+  pendingText: { color: '#FFA500', fontSize: 10, fontWeight: 'bold' },
+  emptyText: { textAlign: 'center', marginTop: 10, fontStyle: 'italic' },
+});
+ },
   postTitle: { fontSize: 15, fontWeight: 'bold', marginBottom: 2 },
   postContent: { fontSize: 13, lineHeight: 18 },
   postFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 10, paddingBottom: 10 },

@@ -386,6 +386,10 @@ class User(BaseModel):
     last_seen: Optional[str] = None
     tab_number: Optional[str] = None
     work_schedule_hours: Optional[Decimal] = None
+    workshop_id: Optional[int] = None
+    section_id: Optional[int] = None
+    workshop_name: Optional[str] = None
+    section_name: Optional[str] = None
     avatar_url: Optional[str] = None
     avatar_preview_url: Optional[str] = None
     fcm_token: Optional[str] = None
@@ -415,6 +419,10 @@ class User(BaseModel):
                     "last_seen": obj.get("last_seen"),
                     "tab_number": obj.get("tab_number"),
                     "work_schedule_hours": obj.get("work_schedule_hours"),
+                    "workshop_id": obj.get("workshop_id"),
+                    "section_id": obj.get("section_id"),
+                    "workshop_name": obj.get("workshop_name"),
+                    "section_name": obj.get("section_name"),
                     "avatar_url": obj.get("avatar_url"),
                     "avatar_preview_url": obj.get("avatar_preview_url"),
                     "fcm_token": obj.get("fcm_token"),
@@ -440,6 +448,10 @@ class User(BaseModel):
                 "last_seen": getattr(obj, "last_seen", None),
                 "tab_number": getattr(obj, "tab_number", None),
                 "work_schedule_hours": getattr(obj, "work_schedule_hours", None),
+                "workshop_id": getattr(obj, "workshop_id", None),
+                "section_id": getattr(obj, "section_id", None),
+                "workshop_name": None,
+                "section_name": None,
                 "avatar_url": getattr(obj, "avatar_url", None),
                 "avatar_preview_url": getattr(obj, "avatar_preview_url", None),
                 "fcm_token": getattr(obj, "fcm_token", None),
@@ -467,7 +479,15 @@ class User(BaseModel):
             if "admin_permissions" in obj_dict and obj_dict["admin_permissions"] is not None:
                 perms = obj_dict["admin_permissions"]
                 data["admin_permissions"] = [AdminPermission.model_validate(p) for p in perms]
-                
+
+            # Название цеха/участка - подтягиваем только если связь была
+            # заранее загружена (selectinload), чтобы не триггерить ленивую
+            # подгрузку на асинхронной сессии.
+            if "workshop" in obj_dict and obj_dict["workshop"] is not None:
+                data["workshop_name"] = obj_dict["workshop"].name
+            if "section" in obj_dict and obj_dict["section"] is not None:
+                data["section_name"] = obj_dict["section"].name
+
             return cls(**data)
         except Exception as e:
             from loguru import logger

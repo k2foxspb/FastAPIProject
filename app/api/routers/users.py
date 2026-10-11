@@ -281,7 +281,9 @@ async def get_me(
     result = await db.execute(
         select(UserModel).where(UserModel.id == current_user.id).options(
             selectinload(UserModel.photos.and_(UserPhotoModel.privacy == 'public')),
-            selectinload(UserModel.albums).selectinload(PhotoAlbumModel.photos)
+            selectinload(UserModel.albums).selectinload(PhotoAlbumModel.photos),
+            selectinload(UserModel.workshop),
+            selectinload(UserModel.section)
         )
     )
     user = result.scalar_one_or_none()
@@ -2221,7 +2223,9 @@ async def get_user_profile(
     result = await db.execute(
         select(UserModel).where(UserModel.id == user_id, UserModel.is_active == True).options(
             selectinload(UserModel.photos.and_(UserPhotoModel.privacy == 'public')),
-            selectinload(UserModel.albums).selectinload(PhotoAlbumModel.photos)
+            selectinload(UserModel.albums).selectinload(PhotoAlbumModel.photos),
+            selectinload(UserModel.workshop),
+            selectinload(UserModel.section)
         )
     )
     user = result.scalar_one_or_none()

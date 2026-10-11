@@ -1,7 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity, Alert, ActivityIndicator,
-  Modal, TextInput, TouchableWithoutFeedback, KeyboardAvoidingView,
+  Modal, TextInput, TouchableWithoutFeedback, KeyboardAvoidingView, ScrollView,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { orgApi } from '../api';
@@ -47,6 +47,7 @@ export default function AdminPositionsScreen() {
   const [scope, setScope] = useState('section');
   const [icon, setIcon] = useState(ICON_OPTIONS[0]);
   const [saving, setSaving] = useState(false);
+  const [scopePickerVisible, setScopePickerVisible] = useState(false);
 
   const fetchPositions = useCallback(async () => {
     try {
@@ -85,15 +86,16 @@ export default function AdminPositionsScreen() {
     setFormVisible(true);
   };
 
+  // Вариантов области ответственности 4 штуки + отмена - на Android системный
+  // Alert.alert не показывает больше 3 кнопок, из-за чего вариант "Только себя"
+  // было невозможно выбрать - вместо этого используем своё модальное окно со списком.
   const chooseScope = () => {
-    Alert.alert(
-      'Область ответственности',
-      undefined,
-      [
-        ...SCOPE_OPTIONS.map(opt => ({ text: opt.label, onPress: () => setScope(opt.value) })),
-        { text: 'Отмена', style: 'cancel' },
-      ]
-    );
+    setScopePickerVisible(true);
+  };
+
+  const selectScope = (value) => {
+    setScope(value);
+    setScopePickerVisible(false);
   };
 
   const savePosition = async () => {
@@ -122,40 +124,6 @@ export default function AdminPositionsScreen() {
     }
   };
 
-  const movePosition = async (index, direction) => {
-    const targetIndex = index + direction;
-    if (targetIndex < 0 || targetIndex >= positions.length) return;
-
-    const reordered = [...positions];
-    [reordered[index], reordered[targetIndex]] = [reordered[targetIndex], reordered[index]];
-
-    // Должностям со scope="self" (самый нижний уровень) нельзя назначать
-    // отдельный уникальный level на каждую - они все делят один и тот же
-    // (самый низкий) уровень, иначе неограниченное число должностей на
-    // нижнем уровне развалилось бы при первой же перестановке.
-    let level = 0;
-    let selfLevel = null;
-    const payload = reordered.map((p) => {
-      if (p.scope === 'self') {
-        if (selfLevel === null) {
-          selfLevel = level;
-          level += 1;
-        }
-        return { id: p.id, level: selfLevel };
-      }
-      const assignedLevel = level;
-      level += 1;
-      return { id: p.id, level: assignedLevel };
-    });
-
-    try {
-      await orgApi.reorderPositions(payload);
-      await fetchPositions();
-    } catch (err) {
-      Alert.alert('Ошибка', err.response?.data?.detail || 'Не удалось изменить иерархию');
-    }
-  };
-
   const deletePosition = (position) => {
     Alert.alert(
       'Удаление должности',
@@ -178,23 +146,15 @@ export default function AdminPositionsScreen() {
     );
   };
 
-  const renderPosition = ({ item, index }) => (
+  const renderPosition = ({ item }) => (
     <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-      <View style={styles.moveColumn}>
-        <TouchableOpacity disabled={index === 0} onPress={() => movePosition(index, -1)}>
-          <Icon name="chevron-up" size={20} color={index === 0 ? colors.border : colors.primary} />
-        </TouchableOpacity>
-        <TouchableOpacity disabled={index === positions.length - 1} onPress={() => movePosition(index, 1)}>
-          <Icon name="chevron-down" size={20} color={index === positions.length - 1 ? colors.border : colors.primary} />
-        </TouchableOpacity>
-      </View>
       <View style={[styles.positionIconWrap, { backgroundColor: colors.background }]}>
-        <Icon name={getRoleIcon(item.code)} size={20} color={colors.primary} />
+        <Icon name={item.icon || getRoleIcon(item.code)} size={20} color={colors.primary} />
       </View>
       <View style={styles.cardInfo}>
         <Text style={[styles.cardTitle, { color: colors.text }]}>{item.name}</Text>
         <Text style={[styles.cardSubtitle, { color: colors.textSecondary }]}>
-          Код: {item.code} · {getScopeLabel(item.scope)}
+          Уровень {item.level} · {getScopeLabel(item.scope)}
         </Text>
       </View>
       <View style={styles.cardActions}>
@@ -221,7 +181,7 @@ export default function AdminPositionsScreen() {
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <Text style={[styles.hint, { color: colors.textSecondary }]}>
-        Должности отсортированы от самой высокой к самой низкой. Стрелками можно менять их место в иерархии.
+        Должности отсортированы от самой высокой к самой низкой. Место в иерархии задаётся полем "Уровень".
       </Text>
       <FlatList
         data={positions}
@@ -244,7 +204,7 @@ export default function AdminPositionsScreen() {
           <View style={styles.modalOverlay}>
             <KeyboardAvoidingView behavior="padding" style={{ width: '100%', alignItems: 'center' }}>
               <TouchableWithoutFeedback>
-                <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
+                <View style={[styles.modalContent, { backgroundColor: colors.surface, maxHeight: '85%' }]}>
                   <View style={styles.modalHeader}>
                     <Text style={[styles.modalTitle, { color: colors.text }]}>
                       {editingPosition ? 'Редактировать должность' : 'Новая должность'}
@@ -254,48 +214,97 @@ export default function AdminPositionsScreen() {
                     </TouchableOpacity>
                   </View>
 
-                  <Text style={[styles.label, { color: colors.text }]}>Название *</Text>
-                  <TextInput
-                    style={[styles.input, { backgroundColor: colors.card, color: colors.text, borderColor: colors.border }]}
-                    value={name}
-                    onChangeText={setName}
-                    placeholder="Например, Технолог"
-                    placeholderTextColor={colors.textSecondary}
-                    autoFocus
-                  />
+                  <ScrollView showsVerticalScrollIndicator={false}>
+                    <Text style={[styles.label, { color: colors.text }]}>Название *</Text>
+                    <TextInput
+                      style={[styles.input, { backgroundColor: colors.card, color: colors.text, borderColor: colors.border }]}
+                      value={name}
+                      onChangeText={setName}
+                      placeholder="Например, Технолог"
+                      placeholderTextColor={colors.textSecondary}
+                      autoFocus
+                    />
 
-                  {!editingPosition && (
-                    <>
-                      <Text style={[styles.label, { color: colors.text }]}>Код *</Text>
-                      <TextInput
-                        style={[styles.input, { backgroundColor: colors.card, color: colors.text, borderColor: colors.border }]}
-                        value={code}
-                        onChangeText={(v) => setCode(v.toLowerCase())}
-                        placeholder="technologist"
-                        placeholderTextColor={colors.textSecondary}
-                        autoCapitalize="none"
-                      />
-                    </>
-                  )}
+                    <Text style={[styles.label, { color: colors.text }]}>Уровень *</Text>
+                    <TextInput
+                      style={[styles.input, { backgroundColor: colors.card, color: colors.text, borderColor: colors.border }]}
+                      value={level}
+                      onChangeText={(v) => setLevel(v.replace(/[^0-9-]/g, ''))}
+                      placeholder="0"
+                      placeholderTextColor={colors.textSecondary}
+                      keyboardType="numeric"
+                    />
+                    <Text style={[styles.hintSmall, { color: colors.textSecondary }]}>
+                      Чем меньше число - тем выше должность. На одном уровне может быть любое количество должностей.
+                    </Text>
 
-                  <Text style={[styles.label, { color: colors.text }]}>Область ответственности</Text>
-                  <TouchableOpacity
-                    style={[styles.input, { backgroundColor: colors.card, borderColor: colors.border, justifyContent: 'center' }]}
-                    onPress={chooseScope}
-                  >
-                    <Text style={{ color: colors.text }}>{getScopeLabel(scope)}</Text>
-                  </TouchableOpacity>
+                    <Text style={[styles.label, { color: colors.text }]}>Область ответственности</Text>
+                    <TouchableOpacity
+                      style={[styles.input, { backgroundColor: colors.card, borderColor: colors.border, justifyContent: 'center' }]}
+                      onPress={chooseScope}
+                    >
+                      <Text style={{ color: colors.text }}>{getScopeLabel(scope)}</Text>
+                    </TouchableOpacity>
 
-                  <TouchableOpacity
-                    style={[styles.saveButton, { backgroundColor: colors.primary }]}
-                    onPress={savePosition}
-                    disabled={saving}
-                  >
-                    {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveButtonText}>Сохранить</Text>}
-                  </TouchableOpacity>
+                    <Text style={[styles.label, { color: colors.text }]}>Иконка</Text>
+                    <View style={styles.iconGrid}>
+                      {ICON_OPTIONS.map((opt) => (
+                        <TouchableOpacity
+                          key={opt}
+                          style={[
+                            styles.iconOption,
+                            {
+                              backgroundColor: icon === opt ? colors.primary : colors.card,
+                              borderColor: colors.border,
+                            },
+                          ]}
+                          onPress={() => setIcon(opt)}
+                        >
+                          <Icon name={opt} size={20} color={icon === opt ? '#fff' : colors.primary} />
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+
+                    <TouchableOpacity
+                      style={[styles.saveButton, { backgroundColor: colors.primary }]}
+                      onPress={savePosition}
+                      disabled={saving}
+                    >
+                      {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveButtonText}>Сохранить</Text>}
+                    </TouchableOpacity>
+                  </ScrollView>
                 </View>
               </TouchableWithoutFeedback>
             </KeyboardAvoidingView>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
+
+      <Modal visible={scopePickerVisible} transparent animationType="fade" onRequestClose={() => setScopePickerVisible(false)}>
+        <TouchableWithoutFeedback onPress={() => setScopePickerVisible(false)}>
+          <View style={styles.modalOverlay}>
+            <TouchableWithoutFeedback>
+              <View style={[styles.pickerContent, { backgroundColor: colors.surface }]}>
+                <View style={styles.modalHeader}>
+                  <Text style={[styles.modalTitle, { color: colors.text }]}>Область ответственности</Text>
+                  <TouchableOpacity onPress={() => setScopePickerVisible(false)}>
+                    <Icon name="close" size={24} color={colors.text} />
+                  </TouchableOpacity>
+                </View>
+                {SCOPE_OPTIONS.map((opt) => (
+                  <TouchableOpacity
+                    key={opt.value}
+                    style={[styles.scopeRow, { borderColor: colors.border }]}
+                    onPress={() => selectScope(opt.value)}
+                  >
+                    <Text style={{ color: scope === opt.value ? colors.primary : colors.text, fontSize: 16, fontWeight: scope === opt.value ? '700' : '500' }}>
+                      {opt.label}
+                    </Text>
+                    {scope === opt.value && <Icon name="checkmark" size={20} color={colors.primary} />}
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </TouchableWithoutFeedback>
           </View>
         </TouchableWithoutFeedback>
       </Modal>
@@ -316,7 +325,6 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     borderWidth: 1,
   },
-  moveColumn: { marginRight: 10, alignItems: 'center' },
   positionIconWrap: {
     width: 36,
     height: 36,
@@ -348,6 +356,26 @@ const styles = StyleSheet.create({
   modalTitle: { fontSize: 18, fontWeight: 'bold' },
   label: { fontSize: 14, fontWeight: '600', marginBottom: 6, marginTop: 10 },
   input: { borderWidth: 1, borderRadius: 8, padding: 12, fontSize: 15 },
-  saveButton: { marginTop: 20, padding: 14, borderRadius: 10, alignItems: 'center' },
+  hintSmall: { fontSize: 12, marginTop: 4 },
+  iconGrid: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 4 },
+  iconOption: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 10,
+    marginBottom: 10,
+  },
+  saveButton: { marginTop: 20, padding: 14, borderRadius: 10, alignItems: 'center', marginBottom: 10 },
   saveButtonText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
+  pickerContent: { width: '100%', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20 },
+  scopeRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+  },
 });
