@@ -31,7 +31,6 @@ from app.schemas.users import (
     ReactorInfo
 )
 from app.schemas.news import News as NewsSchema, NewsComment as NewsCommentSchema
-from app.schemas.reviews import Review as ReviewSchema
 from app.api.dependencies import get_async_db, get_friendship_status, can_view_content
 from app.core.auth import (
     hash_password,
@@ -429,7 +428,7 @@ async def create_user(
     password: str = Form(...),
     first_name: str = Form(...),
     last_name: str = Form(...),
-    role: str = Form("buyer"),
+    role: str = Form("worker"),
     avatar: UploadFile = File(None)
 ):
     """
@@ -796,7 +795,7 @@ async def verify_phone_code(
             first_name=first_name,
             last_name=last_name,
             is_active=True,
-            role="buyer"
+            role="worker"
         )
         db.add(user)
         await db.commit()
@@ -883,7 +882,7 @@ async def firebase_auth(
             picture = decoded_token.get("picture")
             
             # Владельца определяем по email
-            user_role = "owner" if email == "k2foxspb@gmail.com" else "buyer"
+            user_role = "owner" if email == "k2foxspb@gmail.com" else "worker"
             
             user = UserModel(
                 email=email,
@@ -2588,27 +2587,6 @@ async def get_my_liked_photos(
         photo_obj.my_reaction = row[4]
         photos_list.append(UserPhotoSchema.model_validate(photo_obj))
     return photos_list
-
-@router.get("/me/reviews", response_model=list[ReviewSchema])
-@router.get("/me/reviews/", response_model=list[ReviewSchema], include_in_schema=False)
-async def get_my_reviews(
-    current_user: UserModel = Depends(get_current_user),
-    db: AsyncSession = Depends(get_async_db)
-):
-    """Возвращает отзывы текущего пользователя."""
-    from app.models.reviews import Reviews as ReviewsModel
-    
-    result = await db.execute(
-        select(ReviewsModel).where(ReviewsModel.user_id == current_user.id).order_by(ReviewsModel.comment_date.desc())
-    )
-    reviews = result.scalars().all()
-    
-    for r in reviews:
-        r.first_name = current_user.first_name
-        r.last_name = current_user.last_name
-        r.avatar_url = current_user.avatar_url
-        
-    return reviews
 
 @router.get("/me/news-comments", response_model=list[NewsCommentSchema])
 async def get_my_news_comments(

@@ -1,18 +1,12 @@
 """
-SEO-роутер: robots.txt, sitemap.xml, JSON-LD микроразметка товаров,
-PWA manifest, Android App Links (assetlinks.json), Apple Universal Links.
+SEO-роутер: robots.txt, sitemap.xml, PWA manifest,
+Android App Links (assetlinks.json), Apple Universal Links.
 """
 from datetime import datetime
-from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter
 from fastapi.responses import Response, JSONResponse
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.dependencies import get_async_db
-from app.models.products import Product as ProductModel
-from app.models.categories import Category as CategoryModel
 from app.core.config import DOMAIN
 
 router = APIRouter(tags=["seo"])
@@ -45,28 +39,15 @@ Sitemap: {DOMAIN}/sitemap.xml
 
 
 # ---------------------------------------------------------------------------
-# sitemap.xml — статические страницы + все активные товары из БД
+# sitemap.xml — статические страницы
 # ---------------------------------------------------------------------------
 @router.get("/sitemap.xml", include_in_schema=False)
-async def sitemap_xml(db: AsyncSession = Depends(get_async_db)):
+async def sitemap_xml():
     static_urls = [
         ("", "1.0", "daily"),
         ("/privacy-policy", "0.5", "monthly"),
         ("/terms", "0.5", "monthly"),
     ]
-
-    result_products = await db.execute(
-        select(ProductModel.id, ProductModel.updated_at)
-        .where(ProductModel.is_active == True, ProductModel.moderation_status == "approved")
-        .order_by(ProductModel.id)
-    )
-    products = result_products.fetchall()
-
-    result_cats = await db.execute(
-        select(CategoryModel.id, CategoryModel.name)
-        .order_by(CategoryModel.id)
-    )
-    categories = result_cats.fetchall()
 
     today = datetime.utcnow().strftime("%Y-%m-%d")
 
@@ -79,75 +60,12 @@ async def sitemap_xml(db: AsyncSession = Depends(get_async_db)):
     <lastmod>{today}</lastmod>
   </url>\n"""
 
-    for cat_id, _ in categories:
-        urls_xml += f"""  <url>
-    <loc>{DOMAIN}/categories/{cat_id}</loc>
-    <changefreq>weekly</changefreq>
-    <priority>0.7</priority>
-    <lastmod>{today}</lastmod>
-  </url>\n"""
-
-    for product_id, updated_at in products:
-        lastmod = updated_at.strftime("%Y-%m-%d") if updated_at else today
-        urls_xml += f"""  <url>
-    <loc>{DOMAIN}/products/{product_id}</loc>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-    <lastmod>{lastmod}</lastmod>
-  </url>\n"""
-
     xml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 {urls_xml}</urlset>"""
     return Response(content=xml, media_type="application/xml")
 
 
-# ---------------------------------------------------------------------------
-# JSON-LD микроразметка товара (Schema.org Product)
-# Используется фронтендом/SSR: GET /products/{product_id}/jsonld
-# ---------------------------------------------------------------------------
-@router.get("/products/{product_id}/jsonld", include_in_schema=True, summary="Schema.org JSON-LD для товара")
-async def product_jsonld(product_id: int, db: AsyncSession = Depends(get_async_db)):
-    result = await db.execute(
-        select(ProductModel).where(ProductModel.id == product_id, ProductModel.is_active == True)
-    )
-    product = result.scalar_one_or_none()
-    if not product:
-        raise HTTPException(status_code=404, detail="Product not found")
-
-    availability = "https://schema.org/InStock" if product.stock > 0 else "https://schema.org/OutOfStock"
-
-    jsonld = {
-        "@context": "https://schema.org/",
-        "@type": "Product",
-        "name": product.name,
-        "description": product.description or "",
-        "url": f"{DOMAIN}/products/{product.id}",
-        "offers": {
-            "@type": "Offer",
-            "priceCurrency": "RUB",
-            "price": str(product.price),
-            "availability": availability,
-            "url": f"{DOMAIN}/products/{product.id}",
-            "seller": {
-                "@type": "Organization",
-                "name": SITE_NAME
-            }
-        },
-    }
-
-    if product.image_url:
-        jsonld["image"] = product.image_url if product.image_url.startswith("http") else f"{DOMAIN}{product.image_url}"
-
-    if product.rating:
-        jsonld["aggregateRating"] = {
-            "@type": "AggregateRating",
-            "ratingValue": str(round(product.rating, 1)),
-            "bestRating": "5",
-            "worstRating": "1",
-        }
-
-    return JSONResponse(content=jsonld, media_type="application/ld+json")
 
 
 # ---------------------------------------------------------------------------
@@ -158,7 +76,7 @@ async def web_manifest():
     manifest = {
         "name": SITE_NAME,
         "short_name": SITE_NAME,
-        "description": "Интернет-магазин FokinFun",
+        "description": "FokinFun",
         "start_url": "/",
         "display": "standalone",
         "background_color": "#ffffff",
@@ -229,8 +147,6 @@ async def apple_app_site_association():
                 {
                     "appID": f"{APPLE_TEAM_ID}.{IOS_BUNDLE}",
                     "paths": [
-                        "/products/*",
-                        "/categories/*",
                         "/"
                     ]
                 }

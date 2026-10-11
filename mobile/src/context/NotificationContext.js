@@ -705,13 +705,6 @@ export const NotificationProvider = ({ children }) => {
           }
         }
 
-        if (payload.type === 'new_order' || payload.type === 'order_status_changed') {
-          console.log(`[NotificationContext] Order notification: ${payload.type}, order_id=${payload.order_id}`);
-          if (appState.current === 'active') {
-            Vibration.vibrate([0, 200, 100, 200]);
-          }
-        }
-
         // 'pong' — это только ответ на keep-alive ping и не несёт полезной нагрузки для UI.
         // Без этой проверки он бы каждые 30 секунд бесконечно копился в notifications, даже
         // если пользователь ничего не делает в приложении.

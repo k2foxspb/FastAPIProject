@@ -10,19 +10,13 @@ from sqlalchemy.orm import selectinload
 from app.utils import storage
 
 from app.models.users import User as UserModel, AdminPermission as AdminPermissionModel, PhotoAlbum as PhotoAlbumModel, AppVersion as AppVersionModel
-from app.models.categories import Category as CategoryModel
-from app.models.products import Product as ProductModel
 from app.models.news import News as NewsModel
-from app.models.orders import Order as OrderModel, OrderItem as OrderItemModel
-from app.models.reviews import Reviews as ReviewsModel
 from app.models.chat import ChatMessage as ChatMessageModel, FileUploadSession
 from app.schemas.users import User as UserSchema, AdminPermissionCreate, AdminPermission as AdminPermissionSchema, AppVersionResponse, AppLogRequest
-from app.schemas.products import Product as ProductSchema
-from app.schemas.news import News as NewsSchema
 from app.schemas.chat import ChatMessageResponse, DialogResponse, UploadInitRequest, UploadSessionResponse, UploadStatusResponse
-from app.schemas.orders import Order as OrderSchema
 from app.api.dependencies import get_async_db
 from app.core.auth import get_current_owner, get_current_admin, check_admin_permission
+from app.core.roles import PRODUCTION_ROLES
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -76,7 +70,8 @@ async def update_user_role(
     db: AsyncSession = Depends(get_async_db)
 ):
     """Изменяет роль пользователя. Только владелец может назначать админов или передавать владение."""
-    if role not in ["buyer", "seller", "admin", "owner"]:
+    allowed_roles = {"admin", *PRODUCTION_ROLES}
+    if role not in allowed_roles:
         raise HTTPException(status_code=400, detail="Invalid role")
     
     result = await db.execute(select(UserModel).where(UserModel.id == user_id))
@@ -136,7 +131,7 @@ async def revoke_permission(
 @router.get("/models")
 async def get_manageable_models():
     """Возвращает список моделей, которыми можно управлять."""
-    return ["categories", "products", "orders", "reviews", "users"]
+    return ["users", "news"]
 
 # --- Управление версиями приложения (Только для Owner) ---
 
@@ -402,94 +397,6 @@ async def admin_bulk_delete_messages(
     await db.commit()
     return {"message": f"Deleted {len(message_ids)} messages"}
 
-# Пример для категорий
-from app.schemas.categories import Category as CategorySchema
-@router.get("/categories", response_model=list[CategorySchema])
-async def admin_get_categories(
-    allowed: bool = Depends(check_admin_permission("categories")),
-    db: AsyncSession = Depends(get_async_db)
-):
-    result = await db.execute(select(CategoryModel))
-    return result.scalars().all()
-
-@router.delete("/categories/{cat_id}")
-async def admin_delete_category(
-    cat_id: int,
-    allowed: bool = Depends(check_admin_permission("categories")),
-    db: AsyncSession = Depends(get_async_db)
-):
-    await db.execute(delete(CategoryModel).where(CategoryModel.id == cat_id))
-    await db.commit()
-    return {"message": "Category deleted"}
-
-# Пример для товаров
-@router.get("/products", response_model=list[ProductSchema])
-async def admin_get_products(
-    allowed: bool = Depends(check_admin_permission("products")),
-    db: AsyncSession = Depends(get_async_db)
-):
-    result = await db.execute(select(ProductModel).options(selectinload(ProductModel.images)))
-    return result.scalars().all()
-
-@router.delete("/products/{prod_id}")
-async def admin_delete_product(
-    prod_id: int,
-    allowed: bool = Depends(check_admin_permission("products")),
-    db: AsyncSession = Depends(get_async_db)
-):
-    await db.execute(delete(ProductModel).where(ProductModel.id == prod_id))
-    await db.commit()
-    return {"message": "Product deleted"}
-
-# --- Заказы ---
-
-@router.get("/orders", response_model=list[OrderSchema])
-async def admin_get_orders(
-    allowed: bool = Depends(check_admin_permission("orders")),
-    db: AsyncSession = Depends(get_async_db)
-):
-    result = await db.execute(
-        select(OrderModel).options(
-            selectinload(OrderModel.items).selectinload(OrderItemModel.product).selectinload(ProductModel.images)
-        )
-    )
-    return result.scalars().all()
-
-@router.delete("/orders/{order_id}")
-async def admin_delete_order(
-    order_id: int,
-    allowed: bool = Depends(check_admin_permission("orders")),
-    db: AsyncSession = Depends(get_async_db)
-):
-    await db.execute(delete(OrderModel).where(OrderModel.id == order_id))
-    await db.commit()
-    return {"message": "Order deleted"}
-
-# --- Отзывы ---
-from app.schemas.reviews import Review as ReviewSchemaFull
-@router.get("/reviews", response_model=list[ReviewSchemaFull])
-async def admin_get_reviews(
-    allowed: bool = Depends(check_admin_permission("reviews")),
-    db: AsyncSession = Depends(get_async_db)
-):
-    result = await db.execute(select(ReviewsModel).options(selectinload(ReviewsModel.user)))
-    reviews = result.scalars().all()
-    for r in reviews:
-        r.first_name = r.user.first_name
-        r.last_name = r.user.last_name
-        r.avatar_url = r.user.avatar_url
-    return reviews
-
-@router.delete("/reviews/{review_id}")
-async def admin_delete_review(
-    review_id: int,
-    allowed: bool = Depends(check_admin_permission("reviews")),
-    db: AsyncSession = Depends(get_async_db)
-):
-    await db.execute(delete(ReviewsModel).where(ReviewsModel.id == review_id))
-    await db.commit()
-    return {"message": "Review deleted"}
-
 # --- Модерация ---
 
 @router.get("/moderation/pending")
@@ -497,21 +404,13 @@ async def get_pending_moderation(
     db: AsyncSession = Depends(get_async_db),
     admin: UserModel = Depends(get_current_admin)
 ):
-    """Возвращает список товаров и новостей, ожидающих модерации."""
-    # Получаем товары
-    products_res = await db.execute(
-        select(ProductModel).options(selectinload(ProductModel.images)).where(ProductModel.moderation_status == "pending")
-    )
-    products = products_res.scalars().all()
-    
-    # Получаем новости
+    """Возвращает список новостей, ожидающих модерации."""
     news_res = await db.execute(
         select(NewsModel).options(selectinload(NewsModel.images)).where(NewsModel.moderation_status == "pending")
     )
     news = news_res.scalars().all()
     
     return {
-        "products": products,
         "news": news
     }
 
@@ -523,12 +422,9 @@ async def approve_object(
     admin: UserModel = Depends(get_current_admin)
 ):
     """Одобряет объект."""
-    if model == "product":
-        stmt = select(ProductModel).where(ProductModel.id == id)
-    elif model == "news":
-        stmt = select(NewsModel).where(NewsModel.id == id)
-    else:
+    if model != "news":
         raise HTTPException(status_code=400, detail="Invalid model")
+    stmt = select(NewsModel).where(NewsModel.id == id)
     
     res = await db.execute(stmt)
     obj = res.scalar_one_or_none()
@@ -547,12 +443,9 @@ async def reject_object(
     admin: UserModel = Depends(get_current_admin)
 ):
     """Отклоняет объект."""
-    if model == "product":
-        stmt = select(ProductModel).where(ProductModel.id == id)
-    elif model == "news":
-        stmt = select(NewsModel).where(NewsModel.id == id)
-    else:
+    if model != "news":
         raise HTTPException(status_code=400, detail="Invalid model")
+    stmt = select(NewsModel).where(NewsModel.id == id)
     
     res = await db.execute(stmt)
     obj = res.scalar_one_or_none()

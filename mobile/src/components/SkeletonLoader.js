@@ -90,25 +90,6 @@ export function NewsSkeleton() {
   );
 }
 
-export function ProductSkeleton() {
-  const { theme } = useTheme();
-  const colors = themeConstants[theme];
-
-  return (
-    <View style={[styles.productCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-      <SkeletonItem width="100%" height={150} borderRadius={10} />
-      <View style={{ padding: 10 }}>
-        <SkeletonItem width="85%" height={14} borderRadius={7} />
-        <SkeletonItem width="60%" height={14} borderRadius={7} style={{ marginTop: 8 }} />
-        <View style={styles.productFooterRow}>
-          <SkeletonItem width={70} height={18} borderRadius={9} />
-          <SkeletonItem width={34} height={34} borderRadius={17} />
-        </View>
-      </View>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   newsCard: {
     borderRadius: 12,
@@ -127,20 +108,6 @@ const styles = StyleSheet.create({
     marginLeft: 10,
   },
   newsFooterRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 12,
-  },
-  productCard: {
-    flex: 0.5,
-    margin: 5,
-    borderRadius: 10,
-    overflow: 'hidden',
-    borderWidth: 1,
-    ...getShadow('#000', { width: 0, height: 1 }, 0.1, 2, 2),
-  },
-  productFooterRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',

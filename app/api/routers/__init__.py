@@ -1,14 +1,7 @@
 
-from fastapi import APIRouter, Depends
-from app.core.app_check import verify_app_check
+from fastapi import APIRouter
 from app.api.routers import (
-    categories,
-    products,
     users,
-    reviews,
-    cart,
-    orders,
-    payments,
     notifications,
     chat,
     group_chat,
@@ -26,8 +19,6 @@ api_router = APIRouter()
 # Роутеры, доступные без App Check (для входа, новостей и т.д.)
 public_routers = [
     (users.router, ["users"]),
-    (orders.router, ["orders"]),
-    (payments.router, ["payments"]),
     (tasks.router, ["tasks"]),
     (news.router, ["news"]),
     (admin.router, ["admin"]),
@@ -35,19 +26,8 @@ public_routers = [
     (announcements.router, ["announcements"]),
 ]
 
-# Роутеры, которые требуют защиты App Check (опционально)
-protected_routers = [
-    (categories.router, ["categories"]),
-    (products.router, ["products"]),
-    (reviews.router, ["reviews"]),
-    (cart.router, ["cart"]),
-]
-
 for router, tags in public_routers:
     api_router.include_router(router, tags=tags)
-
-for router, tags in protected_routers:
-    api_router.include_router(router, tags=tags, dependencies=[Depends(verify_app_check)])
 
 # Регистрация без защиты App Check (для WebSockets и отладки)
 # WebSockets не могут отправлять кастомные заголовки во время рукопожатия

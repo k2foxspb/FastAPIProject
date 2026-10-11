@@ -25,9 +25,9 @@ def create_application() -> FastAPI:
 
     # Создание приложения
     app = FastAPI(
-        title="FastAPI Интернет-магазин",
+        title="FastAPI Backend",
         version="0.1.0",
-        description="API для интернет-магазина",
+        description="API сервиса",
         docs_url="/docs" if ENABLE_API_DOCS else None,
         redoc_url="/redoc" if ENABLE_API_DOCS else None,
         openapi_url="/openapi.json" if ENABLE_API_DOCS else None,
@@ -120,9 +120,9 @@ app = create_application()
 def create_v2_application() -> FastAPI:
     """Версия 2 API (если нужна)."""
     app_v2 = FastAPI(
-        title="FastAPI Интернет-магазин",
+        title="FastAPI Backend",
         version="0.2.0",
-        description="API для интернет-магазина v2",
+        description="API сервиса v2",
     )
     # Настройки для v2...
     return app_v2

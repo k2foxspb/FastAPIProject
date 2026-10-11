@@ -170,15 +170,6 @@ async def verify_refresh_token(refresh_token: str, db: AsyncSession):
 
 
 
-async def get_current_seller(current_user: UserModel = Depends(get_current_user)):
-    """
-    Проверяет, что пользователь имеет роль 'seller' или выше (admin, owner).
-    """
-    if current_user.role not in ["seller", "admin", "owner"]:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
-    return current_user
-
-
 async def get_current_admin(current_user: UserModel = Depends(get_current_user)):
     """
     Проверяет, что пользователь имеет роль 'admin' или 'owner'.
@@ -194,14 +185,6 @@ async def get_current_owner(current_user: UserModel = Depends(get_current_user))
     """
     if current_user.role != "owner":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only owner can perform this action")
-    return current_user
-
-
-async def get_current_buyer(current_user: UserModel = Depends(get_current_user)):
-    """
-    Проверяет, что пользователь имеет роль 'buyer' или выше.
-    """
-    # Обычно всем можно, но если нужно строго:
     return current_user
 
 
@@ -237,7 +220,7 @@ def check_admin_permission(model_name: str):
                 )
 
             # Модели, доступные всем админам по умолчанию
-            if model_name in ["moderation", "news", "categories", "products", "orders", "reviews"]:
+            if model_name in ["moderation", "news"]:
                 return True
 
             # Проверяем разрешения в базе для остальных моделей (например, 'users' или будущие модули)

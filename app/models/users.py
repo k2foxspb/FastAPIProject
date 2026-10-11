@@ -6,10 +6,6 @@ from typing import TYPE_CHECKING
 from app.database import Base
 
 if TYPE_CHECKING:
-    from app.models.products import Product
-    from app.models.reviews import Reviews
-    from app.models.cart_items import CartItem
-    from app.models.orders import Order
     from app.models.structure import Workshop, Section
 
 class User(Base):
@@ -22,10 +18,10 @@ class User(Base):
     first_name: Mapped[str | None] = mapped_column(String, nullable=True)
     last_name: Mapped[str | None] = mapped_column(String, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    role: Mapped[str] = mapped_column(String, default="buyer")
-    # Роли интернет-магазина: "buyer", "seller", "admin", "owner".
-    # Роли производственной иерархии: "owner", "shop_chief", "section_chief",
-    # "master", "assistant_master", "worker" (см. app.core.roles).
+    role: Mapped[str] = mapped_column(String, default="worker")
+    # Роли: "admin", "owner" и производственная иерархия
+    # ("owner", "shop_chief", "section_chief", "master",
+    # "assistant_master", "worker" — см. app.core.roles).
     status: Mapped[str] = mapped_column(String, default="offline", nullable=True)
     last_seen: Mapped[str] = mapped_column(String, nullable=True)
 
@@ -38,10 +34,6 @@ class User(Base):
     verification_code: Mapped[str | None] = mapped_column(String, nullable=True)
     fcm_token: Mapped[str | None] = mapped_column(String, nullable=True)
 
-    products: Mapped[list["Product"]] = relationship("Product", back_populates="seller")
-    reviews: Mapped[list["Reviews"]] = relationship("Reviews", back_populates="user")
-    cart_items: Mapped[list["CartItem"]] = relationship("CartItem", back_populates="user", cascade="all, delete-orphan")
-    orders: Mapped[list["Order"]] = relationship("Order", back_populates="user", cascade="all, delete-orphan")
     photos: Mapped[list["UserPhoto"]] = relationship("UserPhoto", back_populates="user", cascade="all, delete-orphan")
     photo_comments: Mapped[list["UserPhotoComment"]] = relationship("UserPhotoComment", back_populates="user", cascade="all, delete-orphan")
     photo_reactions: Mapped[list["UserPhotoReaction"]] = relationship("UserPhotoReaction", back_populates="user", cascade="all, delete-orphan")

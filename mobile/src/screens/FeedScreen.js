@@ -1,15 +1,14 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import { getShadow } from '../utils/shadowStyles';
-import { View, Text, FlatList, StyleSheet, TouchableOpacity, RefreshControl, ActivityIndicator, Alert, Image, Platform, ScrollView } from 'react-native';
+import { View, Text, FlatList, StyleSheet, TouchableOpacity, RefreshControl, Image, Platform, ScrollView } from 'react-native';
 import notifee from '@notifee/react-native';
-import * as Haptics from 'expo-haptics';
 import FadeInImage from '../components/FadeInImage';
 import FadeInView from '../components/FadeInView';
-import { productsApi, newsApi, usersApi, cartApi } from '../api';
+import { newsApi } from '../api';
 import { getFullUrl, stripHtml } from '../utils/formatters';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
-import { NewsSkeleton, ProductSkeleton } from '../components/SkeletonLoader';
+import { NewsSkeleton } from '../components/SkeletonLoader';
 import { Ionicons as Icon } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useNotifications } from '../context/NotificationContext';
@@ -18,14 +17,10 @@ export default function FeedScreen({ navigation }) {
   const { theme } = useTheme();
   const colors = themeConstants[theme];
   const { currentUser, loadingUser } = useNotifications();
-  const [activeTab, setActiveTab] = useState('news'); // 'news' or 'products'
-  const [products, setProducts] = useState([]);
   const [news, setNews] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState(null);
-  const [cartItems, setCartItems] = useState([]);
-  const [updatingProductId, setUpdatingProductId] = useState(null);
   const isLoadedRef = useRef(false);
   const loadingInProgressRef = useRef(false);
 
@@ -44,64 +39,13 @@ export default function FeedScreen({ navigation }) {
     loadingInProgressRef.current = true;
 
     try {
-      const promises = [
-        productsApi.getProducts().catch(() => ({ data: { items: [] } })),
-        newsApi.getNews().catch(() => ({ data: [] })),
-        currentUser ? cartApi.getCart().catch(() => ({ data: { items: [] } })) : Promise.resolve({ data: { items: [] } })
-      ];
+      const newsRes = await newsApi.getNews().catch(() => ({ data: [] }));
 
-      // Если это продавец, админ или владелец, загружаем ИХ товары параллельно, чтобы увидеть pending
-      let sellerProductsPromise = null;
-      if (currentUser && currentUser.role !== 'buyer') {
-        sellerProductsPromise = productsApi.getProducts({ seller_id: currentUser.id }).catch(() => ({ data: { items: [] } }));
-        promises.push(sellerProductsPromise);
-      }
-
-      const results = await Promise.all(promises);
-      
-      const [productsRes, newsRes, cartRes, sellerProductsRes] = results;
-      
-      const cartItemsData = cartRes?.data?.items || [];
-      setCartItems(cartItemsData);
-      const cartCount = cartItemsData.reduce((acc, item) => acc + item.quantity, 0);
-
-      navigation.setOptions({
-        headerRight: () => (
-          <TouchableOpacity 
-            style={{ marginRight: 15 }} 
-            onPress={() => currentUser ? navigation.navigate('Cart') : navigation.navigate('Profile', { screen: 'Login' })}
-          >
-            <View>
-              <Icon name="cart-outline" size={24} color={colors.text} />
-              {cartCount > 0 && (
-                <View style={[styles.cartBadge, { backgroundColor: colors.primary }]}>
-                  <Text style={styles.cartBadgeText}>{cartCount}</Text>
-                </View>
-              )}
-            </View>
-          </TouchableOpacity>
-        ),
-      });
-
-      let productsData = productsRes.data.items || productsRes.data || [];
-      
       if (currentUser) {
         setUser(currentUser);
-        if (sellerProductsRes) {
-          const sellerProducts = sellerProductsRes.data.items || sellerProductsRes.data || [];
-          // Объединяем общие одобренные товары с собственными (включая pending)
-          const combinedProducts = [...productsData];
-          sellerProducts.forEach(sp => {
-            if (!combinedProducts.find(p => p.id === sp.id)) {
-              combinedProducts.push(sp);
-            }
-          });
-          productsData = combinedProducts.sort((a, b) => b.id - a.id);
-        }
       } else {
         setUser(null);
       }
-      setProducts(productsData);
       setNews(newsRes.data || []);
       isLoadedRef.current = true;
     } catch (err) {
@@ -110,7 +54,7 @@ export default function FeedScreen({ navigation }) {
       setLoading(false);
       loadingInProgressRef.current = false;
     }
-  }, [currentUser, loadingUser, colors.text, colors.primary, navigation]);
+  }, [currentUser, loadingUser]);
 
   useFocusEffect(
     useCallback(() => {
@@ -136,7 +80,6 @@ export default function FeedScreen({ navigation }) {
   };
 
   const canManageNews = user?.role === 'admin' || user?.role === 'owner';
-  const canManageProducts = user?.role === 'seller' || user?.role === 'admin' || user?.role === 'owner';
 
   const renderNewsItem = ({ item }) => {
     const newsThumbnail = item.images && item.images.length > 0 
@@ -208,172 +151,29 @@ export default function FeedScreen({ navigation }) {
     );
   };
 
-  const handleAddToCart = async (product) => {
-    try {
-      setUpdatingProductId(product.id);
-      await cartApi.addItem(product.id, 1);
-      await loadData(); // Обновляем данные и счетчик
-    } catch (err) {
-      Alert.alert('Ошибка', 'Не удалось добавить товар в корзину');
-    } finally {
-      setUpdatingProductId(null);
-    }
-  };
-
-  const handleUpdateQuantity = async (productId, currentQuantity, delta) => {
-    const newQuantity = currentQuantity + delta;
-    try {
-      setUpdatingProductId(productId);
-      if (newQuantity <= 0) {
-        await cartApi.removeItem(productId);
-      } else {
-        await cartApi.updateItem(productId, newQuantity);
-      }
-      await loadData();
-    } catch (err) {
-      Alert.alert('Ошибка', 'Не удалось обновить количество');
-    } finally {
-      setUpdatingProductId(null);
-    }
-  };
-
-  const renderProductItem = ({ item }) => {
-    const isOwnerOrAdmin = user && (user.id === item.seller_id || user.role === 'admin' || user.role === 'owner');
-    const isPending = item.moderation_status === 'pending';
-    const cartItem = cartItems.find(ci => ci.product_id === item.id);
-    const quantityInCart = cartItem ? cartItem.quantity : 0;
-    const isUpdating = updatingProductId === item.id;
-    
-    return (
-      <TouchableOpacity 
-        style={[
-          styles.productGridCard, 
-          { backgroundColor: colors.card, borderColor: isPending ? colors.warning || '#ffcc00' : colors.border, borderWidth: (theme === 'dark' || isPending) ? 1 : 0 }
-        ]}
-        onPress={() => navigation.navigate('ProductDetail', { productId: item.id })}
-      >
-        <FadeInImage source={{ uri: getFullUrl(item.thumbnail_url) || 'https://via.placeholder.com/150' }} style={styles.productGridImage} />
-        {isPending && (
-          <View style={styles.pendingBadge}>
-            <Text style={styles.pendingBadgeText}>Ожидает</Text>
-          </View>
-        )}
-        <View style={styles.productInfo}>
-          <Text style={[styles.productName, { color: colors.text }]} numberOfLines={2}>{item.name}</Text>
-          <View style={styles.productFooter}>
-            <Text style={[styles.productPrice, { color: colors.primary }]}>{item.price} руб.</Text>
-            
-            {user?.role === 'buyer' && (
-              <View style={styles.cartActions}>
-                {quantityInCart > 0 ? (
-                  <View style={styles.quantityControls}>
-                    <TouchableOpacity 
-                      onPress={() => handleUpdateQuantity(item.id, quantityInCart, -1)}
-                      disabled={isUpdating}
-                    >
-                      <Icon name="remove-circle-outline" size={24} color={colors.primary} />
-                    </TouchableOpacity>
-                    <Text style={[styles.quantityText, { color: colors.text }]}>{quantityInCart}</Text>
-                    <TouchableOpacity 
-                      onPress={() => handleUpdateQuantity(item.id, quantityInCart, 1)}
-                      disabled={isUpdating}
-                    >
-                      <Icon name="add-circle-outline" size={24} color={colors.primary} />
-                    </TouchableOpacity>
-                  </View>
-                ) : (
-                  <TouchableOpacity 
-                    style={[styles.miniEditButton, { backgroundColor: colors.primary }]}
-                    onPress={() => handleAddToCart(item)}
-                    disabled={isUpdating}
-                  >
-                    {isUpdating ? (
-                      <ActivityIndicator size="small" color="#fff" />
-                    ) : (
-                      <Icon name="cart-outline" size={16} color="#fff" />
-                    )}
-                  </TouchableOpacity>
-                )}
-              </View>
-            )}
-
-            {(canManageProducts && isOwnerOrAdmin) && (
-              <View style={[styles.miniEditButton, { backgroundColor: colors.primary }]}>
-                <Icon name="create-outline" size={16} color="#fff" />
-              </View>
-            )}
-          </View>
-        </View>
-      </TouchableOpacity>
-    );
-  };
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.tabBarEnhanced, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
-        <TouchableOpacity 
-          style={[styles.tabButton, activeTab === 'news' && { backgroundColor: colors.primary + '15' }]} 
-          onPress={() => {
-            if (activeTab !== 'news') {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              setActiveTab('news');
-            }
-          }}
-        >
-          <Icon name="newspaper-outline" size={18} color={activeTab === 'news' ? colors.primary : colors.textSecondary} />
-          <Text style={[styles.tabButtonText, { color: activeTab === 'news' ? colors.primary : colors.textSecondary, fontWeight: activeTab === 'news' ? '700' : '500' }]}>
-            Новости
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity 
-          style={[styles.tabButton, activeTab === 'products' && { backgroundColor: colors.primary + '15' }]} 
-          onPress={() => {
-            if (activeTab !== 'products') {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              setActiveTab('products');
-            }
-          }}
-        >
-          <Icon name="basket-outline" size={18} color={activeTab === 'products' ? colors.primary : colors.textSecondary} />
-          <Text style={[styles.tabButtonText, { color: activeTab === 'products' ? colors.primary : colors.textSecondary, fontWeight: activeTab === 'products' ? '700' : '500' }]}>
-            Товары
-          </Text>
-        </TouchableOpacity>
-      </View>
-
       {loading && !refreshing ? (
         <ScrollView style={styles.listContent}>
-          {activeTab === 'news' ? (
-            <>
-              <NewsSkeleton />
-              <NewsSkeleton />
-            </>
-          ) : (
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' }}>
-              <ProductSkeleton />
-              <ProductSkeleton />
-              <ProductSkeleton />
-              <ProductSkeleton />
-            </View>
-          )}
+          <NewsSkeleton />
+          <NewsSkeleton />
         </ScrollView>
       ) : (
         <FadeInView visible={!loading} duration={250}>
           <FlatList
-          data={activeTab === 'news' ? news : products}
+          data={news}
           keyExtractor={(item) => item.id.toString()}
-          renderItem={activeTab === 'news' ? renderNewsItem : renderProductItem}
+          renderItem={renderNewsItem}
           contentContainerStyle={styles.listContent}
-          numColumns={activeTab === 'products' ? 2 : 1}
-          key={activeTab} // Force re-render when switching tabs to change numColumns
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[colors.primary]} />
           }
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
-              <Icon name={activeTab === 'news' ? "newspaper-outline" : "basket-outline"} size={64} color={colors.border} />
+              <Icon name="newspaper-outline" size={64} color={colors.border} />
               <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
-                {activeTab === 'news' ? 'Пока новостей нет' : 'Список товаров пуст'}
+                Пока новостей нет
               </Text>
             </View>
           }
@@ -381,10 +181,10 @@ export default function FeedScreen({ navigation }) {
         </FadeInView>
       )}
 
-      {((activeTab === 'news' && canManageNews) || (activeTab === 'products' && canManageProducts)) && (
+      {canManageNews && (
         <TouchableOpacity 
           style={[styles.fab, { backgroundColor: colors.primary }]}
-          onPress={() => navigation.navigate(activeTab === 'news' ? 'EditNews' : 'EditProduct')}
+          onPress={() => navigation.navigate('EditNews')}
         >
           <Icon name="add-outline" size={30} color="#fff" />
         </TouchableOpacity>
@@ -395,21 +195,6 @@ export default function FeedScreen({ navigation }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  tabBarEnhanced: { 
-    flexDirection: 'row', 
-    paddingHorizontal: 15, 
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    justifyContent: 'space-around'
-  },
-  tabButton: { 
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 20,
-    borderRadius: 20,
-  },
-  tabButtonText: { fontSize: 15, marginLeft: 8 },
   listContent: { padding: 10 },
   newsCard: { borderRadius: 12, marginBottom: 16, overflow: 'hidden', borderWidth: 1, ...getShadow('#000', { width: 0, height: 2 }, 0.1, 4, 4) },
   newsAuthorHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 12, borderBottomWidth: 0.5, borderBottomColor: 'rgba(0,0,0,0.05)' },
@@ -426,47 +211,6 @@ const styles = StyleSheet.create({
   reactionsRow: { flexDirection: 'row', alignItems: 'center' },
   reactionItem: { flexDirection: 'row', alignItems: 'center' },
   reactionCount: { fontSize: 12, marginLeft: 4 },
-  productGridCard: { flex: 0.5, margin: 5, borderRadius: 10, overflow: 'hidden', ...getShadow('#000', { width: 0, height: 1 }, 0.1, 2, 2) },
-  productGridImage: { width: '100%', height: 150 },
-  productInfo: { padding: 10 },
-  productName: { fontSize: 14, fontWeight: '500', marginBottom: 5, height: 40 },
-  productFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  productPrice: { fontSize: 16, fontWeight: 'bold', flex: 1 },
-  miniEditButton: { padding: 5, borderRadius: 15, marginLeft: 5, minWidth: 30, alignItems: 'center', ...getShadow('#000', { width: 0, height: 1 }, 0.1, 2, 2) },
-  cartActions: { flexDirection: 'row', alignItems: 'center' },
-  quantityControls: { flexDirection: 'row', alignItems: 'center' },
-  quantityText: { marginHorizontal: 8, fontSize: 14, fontWeight: 'bold' },
-  cartBadge: {
-    position: 'absolute',
-    right: -6,
-    top: -6,
-    borderRadius: 9,
-    width: 18,
-    height: 18,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#fff',
-  },
-  cartBadgeText: {
-    color: '#fff',
-    fontSize: 10,
-    fontWeight: 'bold',
-  },
-  pendingBadge: {
-    position: 'absolute',
-    top: 5,
-    right: 5,
-    backgroundColor: 'rgba(255, 204, 0, 0.9)',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 10,
-  },
-  pendingBadgeText: {
-    color: '#000',
-    fontSize: 10,
-    fontWeight: 'bold',
-  },
   fab: { position: 'absolute', bottom: 20, right: 20, width: 60, height: 60, borderRadius: 30, justifyContent: 'center', alignItems: 'center', ...getShadow('#000', { width: 0, height: 4 }, 0.3, 4.65, 8) },
   emptyContainer: { 
     flex: 1, 

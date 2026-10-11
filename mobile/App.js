@@ -45,7 +45,6 @@ function AppContent() {
         Feed: {
           screens: {
             NewsDetail: 'news/:newsId',
-            ProductDetail: 'product/:productId',
           },
         },
         Messages: {

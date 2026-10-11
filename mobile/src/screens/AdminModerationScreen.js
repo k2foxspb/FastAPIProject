@@ -7,7 +7,7 @@ import { theme as themeConstants } from '../constants/theme';
 import { Ionicons as Icon } from '@expo/vector-icons';
 
 export default function AdminModerationScreen() {
-  const [pending, setPending] = useState({ products: [], news: [] });
+  const [pending, setPending] = useState({ news: [] });
   const [loading, setLoading] = useState(true);
   const { theme } = useTheme();
   const colors = themeConstants[theme];
@@ -66,7 +66,7 @@ export default function AdminModerationScreen() {
           )}
         </View>
         <Text style={[styles.cardType, { color: colors.textSecondary }]}>
-          {type === 'product' ? 'Товар' : 'Новость'} • {createdAt.toLocaleTimeString()}
+          Новость • {createdAt.toLocaleTimeString()}
         </Text>
         <View style={styles.actions}>
           <TouchableOpacity 
@@ -89,8 +89,7 @@ export default function AdminModerationScreen() {
   };
 
   const allPending = [
-    ...pending.products.map(p => ({ ...p, _type: 'product' })),
-    ...pending.news.map(n => ({ ...n, _type: 'news' }))
+    ...(pending.news || []).map(n => ({ ...n, _type: 'news' }))
   ].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
 
   return (

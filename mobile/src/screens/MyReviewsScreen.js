@@ -10,8 +10,7 @@ import { Ionicons as Icon } from '@expo/vector-icons';
 export default function MyReviewsScreen({ navigation }) {
   const { theme } = useTheme();
   const colors = themeConstants[theme];
-  const [activeTab, setActiveTab] = useState('products'); // 'products', 'news', 'photos'
-  const [productReviews, setProductReviews] = useState([]);
+  const [activeTab, setActiveTab] = useState('news'); // 'news', 'photos'
   const [newsComments, setNewsComments] = useState([]);
   const [photoComments, setPhotoComments] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -20,12 +19,10 @@ export default function MyReviewsScreen({ navigation }) {
   const loadData = async () => {
     try {
       setLoading(true);
-      const [productsRes, newsRes, photosRes] = await Promise.all([
-        usersApi.getMyReviews().catch(() => ({ data: [] })),
+      const [newsRes, photosRes] = await Promise.all([
         usersApi.getMyNewsComments().catch(() => ({ data: [] })),
         usersApi.getMyPhotoComments().catch(() => ({ data: [] }))
       ]);
-      setProductReviews(productsRes.data);
       setNewsComments(newsRes.data);
       setPhotoComments(photosRes.data);
     } catch (err) {
@@ -57,30 +54,18 @@ export default function MyReviewsScreen({ navigation }) {
             <Text style={[styles.reviewUser, { color: colors.text }]}>
               {item.first_name ? `${item.first_name} ${item.last_name || ''}` : `Пользователь #${item.user_id}`}
             </Text>
-            {activeTab === 'products' && (
-              <TouchableOpacity onPress={() => navigation.navigate('ProductDetail', { productId: item.product_id })}>
-                <Text style={[styles.productLink, { color: colors.primary }]}>К товару #{item.product_id}</Text>
-              </TouchableOpacity>
-            )}
             {activeTab === 'news' && (
               <TouchableOpacity onPress={() => navigation.navigate('NewsDetail', { newsId: item.news_id })}>
-                <Text style={[styles.productLink, { color: colors.primary }]}>К новости #{item.news_id}</Text>
+                <Text style={[styles.contentLink, { color: colors.primary }]}>К новости #{item.news_id}</Text>
               </TouchableOpacity>
             )}
             {activeTab === 'photos' && (
               <TouchableOpacity onPress={() => navigation.navigate('PhotoDetail', { photoId: item.photo_id })}>
-                <Text style={[styles.productLink, { color: colors.primary }]}>К фото #{item.photo_id}</Text>
+                <Text style={[styles.contentLink, { color: colors.primary }]}>К фото #{item.photo_id}</Text>
               </TouchableOpacity>
             )}
           </View>
         </View>
-        {activeTab === 'products' && (
-          <View style={styles.stars}>
-            {[1, 2, 3, 4, 5].map(s => (
-              <Icon key={s} name={s <= item.grade ? "star" : "star-outline"} size={14} color="#FFD700" />
-            ))}
-          </View>
-        )}
       </View>
       <Text style={[styles.reviewComment, { color: colors.text }]}>{item.comment}</Text>
       <Text style={[styles.reviewDate, { color: colors.textSecondary }]}>
@@ -90,13 +75,11 @@ export default function MyReviewsScreen({ navigation }) {
   );
 
   const getActiveData = () => {
-    if (activeTab === 'products') return productReviews;
     if (activeTab === 'news') return newsComments;
     return photoComments;
   };
 
   const getEmptyMessage = () => {
-    if (activeTab === 'products') return 'Вы еще не оставили ни одного отзыва к товарам';
     if (activeTab === 'news') return 'Вы еще не оставили ни одного комментария к новостям';
     return 'Вы еще не оставили ни одного комментария к фотографиям';
   };
@@ -112,12 +95,6 @@ export default function MyReviewsScreen({ navigation }) {
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.tabBar, { borderBottomColor: colors.border }]}>
-        <TouchableOpacity 
-          style={[styles.tab, activeTab === 'products' && { borderBottomColor: colors.primary, borderBottomWidth: 2 }]} 
-          onPress={() => setActiveTab('products')}
-        >
-          <Text style={[styles.tabText, { color: activeTab === 'products' ? colors.primary : colors.textSecondary }]}>Товары</Text>
-        </TouchableOpacity>
         <TouchableOpacity 
           style={[styles.tab, activeTab === 'news' && { borderBottomColor: colors.primary, borderBottomWidth: 2 }]} 
           onPress={() => setActiveTab('news')}
@@ -186,12 +163,9 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     fontSize: 14,
   },
-  productLink: {
+  contentLink: {
     fontSize: 12,
     marginTop: 2,
-  },
-  stars: {
-    flexDirection: 'row',
   },
   reviewComment: {
     fontSize: 15,

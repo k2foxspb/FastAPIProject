@@ -30,13 +30,9 @@ export default function AdminScreen({ navigation }) {
   const adminMenu = [
     { title: 'Цеха и участки', icon: 'business-outline', screen: 'AdminWorkshops', visible: canManageWorkshops(role) || canManageSections(role) },
     { title: 'Сотрудники', icon: 'people-circle-outline', screen: 'AdminEmployees', visible: canAccessOrgAdmin(role) },
-    { title: 'Пользователи магазина', icon: 'people-outline', screen: 'AdminUsers', ownerOnly: true },
+    { title: 'Пользователи', icon: 'people-outline', screen: 'AdminUsers', ownerOnly: true },
     { title: 'Модерация', icon: 'shield-outline', screen: 'AdminModeration' },
     { title: 'Новости', icon: 'newspaper-outline', screen: 'AdminNews' },
-    { title: 'Категории', icon: 'list-outline', screen: 'AdminCategories' },
-    { title: 'Товары', icon: 'cart-outline', screen: 'AdminProducts' },
-    { title: 'Заказы', icon: 'receipt-outline', screen: 'AdminOrders' },
-    { title: 'Отзывы', icon: 'star-outline', screen: 'AdminReviews' },
     { title: 'Чаты пользователей', icon: 'chatbubbles-outline', screen: 'AdminChats', ownerOnly: true },
     { title: 'Загрузить новую версию приложения', icon: 'cloud-upload-outline', screen: 'AdminAppUpload', ownerOnly: true },
     { title: 'Логи', icon: 'document-text-outline', screen: 'AdminLogs', ownerOnly: true },
@@ -51,7 +47,7 @@ export default function AdminScreen({ navigation }) {
     <ScrollView style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={styles.header}>
         <Text style={[styles.title, { color: colors.text }]}>Админ-панель</Text>
-        <Text style={[styles.subtitle, { color: colors.textSecondary }]}>Управление магазином</Text>
+        <Text style={[styles.subtitle, { color: colors.textSecondary }]}>Управление</Text>
       </View>
 
       <View style={styles.menu}>

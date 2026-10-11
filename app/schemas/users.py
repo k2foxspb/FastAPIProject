@@ -8,8 +8,8 @@ class UserCreate(BaseModel):
     password: str = Field(min_length=8, description="Пароль (минимум 8 символов)")
     first_name: str | None = Field(default=None, description="Имя")
     last_name: str | None = Field(default=None, description="Фамилия")
-    role: str = Field(default="buyer", pattern="^(buyer|seller|admin|owner)$",
-                      description="Роль: 'buyer', 'seller', 'admin' или 'owner'")
+    role: str = Field(default="worker", pattern="^(worker|assistant_master|master|section_chief|shop_chief|admin|owner)$",
+                      description="Роль: производственная иерархия, 'admin' или 'owner'")
 
 
 class UserUpdate(BaseModel):
@@ -375,7 +375,7 @@ class User(BaseModel):
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     is_active: bool = True
-    role: str = "buyer"
+    role: str = "worker"
     status: Optional[str] = "offline"
     last_seen: Optional[str] = None
     avatar_url: Optional[str] = None
@@ -402,7 +402,7 @@ class User(BaseModel):
                     "first_name": obj.get("first_name"),
                     "last_name": obj.get("last_name"),
                     "is_active": obj.get("is_active", True),
-                    "role": obj.get("role", "buyer"),
+                    "role": obj.get("role", "worker"),
                     "status": obj.get("status", "offline"),
                     "last_seen": obj.get("last_seen"),
                     "avatar_url": obj.get("avatar_url"),
@@ -425,7 +425,7 @@ class User(BaseModel):
                 "first_name": getattr(obj, "first_name", None),
                 "last_name": getattr(obj, "last_name", None),
                 "is_active": bool(getattr(obj, "is_active", True)),
-                "role": str(getattr(obj, "role", "buyer")),
+                "role": str(getattr(obj, "role", "worker")),
                 "status": str(getattr(obj, "status", "offline")),
                 "last_seen": getattr(obj, "last_seen", None),
                 "avatar_url": getattr(obj, "avatar_url", None),
@@ -466,7 +466,7 @@ class User(BaseModel):
                 email=getattr(obj, "email", None),
                 first_name=getattr(obj, "first_name", "Error"),
                 last_name=getattr(obj, "last_name", "Validation"),
-                role=getattr(obj, "role", "buyer"),
+                role=getattr(obj, "role", "worker"),
                 avatar_url=getattr(obj, "avatar_url", None)
             )
 

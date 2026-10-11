@@ -17,10 +17,6 @@ if IS_PRODUCTION and not SECRET_KEY:
         "SECRET_KEY должен быть задан через переменную окружения в продакшене."
     )
 
-YOOKASSA_SHOP_ID = os.getenv("YOOKASSA_SHOP_ID")
-YOOKASSA_SECRET_KEY = os.getenv("YOOKASSA_SECRET_KEY")
-YOOKASSA_RETURN_URL = os.getenv("YOOKASSA_RETURN_URL", "http://79.133.183.129/")
-
 MAIL_USERNAME = os.getenv("MAIL_USERNAME")
 MAIL_PASSWORD = os.getenv("MAIL_PASSWORD")
 MAIL_FROM = os.getenv("MAIL_FROM") or MAIL_USERNAME

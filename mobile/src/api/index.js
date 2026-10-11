@@ -194,7 +194,6 @@ export const usersApi = {
   getFriendRequests: () => api.get('/users/friends/requests'),
   getLikedNews: () => api.get('/users/me/likes'),
   getLikedPhotos: () => api.get('/users/me/liked-photos'),
-  getMyReviews: () => api.get('/users/me/reviews'),
   getMyNewsComments: () => api.get('/users/me/news-comments'),
   getMyPhotoComments: () => api.get('/users/me/photo-comments'),
 };
@@ -217,24 +216,6 @@ export const orgApi = {
   updateEmployeeAssignment: (userId, data) => api.patch(`/org/employees/${userId}/assignment`, data),
   deleteEmployee: (userId) => api.delete(`/org/employees/${userId}`),
   moveWorker: (userId, sectionId) => api.post(`/org/employees/${userId}/move`, { section_id: sectionId }),
-};
-
-export const productsApi = {
-  getProducts: (params) => api.get('/products/', { params }),
-  getProduct: (id) => api.get(`/products/${id}`),
-  createProduct: (formData) => api.post('/products/', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' }
-  }),
-  updateProduct: (id, formData) => api.put(`/products/${id}`, formData, {
-    headers: { 'Content-Type': 'multipart/form-data' }
-  }),
-  deleteProduct: (id) => api.delete(`/products/${id}`),
-  getCategories: () => api.get('/categories'),
-  createCategory: (data) => api.post('/categories', data),
-  getReviews: (productId) => api.get(`/products/${productId}/review`),
-  createReview: (data) => api.post('/reviews', data),
-  deleteReview: (id) => api.delete(`/reviews/reviews/${id}`),
-  reactToReview: (reviewId, reactionType) => api.post(`/reviews/${reviewId}/react`, null, { params: { reaction_type: reactionType } }),
 };
 
 export const newsApi = {
@@ -306,20 +287,6 @@ export const groupChatApi = {
   deleteGroup: (groupId) => api.delete(`/chat/groups/${groupId}`),
 };
 
-export const cartApi = {
-  getCart: () => api.get('/cart/'),
-  addItem: (productId, quantity = 1) => api.post('/cart/items', { product_id: productId, quantity }),
-  updateItem: (productId, quantity) => api.put(`/cart/items/${productId}`, { quantity }),
-  removeItem: (productId) => api.delete(`/cart/items/${productId}`),
-};
-
-export const ordersApi = {
-  checkout: () => api.post('/orders/checkout'),
-  getOrders: (page = 1, pageSize = 10) => api.get('/orders/', { params: { page, page_size: pageSize } }),
-  getOrder: (id) => api.get(`/orders/${id}`),
-  getOrderStatus: (id) => api.get(`/orders/${id}/status`),
-};
-
 // ---------------------------------------------------------------------------
 // Обновление access-токена
 // ---------------------------------------------------------------------------
@@ -383,7 +350,7 @@ const isAppCheckError = (error) => {
 };
 
 // Эндпоинты, которые можно смотреть анонимно — при 401 не редиректим на логин
-const ignoredUrls = ['/news/', '/products/'];
+const ignoredUrls = ['/news/'];
 const isIgnoredUrl = (url) => ignoredUrls.some(ignored => (url || '').includes(ignored));
 
 api.interceptors.request.use(

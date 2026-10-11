@@ -21,13 +21,10 @@ import GroupChatScreen from '../screens/chat/GroupChatScreen';
 import GroupInfoScreen from '../screens/chat/GroupInfoScreen';
 import AddGroupMembersScreen from '../screens/chat/AddGroupMembersScreen';
 import FeedScreen from '../screens/FeedScreen';
-import CartScreen from '../screens/CartScreen';
-import OrdersScreen from '../screens/OrdersScreen';
+import TabelScreen from '../screens/TabelScreen';
 import NewsDetailScreen from '../screens/NewsDetailScreen';
 import MyLikesScreen from '../screens/MyLikesScreen';
 import MyReviewsScreen from '../screens/MyReviewsScreen';
-import EditProductScreen from '../screens/EditProductScreen';
-import ProductDetailScreen from '../screens/ProductDetailScreen';
 import LoginScreen from '../screens/LoginScreen';
 import WebViewScreen from '../screens/WebViewScreen';
 import AdminScreen from '../screens/AdminScreen';
@@ -39,10 +36,6 @@ import AdminModerationScreen from '../screens/AdminModerationScreen';
 import AdminNewsScreen from '../screens/AdminNewsScreen';
 import AdminChatsScreen from '../screens/AdminChatsScreen';
 import AdminChatDetailScreen from '../screens/AdminChatDetailScreen';
-import AdminCategoriesScreen from '../screens/AdminCategoriesScreen';
-import AdminProductsScreen from '../screens/AdminProductsScreen';
-import AdminOrdersScreen from '../screens/AdminOrdersScreen';
-import AdminReviewsScreen from '../screens/AdminReviewsScreen';
 import AdminAppUploadScreen from '../screens/AdminAppUploadScreen';
 import AdminLogsScreen from '../screens/AdminLogsScreen';
 
@@ -128,7 +121,6 @@ function ProfileStack() {
       }}
     >
       <Stack.Screen name="ProfileMain" component={ProfileScreen} options={{ title: 'Профиль' }} />
-      <Stack.Screen name="Orders" component={OrdersScreen} options={{ title: 'Мои заказы' }} />
       <Stack.Screen name="CreateAlbum" component={CreateAlbumScreen} options={{ title: 'Новый альбом' }} />
       <Stack.Screen name="AlbumDetail" component={AlbumDetailScreen} options={{ title: 'Альбом' }} />
       <Stack.Screen name="UserMedia" component={UserMediaScreen} options={{ title: 'Медиафайлы' }} />
@@ -149,10 +141,6 @@ function ProfileStack() {
       <Stack.Screen name="AdminEmployees" component={AdminEmployeesScreen} options={{ title: 'Сотрудники' }} />
       <Stack.Screen name="AdminModeration" component={AdminModerationScreen} options={{ title: 'Модерация' }} />
       <Stack.Screen name="AdminNews" component={AdminNewsScreen} options={{ title: 'Новости' }} />
-      <Stack.Screen name="AdminCategories" component={AdminCategoriesScreen} options={{ title: 'Категории' }} />
-      <Stack.Screen name="AdminProducts" component={AdminProductsScreen} options={{ title: 'Товары' }} />
-      <Stack.Screen name="AdminOrders" component={AdminOrdersScreen} options={{ title: 'Заказы' }} />
-      <Stack.Screen name="AdminReviews" component={AdminReviewsScreen} options={{ title: 'Отзывы' }} />
       <Stack.Screen name="AdminChats" component={AdminChatsScreen} options={{ title: 'Чаты пользователей' }} />
       <Stack.Screen name="AdminChatDetail" component={AdminChatDetailScreen} options={{ title: 'Чат' }} />
       <Stack.Screen name="EditNews" component={EditNewsScreen} options={{ title: 'Редактировать новость' }} />
@@ -220,12 +208,9 @@ function FeedStack() {
         animation: 'fade_from_bottom',
       }}
     >
-      <Stack.Screen name="FeedMain" component={FeedScreen} options={{ title: 'Новости и Товары' }} />
-      <Stack.Screen name="Cart" component={CartScreen} options={{ title: 'Корзина' }} />
+      <Stack.Screen name="FeedMain" component={FeedScreen} options={{ title: 'Новости' }} />
       <Stack.Screen name="NewsDetail" component={NewsDetailScreen} options={{ title: 'Новость' }} />
       <Stack.Screen name="EditNews" component={EditNewsScreen} options={{ title: 'Редактировать новость' }} />
-      <Stack.Screen name="EditProduct" component={EditProductScreen} options={{ title: 'Товар' }} />
-      <Stack.Screen name="ProductDetail" component={ProductDetailScreen} options={{ title: 'О товаре' }} />
       <Stack.Screen name="UserProfile" component={UserProfileScreen} options={{ title: 'Профиль пользователя' }} />
       <Stack.Screen name="UserHierarchy" component={UserHierarchyScreen} options={{ title: 'Иерархия' }} />
       <Stack.Screen name="UserMedia" component={UserMediaScreen} options={{ title: 'Медиафайлы' }} />
@@ -246,6 +231,8 @@ export default function TabNavigator() {
           let iconName;
           if (route.name === 'Feed') {
             iconName = focused ? 'newspaper' : 'newspaper-outline';
+          } else if (route.name === 'Tabel') {
+            iconName = focused ? 'document-text' : 'document-text-outline';
           } else if (route.name === 'Users') {
             iconName = focused ? 'people' : 'people-outline';
           } else if (route.name === 'Messages') {
@@ -276,6 +263,13 @@ export default function TabNavigator() {
           title: 'Лента',
           headerShown: false,
         }} 
+      />
+      <Tab.Screen
+        name="Tabel"
+        component={TabelScreen}
+        options={{
+          title: 'Табель',
+        }}
       />
       <Tab.Screen 
         name="Users" 
