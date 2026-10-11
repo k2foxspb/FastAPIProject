@@ -341,19 +341,30 @@ async def _load_entry(db: AsyncSession, entry_id: int) -> ProductionEntryModel:
     return entry
 
 
-async def _get_hours_for_date(db: AsyncSession, user_id: int, day: date) -> Decimal:
+async def _get_hours_for_date(db: AsyncSession, user_id: int, day: date) -> tuple[Decimal, Decimal]:
+    """Возвращает (основное, сверхурочное) время из табеля за день."""
     result = await db.execute(
-        select(TimesheetEntryModel.hours).where(
+        select(TimesheetEntryModel.hours, TimesheetEntryModel.overtime_hours).where(
             TimesheetEntryModel.user_id == user_id, TimesheetEntryModel.date == day
         )
     )
-    hours = result.scalar_one_or_none()
-    return hours if hours is not None else Decimal("0")
+    row = result.one_or_none()
+    if row is None:
+        return Decimal("0"), Decimal("0")
+    base_hours, overtime_hours = row
+    return base_hours or Decimal("0"), overtime_hours or Decimal("0")
 
 
-def _entry_to_schema(entry: ProductionEntryModel, current_user: UserModel, hours: Decimal | None = None) -> ProductionEntrySchema:
+def _entry_to_schema(
+    entry: ProductionEntryModel,
+    current_user: UserModel,
+    base_hours: Decimal | None = None,
+    overtime_hours: Decimal | None = None,
+) -> ProductionEntrySchema:
     schema = ProductionEntrySchema.model_validate(entry)
-    schema.hours = hours
+    schema.base_hours = base_hours
+    schema.overtime_hours = overtime_hours
+    schema.hours = (base_hours + overtime_hours) if base_hours is not None and overtime_hours is not None else None
     schema.can_edit = can_edit_production_entry(current_user, entry.user, entry.status)
     return schema
 
@@ -417,8 +428,8 @@ async def get_subordinates_summary(
             TimesheetEntryModel.date <= end,
         )
     )
-    hours_by_key: dict[tuple[int, date], Decimal] = {
-        (e.user_id, e.date): e.hours for e in hours_result.scalars().all()
+    hours_by_key: dict[tuple[int, date], tuple[Decimal, Decimal]] = {
+        (e.user_id, e.date): (e.hours, e.overtime_hours) for e in hours_result.scalars().all()
     }
 
     entries_result = await db.execute(
@@ -439,7 +450,8 @@ async def get_subordinates_summary(
         pending_count = 0
         for day_num in range(1, end.day + 1):
             day = date(year, month, day_num)
-            hours = hours_by_key.get((user.id, day), Decimal("0"))
+            base_hours, overtime_hours = hours_by_key.get((user.id, day), (Decimal("0"), Decimal("0")))
+            hours = base_hours + overtime_hours
             total_hours += hours
             entry = entries_by_key.get((user.id, day))
             if entry is not None and entry.status == PRODUCTION_STATUS_PENDING:
@@ -447,6 +459,8 @@ async def get_subordinates_summary(
             days.append(SubordinateDay(
                 date=day,
                 hours=hours,
+                base_hours=base_hours,
+                overtime_hours=overtime_hours,
                 status=entry.status if entry else None,
                 entry_id=entry.id if entry else None,
             ))
@@ -488,9 +502,9 @@ async def export_subordinates_summary_excel(
             TimesheetEntryModel.date <= end,
         )
     )
-    hours_by_user: dict[int, dict[date, Decimal]] = {uid: {} for uid in sub_ids}
+    hours_by_user: dict[int, dict[date, tuple[Decimal, Decimal]]] = {uid: {} for uid in sub_ids}
     for e in hours_result.scalars().all():
-        hours_by_user[e.user_id][e.date] = e.hours
+        hours_by_user[e.user_id][e.date] = (e.hours, e.overtime_hours)
 
     entries_result = await db.execute(
         select(ProductionEntryModel)
@@ -558,8 +572,8 @@ async def list_pending_entries(
 
     schemas = []
     for entry in visible:
-        hours = await _get_hours_for_date(db, entry.user_id, entry.date)
-        schemas.append(_entry_to_schema(entry, current_user, hours))
+        base_hours, overtime_hours = await _get_hours_for_date(db, entry.user_id, entry.date)
+        schemas.append(_entry_to_schema(entry, current_user, base_hours, overtime_hours))
     return schemas
 
 
@@ -589,7 +603,7 @@ async def get_user_production_month(
             TimesheetEntryModel.date <= end,
         )
     )
-    hours_by_date = {e.date: e.hours for e in hours_result.scalars().all()}
+    hours_by_date = {e.date: (e.hours, e.overtime_hours) for e in hours_result.scalars().all()}
 
     entries_result = await db.execute(
         select(ProductionEntryModel)
@@ -609,10 +623,13 @@ async def get_user_production_month(
     days = []
     for day_num in range(1, end.day + 1):
         day = date(year, month, day_num)
-        hours = hours_by_date.get(day, Decimal("0"))
+        base_hours, overtime_hours = hours_by_date.get(day, (Decimal("0"), Decimal("0")))
         entry = entries_by_date.get(day)
-        entry_schema = _entry_to_schema(entry, current_user, hours) if entry else None
-        days.append(DayTimesheetInfo(date=day, hours=hours, entry=entry_schema))
+        entry_schema = _entry_to_schema(entry, current_user, base_hours, overtime_hours) if entry else None
+        days.append(DayTimesheetInfo(
+            date=day, hours=base_hours + overtime_hours,
+            base_hours=base_hours, overtime_hours=overtime_hours, entry=entry_schema,
+        ))
     return days
 
 
@@ -626,9 +643,11 @@ async def get_production_entry(
     if not (can_view_timesheet(current_user, entry.user)):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
 
-    hours = await _get_hours_for_date(db, entry.user_id, entry.date)
+    base_hours, overtime_hours = await _get_hours_for_date(db, entry.user_id, entry.date)
     schema = ProductionEntryDetailSchema.model_validate(entry)
-    schema.hours = hours
+    schema.base_hours = base_hours
+    schema.overtime_hours = overtime_hours
+    schema.hours = base_hours + overtime_hours
     schema.can_edit = can_edit_production_entry(current_user, entry.user, entry.status)
     return schema
 
@@ -712,12 +731,12 @@ async def upsert_production_entry(
     await db.commit()
 
     entry = await _load_entry(db, entry.id)
-    hours = await _get_hours_for_date(db, entry.user_id, entry.date)
+    base_hours, overtime_hours = await _get_hours_for_date(db, entry.user_id, entry.date)
 
     if submit:
-        await _notify_supervisors(db, entry, hours, resubmit=was_rejected)
+        await _notify_supervisors(db, entry, base_hours + overtime_hours, resubmit=was_rejected)
 
-    return _entry_to_schema(entry, current_user, hours)
+    return _entry_to_schema(entry, current_user, base_hours, overtime_hours)
 
 
 @router.post("/production/entry/{entry_id}/submit", response_model=ProductionEntrySchema)
@@ -747,9 +766,9 @@ async def submit_production_entry(
     await db.commit()
 
     entry = await _load_entry(db, entry.id)
-    hours = await _get_hours_for_date(db, entry.user_id, entry.date)
-    await _notify_supervisors(db, entry, hours, resubmit=was_rejected)
-    return _entry_to_schema(entry, current_user, hours)
+    base_hours, overtime_hours = await _get_hours_for_date(db, entry.user_id, entry.date)
+    await _notify_supervisors(db, entry, base_hours + overtime_hours, resubmit=was_rejected)
+    return _entry_to_schema(entry, current_user, base_hours, overtime_hours)
 
 
 @router.post("/production/entry/{entry_id}/approve", response_model=ProductionEntrySchema)
@@ -774,7 +793,7 @@ async def approve_production_entry(
     await db.commit()
 
     entry = await _load_entry(db, entry.id)
-    hours = await _get_hours_for_date(db, entry.user_id, entry.date)
+    base_hours, overtime_hours = await _get_hours_for_date(db, entry.user_id, entry.date)
 
     message = {
         "type": "production_entry_approved",
@@ -791,7 +810,7 @@ async def approve_production_entry(
             sender_id=current_user.id,
         ))
 
-    return _entry_to_schema(entry, current_user, hours)
+    return _entry_to_schema(entry, current_user, base_hours, overtime_hours)
 
 
 @router.post("/production/entry/{entry_id}/reject", response_model=ProductionEntrySchema)
@@ -819,7 +838,7 @@ async def reject_production_entry(
     await db.commit()
 
     entry = await _load_entry(db, entry.id)
-    hours = await _get_hours_for_date(db, entry.user_id, entry.date)
+    base_hours, overtime_hours = await _get_hours_for_date(db, entry.user_id, entry.date)
 
     message = {
         "type": "production_entry_rejected",
@@ -837,7 +856,7 @@ async def reject_production_entry(
             sender_id=current_user.id,
         ))
 
-    return _entry_to_schema(entry, current_user, hours)
+    return _entry_to_schema(entry, current_user, base_hours, overtime_hours)
 
 
 # ------------------------------------------------------------------
@@ -871,7 +890,7 @@ async def export_timesheet_excel(
             TimesheetEntryModel.date <= end,
         )
     )
-    hours_by_date = {e.date: e.hours for e in hours_result.scalars().all()}
+    hours_by_date = {e.date: (e.hours, e.overtime_hours) for e in hours_result.scalars().all()}
 
     entries_result = await db.execute(
         select(ProductionEntryModel)
@@ -912,7 +931,8 @@ async def export_timesheet_excel(
     ws_production.append(["Дата", "Часы", "Продукция", "Количество", "Статус", "Комментарий сотрудника", "Комментарий руководителя"])
     for day_num in range(1, end.day + 1):
         day = date(year, month, day_num)
-        hours = hours_by_date.get(day, Decimal("0"))
+        base_hours, overtime_hours = hours_by_date.get(day, (Decimal("0"), Decimal("0")))
+        hours = base_hours + overtime_hours
         entry = entries_by_date.get(day)
         if entry is None or not entry.items:
             ws_production.append([day.isoformat(), float(hours), "", "", "", "", ""])
