@@ -70,7 +70,9 @@ async def update_user_role(
     db: AsyncSession = Depends(get_async_db)
 ):
     """Изменяет роль пользователя. Только владелец может назначать админов или передавать владение."""
-    allowed_roles = {"admin", *get_production_roles()}
+    # "buyer" - роль обычного пользователя системы (не входит в производственную
+    # иерархию), поэтому добавляем её отдельно к списку допустимых значений.
+    allowed_roles = {"buyer", "admin", *get_production_roles()}
     if role not in allowed_roles:
         raise HTTPException(status_code=400, detail="Invalid role")
     

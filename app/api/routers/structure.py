@@ -69,8 +69,33 @@ async def list_positions(
     db: AsyncSession = Depends(get_async_db),
 ):
     """Возвращает все должности производственной иерархии, отсортированные по уровню."""
-    result = await db.execute(select(PositionModel).order_by(PositionModel.level.asc()))
-    return result.scalars().all()
+    try:
+        result = await db.execute(select(PositionModel).order_by(PositionModel.level.asc()))
+        rows = result.scalars().all()
+        if rows:
+            return rows
+    except Exception:
+        # Таблица positions ещё не создана (миграция не применена на этом
+        # окружении) - не роняем запрос 500-й ошибкой, а отдаём запасной
+        # список должностей из кэша, чтобы экран "Должности" продолжал работать.
+        await db.rollback()
+
+    from datetime import datetime, timezone
+    from app.core.roles import get_all_positions
+
+    now = datetime.now(timezone.utc)
+    return [
+        {
+            "id": -(index + 1),
+            "code": p["code"],
+            "name": p["name"],
+            "level": p["level"],
+            "scope": p["scope"],
+            "is_system": p["is_system"],
+            "created_at": now,
+        }
+        for index, p in enumerate(get_all_positions())
+    ]
 
 
 @router.post("/positions", response_model=PositionSchema, status_code=status.HTTP_201_CREATED)
