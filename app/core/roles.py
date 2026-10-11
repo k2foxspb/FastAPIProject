@@ -45,40 +45,56 @@ DEFAULT_POSITIONS: list[dict] = [
 ]
 
 _cache_lock = Lock()
+# None означает "кэш ещё не загружен из БД" - в этом случае используем
+# DEFAULT_POSITIONS, чтобы иерархия работала даже до первого вызова
+# load_positions_cache() (например, в скриптах/тестах без запуска приложения).
 _positions_cache: list[dict] | None = None
 
 
-def _load_positions_from_db() -> list[dict]:
-    """Читает список должностей из БД (синхронно, через SessionLocal)."""
-    try:
-        from app.database import SessionLocal
-        from app.models.structure import Position
+def _positions_to_dicts(rows) -> list[dict]:
+    return [
+        {
+            "id": r.id,
+            "code": r.code,
+            "name": r.name,
+            "level": r.level,
+            "scope": r.scope,
+            "is_system": r.is_system,
+        }
+        for r in rows
+    ]
 
-        with SessionLocal() as session:
-            rows = session.query(Position).order_by(Position.level.asc()).all()
-            if rows:
-                return [
-                    {
-                        "id": r.id,
-                        "code": r.code,
-                        "name": r.name,
-                        "level": r.level,
-                        "scope": r.scope,
-                        "is_system": r.is_system,
-                    }
-                    for r in rows
-                ]
+
+async def load_positions_cache(db) -> list[dict]:
+    """
+    Асинхронно перечитывает должности из БД (таблица positions) и обновляет
+    кэш. Нужно вызывать при старте приложения, а также после любого
+    создания, изменения, удаления или переупорядочивания должностей через
+    /org/positions, чтобы изменения сразу же учитывались во всех проверках
+    иерархии.
+    """
+    from sqlalchemy import select
+    from app.models.structure import Position
+
+    global _positions_cache
+    try:
+        result = await db.execute(select(Position).order_by(Position.level.asc()))
+        rows = result.scalars().all()
+        new_cache = _positions_to_dicts(rows) if rows else [dict(p) for p in DEFAULT_POSITIONS]
     except Exception:
-        # На случай, если таблица ещё не создана (например, до применения миграции).
-        pass
-    return [dict(p) for p in DEFAULT_POSITIONS]
+        # Таблица ещё не создана (например, до применения миграции) - остаёмся
+        # на запасном варианте.
+        new_cache = [dict(p) for p in DEFAULT_POSITIONS]
+
+    with _cache_lock:
+        _positions_cache = new_cache
+    return new_cache
 
 
 def refresh_positions_cache() -> None:
     """
-    Сбрасывает кэш должностей. Нужно вызывать после любого создания,
-    изменения, удаления или переупорядочивания должностей, чтобы изменения
-    сразу же учитывались во всех проверках иерархии.
+    Сбрасывает кэш должностей в запасной вариант. Используется как
+    предохранитель - полноценное обновление делает load_positions_cache().
     """
     global _positions_cache
     with _cache_lock:
@@ -86,11 +102,8 @@ def refresh_positions_cache() -> None:
 
 
 def _get_positions() -> list[dict]:
-    global _positions_cache
     if _positions_cache is None:
-        with _cache_lock:
-            if _positions_cache is None:
-                _positions_cache = _load_positions_from_db()
+        return [dict(p) for p in DEFAULT_POSITIONS]
     return _positions_cache
 
 

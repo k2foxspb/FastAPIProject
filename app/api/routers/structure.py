@@ -19,7 +19,7 @@ from app.core.roles import (
     can_manage_user,
     can_move_worker,
     can_view_user,
-    refresh_positions_cache,
+    load_positions_cache,
 )
 from app.models.users import User as UserModel
 from app.models.structure import Workshop as WorkshopModel, Section as SectionModel, Position as PositionModel
@@ -101,7 +101,7 @@ async def create_position(
     db.add(position)
     await db.commit()
     await db.refresh(position)
-    refresh_positions_cache()
+    await load_positions_cache(db)
     return position
 
 
@@ -132,7 +132,7 @@ async def update_position(
         setattr(position, field, value)
     await db.commit()
     await db.refresh(position)
-    refresh_positions_cache()
+    await load_positions_cache(db)
     return position
 
 
@@ -156,7 +156,7 @@ async def reorder_positions(
     for item in data.positions:
         positions_by_id[item.id].level = item.level
     await db.commit()
-    refresh_positions_cache()
+    await load_positions_cache(db)
 
     result = await db.execute(select(PositionModel).order_by(PositionModel.level.asc()))
     return result.scalars().all()
@@ -183,7 +183,7 @@ async def delete_position(
 
     await db.delete(position)
     await db.commit()
-    refresh_positions_cache()
+    await load_positions_cache(db)
     return None
 
 

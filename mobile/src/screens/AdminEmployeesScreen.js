@@ -146,18 +146,20 @@ export default function AdminEmployeesScreen() {
     setSearchQuery('');
     setSearchResults([]);
     setFormVisible(true);
+    // Сразу показываем всех доступных пользователей системы, не дожидаясь,
+    // пока владелец наберёт поисковый запрос - иначе список выглядит так,
+    // будто назначать роль попросту некому.
+    runUserSearch('');
   };
 
   // Ищем среди уже зарегистрированных пользователей системы, чтобы назначить
   // роль одному из них, а не регистрировать нового (см. GET /users/?search=).
-  const runUserSearch = async () => {
-    if (!searchQuery.trim()) {
-      setSearchResults([]);
-      return;
-    }
+  // Пустой запрос возвращает всех активных пользователей (GET /users/ без
+  // параметра search отдаёт полный список).
+  const runUserSearch = async (query = searchQuery) => {
     setSearching(true);
     try {
-      const res = await usersApi.getUsers(searchQuery.trim());
+      const res = await usersApi.getUsers(query.trim() || undefined);
       setSearchResults((res.data || []).filter(u => u.id !== currentUser?.id));
     } catch (err) {
       Alert.alert('Ошибка', 'Не удалось выполнить поиск пользователей');
@@ -368,12 +370,12 @@ export default function AdminEmployeesScreen() {
                       placeholderTextColor={colors.textSecondary}
                       autoCapitalize="none"
                       autoFocus
-                      onSubmitEditing={runUserSearch}
+                      onSubmitEditing={() => runUserSearch(searchQuery)}
                       returnKeyType="search"
                     />
                     <TouchableOpacity
                       style={[styles.searchButton, { backgroundColor: colors.primary }]}
-                      onPress={runUserSearch}
+                      onPress={() => runUserSearch(searchQuery)}
                       disabled={searching}
                     >
                       {searching ? <ActivityIndicator color="#fff" /> : <Icon name="search" size={20} color="#fff" />}
@@ -406,7 +408,7 @@ export default function AdminEmployeesScreen() {
                     )}
                     ListEmptyComponent={
                       <Text style={[styles.emptyText, { color: colors.textSecondary, marginTop: 20 }]}>
-                        {searchQuery.trim() ? 'Пользователи не найдены' : 'Введите запрос и нажмите поиск'}
+                        {searching ? 'Поиск...' : 'Пользователи не найдены'}
                       </Text>
                     }
                   />

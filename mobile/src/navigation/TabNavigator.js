@@ -30,6 +30,7 @@ import WebViewScreen from '../screens/WebViewScreen';
 import AdminScreen from '../screens/AdminScreen';
 import AdminUsersScreen from '../screens/AdminUsersScreen';
 import AdminWorkshopsScreen from '../screens/AdminWorkshopsScreen';
+import AdminPositionsScreen from '../screens/AdminPositionsScreen';
 import AdminSectionsScreen from '../screens/AdminSectionsScreen';
 import AdminEmployeesScreen from '../screens/AdminEmployeesScreen';
 import AdminModerationScreen from '../screens/AdminModerationScreen';
@@ -137,6 +138,7 @@ function ProfileStack() {
       <Stack.Screen name="Admin" component={AdminScreen} options={{ title: 'Админка' }} />
       <Stack.Screen name="AdminUsers" component={AdminUsersScreen} options={{ title: 'Пользователи' }} />
       <Stack.Screen name="AdminWorkshops" component={AdminWorkshopsScreen} options={{ title: 'Цеха' }} />
+      <Stack.Screen name="AdminPositions" component={AdminPositionsScreen} options={{ title: 'Должности' }} />
       <Stack.Screen name="AdminSections" component={AdminSectionsScreen} options={{ title: 'Участки' }} />
       <Stack.Screen name="AdminEmployees" component={AdminEmployeesScreen} options={{ title: 'Сотрудники' }} />
       <Stack.Screen name="AdminModeration" component={AdminModerationScreen} options={{ title: 'Модерация' }} />

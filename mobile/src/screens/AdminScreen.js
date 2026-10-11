@@ -5,7 +5,7 @@ import { Ionicons as Icon } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
 import { usersApi } from '../api';
-import { canAccessOrgAdmin, canManageWorkshops, canManageSections } from '../constants/roles';
+import { canAccessOrgAdmin, canManageWorkshops, canManageSections, canManagePositions, loadPositions } from '../constants/roles';
 
 import { useNotifications } from '../context/NotificationContext';
 
@@ -25,10 +25,19 @@ export default function AdminScreen({ navigation }) {
     }
   }, [currentUser, loadingUser]);
 
+  // Подгружаем актуальный список должностей из БД (не захардкожен - см.
+  // GET /org/positions), чтобы метки ролей и проверки доступа были свежими.
+  useEffect(() => {
+    if (currentUser) {
+      loadPositions();
+    }
+  }, [currentUser]);
+
   // Пункты производственной иерархии (цеха/участки/сотрудники) видны в зависимости от роли
   // пользователя в иерархии (см. app/core/roles.py) - это и есть "открытие по ролям".
   const adminMenu = [
     { title: 'Цеха и участки', icon: 'business-outline', screen: 'AdminWorkshops', visible: canManageWorkshops(role) || canManageSections(role) },
+    { title: 'Должности', icon: 'ribbon-outline', screen: 'AdminPositions', visible: canManagePositions(role) },
     { title: 'Сотрудники', icon: 'people-circle-outline', screen: 'AdminEmployees', visible: canAccessOrgAdmin(role) },
     { title: 'Пользователи', icon: 'people-outline', screen: 'AdminUsers', ownerOnly: true },
     { title: 'Модерация', icon: 'shield-outline', screen: 'AdminModeration' },
