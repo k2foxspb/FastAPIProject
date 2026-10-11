@@ -9,12 +9,12 @@ import { orgApi } from '../api';
 // первый рендер после запуска приложения) - совпадает с должностями,
 // которые сидируются миграцией на бэкенде.
 const FALLBACK_POSITIONS = [
-  { code: 'owner', name: 'Владелец', level: 0, scope: 'global' },
-  { code: 'shop_chief', name: 'Начальник цеха', level: 1, scope: 'workshop' },
-  { code: 'section_chief', name: 'Начальник участка', level: 2, scope: 'section' },
-  { code: 'master', name: 'Мастер участка', level: 3, scope: 'section' },
-  { code: 'assistant_master', name: 'Помощник мастера участка', level: 4, scope: 'section' },
-  { code: 'worker', name: 'Рабочий', level: 5, scope: 'self' },
+  { code: 'owner', name: 'Владелец', level: 0, scope: 'global', icon: 'ribbon' },
+  { code: 'shop_chief', name: 'Начальник цеха', level: 1, scope: 'workshop', icon: 'business' },
+  { code: 'section_chief', name: 'Начальник участка', level: 2, scope: 'section', icon: 'briefcase' },
+  { code: 'master', name: 'Мастер участка', level: 3, scope: 'section', icon: 'construct' },
+  { code: 'assistant_master', name: 'Помощник мастера участка', level: 4, scope: 'section', icon: 'hammer' },
+  { code: 'worker', name: 'Рабочий', level: 5, scope: 'self', icon: 'hardware-chip' },
 ];
 
 let positionsCache = FALLBACK_POSITIONS;
@@ -85,7 +85,11 @@ export const getPositionLabel = (role) => {
   return position ? position.name : 'Должность не задана';
 };
 
-export const getRoleIcon = (role) => ROLE_ICONS[role] || 'person';
+export const getRoleIcon = (role) => {
+  const position = positionsCache.find(p => p.code === role);
+  if (position && position.icon) return position.icon;
+  return ROLE_ICONS[role] || 'person';
+};
 
 export const getRoleScope = (role) => {
   const position = positionsCache.find(p => p.code === role);

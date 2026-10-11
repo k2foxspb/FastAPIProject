@@ -104,19 +104,17 @@ class PositionBase(BaseModel):
         default="section",
         description="Область ответственности: 'global', 'workshop', 'section' или 'self'",
     )
+    icon: str = Field(
+        default="person",
+        max_length=50,
+        description="Имя иконки (Ionicons), отображаемой у должности и в профиле сотрудника",
+    )
 
 
 class PositionCreate(PositionBase):
-    code: str = Field(
-        min_length=1,
-        max_length=50,
-        pattern=r"^[a-z][a-z0-9_]*$",
-        description="Уникальный код должности (латиница, цифры, подчёркивание)",
-    )
-    level: Optional[int] = Field(
-        default=None,
+    level: int = Field(
         description="Уровень в иерархии (чем меньше - тем выше должность). "
-                    "Если не указан, должность добавляется в конец иерархии.",
+                    "На одном уровне может находиться любое количество должностей.",
     )
 
 
@@ -124,6 +122,7 @@ class PositionUpdate(BaseModel):
     name: Optional[str] = Field(default=None, min_length=1, max_length=200)
     scope: Optional[str] = None
     level: Optional[int] = None
+    icon: Optional[str] = Field(default=None, max_length=50)
 
 
 class PositionReorderItem(BaseModel):

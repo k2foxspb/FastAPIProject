@@ -27,6 +27,9 @@ class Position(Base):
     level: Mapped[int] = mapped_column(Integer, nullable=False)
     # Область ответственности: "global", "workshop", "section" или "self".
     scope: Mapped[str] = mapped_column(String(20), nullable=False, default="section")
+    # Имя иконки (из набора Ionicons), которая отображается рядом с
+    # должностью в админке и в профиле пользователя с этой должностью.
+    icon: Mapped[str] = mapped_column(String(50), nullable=False, default="person")
     # Системные должности (сейчас - только владелец) нельзя удалить и переименовать код.
     is_system: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)

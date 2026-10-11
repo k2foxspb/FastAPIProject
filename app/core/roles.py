@@ -42,12 +42,12 @@ ROLE_WORKER = "worker"
 # Должности по умолчанию - используются для сидирования миграции и как
 # аварийный запасной вариант, если таблица positions ещё не создана/пуста.
 DEFAULT_POSITIONS: list[dict] = [
-    {"code": ROLE_OWNER, "name": "Владелец", "level": 0, "scope": "global", "is_system": True},
-    {"code": ROLE_SHOP_CHIEF, "name": "Начальник цеха", "level": 1, "scope": "workshop", "is_system": False},
-    {"code": ROLE_SECTION_CHIEF, "name": "Начальник участка", "level": 2, "scope": "section", "is_system": False},
-    {"code": ROLE_MASTER, "name": "Мастер участка", "level": 3, "scope": "section", "is_system": False},
-    {"code": ROLE_ASSISTANT_MASTER, "name": "Помощник мастера участка", "level": 4, "scope": "section", "is_system": False},
-    {"code": ROLE_WORKER, "name": "Рабочий", "level": 5, "scope": "self", "is_system": False},
+    {"code": ROLE_OWNER, "name": "Владелец", "level": 0, "scope": "global", "icon": "ribbon", "is_system": True},
+    {"code": ROLE_SHOP_CHIEF, "name": "Начальник цеха", "level": 1, "scope": "workshop", "icon": "business", "is_system": False},
+    {"code": ROLE_SECTION_CHIEF, "name": "Начальник участка", "level": 2, "scope": "section", "icon": "briefcase", "is_system": False},
+    {"code": ROLE_MASTER, "name": "Мастер участка", "level": 3, "scope": "section", "icon": "construct", "is_system": False},
+    {"code": ROLE_ASSISTANT_MASTER, "name": "Помощник мастера участка", "level": 4, "scope": "section", "icon": "hammer", "is_system": False},
+    {"code": ROLE_WORKER, "name": "Рабочий", "level": 5, "scope": "self", "icon": "hardware-chip", "is_system": False},
 ]
 
 _cache_lock = Lock()
@@ -65,6 +65,7 @@ def _positions_to_dicts(rows) -> list[dict]:
             "name": r.name,
             "level": r.level,
             "scope": r.scope,
+            "icon": r.icon,
             "is_system": r.is_system,
         }
         for r in rows

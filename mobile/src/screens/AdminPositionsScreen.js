@@ -17,6 +17,14 @@ const SCOPE_OPTIONS = [
   { value: 'self', label: 'Только себя (рядовой сотрудник)' },
 ];
 
+// Набор иконок (Ionicons), из которых можно выбрать иконку должности - она
+// же потом отображается в профиле сотрудника с этой должностью.
+const ICON_OPTIONS = [
+  'ribbon', 'business', 'briefcase', 'construct', 'hammer', 'hardware-chip',
+  'shield-checkmark', 'storefront', 'person', 'people', 'star', 'medal',
+  'build', 'cog', 'school', 'book', 'car', 'cube', 'flash', 'leaf',
+];
+
 const getScopeLabel = (scope) => SCOPE_OPTIONS.find(o => o.value === scope)?.label || scope;
 
 // Список должностей производственной иерархии. Должности больше не
@@ -35,8 +43,9 @@ export default function AdminPositionsScreen() {
   const [formVisible, setFormVisible] = useState(false);
   const [editingPosition, setEditingPosition] = useState(null);
   const [name, setName] = useState('');
-  const [code, setCode] = useState('');
+  const [level, setLevel] = useState('');
   const [scope, setScope] = useState('section');
+  const [icon, setIcon] = useState(ICON_OPTIONS[0]);
   const [saving, setSaving] = useState(false);
 
   const fetchPositions = useCallback(async () => {
@@ -60,16 +69,19 @@ export default function AdminPositionsScreen() {
   const openCreateForm = () => {
     setEditingPosition(null);
     setName('');
-    setCode('');
+    const maxLevel = positions.reduce((max, p) => Math.max(max, p.level), -1);
+    setLevel(String(maxLevel + 1));
     setScope('section');
+    setIcon(ICON_OPTIONS[0]);
     setFormVisible(true);
   };
 
   const openEditForm = (position) => {
     setEditingPosition(position);
     setName(position.name);
-    setCode(position.code);
+    setLevel(String(position.level));
     setScope(position.scope);
+    setIcon(position.icon || ICON_OPTIONS[0]);
     setFormVisible(true);
   };
 
@@ -89,16 +101,17 @@ export default function AdminPositionsScreen() {
       Alert.alert('Ошибка', 'Введите название должности');
       return;
     }
-    if (!editingPosition && !/^[a-z][a-z0-9_]*$/.test(code.trim())) {
-      Alert.alert('Ошибка', 'Код должности: латиница в нижнем регистре, цифры и "_", начинается с буквы');
+    const levelNumber = parseInt(level, 10);
+    if (Number.isNaN(levelNumber)) {
+      Alert.alert('Ошибка', 'Укажите уровень должности (число)');
       return;
     }
     setSaving(true);
     try {
       if (editingPosition) {
-        await orgApi.updatePosition(editingPosition.id, { name: name.trim(), scope });
+        await orgApi.updatePosition(editingPosition.id, { name: name.trim(), scope, level: levelNumber, icon });
       } else {
-        await orgApi.createPosition({ code: code.trim(), name: name.trim(), scope });
+        await orgApi.createPosition({ name: name.trim(), scope, level: levelNumber, icon });
       }
       setFormVisible(false);
       await fetchPositions();

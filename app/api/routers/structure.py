@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, or_, func
+from sqlalchemy import select, or_
 
 from app.api.dependencies import get_async_db, refresh_positions_cache_dep
 from app.core.auth import (
@@ -65,6 +65,47 @@ def _to_scoped(user: UserModel) -> ScopedUser:
     return ScopedUser(id=user.id, role=user.role, workshop_id=user.workshop_id, section_id=user.section_id)
 
 
+# Транслитерация кириллицы в латиницу для автогенерации кода должности из
+# её названия (пользователь больше не вводит код вручную).
+_TRANSLIT_MAP = {
+    "а": "a", "б": "b", "в": "v", "г": "g", "д": "d", "е": "e", "ё": "e",
+    "ж": "zh", "з": "z", "и": "i", "й": "y", "к": "k", "л": "l", "м": "m",
+    "н": "n", "о": "o", "п": "p", "р": "r", "с": "s", "т": "t", "у": "u",
+    "ф": "f", "х": "h", "ц": "ts", "ч": "ch", "ш": "sh", "щ": "sch", "ъ": "",
+    "ы": "y", "ь": "", "э": "e", "ю": "yu", "я": "ya",
+}
+
+
+def _transliterate(text: str) -> str:
+    result = []
+    for char in text.lower():
+        if char in _TRANSLIT_MAP:
+            result.append(_TRANSLIT_MAP[char])
+        elif char.isalnum() and char.isascii():
+            result.append(char)
+        else:
+            result.append("_")
+    return "".join(result)
+
+
+async def _generate_unique_position_code(db: AsyncSession, name: str) -> str:
+    """Генерирует уникальный код должности из её названия (транслитерация + слаг)."""
+    base = _transliterate(name).strip("_")
+    while "__" in base:
+        base = base.replace("__", "_")
+    if not base or not base[0].isalpha():
+        base = f"position_{base}" if base else "position"
+
+    candidate = base
+    suffix = 1
+    while True:
+        existing = await db.execute(select(PositionModel).where(PositionModel.code == candidate))
+        if not existing.scalar_one_or_none():
+            return candidate
+        suffix += 1
+        candidate = f"{base}_{suffix}"
+
+
 # --- Справочная информация ---
 
 @router.get("/roles/assignable")
@@ -106,6 +147,7 @@ async def list_positions(
             "name": p["name"],
             "level": p["level"],
             "scope": p["scope"],
+            "icon": p.get("icon", "person"),
             "is_system": p["is_system"],
             "created_at": now,
         }
@@ -119,41 +161,22 @@ async def create_position(
     admin: UserModel = Depends(get_current_admin),
     db: AsyncSession = Depends(get_async_db),
 ):
-    """Создаёт новую должность. Доступно владельцу и администратору."""
+    """Создаёт новую должность. Доступно владельцу и администратору. Код генерируется автоматически из названия."""
     if data.scope not in ("global", "workshop", "section", "self"):
         raise HTTPException(status_code=400, detail="Invalid scope")
 
-    existing = await db.execute(select(PositionModel).where(PositionModel.code == data.code))
-    if existing.scalar_one_or_none():
-        raise HTTPException(status_code=400, detail="Position with this code already exists")
+    code = await _generate_unique_position_code(db, data.name)
 
-    # Должности со scope="self" - это самый нижний уровень иерархии (их
-    # обладатели никем не управляют), поэтому на нём можно завести сколько
-    # угодно разных должностей с одним и тем же level: они равноправны и
-    # не конфликтуют друг с другом. Для всех остальных уровней level должен
-    # оставаться уникальным, чтобы иерархия была однозначной.
-    level = data.level
-    if level is None:
-        max_level_res = await db.execute(select(func.max(PositionModel.level)))
-        max_level = max_level_res.scalar()
-        if max_level is None:
-            level = 0
-        elif data.scope == "self":
-            bottom_res = await db.execute(select(PositionModel).where(PositionModel.level == max_level))
-            bottom_positions = bottom_res.scalars().all()
-            if bottom_positions and all(p.scope == "self" for p in bottom_positions):
-                level = max_level
-            else:
-                level = max_level + 1
-        else:
-            level = max_level + 1
-    else:
-        level_taken = await db.execute(select(PositionModel).where(PositionModel.level == level))
-        conflicting = level_taken.scalars().all()
-        if conflicting and not (data.scope == "self" and all(p.scope == "self" for p in conflicting)):
-            raise HTTPException(status_code=400, detail="A position with this level already exists")
-
-    position = PositionModel(code=data.code, name=data.name, level=level, scope=data.scope, is_system=False)
+    # Уровень (level) больше не обязан быть уникальным - на одном и том же
+    # уровне может находиться любое количество должностей.
+    position = PositionModel(
+        code=code,
+        name=data.name,
+        level=data.level,
+        scope=data.scope,
+        icon=data.icon,
+        is_system=False,
+    )
     db.add(position)
     await db.commit()
     await db.refresh(position)
@@ -177,16 +200,9 @@ async def reorder_positions(
     if len(positions_by_id) != len(ids):
         raise HTTPException(status_code=404, detail="Some positions were not found")
 
-    # Уровень обязан быть уникальным, кроме должностей со scope="self"
-    # (самый нижний уровень иерархии) - среди них допускаются повторы,
-    # чтобы на нижнем уровне можно было держать сколько угодно должностей.
-    level_counts: dict[int, int] = {}
-    for item in data.positions:
-        level_counts[item.level] = level_counts.get(item.level, 0) + 1
-    for item in data.positions:
-        if level_counts[item.level] > 1 and positions_by_id[item.id].scope != "self":
-            raise HTTPException(status_code=400, detail="Levels must be unique")
-
+    # Уровень (level) больше не обязан быть уникальным - на одном и том же
+    # уровне может находиться любое количество должностей, поэтому проверка
+    # уникальности здесь больше не нужна.
     # На случай, если среди перестраиваемых должностей встречаются
     # неодинаковые объекты с совпадающими промежуточными значениями level
     # (например, при swap двух соседних должностей), сначала переводим все
@@ -221,17 +237,8 @@ async def update_position(
     if data.scope is not None and data.scope not in ("global", "workshop", "section", "self"):
         raise HTTPException(status_code=400, detail="Invalid scope")
 
-    if data.level is not None and data.level != position.level:
-        level_taken = await db.execute(
-            select(PositionModel).where(PositionModel.level == data.level, PositionModel.id != position_id)
-        )
-        conflicting = level_taken.scalars().all()
-        new_scope = data.scope if data.scope is not None else position.scope
-        # Как и при создании: должности со scope="self" (самый нижний
-        # уровень) могут делить один и тот же level без ограничений.
-        if conflicting and not (new_scope == "self" and all(p.scope == "self" for p in conflicting)):
-            raise HTTPException(status_code=400, detail="A position with this level already exists")
-
+    # Уровень (level) больше не обязан быть уникальным - на одном и том же
+    # уровне может находиться любое количество должностей.
     for field, value in data.model_dump(exclude_unset=True).items():
         setattr(position, field, value)
     await db.commit()
