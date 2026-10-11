@@ -22,6 +22,11 @@ import GroupInfoScreen from '../screens/chat/GroupInfoScreen';
 import AddGroupMembersScreen from '../screens/chat/AddGroupMembersScreen';
 import FeedScreen from '../screens/FeedScreen';
 import TabelScreen from '../screens/TabelScreen';
+import TabelEmployeePickerScreen from '../screens/TabelEmployeePickerScreen';
+import ProductionEntryFormScreen from '../screens/ProductionEntryFormScreen';
+import ProductionApprovalListScreen from '../screens/ProductionApprovalListScreen';
+import ProductionEntryDetailScreen from '../screens/ProductionEntryDetailScreen';
+import AdminProductsScreen from '../screens/AdminProductsScreen';
 import NewsDetailScreen from '../screens/NewsDetailScreen';
 import MyLikesScreen from '../screens/MyLikesScreen';
 import MyReviewsScreen from '../screens/MyReviewsScreen';
@@ -148,6 +153,7 @@ function ProfileStack() {
       <Stack.Screen name="EditNews" component={EditNewsScreen} options={{ title: 'Редактировать новость' }} />
       <Stack.Screen name="AdminAppUpload" component={AdminAppUploadScreen} options={{ title: 'Загрузить приложение' }} />
       <Stack.Screen name="AdminLogs" component={AdminLogsScreen} options={{ title: 'Логи системы' }} />
+      <Stack.Screen name="AdminProducts" component={AdminProductsScreen} options={{ title: 'Продукция' }} />
       <Stack.Screen name="MyLikes" component={MyLikesScreen} options={{ title: 'Понравилось' }} />
       <Stack.Screen name="MyReviews" component={MyReviewsScreen} options={{ title: 'Мои отзывы' }} />
       <Stack.Screen name="UserProfile" component={UserProfileScreen} options={{ title: 'Профиль пользователя' }} />
@@ -166,6 +172,27 @@ function ProfileStack() {
           gestureEnabled: false,   // Отключаем жесты назад
         }} 
       />
+    </Stack.Navigator>
+  );
+}
+
+function TabelStack() {
+  const { theme } = useTheme();
+  const colors = themeConstants[theme];
+  return (
+    <Stack.Navigator
+      screenOptions={{
+        headerStyle: { backgroundColor: colors.background },
+        headerTintColor: colors.text,
+        contentStyle: { backgroundColor: colors.background },
+        animation: 'fade_from_bottom',
+      }}
+    >
+      <Stack.Screen name="TabelMain" component={TabelScreen} options={{ title: 'Табель' }} />
+      <Stack.Screen name="TabelEmployeePicker" component={TabelEmployeePickerScreen} options={{ title: 'Выбор сотрудника' }} />
+      <Stack.Screen name="ProductionEntryForm" component={ProductionEntryFormScreen} options={{ title: 'Сданная продукция' }} />
+      <Stack.Screen name="ProductionApprovalList" component={ProductionApprovalListScreen} options={{ title: 'На согласовании' }} />
+      <Stack.Screen name="ProductionEntryDetail" component={ProductionEntryDetailScreen} options={{ title: 'Согласование' }} />
     </Stack.Navigator>
   );
 }
@@ -268,9 +295,10 @@ export default function TabNavigator() {
       />
       <Tab.Screen
         name="Tabel"
-        component={TabelScreen}
+        component={TabelStack}
         options={{
           title: 'Табель',
+          headerShown: false,
         }}
       />
       <Tab.Screen 

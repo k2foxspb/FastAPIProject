@@ -82,6 +82,37 @@ export const getRoleScope = (role) => {
   return position ? position.scope : 'self';
 };
 
+export const getRoleLevel = (role) => {
+  const position = positionsCache.find(p => p.code === role);
+  if (position) return position.level;
+  const maxLevel = positionsCache.reduce((max, p) => Math.max(max, p.level), 0);
+  return maxLevel + 1;
+};
+
+// Повторяет на клиенте серверную проверку app/core/roles.py:can_manage_user -
+// используется только для локального скрытия/показа элементов интерфейса
+// (выбор подчинённого, кнопки редактирования); окончательное решение всегда
+// остаётся за сервером.
+export const canManageUserClient = (current, target) => {
+  if (!current || !target) return false;
+  if (current.id === target.id) return false;
+  if (current.role === 'owner') return true;
+  if (getRoleLevel(target.role) <= getRoleLevel(current.role)) return false;
+
+  const scope = getRoleScope(current.role);
+  if (scope === 'global') return true;
+  if (scope === 'workshop') return current.workshop_id != null && target.workshop_id === current.workshop_id;
+  if (scope === 'section') return current.section_id != null && target.section_id === current.section_id;
+  return false;
+};
+
+export const canViewUserClient = (current, target) => {
+  if (!current || !target) return false;
+  if (current.id === target.id) return true;
+  if (current.role === 'owner') return true;
+  return canManageUserClient(current, target) || getRoleScope(current.role) !== 'self';
+};
+
 // Рядовой сотрудник (должность со scope="self") не управляет никем и не
 // видит админ-панель производственной иерархии.
 export const canAccessOrgAdmin = (role) => isProductionRole(role) && getRoleScope(role) !== 'self';

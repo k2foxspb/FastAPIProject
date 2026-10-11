@@ -293,6 +293,28 @@ export const groupChatApi = {
   deleteGroup: (groupId) => api.delete(`/chat/groups/${groupId}`),
 };
 
+export const timesheetApi = {
+  // Табель рабочего времени
+  getTimesheet: (userId, year, month) => api.get(`/timesheet/${userId}`, { params: { year, month } }),
+  upsertTimesheetDay: (userId, data) => api.put(`/timesheet/${userId}`, data),
+  getExportUrl: (userId, year, month) => `${API_BASE_URL}/timesheet/${userId}/export?year=${year}&month=${month}`,
+
+  // Справочник продукции
+  getProducts: (includeInactive = false) => api.get('/timesheet/products/list', { params: { include_inactive: includeInactive } }),
+  createProduct: (data) => api.post('/timesheet/products', data),
+  updateProduct: (productId, data) => api.put(`/timesheet/products/${productId}`, data),
+  deleteProduct: (productId) => api.delete(`/timesheet/products/${productId}`),
+
+  // Сданная продукция по дням
+  getProductionMonth: (userId, year, month) => api.get(`/timesheet/production/${userId}`, { params: { year, month } }),
+  getProductionEntry: (entryId) => api.get(`/timesheet/production/entry/${entryId}`),
+  upsertProductionEntry: (data, submit = false) => api.post('/timesheet/production', data, { params: { submit } }),
+  submitProductionEntry: (entryId) => api.post(`/timesheet/production/entry/${entryId}/submit`),
+  approveProductionEntry: (entryId) => api.post(`/timesheet/production/entry/${entryId}/approve`),
+  rejectProductionEntry: (entryId, comment) => api.post(`/timesheet/production/entry/${entryId}/reject`, { comment }),
+  getPendingEntries: () => api.get('/timesheet/production/entries/pending'),
+};
+
 // ---------------------------------------------------------------------------
 // Обновление access-токена
 // ---------------------------------------------------------------------------

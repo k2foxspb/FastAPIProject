@@ -39,6 +39,7 @@ export default function AdminScreen({ navigation }) {
     { title: 'Цеха и участки', icon: 'business-outline', screen: 'AdminWorkshops', visible: canManageWorkshops(role) || canManageSections(role) },
     { title: 'Должности', icon: 'ribbon-outline', screen: 'AdminPositions', visible: canManagePositions(role) },
     { title: 'Сотрудники', icon: 'people-circle-outline', screen: 'AdminEmployees', visible: canAccessOrgAdmin(role) },
+    { title: 'Продукция', icon: 'cube-outline', screen: 'AdminProducts', visible: canAccessOrgAdmin(role) },
     { title: 'Пользователи', icon: 'people-outline', screen: 'AdminUsers', ownerOnly: true },
     { title: 'Модерация', icon: 'shield-outline', screen: 'AdminModeration' },
     { title: 'Новости', icon: 'newspaper-outline', screen: 'AdminNews' },
