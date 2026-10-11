@@ -2,8 +2,6 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional
 
-from app.core.roles import PRODUCTION_ROLES
-
 
 class WorkshopBase(BaseModel):
     name: str = Field(min_length=1, max_length=200)
@@ -53,7 +51,7 @@ class EmployeeCreate(BaseModel):
     password: str = Field(min_length=8, description="Пароль (минимум 8 символов)")
     first_name: Optional[str] = None
     last_name: Optional[str] = None
-    role: str = Field(description=f"Одна из ролей: {', '.join(PRODUCTION_ROLES)}")
+    role: str = Field(description="Код должности (см. GET /org/positions)")
     workshop_id: Optional[int] = None
     section_id: Optional[int] = None
 
@@ -61,13 +59,13 @@ class EmployeeCreate(BaseModel):
 class EmployeeAssign(BaseModel):
     """Назначение производственной роли уже существующему пользователю системы."""
     user_id: int
-    role: str = Field(description=f"Одна из ролей: {', '.join(PRODUCTION_ROLES)}")
+    role: str = Field(description="Код должности (см. GET /org/positions)")
     workshop_id: Optional[int] = None
     section_id: Optional[int] = None
 
 
 class EmployeeRoleUpdate(BaseModel):
-    role: str = Field(description=f"Одна из ролей: {', '.join(PRODUCTION_ROLES)}")
+    role: str = Field(description="Код должности (см. GET /org/positions)")
 
 
 class EmployeeAssignmentUpdate(BaseModel):
@@ -98,3 +96,49 @@ class EmployeeHierarchyResponse(BaseModel):
     user: EmployeeResponse
     superiors: list[EmployeeResponse] = Field(default_factory=list)
     subordinates: list[EmployeeResponse] = Field(default_factory=list)
+
+
+class PositionBase(BaseModel):
+    name: str = Field(min_length=1, max_length=200, description="Отображаемое название должности")
+    scope: str = Field(
+        default="section",
+        description="Область ответственности: 'global', 'workshop', 'section' или 'self'",
+    )
+
+
+class PositionCreate(PositionBase):
+    code: str = Field(
+        min_length=1,
+        max_length=50,
+        pattern=r"^[a-z][a-z0-9_]*$",
+        description="Уникальный код должности (латиница, цифры, подчёркивание)",
+    )
+    level: Optional[int] = Field(
+        default=None,
+        description="Уровень в иерархии (чем меньше - тем выше должность). "
+                    "Если не указан, должность добавляется в конец иерархии.",
+    )
+
+
+class PositionUpdate(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=1, max_length=200)
+    scope: Optional[str] = None
+    level: Optional[int] = None
+
+
+class PositionReorderItem(BaseModel):
+    id: int
+    level: int
+
+
+class PositionReorderRequest(BaseModel):
+    positions: list[PositionReorderItem]
+
+
+class Position(PositionBase):
+    id: int
+    code: str
+    level: int
+    is_system: bool
+    created_at: datetime
+    model_config = ConfigDict(from_attributes=True)

@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, or_
+from sqlalchemy import select, or_, func
 
 from app.api.dependencies import get_async_db
 from app.core.auth import get_current_production_user, get_current_owner, hash_password
@@ -9,8 +9,8 @@ from app.core.roles import (
     ROLE_OWNER,
     ROLE_SHOP_CHIEF,
     ROLE_WORKER,
-    PRODUCTION_ROLES,
-    ROLE_LABELS_RU,
+    get_production_roles,
+    get_role_label,
     is_production_role,
     get_role_scope,
     get_role_level,
@@ -19,9 +19,10 @@ from app.core.roles import (
     can_manage_user,
     can_move_worker,
     can_view_user,
+    refresh_positions_cache,
 )
 from app.models.users import User as UserModel
-from app.models.structure import Workshop as WorkshopModel, Section as SectionModel
+from app.models.structure import Workshop as WorkshopModel, Section as SectionModel, Position as PositionModel
 from app.schemas.structure import (
     Workshop as WorkshopSchema,
     WorkshopCreate,
@@ -36,6 +37,10 @@ from app.schemas.structure import (
     EmployeeResponse,
     EmployeeHierarchyResponse,
     MoveWorkerRequest,
+    Position as PositionSchema,
+    PositionCreate,
+    PositionUpdate,
+    PositionReorderRequest,
 )
 
 router = APIRouter(prefix="/org", tags=["organization"])
@@ -53,7 +58,133 @@ async def get_assignable_roles_endpoint(
 ):
     """Возвращает роли, которые текущий пользователь имеет право назначать."""
     roles = get_assignable_roles(current_user.role)
-    return [{"value": r, "label": ROLE_LABELS_RU.get(r, r)} for r in roles]
+    return [{"value": r, "label": get_role_label(r)} for r in roles]
+
+
+# --- Должности ---
+
+@router.get("/positions", response_model=list[PositionSchema])
+async def list_positions(
+    current_user: UserModel = Depends(get_current_production_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Возвращает все должности производственной иерархии, отсортированные по уровню."""
+    result = await db.execute(select(PositionModel).order_by(PositionModel.level.asc()))
+    return result.scalars().all()
+
+
+@router.post("/positions", response_model=PositionSchema, status_code=status.HTTP_201_CREATED)
+async def create_position(
+    data: PositionCreate,
+    owner: UserModel = Depends(get_current_owner),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Создаёт новую должность. Доступно только владельцу."""
+    if data.scope not in ("global", "workshop", "section", "self"):
+        raise HTTPException(status_code=400, detail="Invalid scope")
+
+    existing = await db.execute(select(PositionModel).where(PositionModel.code == data.code))
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="Position with this code already exists")
+
+    level = data.level
+    if level is None:
+        max_level_res = await db.execute(select(func.max(PositionModel.level)))
+        max_level = max_level_res.scalar()
+        level = (max_level if max_level is not None else -1) + 1
+    else:
+        level_taken = await db.execute(select(PositionModel).where(PositionModel.level == level))
+        if level_taken.scalar_one_or_none():
+            raise HTTPException(status_code=400, detail="A position with this level already exists")
+
+    position = PositionModel(code=data.code, name=data.name, level=level, scope=data.scope, is_system=False)
+    db.add(position)
+    await db.commit()
+    await db.refresh(position)
+    refresh_positions_cache()
+    return position
+
+
+@router.patch("/positions/{position_id}", response_model=PositionSchema)
+async def update_position(
+    position_id: int,
+    data: PositionUpdate,
+    owner: UserModel = Depends(get_current_owner),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Переименовывает должность или меняет её область ответственности/уровень. Код изменить нельзя."""
+    result = await db.execute(select(PositionModel).where(PositionModel.id == position_id))
+    position = result.scalar_one_or_none()
+    if not position:
+        raise HTTPException(status_code=404, detail="Position not found")
+
+    if data.scope is not None and data.scope not in ("global", "workshop", "section", "self"):
+        raise HTTPException(status_code=400, detail="Invalid scope")
+
+    if data.level is not None and data.level != position.level:
+        level_taken = await db.execute(
+            select(PositionModel).where(PositionModel.level == data.level, PositionModel.id != position_id)
+        )
+        if level_taken.scalar_one_or_none():
+            raise HTTPException(status_code=400, detail="A position with this level already exists")
+
+    for field, value in data.model_dump(exclude_unset=True).items():
+        setattr(position, field, value)
+    await db.commit()
+    await db.refresh(position)
+    refresh_positions_cache()
+    return position
+
+
+@router.patch("/positions/reorder", response_model=list[PositionSchema])
+async def reorder_positions(
+    data: PositionReorderRequest,
+    owner: UserModel = Depends(get_current_owner),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Задаёт новую иерархию должностей списком пар (id, level)."""
+    ids = [item.id for item in data.positions]
+    result = await db.execute(select(PositionModel).where(PositionModel.id.in_(ids)))
+    positions_by_id = {p.id: p for p in result.scalars().all()}
+    if len(positions_by_id) != len(ids):
+        raise HTTPException(status_code=404, detail="Some positions were not found")
+
+    levels = [item.level for item in data.positions]
+    if len(set(levels)) != len(levels):
+        raise HTTPException(status_code=400, detail="Levels must be unique")
+
+    for item in data.positions:
+        positions_by_id[item.id].level = item.level
+    await db.commit()
+    refresh_positions_cache()
+
+    result = await db.execute(select(PositionModel).order_by(PositionModel.level.asc()))
+    return result.scalars().all()
+
+
+@router.delete("/positions/{position_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_position(
+    position_id: int,
+    owner: UserModel = Depends(get_current_owner),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Удаляет должность. Системные должности и должности, назначенные хотя бы одному пользователю, удалить нельзя."""
+    result = await db.execute(select(PositionModel).where(PositionModel.id == position_id))
+    position = result.scalar_one_or_none()
+    if not position:
+        raise HTTPException(status_code=404, detail="Position not found")
+
+    if position.is_system:
+        raise HTTPException(status_code=400, detail="System position cannot be deleted")
+
+    in_use = await db.execute(select(UserModel).where(UserModel.role == position.code))
+    if in_use.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="Position is assigned to at least one user")
+
+    await db.delete(position)
+    await db.commit()
+    refresh_positions_cache()
+    return None
 
 
 # --- Цеха ---
@@ -223,13 +354,13 @@ async def list_employees(
 ):
     """Возвращает сотрудников, видимых текущему пользователю (в его зоне ответственности)."""
     if current_user.role == ROLE_OWNER:
-        result = await db.execute(select(UserModel).where(UserModel.role.in_(PRODUCTION_ROLES)))
+        result = await db.execute(select(UserModel).where(UserModel.role.in_(get_production_roles())))
     elif current_user.role == ROLE_SHOP_CHIEF:
         if current_user.workshop_id is None:
             return []
         result = await db.execute(
             select(UserModel).where(
-                UserModel.role.in_(PRODUCTION_ROLES),
+                UserModel.role.in_(get_production_roles()),
                 UserModel.workshop_id == current_user.workshop_id,
             )
         )
@@ -238,7 +369,7 @@ async def list_employees(
             return [EmployeeResponse.model_validate(current_user)]
         result = await db.execute(
             select(UserModel).where(
-                UserModel.role.in_(PRODUCTION_ROLES),
+                UserModel.role.in_(get_production_roles()),
                 or_(UserModel.section_id == current_user.section_id, UserModel.id == current_user.id),
             )
         )
@@ -265,7 +396,7 @@ async def get_employee_hierarchy(
     if current_user.id != target.id and not can_view_user(_to_scoped(current_user), _to_scoped(target)):
         raise HTTPException(status_code=403, detail="Not enough permissions to view this user's hierarchy")
 
-    all_res = await db.execute(select(UserModel).where(UserModel.role.in_(PRODUCTION_ROLES)))
+    all_res = await db.execute(select(UserModel).where(UserModel.role.in_(get_production_roles())))
     all_employees = all_res.scalars().all()
 
     target_scoped = _to_scoped(target)

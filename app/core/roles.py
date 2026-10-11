@@ -1,7 +1,12 @@
 """
-Иерархическая модель ролей для производственной структуры.
+Иерархическая модель ролей (должностей) для производственной структуры.
 
-Иерархия (сверху вниз, по возрастанию уровня):
+Должности больше не захардкожены в коде: они хранятся в таблице `positions`
+(см. app.models.structure.Position) и могут создаваться, переименовываться,
+удаляться и переупорядочиваться владельцем через API /org/positions.
+Иерархия задаётся полем `level`: чем МЕНЬШЕ уровень - тем ВЫШЕ должность.
+
+По умолчанию (сразу после миграции) в системе есть 6 должностей:
     0 - owner              (владелец)
     1 - shop_chief         (начальник цеха)
     2 - section_chief      (начальник участка)
@@ -9,13 +14,17 @@
     4 - assistant_master   (помощник мастера участка)
     5 - worker             (рабочий)
 
-Чем МЕНЬШЕ уровень - тем ВЫШЕ роль в иерархии.
+Должности "owner" и "worker" помечены как системные (is_system) и не могут
+быть удалены - на них завязана часть бизнес-логики (единственный владелец
+системы, перемещение рядовых работников между участками).
+
 Пользователь может управлять (назначать роли, редактировать, удалять,
-перемещать) только пользователями со СТРОГО большим уровнем (то есть
-находящимися ниже него по иерархии) и только в пределах своей зоны
+перемещать) только пользователями со СТРОГО большей должностью по уровню
+(то есть находящимися ниже него по иерархии) и только в пределах своей зоны
 ответственности (цех/участок).
 """
 from dataclasses import dataclass
+from threading import Lock
 
 ROLE_OWNER = "owner"
 ROLE_SHOP_CHIEF = "shop_chief"
@@ -24,54 +33,114 @@ ROLE_MASTER = "master"
 ROLE_ASSISTANT_MASTER = "assistant_master"
 ROLE_WORKER = "worker"
 
-# Уровень иерархии: чем меньше число, тем выше роль.
-ROLE_HIERARCHY: dict[str, int] = {
-    ROLE_OWNER: 0,
-    ROLE_SHOP_CHIEF: 1,
-    ROLE_SECTION_CHIEF: 2,
-    ROLE_MASTER: 3,
-    ROLE_ASSISTANT_MASTER: 4,
-    ROLE_WORKER: 5,
-}
+# Должности по умолчанию - используются для сидирования миграции и как
+# аварийный запасной вариант, если таблица positions ещё не создана/пуста.
+DEFAULT_POSITIONS: list[dict] = [
+    {"code": ROLE_OWNER, "name": "Владелец", "level": 0, "scope": "global", "is_system": True},
+    {"code": ROLE_SHOP_CHIEF, "name": "Начальник цеха", "level": 1, "scope": "workshop", "is_system": False},
+    {"code": ROLE_SECTION_CHIEF, "name": "Начальник участка", "level": 2, "scope": "section", "is_system": False},
+    {"code": ROLE_MASTER, "name": "Мастер участка", "level": 3, "scope": "section", "is_system": False},
+    {"code": ROLE_ASSISTANT_MASTER, "name": "Помощник мастера участка", "level": 4, "scope": "section", "is_system": False},
+    {"code": ROLE_WORKER, "name": "Рабочий", "level": 5, "scope": "self", "is_system": True},
+]
 
-PRODUCTION_ROLES: list[str] = list(ROLE_HIERARCHY.keys())
+_cache_lock = Lock()
+_positions_cache: list[dict] | None = None
 
-ROLE_LABELS_RU: dict[str, str] = {
-    ROLE_OWNER: "Владелец",
-    ROLE_SHOP_CHIEF: "Начальник цеха",
-    ROLE_SECTION_CHIEF: "Начальник участка",
-    ROLE_MASTER: "Мастер участка",
-    ROLE_ASSISTANT_MASTER: "Помощник мастера участка",
-    ROLE_WORKER: "Рабочий",
-}
 
-# Область ответственности каждой роли: "global", "workshop", "section" или "self"
-ROLE_SCOPE: dict[str, str] = {
-    ROLE_OWNER: "global",
-    ROLE_SHOP_CHIEF: "workshop",
-    ROLE_SECTION_CHIEF: "section",
-    ROLE_MASTER: "section",
-    ROLE_ASSISTANT_MASTER: "section",
-    ROLE_WORKER: "self",
-}
+def _load_positions_from_db() -> list[dict]:
+    """Читает список должностей из БД (синхронно, через SessionLocal)."""
+    try:
+        from app.database import SessionLocal
+        from app.models.structure import Position
+
+        with SessionLocal() as session:
+            rows = session.query(Position).order_by(Position.level.asc()).all()
+            if rows:
+                return [
+                    {
+                        "id": r.id,
+                        "code": r.code,
+                        "name": r.name,
+                        "level": r.level,
+                        "scope": r.scope,
+                        "is_system": r.is_system,
+                    }
+                    for r in rows
+                ]
+    except Exception:
+        # На случай, если таблица ещё не создана (например, до применения миграции).
+        pass
+    return [dict(p) for p in DEFAULT_POSITIONS]
+
+
+def refresh_positions_cache() -> None:
+    """
+    Сбрасывает кэш должностей. Нужно вызывать после любого создания,
+    изменения, удаления или переупорядочивания должностей, чтобы изменения
+    сразу же учитывались во всех проверках иерархии.
+    """
+    global _positions_cache
+    with _cache_lock:
+        _positions_cache = None
+
+
+def _get_positions() -> list[dict]:
+    global _positions_cache
+    if _positions_cache is None:
+        with _cache_lock:
+            if _positions_cache is None:
+                _positions_cache = _load_positions_from_db()
+    return _positions_cache
+
+
+def get_all_positions() -> list[dict]:
+    """Все должности, отсортированные от самой высокой к самой низкой по иерархии."""
+    return list(_get_positions())
+
+
+def _positions_by_code() -> dict[str, dict]:
+    return {p["code"]: p for p in _get_positions()}
+
+
+def get_production_roles() -> list[str]:
+    """Коды всех должностей производственной иерархии (ранее - PRODUCTION_ROLES)."""
+    return [p["code"] for p in _get_positions()]
+
+
+# Обратная совместимость: некоторые места когда-то импортировали статический
+# список. Функция выше - источник истины, этот список использовать как
+# константу больше нельзя (устарел сразу после первого изменения должностей).
+PRODUCTION_ROLES: list[str] = get_production_roles()
+
+
+def get_role_labels() -> dict[str, str]:
+    return {p["code"]: p["name"] for p in _get_positions()}
+
+
+def get_role_label(role: str | None) -> str:
+    return _positions_by_code().get(role, {}).get("name", role or "")
 
 
 def is_production_role(role: str | None) -> bool:
-    return role in ROLE_HIERARCHY
+    return role in _positions_by_code()
 
 
 def get_role_level(role: str | None) -> int:
     """
-    Возвращает числовой уровень роли в иерархии.
+    Возвращает числовой уровень должности в иерархии.
     Роли, не относящиеся к производственной иерархии, считаются
     самыми низкими по уровню, чтобы не дать им никаких
     управленческих прав в иерархии.
     """
-    return ROLE_HIERARCHY.get(role, max(ROLE_HIERARCHY.values()) + 1)
+    positions = _get_positions()
+    by_code = {p["code"]: p["level"] for p in positions}
+    max_level = max((p["level"] for p in positions), default=0)
+    return by_code.get(role, max_level + 1)
 
 
 def get_role_scope(role: str | None) -> str:
-    return ROLE_SCOPE.get(role, "self")
+    return _positions_by_code().get(role, {}).get("scope", "self")
 
 
 def is_higher_or_equal(role_a: str, role_b: str) -> bool:
@@ -81,11 +150,11 @@ def is_higher_or_equal(role_a: str, role_b: str) -> bool:
 
 def get_assignable_roles(current_role: str | None) -> list[str]:
     """
-    Список ролей, которые пользователь с ролью current_role имеет право
+    Список должностей, которые пользователь с ролью current_role имеет право
     назначать другим пользователям (только строго ниже себя).
     """
     current_level = get_role_level(current_role)
-    return [role for role, level in ROLE_HIERARCHY.items() if level > current_level]
+    return [p["code"] for p in _get_positions() if p["level"] > current_level]
 
 
 def can_assign_role(current_role: str | None, target_role: str) -> bool:
@@ -109,8 +178,8 @@ class ScopedUser:
 def _in_scope(current: ScopedUser, target: ScopedUser) -> bool:
     """
     Проверяет, находится ли target в зоне ответственности current
-    (правило 4): владелец - вся система; начальник цеха - свой цех;
-    начальник участка/мастер/помощник мастера - свой участок.
+    (правило 4): владелец (scope=global) - вся система; должность со scope=workshop -
+    свой цех; должность со scope=section - свой участок.
     """
     scope = get_role_scope(current.role)
     if scope == "global":
@@ -119,7 +188,7 @@ def _in_scope(current: ScopedUser, target: ScopedUser) -> bool:
         return current.workshop_id is not None and target.workshop_id == current.workshop_id
     if scope == "section":
         return current.section_id is not None and target.section_id == current.section_id
-    # scope == "self": рабочий не управляет никем, кроме себя
+    # scope == "self": рядовой сотрудник не управляет никем, кроме себя
     return target.id == current.id
 
 
@@ -152,27 +221,29 @@ def can_view_user(current: ScopedUser, target: ScopedUser) -> bool:
 
 def can_move_worker(current: ScopedUser, worker: ScopedUser, target_section_id: int, target_workshop_id: int | None) -> bool:
     """
-    Правила 5 и 6: перемещение рабочих между участками.
-    - Владелец может перемещать рабочих между любыми участками.
-    - Начальник цеха - только между участками своего цеха.
+    Правила 5 и 6: перемещение рядовых сотрудников (должность со scope="self")
+    между участками.
+    - Владелец может перемещать таких сотрудников между любыми участками.
+    - Начальник цеха (scope="workshop") - только между участками своего цеха.
     - Нижестоящие роли - только в рамках своих разрешений (в данной модели
       участок для них уже совпадает с их собственным, поэтому перемещение
       в другой участок для них запрещено).
     """
-    if worker.role != ROLE_WORKER:
+    if get_role_scope(worker.role) != "self":
         return False
 
     if current.role == ROLE_OWNER:
         return True
 
-    if current.role == ROLE_SHOP_CHIEF:
+    current_scope = get_role_scope(current.role)
+    if current_scope == "workshop":
         if current.workshop_id is None:
             return False
         if worker.workshop_id != current.workshop_id:
             return False
         return target_workshop_id == current.workshop_id
 
-    if current.role in (ROLE_SECTION_CHIEF, ROLE_MASTER, ROLE_ASSISTANT_MASTER):
+    if current_scope == "section":
         # Разрешено перемещение только внутри собственного участка
         # (например, между бригадами/сменами, если такая логика появится).
         if current.section_id is None:
@@ -188,10 +259,10 @@ def get_notification_scope_filter(current: ScopedUser):
     уведомление об объявлении, созданном current (правило уведомлений).
     Результат - кортеж (scope, value), который нужно использовать при
     построении SQL-запроса к таблице пользователей:
-        ("global", None)        - все пользователи ниже владельца
+        ("global", None)          - все пользователи ниже владельца
         ("workshop", workshop_id) - все пользователи цеха ниже начальника цеха
         ("section", section_id)   - все пользователи участка ниже текущей роли
-        (None, None)               - уведомления отправлять некому (рабочий)
+        (None, None)               - уведомления отправлять некому
     """
     scope = get_role_scope(current.role)
     if scope == "global":

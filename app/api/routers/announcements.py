@@ -6,7 +6,7 @@ from sqlalchemy.orm import selectinload
 
 from app.api.dependencies import get_async_db
 from app.core.auth import get_current_production_user
-from app.core.roles import ROLE_OWNER, PRODUCTION_ROLES, ScopedUser, get_notification_scope_filter, get_role_level
+from app.core.roles import ROLE_OWNER, get_production_roles, ScopedUser, get_notification_scope_filter, get_role_level
 from app.api.routers.notifications import manager as notification_manager
 from app.core.fcm import send_fcm_notification
 from app.models.users import User as UserModel
@@ -32,7 +32,7 @@ async def _get_recipients(db: AsyncSession, current_user: UserModel) -> tuple[st
         return "none", []
 
     query = select(UserModel).where(
-        UserModel.role.in_(PRODUCTION_ROLES),
+        UserModel.role.in_(get_production_roles()),
         UserModel.id != current_user.id,
     )
 

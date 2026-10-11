@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import Integer, String, ForeignKey, DateTime, func
+from sqlalchemy import Boolean, Integer, String, ForeignKey, DateTime, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from typing import TYPE_CHECKING
@@ -7,6 +7,25 @@ from app.database import Base
 
 if TYPE_CHECKING:
     from app.models.users import User
+
+
+class Position(Base):
+    """
+    Должность производственной иерархии. Не захардкожена: владелец может
+    создавать новые должности и выставлять их место в иерархии через поле
+    level (чем меньше значение, тем выше должность).
+    """
+    __tablename__ = "positions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    code: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    level: Mapped[int] = mapped_column(Integer, nullable=False, unique=True)
+    # Область ответственности: "global", "workshop", "section" или "self".
+    scope: Mapped[str] = mapped_column(String(20), nullable=False, default="section")
+    # Системные должности (владелец, рабочий) нельзя удалить и переименовать код.
+    is_system: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
 class Workshop(Base):

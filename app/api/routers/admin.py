@@ -16,7 +16,7 @@ from app.schemas.users import User as UserSchema, AdminPermissionCreate, AdminPe
 from app.schemas.chat import ChatMessageResponse, DialogResponse, UploadInitRequest, UploadSessionResponse, UploadStatusResponse
 from app.api.dependencies import get_async_db
 from app.core.auth import get_current_owner, get_current_admin, check_admin_permission
-from app.core.roles import PRODUCTION_ROLES
+from app.core.roles import get_production_roles
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -70,7 +70,7 @@ async def update_user_role(
     db: AsyncSession = Depends(get_async_db)
 ):
     """Изменяет роль пользователя. Только владелец может назначать админов или передавать владение."""
-    allowed_roles = {"admin", *PRODUCTION_ROLES}
+    allowed_roles = {"admin", *get_production_roles()}
     if role not in allowed_roles:
         raise HTTPException(status_code=400, detail="Invalid role")
     

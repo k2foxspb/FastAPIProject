@@ -200,6 +200,12 @@ export const usersApi = {
 
 export const orgApi = {
   getAssignableRoles: () => api.get('/org/roles/assignable'),
+  // Должности (не захардкожены - хранятся в БД, см. GET /org/positions)
+  getPositions: () => api.get('/org/positions'),
+  createPosition: (data) => api.post('/org/positions', data),
+  updatePosition: (positionId, data) => api.patch(`/org/positions/${positionId}`, data),
+  reorderPositions: (positions) => api.patch('/org/positions/reorder', { positions }),
+  deletePosition: (positionId) => api.delete(`/org/positions/${positionId}`),
   getWorkshops: (workshopId) => api.get('/org/workshops', { params: { workshop_id: workshopId } }),
   createWorkshop: (data) => api.post('/org/workshops', data),
   updateWorkshop: (workshopId, data) => api.patch(`/org/workshops/${workshopId}`, data),
