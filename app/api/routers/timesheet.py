@@ -20,7 +20,7 @@ from app.core.production import (
     find_nearest_supervisors,
     get_subordinates,
 )
-from app.core.roles import get_role_label
+from app.core.roles import get_table_role_label
 from app.api.routers.notifications import manager as notification_manager
 from app.core.fcm import send_fcm_notification
 from app.models.users import User as UserModel
@@ -511,7 +511,7 @@ async def export_subordinates_summary_excel(
         {
             "number": idx + 1,
             "tab_number": user.id,
-            "grade": get_role_label(user.role),
+            "grade": get_table_role_label(user.role),
             "fio": _user_name(user),
             "hours_by_date": hours_by_user.get(user.id, {}),
             "products_total": products_by_user.get(user.id, Decimal("0")),
@@ -904,7 +904,7 @@ async def export_timesheet_excel(
     _fill_timesheet_grid_sheet(ws_timesheet, year, month, [{
         "number": 1,
         "tab_number": target.id,
-        "grade": get_role_label(target.role),
+        "grade": get_table_role_label(target.role),
         "fio": _user_name(target),
         "hours_by_date": hours_by_date,
         "products_total": products_total,

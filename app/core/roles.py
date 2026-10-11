@@ -135,6 +135,18 @@ def get_role_label(role: str | None) -> str:
     return _positions_by_code().get(role, {}).get("name", role or "")
 
 
+def get_table_role_label(role: str | None) -> str:
+    """
+    Название должности для табличных представлений табеля (сводная таблица
+    подчинённых, выгрузка в Excel): учитывает только должности
+    производственной иерархии - старые системные роли (admin и т.п.) здесь
+    не должны отображаться. Если роль не входит в иерархию (например,
+    "admin", либо должность не задана), возвращается "Должность не задана".
+    """
+    position = _positions_by_code().get(role)
+    return position["name"] if position else "Должность не задана"
+
+
 def is_production_role(role: str | None) -> bool:
     return role in _positions_by_code()
 
