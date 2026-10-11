@@ -5,6 +5,7 @@ import { adminApi } from '../api';
 import { Ionicons as Icon } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
+import { getRoleLabel, getRoleIcon, loadPositions } from '../constants/roles';
 
 export default function AdminUsersScreen({ navigation }) {
   const [users, setUsers] = useState([]);
@@ -25,18 +26,33 @@ export default function AdminUsersScreen({ navigation }) {
 
   useEffect(() => {
     fetchUsers();
+    // Подгружаем актуальный список должностей, чтобы верно отображать названия
+    // ролей производственной иерархии у тех, кто также состоит в ней.
+    loadPositions();
   }, []);
 
+  // Этот экран управляет только базовой ролью аккаунта в системе (обычный
+  // пользователь или администратор). Производственная иерархия (владелец,
+  // начальники, мастера и т.д.) назначается отдельно, на экране "Сотрудники"
+  // (см. AdminEmployeesScreen.js), поэтому здесь эти роли не предлагаются.
+  const USER_ROLE_OPTIONS = [
+    { value: 'buyer', label: 'Пользователь' },
+    { value: 'admin', label: 'Администратор' },
+  ];
+
+  // Для производственной иерархии (владелец, начальники и т.д.) название
+  // роли берём из общего справочника должностей, чтобы не показывать сырой код.
+  const getUserRoleLabel = (role) => getRoleLabel(role);
+
   const changeRole = (userId, currentRole) => {
-    const roles = ['buyer', 'seller', 'admin', 'owner'];
     Alert.alert(
       'Сменить роль',
-      `Текущая роль: ${currentRole}`,
-      roles.map(role => ({
-        text: role.toUpperCase(),
+      `Текущая роль: ${getUserRoleLabel(currentRole)}`,
+      USER_ROLE_OPTIONS.map(({ value, label }) => ({
+        text: label,
         onPress: async () => {
           try {
-            await api.patch(`/admin/users/${userId}/role?role=${role}`);
+            await api.patch(`/admin/users/${userId}/role?role=${value}`);
             fetchUsers();
           } catch (err) {
             Alert.alert('Ошибка', err.response?.data?.detail || 'Не удалось обновить роль');
@@ -52,9 +68,12 @@ export default function AdminUsersScreen({ navigation }) {
       style={[styles.userCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
       onPress={() => navigation.navigate('UserProfile', { userId: item.id, isAdminView: true })}
     >
-      <View>
-        <Text style={[styles.userEmail, { color: colors.text }]}>{item.email}</Text>
-        <Text style={[styles.userRole, { color: colors.primary }]}>{item.role.toUpperCase()}</Text>
+      <View style={styles.userInfo}>
+        <Icon name={getRoleIcon(item.role)} size={18} color={colors.primary} style={styles.roleIcon} />
+        <View>
+          <Text style={[styles.userEmail, { color: colors.text }]}>{item.email}</Text>
+          <Text style={[styles.userRole, { color: colors.primary }]}>{getUserRoleLabel(item.role)}</Text>
+        </View>
       </View>
       <TouchableOpacity 
         style={[styles.roleButton, { backgroundColor: colors.primary }]}
@@ -91,6 +110,8 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     borderWidth: 1,
   },
+  userInfo: { flexDirection: 'row', alignItems: 'center' },
+  roleIcon: { marginRight: 10 },
   userEmail: { fontSize: 16, fontWeight: '500' },
   userRole: { fontSize: 12, fontWeight: 'bold', marginTop: 4 },
   roleButton: { paddingHorizontal: 15, paddingVertical: 8, borderRadius: 5 },

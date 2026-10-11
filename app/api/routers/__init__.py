@@ -11,6 +11,7 @@ from app.api.routers import (
     testing,
     structure,
     announcements,
+    timesheet,
 )
 
 # Основной роутер для API v1
@@ -24,6 +25,7 @@ public_routers = [
     (admin.router, ["admin"]),
     (structure.router, ["organization"]),
     (announcements.router, ["announcements"]),
+    (timesheet.router, ["timesheet"]),
 ]
 
 for router, tags in public_routers:

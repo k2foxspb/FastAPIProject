@@ -9,7 +9,7 @@ import { Ionicons as Icon } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
 import { useNotifications } from '../context/NotificationContext';
-import { getRoleLabel, ROLE_LABELS_RU } from '../constants/roles';
+import { getRoleLabel, getRoleScope, loadPositions, ROLE_LABELS_RU } from '../constants/roles';
 import { formatName } from '../utils/formatters';
 
 // Показывает список сотрудников, видимых текущему пользователю в его зоне
@@ -17,26 +17,9 @@ import { formatName } from '../utils/formatters';
 // менять им роль, назначать в цех/участок, перемещать рабочих и удалять -
 // всё строго в пределах ролей, которые разрешено назначать текущему пользователю
 // (см. can_assign_role/can_manage_user/can_move_worker в app/core/roles.py).
-const SECTION_SCOPED_ROLES = ['section_chief', 'master', 'assistant_master', 'worker'];
-
-// Показывает серию Alert.alert с вариантами выбора и возвращает промис с выбранным
-// значением (или null, если пользователь отменил выбор) - такой же паттерн выбора
-// из списка, как в AdminUsersScreen.js, но переиспользуемый для нескольких шагов подряд.
-const showChoice = (title, options, message) => new Promise((resolve) => {
-  if (!options.length) {
-    resolve(null);
-    return;
-  }
-  Alert.alert(
-    title,
-    message,
-    [
-      ...options.map(opt => ({ text: opt.label, onPress: () => resolve(opt.value) })),
-      { text: 'Отмена', style: 'cancel', onPress: () => resolve(null) },
-    ],
-    { cancelable: true, onDismiss: () => resolve(null) }
-  );
-});
+// Выбор между выбором цеха/участка делается не по захардкоженному списку кодов, а по
+// полю scope выбранной должности (см. getRoleScope в constants/roles.js), чтобы новые
+// должности, созданные владельцем на экране "Должности", тоже работали без изменения кода.
 
 export default function AdminEmployeesScreen() {
   const { theme } = useTheme();
@@ -54,6 +37,25 @@ export default function AdminEmployeesScreen() {
   const [searchResults, setSearchResults] = useState([]);
   const [searching, setSearching] = useState(false);
   const [assigningUserId, setAssigningUserId] = useState(null);
+  const [pickerState, setPickerState] = useState(null);
+
+  // Показывает модальное окно с прокручиваемым списком вариантов и возвращает
+  // промис с выбранным значением (или null, если отменили). Раньше здесь использовался
+  // Alert.alert, но он показывает не больше 2-3 вариантов одновременно, из-за чего при
+  // большем количестве должностей часть списка просто не показывалась.
+  const showChoice = (title, options, message) => new Promise((resolve) => {
+    if (!options.length) {
+      resolve(null);
+      return;
+    }
+    setPickerState({ title, message, options, resolve });
+  });
+
+  const resolvePicker = (value) => {
+    const resolve = pickerState?.resolve;
+    setPickerState(null);
+    if (resolve) resolve(value);
+  };
 
   const fetchEmployees = useCallback(async () => {
     try {
@@ -64,6 +66,10 @@ export default function AdminEmployeesScreen() {
     } finally {
       setLoading(false);
     }
+    // Подгружаем актуальный список должностей (включая созданные владельцем
+    // пользовательские), чтобы список ролей для назначения и проверки scope
+    // были всегда свежими, а не из кэша прошлой сессии.
+    loadPositions();
   }, []);
 
   useFocusEffect(
@@ -94,7 +100,7 @@ export default function AdminEmployeesScreen() {
     let workshopId = null;
     let sectionId = null;
 
-    if (role === 'shop_chief') {
+    if (getRoleScope(role) === 'workshop') {
       const wsRes = await orgApi.getWorkshops();
       const workshops = wsRes.data;
       if (workshops.length === 0) {
@@ -103,8 +109,8 @@ export default function AdminEmployeesScreen() {
       }
       workshopId = await showChoice('Выберите цех', workshops.map(w => ({ label: w.name, value: w.id })));
       if (!workshopId) return;
-    } else if (SECTION_SCOPED_ROLES.includes(role)) {
-      if (currentUser.role === 'owner') {
+    } else if (getRoleScope(role) === 'section') {
+      if (getRoleScope(currentUser.role) === 'global') {
         const wsRes = await orgApi.getWorkshops();
         const workshops = wsRes.data;
         if (workshops.length === 0) {
@@ -122,7 +128,7 @@ export default function AdminEmployeesScreen() {
         }
         sectionId = await showChoice('Выберите участок', sections.map(s => ({ label: s.name, value: s.id })));
         if (!sectionId) return;
-      } else if (currentUser.role === 'shop_chief') {
+      } else if (getRoleScope(currentUser.role) === 'workshop') {
         const secRes = await orgApi.getSections();
         const sections = secRes.data;
         if (sections.length === 0) {
@@ -223,7 +229,7 @@ export default function AdminEmployeesScreen() {
     let workshopId = employee.workshop_id;
     let sectionId = null;
 
-    if (currentUser.role === 'owner') {
+    if (getRoleScope(currentUser.role) === 'global') {
       const wsRes = await orgApi.getWorkshops();
       const workshops = wsRes.data;
       if (workshops.length === 0) {
@@ -296,7 +302,7 @@ export default function AdminEmployeesScreen() {
       { text: 'Сменить роль', onPress: () => changeRole(employee) },
       { text: 'Назначить в цех/участок', onPress: () => reassignEmployee(employee) },
     ];
-    if (employee.role === 'worker' && (currentUser.role === 'owner' || currentUser.role === 'shop_chief')) {
+    if (getRoleScope(employee.role) === 'self' && (getRoleScope(currentUser.role) === 'global' || getRoleScope(currentUser.role) === 'workshop')) {
       actions.push({ text: 'Переместить на другой участок', onPress: () => moveWorker(employee) });
     }
     actions.push({ text: 'Удалить', style: 'destructive', onPress: () => deleteEmployee(employee) });
@@ -418,6 +424,39 @@ export default function AdminEmployeesScreen() {
           </View>
         </TouchableWithoutFeedback>
       </Modal>
+
+      <Modal visible={!!pickerState} transparent animationType="fade" onRequestClose={() => resolvePicker(null)}>
+        <TouchableWithoutFeedback onPress={() => resolvePicker(null)}>
+          <View style={styles.modalOverlay}>
+            <TouchableWithoutFeedback>
+              <View style={[styles.pickerContent, { backgroundColor: colors.surface }]}>
+                <View style={styles.modalHeader}>
+                  <Text style={[styles.modalTitle, { color: colors.text }]}>{pickerState?.title}</Text>
+                  <TouchableOpacity onPress={() => resolvePicker(null)}>
+                    <Icon name="close" size={24} color={colors.text} />
+                  </TouchableOpacity>
+                </View>
+                {!!pickerState?.message && (
+                  <Text style={[styles.label, { color: colors.textSecondary, marginTop: 0 }]}>{pickerState.message}</Text>
+                )}
+                <FlatList
+                  data={pickerState?.options || []}
+                  keyExtractor={(item, index) => `${item.value}-${index}`}
+                  style={styles.pickerList}
+                  renderItem={({ item }) => (
+                    <TouchableOpacity
+                      style={[styles.pickerRow, { borderColor: colors.border }]}
+                      onPress={() => resolvePicker(item.value)}
+                    >
+                      <Text style={[styles.cardTitle, { color: colors.text }]}>{item.label}</Text>
+                    </TouchableOpacity>
+                  )}
+                />
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
     </View>
   );
 }
@@ -452,6 +491,9 @@ const styles = StyleSheet.create({
   },
   modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' },
   modalContent: { width: '100%', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, height: '80%' },
+  pickerContent: { width: '100%', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, maxHeight: '70%' },
+  pickerList: { flexGrow: 0 },
+  pickerRow: { paddingVertical: 14, borderBottomWidth: 1 },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 },
   modalTitle: { fontSize: 16, fontWeight: 'bold', flex: 1, marginRight: 10 },
   label: { fontSize: 14, fontWeight: '600', marginBottom: 6, marginTop: 10 },

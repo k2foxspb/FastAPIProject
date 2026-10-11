@@ -3,6 +3,7 @@ from .users import User, UserPhoto, AdminPermission, AppVersion, PhotoAlbum, Fri
 from .chat import ChatMessage, FileUploadSession
 from .structure import Workshop, Section, Position
 from .announcements import Announcement, AnnouncementRecipient
+from .timesheet import TimesheetEntry, Product, ProductionEntry, ProductionEntryItem, ProductionAuditLog
 
 
 __all__ = ["News", "NewsImage", "NewsReaction", "NewsComment", "NewsCommentReaction",
@@ -12,4 +13,5 @@ __all__ = ["News", "NewsImage", "NewsReaction", "NewsComment", "NewsCommentReact
            "ChatMessage", "FileUploadSession",
            "Workshop", "Section", "Position",
            "Announcement", "AnnouncementRecipient",
+           "TimesheetEntry", "Product", "ProductionEntry", "ProductionEntryItem", "ProductionAuditLog",
            ]
