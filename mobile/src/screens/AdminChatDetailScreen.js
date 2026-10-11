@@ -7,6 +7,7 @@ import { theme as themeConstants } from '../constants/theme';
 import api from '../api';
 import { getFullUrl } from '../utils/urlHelper';
 import { formatName } from '../utils/formatters';
+import AvatarWithBadge from '../components/AvatarWithBadge';
 import CachedMedia from '../components/CachedMedia';
 import VoiceMessage from '../components/VoiceMessage';
 import FileMessage from '../components/FileMessage';
@@ -259,8 +260,10 @@ export default function AdminChatDetailScreen({ route, navigation }) {
             </View>
           )}
           {!isU1 && (
-            <Image
-              source={{ uri: getFullUrl(sender.avatar_url) || 'https://via.placeholder.com/150' }}
+            <AvatarWithBadge
+              uri={getFullUrl(sender.avatar_url) || 'https://via.placeholder.com/150'}
+              role={sender.role}
+              size={24}
               style={styles.smallAvatar}
             />
           )}
@@ -323,8 +326,10 @@ export default function AdminChatDetailScreen({ route, navigation }) {
             </View>
           </View>
           {isU1 && (
-            <Image
-              source={{ uri: getFullUrl(sender.avatar_url) || 'https://via.placeholder.com/150' }}
+            <AvatarWithBadge
+              uri={getFullUrl(sender.avatar_url) || 'https://via.placeholder.com/150'}
+              role={sender.role}
+              size={24}
               style={styles.smallAvatar}
             />
           )}
@@ -465,9 +470,6 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   smallAvatar: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
     marginHorizontal: 5,
     marginBottom: 2
   },

@@ -1,11 +1,12 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Image, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
 import api from '../api';
 import { getFullUrl } from '../utils/urlHelper';
 import { formatName } from '../utils/formatters';
+import AvatarWithBadge from '../components/AvatarWithBadge';
 
 export default function AdminChatsScreen({ navigation }) {
   const [dialogs, setDialogs] = useState([]);
@@ -43,13 +44,17 @@ export default function AdminChatsScreen({ navigation }) {
         })}
       >
         <View style={styles.avatarsContainer}>
-          <Image 
-            source={{ uri: getFullUrl(user1.avatar_url) || 'https://via.placeholder.com/150' }} 
-            style={styles.avatar} 
+          <AvatarWithBadge
+            uri={getFullUrl(user1.avatar_url) || 'https://via.placeholder.com/150'}
+            role={user1.role}
+            size={40}
+            style={styles.avatar}
           />
-          <Image 
-            source={{ uri: getFullUrl(user2.avatar_url) || 'https://via.placeholder.com/150' }} 
-            style={[styles.avatar, styles.secondAvatar]} 
+          <AvatarWithBadge
+            uri={getFullUrl(user2.avatar_url) || 'https://via.placeholder.com/150'}
+            role={user2.role}
+            size={40}
+            style={[styles.avatar, styles.secondAvatar]}
           />
         </View>
         <View style={styles.content}>

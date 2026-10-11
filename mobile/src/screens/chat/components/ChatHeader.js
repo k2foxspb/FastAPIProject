@@ -1,7 +1,8 @@
 import React from 'react';
-import { View, Text, TextInput, TouchableOpacity, Image, ActivityIndicator, Platform } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, Platform } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { formatStatus, formatName, getAvatarUrl } from '../../../utils/formatters';
+import AvatarWithBadge from '../../../components/AvatarWithBadge';
 import { styles } from '../styles';
 
 // Шапка чата: режим выделения / строка поиска / информация о собеседнике
@@ -134,8 +135,10 @@ export default function ChatHeader({
               onPress={() => navigation.navigate('UserProfile', { userId: userId })}
             >
               <View style={styles.headerAvatarContainer}>
-                <Image
-                  source={{ uri: getAvatarUrl(interlocutor?.avatar_preview_url || interlocutor?.avatar_url) }}
+                <AvatarWithBadge
+                  uri={getAvatarUrl(interlocutor?.avatar_preview_url || interlocutor?.avatar_url)}
+                  role={interlocutor?.role}
+                  size={36}
                   style={styles.headerAvatar}
                 />
                 {interlocutor?.status === 'online' && (

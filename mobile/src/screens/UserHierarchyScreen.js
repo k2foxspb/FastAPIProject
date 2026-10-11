@@ -7,6 +7,7 @@ import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
 import { formatName, getAvatarUrl } from '../utils/formatters';
 import { getRoleLabel } from '../constants/roles';
+import AvatarWithBadge from '../components/AvatarWithBadge';
 
 export default function UserHierarchyScreen({ route, navigation }) {
   const { theme } = useTheme();
@@ -55,7 +56,7 @@ export default function UserHierarchyScreen({ route, navigation }) {
       style={[styles.employeeRow, { backgroundColor: colors.surface, borderColor: colors.border }]}
       onPress={() => openEmployee(employee)}
     >
-      <Image source={{ uri: getAvatarUrl(employee.avatar_url) }} style={styles.avatar} />
+      <AvatarWithBadge uri={getAvatarUrl(employee.avatar_url)} role={employee.role} size={40} style={styles.avatar} />
       <View style={styles.employeeInfo}>
         <Text style={[styles.employeeName, { color: colors.text }]}>{formatName(employee)}</Text>
         <Text style={[styles.employeeRole, { color: colors.textSecondary }]}>{getRoleLabel(employee.role)}</Text>
@@ -100,7 +101,7 @@ export default function UserHierarchyScreen({ route, navigation }) {
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
     >
       <View style={[styles.header, { borderBottomColor: colors.border }]}>
-        <Image source={{ uri: getAvatarUrl(data.user.avatar_url) }} style={styles.headerAvatar} />
+        <AvatarWithBadge uri={getAvatarUrl(data.user.avatar_url)} role={data.user.role} size={70} style={styles.headerAvatar} />
         <Text style={[styles.headerName, { color: colors.text }]}>{formatName(data.user) || userName}</Text>
         <Text style={[styles.headerRole, { color: colors.textSecondary }]}>{getRoleLabel(data.user.role)}</Text>
       </View>
@@ -115,7 +116,7 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   header: { alignItems: 'center', padding: 20, borderBottomWidth: 1 },
-  headerAvatar: { width: 70, height: 70, borderRadius: 35, marginBottom: 10 },
+  headerAvatar: { marginBottom: 10 },
   headerName: { fontSize: 18, fontWeight: 'bold' },
   headerRole: { fontSize: 13, marginTop: 2 },
   section: { padding: 20 },
@@ -129,7 +130,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     marginBottom: 8,
   },
-  avatar: { width: 40, height: 40, borderRadius: 20, marginRight: 10 },
+  avatar: { marginRight: 10 },
   employeeInfo: { flex: 1 },
   employeeName: { fontSize: 15, fontWeight: '600' },
   employeeRole: { fontSize: 12, marginTop: 2 },

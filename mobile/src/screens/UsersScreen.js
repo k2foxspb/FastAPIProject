@@ -8,6 +8,7 @@ import { useNotifications } from '../context/NotificationContext';
 import { theme as themeConstants } from '../constants/theme';
 import { API_BASE_URL } from '../constants';
 import { formatStatus, formatName, getAvatarUrl } from '../utils/formatters';
+import AvatarWithBadge from '../components/AvatarWithBadge';
 
 export default function UsersScreen({ navigation }) {
   const { theme } = useTheme();
@@ -164,9 +165,11 @@ export default function UsersScreen({ navigation }) {
         onPress={() => navigation.navigate('UserProfile', { userId: item.id })}
       >
         <View style={styles.avatarContainer}>
-          <Image 
-            source={{ uri: getAvatarUrl(item.avatar_preview_url || item.avatar_url) }} 
-            style={styles.avatar} 
+          <AvatarWithBadge
+            uri={getAvatarUrl(item.avatar_preview_url || item.avatar_url)}
+            role={item.role}
+            size={50}
+            style={{ marginRight: 15 }}
           />
           {item.status === 'online' && (
             <View style={[styles.onlineBadge, { backgroundColor: '#4CAF50', borderColor: colors.background }]} />

@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import {
-  View, Text, FlatList, TouchableOpacity, Image,
+  View, Text, FlatList, TouchableOpacity,
   StyleSheet, ActivityIndicator, Alert
 } from 'react-native';
 import { Ionicons as Icon } from '@expo/vector-icons';
@@ -9,6 +9,7 @@ import { groupChatApi } from '../../api';
 import { useTheme } from '../../context/ThemeContext';
 import { theme as themeConstants } from '../../constants/theme';
 import { formatName, getAvatarUrl } from '../../utils/formatters';
+import AvatarWithBadge from '../../components/AvatarWithBadge';
 
 // Экран выбора друзей для добавления в уже существующую группу (владелец/админ).
 // Без стандартного заголовка навигатора (headerShown: false), поэтому верхний отступ
@@ -52,7 +53,7 @@ export default function AddGroupMembersScreen({ route, navigation }) {
         onPress={() => toggleSelect(item.id)}
         activeOpacity={0.7}
       >
-        <Image source={{ uri: getAvatarUrl(item.avatar_url) }} style={styles.avatar} />
+        <AvatarWithBadge uri={getAvatarUrl(item.avatar_url)} role={item.role} size={44} style={styles.avatar} />
         <Text style={[styles.userName, { color: colors.text }]}>{formatName(item)}</Text>
         <View style={[
           styles.checkbox,
@@ -107,7 +108,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderBottomWidth: 1,
   },
-  avatar: { width: 44, height: 44, borderRadius: 22, marginRight: 12 },
+  avatar: { marginRight: 12 },
   userName: { flex: 1, fontSize: 15, fontWeight: '500' },
   checkbox: {
     width: 24,
