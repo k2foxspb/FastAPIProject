@@ -316,6 +316,7 @@ export const timesheetApi = {
 
   // Сводная таблица по подчинённым (часы по дням + статусы продукции)
   getSubordinatesSummary: (year, month) => api.get('/timesheet/subordinates/summary', { params: { year, month } }),
+  getSubordinatesExportUrl: (year, month) => `${API_BASE_URL}/timesheet/subordinates/summary/export?year=${year}&month=${month}`,
 };
 
 // ---------------------------------------------------------------------------

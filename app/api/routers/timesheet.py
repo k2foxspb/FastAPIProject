@@ -20,6 +20,7 @@ from app.core.production import (
     find_nearest_supervisors,
     get_subordinates,
 )
+from app.core.roles import get_role_label
 from app.api.routers.notifications import manager as notification_manager
 from app.core.fcm import send_fcm_notification
 from app.models.users import User as UserModel
@@ -70,6 +71,119 @@ async def _get_user_or_404(db: AsyncSession, user_id: int) -> UserModel:
 def _month_bounds(year: int, month: int) -> tuple[date, date]:
     last_day = calendar.monthrange(year, month)[1]
     return date(year, month, 1), date(year, month, last_day)
+
+
+# Стандартная норма рабочего дня, после которой часы считаются сверхурочными
+TIMESHEET_DAY_NORM_HOURS = Decimal("8")
+
+
+def _fill_timesheet_grid_sheet(ws, year: int, month: int, rows: list[dict]) -> None:
+    """
+    Заполняет лист в формате классического табеля учёта рабочего времени:
+    по дням месяца с разбивкой каждой строки сотрудника на "основное" и
+    "сверхурочное" время, подытогами за 1-ю половину месяца и за весь месяц,
+    количеством выходных и общим количеством сданных приборов в конце строки.
+
+    rows: список словарей с ключами:
+      number, tab_number, grade, fio,
+      hours_by_date (dict[date, Decimal]), products_total (Decimal)
+    """
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+
+    weekend_fill = PatternFill(start_color="FFFF00", end_color="FFFF00", fill_type="solid")
+    header_fill = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")
+    thin_border = Border(
+        left=Side(style="thin"), right=Side(style="thin"),
+        top=Side(style="thin"), bottom=Side(style="thin"),
+    )
+    center = Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+    last_day = calendar.monthrange(year, month)[1]
+    days = list(range(1, last_day + 1))
+    half = 15 if last_day >= 15 else last_day
+
+    headers = ["№", "Таб. номер", "Разряд", "Фамилия, имя, отчество", "Время"]
+    day_col_index: dict[int, int] = {}
+    for d in days:
+        headers.append(str(d))
+        day_col_index[d] = len(headers)
+        if d == half:
+            headers.append("За 1-ю половину\n(дни)")
+            half_days_col = len(headers)
+            headers.append("За 1-ю половину\n(часы)")
+            half_hours_col = len(headers)
+    headers.append("За месяц\n(дни)")
+    month_days_col = len(headers)
+    headers.append("За месяц\n(часы)")
+    month_hours_col = len(headers)
+    headers.append("Выходные")
+    weekend_col = len(headers)
+    headers.append("Приборы, всего")
+    products_col = len(headers)
+
+    for idx, title in enumerate(headers, start=1):
+        cell = ws.cell(row=1, column=idx, value=title)
+        cell.font = Font(bold=True)
+        cell.alignment = center
+        cell.border = thin_border
+        cell.fill = header_fill
+
+    weekend_days = {d for d in days if date(year, month, d).weekday() in (5, 6)}
+    for d in weekend_days:
+        ws.cell(row=1, column=day_col_index[d]).fill = weekend_fill
+
+    row_num = 2
+    for row_data in rows:
+        hours_by_date = row_data["hours_by_date"]
+        for label in ("основное", "сверхурочное"):
+            is_first = label == "основное"
+            ws.cell(row=row_num, column=1, value=row_data["number"] if is_first else None).border = thin_border
+            ws.cell(row=row_num, column=2, value=row_data["tab_number"] if is_first else None).border = thin_border
+            ws.cell(row=row_num, column=3, value=row_data["grade"] if is_first else None).border = thin_border
+            ws.cell(row=row_num, column=4, value=row_data["fio"] if is_first else None).border = thin_border
+            ws.cell(row=row_num, column=5, value=label).border = thin_border
+
+            half_days_count = 0
+            half_hours_sum = Decimal("0")
+            month_days_count = 0
+            month_hours_sum = Decimal("0")
+
+            for d in days:
+                hours = hours_by_date.get(date(year, month, d), Decimal("0"))
+                if is_first:
+                    value = min(hours, TIMESHEET_DAY_NORM_HOURS)
+                else:
+                    value = max(hours - TIMESHEET_DAY_NORM_HOURS, Decimal("0"))
+
+                cell = ws.cell(row=row_num, column=day_col_index[d])
+                cell.border = thin_border
+                cell.alignment = center
+                if d in weekend_days:
+                    cell.fill = weekend_fill
+                if value > 0:
+                    cell.value = float(value)
+                    month_days_count += 1
+                    month_hours_sum += value
+                    if d <= half:
+                        half_days_count += 1
+                        half_hours_sum += value
+
+            ws.cell(row=row_num, column=half_days_col, value=half_days_count).border = thin_border
+            ws.cell(row=row_num, column=half_hours_col, value=float(half_hours_sum)).border = thin_border
+            ws.cell(row=row_num, column=month_days_col, value=month_days_count).border = thin_border
+            ws.cell(row=row_num, column=month_hours_col, value=float(month_hours_sum)).border = thin_border
+            ws.cell(row=row_num, column=weekend_col, value=len(weekend_days) if is_first else None).border = thin_border
+            ws.cell(
+                row=row_num, column=products_col,
+                value=float(row_data["products_total"]) if is_first else None,
+            ).border = thin_border
+
+            row_num += 1
+
+    ws.column_dimensions["D"].width = 28
+    for d in days:
+        ws.column_dimensions[ws.cell(row=1, column=day_col_index[d]).column_letter].width = 6
+    ws.freeze_panes = "F2"
 
 
 # ------------------------------------------------------------------
@@ -345,6 +459,82 @@ async def get_subordinates_summary(
             pending_count=pending_count,
         ))
     return summaries
+
+
+@router.get("/subordinates/summary/export")
+async def export_subordinates_summary_excel(
+    year: int,
+    month: int,
+    current_user: UserModel = Depends(get_current_production_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Выгружает в Excel сводный табель по всем подчинённым текущего
+    пользователя за месяц - по строкам сотрудники (с разбивкой на
+    "основное"/"сверхурочное" время), в конце строки - общее количество
+    сданных приборов за месяц.
+    """
+    from openpyxl import Workbook
+
+    subordinates = await get_subordinates(db, current_user)
+    if not subordinates:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No subordinates found")
+
+    sub_ids = [u.id for u in subordinates]
+    start, end = _month_bounds(year, month)
+
+    hours_result = await db.execute(
+        select(TimesheetEntryModel).where(
+            TimesheetEntryModel.user_id.in_(sub_ids),
+            TimesheetEntryModel.date >= start,
+            TimesheetEntryModel.date <= end,
+        )
+    )
+    hours_by_user: dict[int, dict[date, Decimal]] = {uid: {} for uid in sub_ids}
+    for e in hours_result.scalars().all():
+        hours_by_user[e.user_id][e.date] = e.hours
+
+    entries_result = await db.execute(
+        select(ProductionEntryModel)
+        .options(selectinload(ProductionEntryModel.items))
+        .where(
+            ProductionEntryModel.user_id.in_(sub_ids),
+            ProductionEntryModel.date >= start,
+            ProductionEntryModel.date <= end,
+        )
+    )
+    products_by_user: dict[int, Decimal] = {uid: Decimal("0") for uid in sub_ids}
+    for e in entries_result.scalars().all():
+        products_by_user[e.user_id] += sum((item.quantity for item in e.items), Decimal("0"))
+
+    rows = [
+        {
+            "number": idx + 1,
+            "tab_number": user.id,
+            "grade": get_role_label(user.role),
+            "fio": _user_name(user),
+            "hours_by_date": hours_by_user.get(user.id, {}),
+            "products_total": products_by_user.get(user.id, Decimal("0")),
+        }
+        for idx, user in enumerate(subordinates)
+    ]
+
+    wb = Workbook()
+    ws_timesheet = wb.active
+    ws_timesheet.title = "Табель"
+    _fill_timesheet_grid_sheet(ws_timesheet, year, month, rows)
+
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+
+    filename = f"timesheet_subordinates_{year}_{month:02d}.xlsx"
+
+    return StreamingResponse(
+        buffer,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
 
 
 @router.get("/production/entries/pending", response_model=list[ProductionEntrySchema])
@@ -703,17 +893,22 @@ async def export_timesheet_excel(
         PRODUCTION_STATUS_REJECTED: "Отклонено",
     }
 
+    products_total = sum(
+        (item.quantity for entry in entries_by_date.values() for item in entry.items),
+        Decimal("0"),
+    )
+
     wb = Workbook()
     ws_timesheet = wb.active
     ws_timesheet.title = "Табель"
-    ws_timesheet.append(["Дата", "Часы", "Комментарий"])
-    total_hours = Decimal("0")
-    for day_num in range(1, end.day + 1):
-        day = date(year, month, day_num)
-        hours = hours_by_date.get(day, Decimal("0"))
-        total_hours += hours
-        ws_timesheet.append([day.isoformat(), float(hours), ""])
-    ws_timesheet.append(["Итого", float(total_hours), ""])
+    _fill_timesheet_grid_sheet(ws_timesheet, year, month, [{
+        "number": 1,
+        "tab_number": target.id,
+        "grade": get_role_label(target.role),
+        "fio": _user_name(target),
+        "hours_by_date": hours_by_date,
+        "products_total": products_total,
+    }])
 
     ws_production = wb.create_sheet("Продукция")
     ws_production.append(["Дата", "Часы", "Продукция", "Количество", "Статус", "Комментарий сотрудника", "Комментарий руководителя"])

@@ -5,11 +5,16 @@ import {
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons as Icon } from '@expo/vector-icons';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
 import { timesheetApi } from '../api';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
 import { formatName } from '../utils/formatters';
 import { getRoleLabel } from '../constants/roles';
+import { storage } from '../utils/storage';
+
+const pad2 = (n) => String(n).padStart(2, '0');
 
 const MONTH_NAMES = [
   'Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
@@ -52,6 +57,7 @@ export default function TabelSubordinatesTableScreen({ navigation }) {
   const [hoursModalTarget, setHoursModalTarget] = useState(null); // { userId, userName, date }
   const [hoursValue, setHoursValue] = useState('');
   const [savingHours, setSavingHours] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   const fetchSummary = useCallback(async () => {
     setLoading(true);
@@ -121,6 +127,36 @@ export default function TabelSubordinatesTableScreen({ navigation }) {
     }
   };
 
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      if (Platform.OS === 'web') {
+        Alert.alert('Экспорт', 'Экспорт в Excel доступен в мобильном приложении');
+        return;
+      }
+      const token = await storage.getAccessToken();
+      const url = timesheetApi.getSubordinatesExportUrl(year, month);
+      const fileName = `timesheet_subordinates_${year}_${pad2(month)}.xlsx`;
+      const localUri = `${FileSystem.documentDirectory}${fileName}`;
+
+      const downloadRes = await FileSystem.downloadAsync(url, localUri, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(downloadRes.uri, {
+          mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        });
+      } else {
+        Alert.alert('Готово', `Файл сохранён: ${downloadRes.uri}`);
+      }
+    } catch (err) {
+      Alert.alert('Ошибка', 'Не удалось выгрузить файл Excel');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const total = daysInMonth(year, month);
   const dayNumbers = useMemo(() => Array.from({ length: total }, (_, i) => i + 1), [total]);
 
@@ -135,6 +171,13 @@ export default function TabelSubordinatesTableScreen({ navigation }) {
         <Text style={[styles.monthLabel, { color: colors.text }]}>{MONTH_NAMES[month - 1]} {year}</Text>
         <TouchableOpacity onPress={() => changeMonth(1)}>
           <Icon name="chevron-forward" size={24} color={colors.primary} />
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.exportBtn} onPress={handleExport} disabled={exporting}>
+          {exporting ? (
+            <ActivityIndicator size="small" color={colors.primary} />
+          ) : (
+            <Icon name="download-outline" size={22} color={colors.primary} />
+          )}
         </TouchableOpacity>
       </View>
 
@@ -291,6 +334,7 @@ const styles = StyleSheet.create({
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   monthRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 10, borderBottomWidth: 1 },
   monthLabel: { fontSize: 16, fontWeight: '600', marginHorizontal: 20 },
+  exportBtn: { marginLeft: 20, padding: 4 },
   cornerCell: { height: 40, borderWidth: 1, justifyContent: 'center', paddingHorizontal: 10 },
   headerText: { fontSize: 12, fontWeight: '600' },
   nameCell: { minHeight: 56, borderWidth: 1, borderTopWidth: 0, justifyContent: 'center', paddingHorizontal: 10, paddingVertical: 6 },
