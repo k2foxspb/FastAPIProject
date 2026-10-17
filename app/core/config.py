@@ -35,14 +35,14 @@ if _cors_origins_env:
 elif IS_PRODUCTION:
     CORS_ORIGINS = [
         "https://fokin.fun",
-        "https://79.133.183.129",
+        "https://91.122.55.13",
     ]
 else:
     CORS_ORIGINS = [
         "http://localhost:8081",
         "http://10.0.2.2:8081",
-        "http://79.133.183.129",
-        "https://79.133.183.129",
+        "http://91.122.55.13",
+        "https://91.122.55.13",
         "https://fokin.fun",
         "http://fokin.fan",
         "http://localhost",
@@ -60,7 +60,7 @@ if _allowed_hosts_env:
     ALLOWED_HOSTS = [host.strip() for host in _allowed_hosts_env.split(",") if host.strip()]
 elif IS_PRODUCTION:
     ALLOWED_HOSTS = [
-        "79.133.183.129",
+        "91.122.55.13",
         "fokin.fun",
         "fokin.fan",
         "web",  # Для внутренних запросов Docker
@@ -69,7 +69,7 @@ elif IS_PRODUCTION:
     ]
 else:
     ALLOWED_HOSTS = [
-        "79.133.183.129",
+        "91.122.55.13",
         "fokin.fun",
         "fokin.fan",
         "localhost",
