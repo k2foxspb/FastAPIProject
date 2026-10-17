@@ -11,8 +11,8 @@ ENV HOME=/home/fast \
 # создаем группу fast
 # создаем отдельного пользователя fast
 RUN mkdir -p $APP_HOME \
-  && addgroup -S fast \
-  && adduser -S fast -G fast
+  && groupadd --system fast \
+  && useradd --system --gid fast --home-dir $HOME --create-home fast
 
 # устанавливаем рабочую директорию
 WORKDIR $HOME
@@ -25,7 +25,7 @@ COPY requirements.txt alembic.ini .env* firebase-service-account.json* ./
 # установка зависимостей из списка requirements.txt
 # изменение владельца, для всех директорий и файлов проекта, на пользователя fast
 RUN pip install --upgrade pip \
- && pip install -r requirements.txt \
+ && pip install --no-cache-dir -r requirements.txt \
  && chown -R fast:fast .
 
 # изменение рабочего пользователя на fast
