@@ -14,10 +14,11 @@ x-common-env: &common-env
   POSTGRES_DB: ${POSTGRES_DB:-ecommerce_db}
   REDIS_PORT: ${REDIS_PORT:-6379}
   POSTGRES_PORT: ${POSTGRES_PORT:-5432}
-  MEDIA_ROOT: /home/fast/app/media
-  # S3 media storage
-  MEDIA_STORAGE: ${MEDIA_STORAGE:-s3}
-  YC_S3_DEFAULT_ACL: ${YC_S3_DEFAULT_ACL:-public-read}
+  # Локальное файловое хранилище (домашний сервер)
+  STORAGE_DRIVER: ${STORAGE_DRIVER:-local}
+  STORAGE_ROOT: ${STORAGE_ROOT:-/home/fast/app/media}
+  STORAGE_DISKS: ${STORAGE_DISKS:-}
+  STORAGE_STRATEGY: ${STORAGE_STRATEGY:-first_available}
 
 services:
 

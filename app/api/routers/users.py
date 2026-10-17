@@ -998,9 +998,6 @@ async def firebase_auth(
             last_name = " ".join(full_name.split(" ")[1:]) if full_name else (phone_number[-4:] if phone_number else "")
             picture = decoded_token.get("picture")
             
-            # Владельца определяем по email
-            user_role = "owner" if email == "k2foxspb@gmail.com" else "worker"
-            
             user = UserModel(
                 email=email,
                 phone_number=phone_number,
@@ -1009,7 +1006,7 @@ async def firebase_auth(
                 last_name=last_name,
                 is_active=True,
                 avatar_url=picture,
-                role=user_role
+                role="worker"
             )
             db.add(user)
             await db.commit()
@@ -1029,11 +1026,6 @@ async def firebase_auth(
                 is_updated = True
             if phone_number and not user.phone_number:
                 user.phone_number = phone_number
-                is_updated = True
-
-            # Если это владелец по email, гарантируем роль
-            if email == "k2foxspb@gmail.com" and user.role != "owner":
-                user.role = "owner"
                 is_updated = True
 
             if is_updated:
@@ -2232,8 +2224,7 @@ async def delete_photo(
         # В UserPhoto мы не храним ключи отдельно, поэтому пытаемся извлечь ключ из URL
         # или передаем как есть, если это локальный путь
         if db_photo.image_url.startswith("http"):
-            # Для S3 извлекаем ключ (category/filename)
-            # URL: https://storage.yandexcloud.net/bucket/users/file.jpg -> users/file.jpg
+            # Легаси-ссылка на внешнее хранилище: извлекаем ключ (category/filename)
             parts = db_photo.image_url.split("/")
             if len(parts) > 4:
                 key = "/".join(parts[4:])

@@ -1,118 +1,149 @@
-import io
+"""
+Публичный API слоя хранения файлов.
+
+Это единственная точка входа, которую должна использовать бизнес-логика
+приложения (роутеры и т.д.) для работы с файлами. Конкретная реализация
+хранилища (локальная файловая система с одним или несколькими дисками)
+полностью инкапсулирована в app.utils.local_storage.LocalStorageService -
+остальная часть приложения ничего не знает о дисках, путях или стратегиях
+выбора диска.
+
+Файлы хранятся локально на дисках домашнего сервера, настраиваемых через
+переменные окружения STORAGE_ROOT / STORAGE_DISKS / STORAGE_STRATEGY
+(см. app/core/config.py и .env.example).
+
+Публичный интерфейс:
+    save_file(category, filename_hint, fileobj, content_type=None, private=False) -> (url, key)
+    delete(category, key_or_path) -> None
+    read_file(file_metadata) -> bytes
+    get_file_stream(file_metadata) -> Iterator[bytes]
+    exists(file_metadata) -> bool
+    resolve_url(url_or_key) -> FileMetadata | None
+"""
 import os
-from typing import Tuple, Optional, IO
+from typing import IO, Iterator, Optional, Tuple
 from datetime import datetime
-from . import storage_s3
 
-IMAGE_CONTENT_TYPES = {"image/jpeg", "image/jpg", "image/png", "image/webp", "image/gif"}
-VIDEO_CONTENT_TYPES = {"video/mp4", "video/mpeg", "video/quicktime", "video/x-msvideo", "video/webm", "video/3gpp"}
-VIDEO_MAX_HEIGHT = 720       # максимальная высота видео (px)
-VIDEO_CRF = 28               # качество H.264 (18=лучше, 51=хуже)
-IMAGE_MAX_SIZE = (1920, 1920)   # максимальное разрешение
-IMAGE_QUALITY = 82              # качество JPEG/WebP (0-100)
+from loguru import logger
 
+from app.core import config
+from app.utils.local_storage import FileMetadata, LocalStorageService, safe_filename
+from app.utils.media_processing import (
+    IMAGE_CONTENT_TYPES,
+    VIDEO_CONTENT_TYPES,
+    compress_image,
+    compress_video,
+)
+from app.utils.storage_exceptions import (
+    DiskUnavailableError,
+    FileNotFoundInStorageError,
+    InsufficientSpaceError,
+    InvalidPathError,
+    StorageError,
+)
 
-def compress_image(fileobj: IO[bytes], content_type: Optional[str]) -> Tuple[IO[bytes], str]:
-    """
-    Сжимает изображение: уменьшает разрешение до IMAGE_MAX_SIZE и снижает качество.
-    Возвращает (новый fileobj, итоговый content_type).
-    Если файл не является изображением — возвращает оригинал без изменений.
-    """
-    ct = (content_type or "").lower()
-    if ct not in IMAGE_CONTENT_TYPES:
-        return fileobj, content_type or "application/octet-stream"
+__all__ = [
+    "IMAGE_CONTENT_TYPES",
+    "VIDEO_CONTENT_TYPES",
+    "compress_image",
+    "compress_video",
+    "StorageError",
+    "DiskUnavailableError",
+    "FileNotFoundInStorageError",
+    "InsufficientSpaceError",
+    "InvalidPathError",
+    "FileMetadata",
+    "build_key",
+    "save_file",
+    "delete",
+    "read_file",
+    "get_file_stream",
+    "exists",
+    "resolve_url",
+]
 
-    try:
-        from PIL import Image
-        img = Image.open(fileobj)
-        img = img.convert("RGB")
-        img.thumbnail(IMAGE_MAX_SIZE, Image.LANCZOS)
-        buf = io.BytesIO()
-        img.save(buf, format="JPEG", quality=IMAGE_QUALITY, optimize=True)
-        buf.seek(0)
-        return buf, "image/jpeg"
-    except Exception:
-        # если что-то пошло не так — возвращаем оригинал
-        fileobj.seek(0)
-        return fileobj, content_type or "application/octet-stream"
+MEDIA_URL_PREFIX = "/media/"
 
-def compress_video(fileobj: IO[bytes], content_type: Optional[str], filename_hint: str = "video.mp4") -> Tuple[IO[bytes], str, str]:
-    """
-    Сжимает видео через ffmpeg: масштаб до VIDEO_MAX_HEIGHT, кодек H.264/AAC.
-    Возвращает (новый fileobj, итоговый content_type, новое имя файла).
-    Если ffmpeg недоступен или произошла ошибка — возвращает оригинал без изменений.
-    """
-    import shutil
-    import tempfile
-    import subprocess
-
-    ct = (content_type or "").lower()
-    if ct not in VIDEO_CONTENT_TYPES:
-        return fileobj, content_type or "application/octet-stream", filename_hint
-
-    if not shutil.which("ffmpeg"):
-        return fileobj, content_type or "application/octet-stream", filename_hint
-
-    tmp_in_path = None
-    tmp_out_path = None
-    try:
-        suffix_in = os.path.splitext(filename_hint)[1] or ".mp4"
-        with tempfile.NamedTemporaryFile(suffix=suffix_in, delete=False) as tmp_in:
-            tmp_in.write(fileobj.read())
-            tmp_in_path = tmp_in.name
-
-        tmp_out_path = tmp_in_path + "_out.mp4"
-        cmd = [
-            "ffmpeg", "-y", "-i", tmp_in_path,
-            "-vf", f"scale=-2:'min({VIDEO_MAX_HEIGHT},ih)'",
-            "-c:v", "libx264", "-crf", str(VIDEO_CRF), "-preset", "fast",
-            "-c:a", "aac", "-b:a", "128k",
-            "-movflags", "+faststart",
-            tmp_out_path
-        ]
-        result = subprocess.run(cmd, capture_output=True, timeout=300)
-        if result.returncode != 0:
-            raise RuntimeError(result.stderr.decode(errors="replace"))
-
-        with open(tmp_out_path, "rb") as f:
-            buf = io.BytesIO(f.read())
-        buf.seek(0)
-
-        new_name = os.path.splitext(filename_hint)[0] + ".mp4"
-        return buf, "video/mp4", new_name
-    except Exception:
-        fileobj.seek(0)
-        return fileobj, content_type or "application/octet-stream", filename_hint
-    finally:
-        for p in (tmp_in_path, tmp_out_path):
-            try:
-                if p and os.path.exists(p):
-                    os.remove(p)
-            except Exception:
-                pass
-
-
-MEDIA_STORAGE = os.getenv("MEDIA_STORAGE", "local").lower()
+# Единственный экземпляр сервиса хранения на процесс (переиспользуется между запросами).
+_service = LocalStorageService(disks=config.STORAGE_DISKS, strategy=config.STORAGE_STRATEGY)
 
 
 def _timestamped_name(filename_hint: str) -> str:
-    base = filename_hint.strip().replace(" ", "_") or "file"
+    base = safe_filename(filename_hint) or "file"
     ts = datetime.utcnow().strftime("%Y%m%d%H%M%S%f")
     return f"{ts}_{base}"
 
 
 def build_key(category: str, filename_hint: str) -> str:
+    """Строит относительный путь файла внутри хранилища (category/имя_с_таймстампом)."""
     name = _timestamped_name(filename_hint)
     category = (category or "misc").strip("/")
     return f"{category}/{name}"
 
 
-def save_file(category: str, filename_hint: str, fileobj: IO[bytes], content_type: Optional[str] = None, private: bool = False) -> Tuple[str, str]:
+def _encode_key(metadata: FileMetadata) -> str:
+    """Кодирует diskId и relativePath в единую строку-ключ для хранения во внешнем коде (БД)."""
+    return f"{metadata.disk_id}:{metadata.relative_path}"
+
+
+def _decode_key(key: str) -> Optional[FileMetadata]:
+    """Пытается распарсить ключ, созданный _encode_key. Возвращает None, если формат не распознан."""
+    if not key or ":" not in key:
+        return None
+    disk_id, _, rel_path = key.partition(":")
+    if disk_id in _service.disk_ids:
+        return FileMetadata(disk_id=disk_id, relative_path=rel_path)
+    return None
+
+
+def resolve_url(url_or_key: str) -> Optional[FileMetadata]:
     """
-    Saves file and returns a tuple (url_or_path, key_or_path).
-    - If MEDIA_STORAGE == 's3', uploads to S3 and returns (public_url_or_s3url, key)
-    - Else saves under MEDIA_ROOT and returns ("/media/...", fs_path)
-    Images are automatically compressed before saving.
+    Находит метаданные файла по URL (/media/category/name.jpg), по новому ключу
+    ("diskN:category/name.jpg") или по голому относительному пути ("category/name.jpg").
+    Выполняет fallback-поиск по всем дискам. Возвращает None, если файл не найден
+    или ссылка указывает на внешний ресурс.
+    """
+    if not url_or_key:
+        return None
+
+    if url_or_key.startswith(("http://", "https://", "s3://")):
+        # Внешняя ссылка - локально такого файла нет.
+        return None
+
+    decoded = _decode_key(url_or_key)
+    if decoded is not None:
+        return decoded
+
+    rel_path = url_or_key
+    if rel_path.startswith(MEDIA_URL_PREFIX):
+        rel_path = rel_path[len(MEDIA_URL_PREFIX):]
+    rel_path = rel_path.lstrip("/")
+
+    try:
+        return _service.find_by_relative_path(rel_path)
+    except InvalidPathError as e:
+        logger.warning(f"Небезопасный путь при разрешении файла {url_or_key!r}: {e}")
+        return None
+
+
+def save_file(
+    category: str,
+    filename_hint: str,
+    fileobj: IO[bytes],
+    content_type: Optional[str] = None,
+    private: bool = False,
+) -> Tuple[str, str]:
+    """
+    Сохраняет файл в локальное хранилище (с поддержкой нескольких дисков) и
+    возвращает кортеж (url, key):
+      - url - путь вида "/media/category/имя_файла.ext", по которому файл
+        отдаётся через HTTP (см. app/main.py);
+      - key - непрозрачный ключ "diskN:category/имя_файла.ext", который можно
+        сохранить в БД для последующего однозначного удаления/чтения файла.
+
+    Изображения автоматически сжимаются перед сохранением; `private` оставлен
+    для обратной совместимости сигнатуры (локальное хранилище не разделяет
+    файлы по ACL - доступ ограничивается на уровне API).
     """
     fileobj, content_type = compress_image(fileobj, content_type)
 
@@ -125,31 +156,56 @@ def save_file(category: str, filename_hint: str, fileobj: IO[bytes], content_typ
     if ct_check in VIDEO_CONTENT_TYPES:
         fileobj, content_type, filename_hint = compress_video(fileobj, content_type, filename_hint)
 
-    if MEDIA_STORAGE == "s3":
-        key = build_key(category, filename_hint)
-        acl = "private" if private else None  # None -> default ACL from env
-        url = storage_s3.upload_fileobj(fileobj, key, content_type, acl=acl)
-        return url, key
+    relative_path = build_key(category, filename_hint)
+    metadata = _service.save_file(
+        fileobj,
+        relative_path,
+        original_filename=filename_hint,
+        mime_type=content_type,
+    )
 
-    # local
-    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    media_root = os.getenv("MEDIA_ROOT", os.path.join(project_root, "media"))
-    os.makedirs(os.path.join(media_root, category), exist_ok=True)
-    name = _timestamped_name(filename_hint)
-    fs_path = os.path.join(media_root, category, name)
-    with open(fs_path, "wb") as out:
-        out.write(fileobj.read())
-    rel_url = f"/media/{category}/{name}"
-    return rel_url, fs_path
+    url = f"{MEDIA_URL_PREFIX}{metadata.relative_path}"
+    key = _encode_key(metadata)
+    return url, key
 
 
 def delete(category_or_key: str, key_or_path: str) -> None:
-    if MEDIA_STORAGE == "s3":
-        storage_s3.delete_object(key_or_path)
+    """
+    Удаляет файл из хранилища. Принимает как новый ключ ("diskN:category/name"),
+    так и legacy-значения, которые раньше сохранялись в БД: относительный URL
+    ("/media/category/name") или "голый" относительный путь. Ссылки на внешние
+    ресурсы (http/s3) безопасно пропускаются - локально такого файла нет.
+    """
+    if not key_or_path:
         return
-    # local
+
+    if key_or_path.startswith(("http://", "https://", "s3://")):
+        logger.warning(f"Удаление файла по внешней ссылке не поддерживается: {key_or_path}")
+        return
+
+    metadata = resolve_url(key_or_path)
+    if metadata is None:
+        logger.warning(f"Файл для удаления не найден в локальном хранилище: {key_or_path}")
+        return
+
     try:
-        if os.path.exists(key_or_path):
-            os.remove(key_or_path)
-    except Exception:
-        pass
+        deleted = _service.delete_file(metadata)
+        if not deleted:
+            logger.warning(f"Файл для удаления не найден на диске {metadata.disk_id}: {metadata.relative_path}")
+    except StorageError as e:
+        logger.warning(f"Не удалось удалить файл {key_or_path}: {e}")
+
+
+def read_file(file_metadata: FileMetadata, fallback: bool = True) -> bytes:
+    """Читает содержимое файла целиком по его метаданным (diskId + relativePath)."""
+    return _service.read_file(file_metadata, fallback=fallback)
+
+
+def get_file_stream(file_metadata: FileMetadata, fallback: bool = True) -> Iterator[bytes]:
+    """Возвращает потоковый итератор по содержимому файла (для отдачи через HTTP без буферизации целиком)."""
+    return _service.get_file_stream(file_metadata, fallback=fallback)
+
+
+def exists(file_metadata: FileMetadata) -> bool:
+    """Проверяет, существует ли файл по его метаданным."""
+    return _service.exists(file_metadata)

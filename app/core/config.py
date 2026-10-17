@@ -142,4 +142,25 @@ SESSION_HTTPS_ONLY = IS_PRODUCTION
 # Документация API (Swagger/ReDoc) отключается в продакшене, если явно не разрешена.
 ENABLE_API_DOCS = os.getenv("ENABLE_API_DOCS", "false" if IS_PRODUCTION else "true").lower() == "true"
 
+# --- Файловое хранилище (локальное, домашний сервер) ---
+# STORAGE_DRIVER зарезервирован на будущее (сейчас поддерживается только "local").
+STORAGE_DRIVER = os.getenv("STORAGE_DRIVER", "local").lower()
+
+# Базовый путь к хранилищу "по умолчанию" (используется, если STORAGE_DISKS не задан).
+_project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+STORAGE_ROOT = os.getenv("STORAGE_ROOT") or os.getenv("MEDIA_ROOT") or os.path.join(_project_root, "media")
+
+# Список путей к нескольким дискам хранилища через запятую, например:
+# STORAGE_DISKS=/mnt/disk1,/mnt/disk2,/mnt/disk3
+# Если не задан - используется единственный диск STORAGE_ROOT.
+_storage_disks_env = os.getenv("STORAGE_DISKS")
+if _storage_disks_env:
+    STORAGE_DISKS = [p.strip() for p in _storage_disks_env.split(",") if p.strip()]
+else:
+    STORAGE_DISKS = [STORAGE_ROOT]
+
+# Стратегия выбора диска при сохранении файла:
+# first_available (по умолчанию) | round_robin | most_free_space
+STORAGE_STRATEGY = os.getenv("STORAGE_STRATEGY", "first_available").lower()
+
 

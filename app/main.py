@@ -1,5 +1,4 @@
-from fastapi import FastAPI, Request, status
-from fastapi.staticfiles import StaticFiles
+from fastapi import FastAPI, HTTPException, Request, status
 from pydantic import ValidationError
 from starlette.templating import Jinja2Templates
 import os
@@ -67,33 +66,36 @@ def create_application() -> FastAPI:
             logger.warning(f"Could not preload positions cache on startup: {e}")
 
 
-    # Static files (media)
-    # Use a single, consistent absolute path that matches docker-compose and Nginx
+    # Файлы (media) теперь отдаются через слой хранения app.utils.storage,
+    # который умеет искать файл на любом из настроенных дисков
+    # (STORAGE_ROOT/STORAGE_DISKS, см. app/core/config.py и .env.example),
+    # вместо того чтобы полагаться на единственную примонтированную директорию.
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # /home/fast/app
-    media_dir = os.path.join(project_root, "media")                             # /home/fast/app/media
 
-    # Create required media subfolders (no errors if volume is mounted readonly in nginx)
-    try:
-        os.makedirs(media_dir, exist_ok=True)
-        for subdir in ["users", "news", "products", "chat", "app"]:
-            os.makedirs(os.path.join(media_dir, subdir), exist_ok=True)
-    except Exception as e:
-        # In case of permission issues on a fresh named volume, continue startup;
-        # web will still serve existing files, and init job will fix ownership.
-        logger.warning(f"Could not ensure media directories at {media_dir}: {e}")
+    from fastapi.responses import StreamingResponse
+    import mimetypes
+    from app.utils import storage as storage_service
+    from app.utils.storage_exceptions import FileNotFoundInStorageError, StorageError
 
-    from fastapi.responses import FileResponse
-    class CustomStaticFiles(StaticFiles):
-        async def get_response(self, path: str, scope):
-            response = await super().get_response(path, scope)
-            if response.status_code == 404 and "_thumb" in path:
-                # Fallback to the original image if thumbnail is missing
-                original_path = path.replace("_thumb", "")
-                return await super().get_response(original_path, scope)
-            return response
+    @app.get("/media/{file_path:path}")
+    async def serve_media(file_path: str):
+        metadata = storage_service.resolve_url(file_path)
+        if metadata is None and "_thumb" in file_path:
+            # Фолбэк на оригинал, если миниатюра отсутствует
+            metadata = storage_service.resolve_url(file_path.replace("_thumb", ""))
+        if metadata is None:
+            raise HTTPException(status_code=404, detail="File not found")
 
-    logger.debug(f"Serving media from {media_dir}")
-    app.mount("/media", CustomStaticFiles(directory=media_dir), name="media")
+        try:
+            stream = storage_service.get_file_stream(metadata)
+        except FileNotFoundInStorageError:
+            raise HTTPException(status_code=404, detail="File not found")
+        except StorageError as e:
+            logger.warning(f"Storage error while serving {file_path}: {e}")
+            raise HTTPException(status_code=503, detail="Storage temporarily unavailable")
+
+        mime_type = metadata.mime_type or mimetypes.guess_type(file_path)[0] or "application/octet-stream"
+        return StreamingResponse(stream, media_type=mime_type)
 
     # Добавляем отдачу файла верификации Mail.ru напрямую из корня
 
