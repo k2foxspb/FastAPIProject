@@ -730,6 +730,8 @@ async def request_phone_code(
     from app.core.config import REDIS_HOST, REDIS_PORT, IS_PRODUCTION, SMS_FALLBACK_ENABLED
     from app.core.hilink_sms import send_sms as hilink_send_sms
 
+    logger.info(f"[Auth] Вызван endpoint request-phone-code, получен номер телефона: {request.phone_number}")
+
     phone = request.phone_number
     if not phone:
         raise HTTPException(status_code=400, detail="Phone number is required")
@@ -793,20 +795,34 @@ async def request_phone_code(
     message_sms = f"Kod podtverzhdeniya: {code}"
 
     # Huawei HiLink - основной провайдер отправки SMS
-    sent = await hilink_send_sms(phone, message_sms)
+    logger.info(f"[Auth] Способ отправки SMS: HiLink-модем (основной провайдер) для {clean_phone}")
+    try:
+        sent = await hilink_send_sms(phone, message_sms)
+    except Exception as e:
+        logger.exception(f"[Auth] Исключение при отправке SMS через HiLink-модем для {clean_phone}: {e}")
+        sent = False
+    logger.info(f"[Auth] Результат отправки SMS через HiLink для {clean_phone}: {'успешно' if sent else 'неудачно'}")
 
     # Резервный провайдер - только если явно включен и HiLink не сработал
     if not sent and SMS_FALLBACK_ENABLED:
         logger.warning(f"[Auth] HiLink send failed for {clean_phone}, trying fallback SMS provider")
-        sent = await _send_fallback_sms(phone, code)
+        logger.info(f"[Auth] Способ отправки SMS: резервный провайдер (SMS.RU/SMSC.RU) для {clean_phone}")
+        try:
+            sent = await _send_fallback_sms(phone, code)
+        except Exception as e:
+            logger.exception(f"[Auth] Исключение при отправке SMS через резервный провайдер для {clean_phone}: {e}")
+            sent = False
+        logger.info(f"[Auth] Результат отправки SMS через резервный провайдер для {clean_phone}: {'успешно' if sent else 'неудачно'}")
 
     if not sent:
         logger.error(f"[Auth] Failed to deliver SMS code for {clean_phone}")
+        logger.error(f"[Auth] Клиенту НЕ будет возвращён 200 - отправка SMS не удалась, возвращается 502 для {clean_phone}")
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Не удалось отправить SMS с кодом подтверждения. Попробуйте позже."
         )
 
+    logger.info(f"[Auth] Отправка SMS успешна, клиенту возвращается 200 для {clean_phone}")
     return {"message": "Verification code sent successfully", "phone": clean_phone}
 
 
