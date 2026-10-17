@@ -60,18 +60,6 @@ function AppContent() {
         Profile: {
           screens: {
             Login: 'login',
-            VerifyEmail: {
-              path: 'verify-email',
-              exact: false,
-            },
-            VerifyEmailBridge: {
-              path: 'users/verify-email',
-              exact: false,
-            },
-            FirebaseAction: {
-              path: '__/auth/action',
-              exact: false,
-            }
           },
         },
       },

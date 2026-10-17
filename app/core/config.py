@@ -112,6 +112,15 @@ RECAPTCHA_SITE_KEY_DEFAULT = os.getenv("RECAPTCHA_SITE_KEY_DEFAULT", "")
 RECAPTCHA_SITE_KEY = os.getenv("RECAPTCHA_SITE_KEY", RECAPTCHA_SITE_KEY_DEFAULT)
 RECAPTCHA_API_KEY = os.getenv("RECAPTCHA_API_KEY", "")
 
+# Huawei HiLink-модем - основной провайдер SMS-кодов подтверждения.
+HILINK_SMS_ENABLED = os.getenv("HILINK_SMS_ENABLED", "true").lower() == "true"
+HILINK_BASE_URL = os.getenv("HILINK_BASE_URL", "http://192.168.8.1").rstrip("/")
+HILINK_SMS_TIMEOUT = float(os.getenv("HILINK_SMS_TIMEOUT", "10"))
+
+# SMS.RU/SMSC - НЕ используются по умолчанию. Это резервный способ,
+# который включается только явно через SMS_FALLBACK_ENABLED=true и
+# используется, только если отправка через HiLink не удалась.
+SMS_FALLBACK_ENABLED = os.getenv("SMS_FALLBACK_ENABLED", "false").lower() == "true"
 SMS_RU_API_KEY = os.getenv("SMS_RU_API_KEY")
 SMS_CENTER_LOGIN = os.getenv("SMS_CENTER_LOGIN")
 SMS_CENTER_PASSWORD = os.getenv("SMS_CENTER_PASSWORD")

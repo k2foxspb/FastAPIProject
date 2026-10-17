@@ -643,110 +643,171 @@ async def refresh_token_access(
 # Глобальный кэш в памяти (абсолютный fallback) на случай проблем с Redis
 _phone_code_cache = {}
 
+# Лимиты отправки SMS-кодов подтверждения
+PHONE_CODE_TTL_SECONDS = 600            # код действителен 10 минут
+PHONE_CODE_MIN_INTERVAL_SECONDS = 60    # не чаще 1 SMS в 60 секунд на номер
+PHONE_CODE_WINDOW_SECONDS = 900         # окно для лимита количества SMS (15 минут)
+PHONE_CODE_MAX_PER_WINDOW = 5           # не более 5 SMS за 15 минут на номер
+PHONE_CODE_MAX_VERIFY_ATTEMPTS = 5      # лимит попыток ввода кода
+
+
+def _normalize_phone_number(phone: str) -> str:
+    """
+    Нормализует номер телефона, оставляя только цифры и приводя 8... к 7...
+    для единообразия ключей в Redis.
+    """
+    clean_phone = "".join(filter(str.isdigit, phone))
+    if clean_phone.startswith('8') and len(clean_phone) == 11:
+        clean_phone = '7' + clean_phone[1:]
+    return clean_phone
+
+
+async def _send_fallback_sms(phone: str, code: str) -> bool:
+    """
+    Резервная отправка SMS через SMS.RU/SMSC.RU.
+    Используется ТОЛЬКО если SMS_FALLBACK_ENABLED=true и отправка через
+    Huawei HiLink-модем не удалась. HiLink остается основным провайдером.
+    """
+    from app.core.config import SMS_RU_API_KEY, SMS_CENTER_LOGIN, SMS_CENTER_PASSWORD
+
+    message_sms = f"Kod podtverzhdeniya: {code}"
+
+    if SMS_RU_API_KEY:
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                res = await client.get(
+                    "https://sms.ru/sms/send",
+                    params={
+                        "api_id": SMS_RU_API_KEY,
+                        "to": phone,
+                        "msg": message_sms,
+                        "json": 1
+                    }
+                )
+                data = res.json()
+                if data.get("status") == "OK":
+                    logger.info(f"[Auth] Fallback SMS sent via SMS.RU to {phone}")
+                    return True
+                logger.error(f"[Auth] SMS.RU fallback failed. Status: {data.get('status')}")
+        except Exception as e:
+            logger.error(f"[Auth] SMS.RU fallback exception: {e}")
+
+    if SMS_CENTER_LOGIN and SMS_CENTER_PASSWORD:
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                res = await client.get(
+                    "https://smsc.ru/sys/send.php",
+                    params={
+                        "login": SMS_CENTER_LOGIN,
+                        "psw": SMS_CENTER_PASSWORD,
+                        "phones": phone,
+                        "mes": message_sms,
+                        "fmt": 3  # JSON
+                    }
+                )
+                data = res.json()
+                if "error" not in data:
+                    logger.info(f"[Auth] Fallback SMS sent via SMSC.RU to {phone}")
+                    return True
+                logger.error(f"[Auth] SMS-Center fallback failed. Code: {data.get('error_code')}")
+        except Exception as e:
+            logger.error(f"[Auth] SMS-Center fallback exception: {e}")
+
+    return False
+
+
 @router.post("/request-phone-code", response_model=PhoneCodeResponse)
 async def request_phone_code(
     request: RequestCodeRequest,
     db: AsyncSession = Depends(get_async_db)
 ):
     """
-    Генерирует код подтверждения для номера телефона и отправляет его через SMS-провайдера.
+    Генерирует код подтверждения для номера телефона и отправляет его через
+    Huawei HiLink-модем (основной SMS-провайдер). SMS.RU/SMSC используются
+    только как резерв, если явно включены через SMS_FALLBACK_ENABLED и
+    отправка через модем не удалась.
     """
+    from app.core.config import REDIS_HOST, REDIS_PORT, IS_PRODUCTION, SMS_FALLBACK_ENABLED
+    from app.core.hilink_sms import send_sms as hilink_send_sms
+
     phone = request.phone_number
     if not phone:
         raise HTTPException(status_code=400, detail="Phone number is required")
 
-    # Очистка номера (оставляем только цифры для ключа в Redis и SMSC)
-    clean_phone = "".join(filter(str.isdigit, phone))
-    # ВАЖНО: Нормализуем 8... в 7... для единообразия в Redis
-    if clean_phone.startswith('8') and len(clean_phone) == 11:
-        clean_phone = '7' + clean_phone[1:]
-        
+    # Нормализация номера телефона (только цифры, 8... -> 7...)
+    clean_phone = _normalize_phone_number(phone)
+    if not clean_phone:
+        raise HTTPException(status_code=400, detail="Invalid phone number")
+
     # Для ключа в Redis используем только цифры, чтобы формат не влиял
     redis_key = f"phone_code:{clean_phone}"
-    
-    # Генерируем 4-значный код (дешевле и стандартнее для звонков)
-    code = str(secrets.randbelow(9000) + 1000)
-    
-    from app.core.config import REDIS_HOST, REDIS_PORT, SMS_RU_API_KEY, SMS_CENTER_LOGIN, SMS_CENTER_PASSWORD
-    
-    # Сохраняем в глобальный кэш в памяти (fallback)
-    _phone_code_cache[clean_phone] = code
-    
+    rate_last_key = f"phone_code_rate_last:{clean_phone}"
+    rate_count_key = f"phone_code_rate_count:{clean_phone}"
+    attempts_key = f"phone_code_attempts:{clean_phone}"
+
+    r = None
     try:
         r = aioredis.Redis(host=REDIS_HOST, port=int(REDIS_PORT), db=1)
-        await r.setex(redis_key, 600, code) # Увеличили время жизни до 10 минут
-        logger.info(f"[Auth] Generated code {code} for phone {clean_phone} (saved to Redis key: {redis_key})")
+
+        # Rate limit: не чаще 1 SMS в 60 секунд на номер
+        allowed = await r.set(rate_last_key, "1", ex=PHONE_CODE_MIN_INTERVAL_SECONDS, nx=True)
+        if not allowed:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Слишком частые запросы кода. Повторите попытку через минуту."
+            )
+
+        # Rate limit: не более 5 SMS за 15 минут на номер
+        count = await r.incr(rate_count_key)
+        if count == 1:
+            await r.expire(rate_count_key, PHONE_CODE_WINDOW_SECONDS)
+        if count > PHONE_CODE_MAX_PER_WINDOW:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Превышен лимит отправки SMS-кодов. Попробуйте позже."
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[Auth] Redis rate-limit error: {e}")
+
+    # Генерируем 4-значный код подтверждения
+    code = str(secrets.randbelow(9000) + 1000)
+
+    # Сохраняем в глобальный кэш в памяти (fallback на случай проблем с Redis)
+    _phone_code_cache[clean_phone] = code
+
+    try:
+        if r is None:
+            r = aioredis.Redis(host=REDIS_HOST, port=int(REDIS_PORT), db=1)
+        await r.setex(redis_key, PHONE_CODE_TTL_SECONDS, code)
+        await r.delete(attempts_key)
+        # Код не логируется в production, чтобы не раскрывать его в логах
+        if not IS_PRODUCTION:
+            logger.info(f"[Auth] Generated code {code} for phone {clean_phone} (saved to Redis key: {redis_key})")
+        else:
+            logger.info(f"[Auth] Generated verification code for phone {clean_phone}")
     except Exception as e:
         logger.error(f"[Auth] Redis error: {e}. Falling back to memory cache.")
 
-    # Отправка через SMS-провайдеров
-    # Для звонка-пароля (call=1) в mes передаем ТОЛЬКО цифры кода.
-    message_sms = f"Код подтверждения: {code}"
-    sent = False
+    message_sms = f"Kod podtverzhdeniya: {code}"
 
-    # 1. Пробуем SMS.RU (Flash Call или SMS)
-    if SMS_RU_API_KEY and not sent:
-        try:
-            async with httpx.AsyncClient() as client:
-                res = await client.get(
-                    "https://sms.ru/code/call",
-                    params={
-                        "api_id": SMS_RU_API_KEY,
-                        "phone": clean_phone,
-                        "json": 1
-                    },
-                    timeout=10.0
-                )
-                data = res.json()
-                if data.get("status") == "OK":
-                    code = str(data.get("code"))
-                    _phone_code_cache[clean_phone] = code
-                    try:
-                        r = aioredis.Redis(host=REDIS_HOST, port=int(REDIS_PORT), db=1)
-                        await r.setex(redis_key, 600, code)
-                    except: pass
-                    logger.info(f"[Auth] Flash call sent via SMS.RU to {clean_phone}")
-                    sent = True
-        except Exception as e:
-            logger.error(f"[Auth] SMS.RU exception: {e}")
+    # Huawei HiLink - основной провайдер отправки SMS
+    sent = await hilink_send_sms(phone, message_sms)
 
-    # 2. Пробуем SMS-Center (Flash Call)
-    if SMS_CENTER_LOGIN and SMS_CENTER_PASSWORD and not sent:
-        try:
-            async with httpx.AsyncClient() as client:
-                res = await client.get(
-                    "https://smsc.ru/sys/send.php",
-                    params={
-                        "login": SMS_CENTER_LOGIN,
-                        "psw": SMS_CENTER_PASSWORD,
-                        "phones": clean_phone,
-                        "mes": "code", # Просим SMSC сгенерировать код самому
-                        "call": 1,     # Флаг звонка
-                        "fmt": 3       # JSON
-                    },
-                    timeout=10.0
-                )
-                data = res.json()
-                smsc_generated_code = data.get("code")
-                if "error" not in data and smsc_generated_code:
-                    code = str(smsc_generated_code)
-                    _phone_code_cache[clean_phone] = code
-                    try:
-                        r = aioredis.Redis(host=REDIS_HOST, port=int(REDIS_PORT), db=1)
-                        await r.setex(redis_key, 600, code)
-                    except: pass
-                    logger.info(f"[Auth] Flash Call sent via SMSC.RU to {clean_phone}")
-                    sent = True
-                else:
-                    logger.error(f"[Auth] SMS-Center Flash Call failed. Data: {data}")
-        except Exception as e:
-            logger.error(f"[Auth] SMS-Center exception: {e}")
+    # Резервный провайдер - только если явно включен и HiLink не сработал
+    if not sent and SMS_FALLBACK_ENABLED:
+        logger.warning(f"[Auth] HiLink send failed for {clean_phone}, trying fallback SMS provider")
+        sent = await _send_fallback_sms(phone, code)
 
     if not sent:
-        logger.warning(f"[Auth] No SMS provider worked for {clean_phone}. Simulation mode.")
-        return {"message": "Verification code (SIMULATION mode)", "phone": clean_phone}
-    
-    return {"message": "Verification call sent successfully", "phone": clean_phone}
+        logger.error(f"[Auth] Failed to deliver SMS code for {clean_phone}")
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Не удалось отправить SMS с кодом подтверждения. Попробуйте позже."
+        )
+
+    return {"message": "Verification code sent successfully", "phone": clean_phone}
 
 
 @router.post("/verify-phone-code", response_model=TokenResponse)
@@ -756,30 +817,45 @@ async def verify_phone_code(
 ):
     """
     Проверяет код подтверждения и возвращает токены доступа.
+    Количество попыток ввода кода ограничено (защита от подбора).
     """
+    from app.core.config import REDIS_HOST, REDIS_PORT
+
     phone = request.phone_number
     code = request.code
-    
-    # Нормализация номера телефона (только цифры)
-    clean_phone = "".join(filter(str.isdigit, phone))
-    if clean_phone.startswith('8') and len(clean_phone) == 11:
-        clean_phone = '7' + clean_phone[1:]
-    
+
+    # Нормализация номера телефона (только цифры, 8... -> 7...)
+    clean_phone = _normalize_phone_number(phone)
+    if not clean_phone:
+        raise HTTPException(status_code=400, detail="Invalid phone number")
+
     redis_key = f"phone_code:{clean_phone}"
-    
-    from app.core.config import REDIS_HOST, REDIS_PORT
-    
+    attempts_key = f"phone_code_attempts:{clean_phone}"
+
     is_valid = False
-    
-    # 1. Проверяем в Redis
+
+    # 1. Проверяем в Redis (с лимитом попыток ввода кода)
     try:
         r = aioredis.Redis(host=REDIS_HOST, port=int(REDIS_PORT), db=1)
+
+        attempts = await r.incr(attempts_key)
+        if attempts == 1:
+            await r.expire(attempts_key, PHONE_CODE_TTL_SECONDS)
+        if attempts > PHONE_CODE_MAX_VERIFY_ATTEMPTS:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Превышено количество попыток ввода кода. Запросите новый код."
+            )
+
         stored_code = await r.get(redis_key)
         if stored_code:
             stored_code_str = stored_code.decode()
             if stored_code_str == code:
                 is_valid = True
                 await r.delete(redis_key)
+                await r.delete(attempts_key)
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"[Auth] Redis error: {e}")
 

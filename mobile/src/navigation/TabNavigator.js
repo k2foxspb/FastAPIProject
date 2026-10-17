@@ -160,10 +160,6 @@ function ProfileStack() {
       <Stack.Screen name="UserProfile" component={UserProfileScreen} options={{ title: 'Профиль пользователя' }} />
       <Stack.Screen name="UserHierarchy" component={UserHierarchyScreen} options={{ title: 'Сотрудники' }} />
       <Stack.Screen name="WebView" component={WebViewScreen} />
-      <Stack.Screen name="VerifyEmail" component={LoginScreen} options={{ title: 'Подтверждение' }} />
-      <Stack.Screen name="VerifyEmailBridge" component={LoginScreen} options={{ title: 'Подтверждение' }} />
-      <Stack.Screen name="FirebaseVerify" component={LoginScreen} options={{ title: 'Подтверждение' }} />
-      <Stack.Screen name="FirebaseAction" component={LoginScreen} options={{ title: 'Подтверждение' }} />
       <Stack.Screen 
         name="Login" 
         component={LoginScreen} 

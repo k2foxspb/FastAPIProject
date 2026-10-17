@@ -109,28 +109,10 @@ export const initAuth = async () => {
 
 export const usersApi = {
   getMe: (appVersion = null) => api.get('/users/me', { params: { app_version: appVersion } }),
-  login: (username, password, fcmToken = null) => {
-    const params = new URLSearchParams();
-    params.append('username', username);
-    params.append('password', password);
-    if (fcmToken) {
-      params.append('fcm_token', fcmToken);
-    }
-    return api.post('/users/token', params, {
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-    });
-  },
   refreshAccessToken: (refreshToken) => authClient.post('/users/refresh-token-access', { refresh_token: refreshToken }),
   // Пользователи
   getUsers: (search) => api.get('/users/', { params: { search } }),
   getUser: (id) => api.get(`/users/${id}`),
-  register: (formData) => api.post('/users/', formData, {
-    headers: {
-      'Content-Type': 'multipart/form-data',
-    },
-  }),
 
   // Альбомы
   getAlbums: () => api.get('/users/albums'),
@@ -176,8 +158,6 @@ export const usersApi = {
   deletePhotoComment: (commentId) => api.delete(`/users/photos/comments/${commentId}`),
   reactToPhotoComment: (commentId, reactionType) => api.post(`/users/photos/comments/${commentId}/react`, null, { params: { reaction_type: reactionType } }),
   updateFcmToken: (token) => api.post('/users/fcm-token', { fcm_token: token }),
-  googleAuth: (idToken, fcmToken = null, recaptchaToken = null) => api.post('/users/firebase-auth', { id_token: idToken, fcm_token: fcmToken, recaptcha_token: recaptchaToken }),
-  firebaseAuth: (idToken, fcmToken = null, recaptchaToken = null) => api.post('/users/firebase-auth', { id_token: idToken, fcm_token: fcmToken, recaptcha_token: recaptchaToken }),
   requestPhoneCode: (phoneNumber) => api.post('/users/request-phone-code', { phone_number: phoneNumber }),
   verifyPhoneCode: (phoneNumber, code) => api.post('/users/verify-phone-code', { phone_number: phoneNumber, code }),
   updateMe: (formData) => api.patch('/users/me', formData, {
