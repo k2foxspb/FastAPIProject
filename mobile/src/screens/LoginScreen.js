@@ -180,7 +180,7 @@ export default function LoginScreen({navigation}) {
                     </View>
                 </Animated.View>
 
-                <Text style={[styles.title, {color: colors.text}]}>FokinShop</Text>
+                <Text style={[styles.title, {color: colors.text}]}>Fokin</Text>
                 <Text style={[styles.subtitle, {color: colors.textSecondary}]}>
                     Вход по номеру телефона
                 </Text>
