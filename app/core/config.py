@@ -163,4 +163,11 @@ else:
 # first_available (по умолчанию) | round_robin | most_free_space
 STORAGE_STRATEGY = os.getenv("STORAGE_STRATEGY", "first_available").lower()
 
+# --- Локальный ИИ (Ollama) ---
+# Backend обращается к Ollama напрямую (внутри того же сервера/контейнера),
+# мобильное приложение НИКОГДА не ходит в Ollama само - только через
+# backend-эндпоинт POST /api/ai/chat.
+OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434").rstrip("/")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5:7b-instruct")
+
 
