@@ -68,7 +68,16 @@ async def ai_chat(payload: Dict[str, Any] = Body(...)):
             response.raise_for_status()
             data = response.json()
     except httpx.RequestError as e:
-        logger.error(f"Ollama недоступна ({OLLAMA_URL}): {e}")
+        logger.error(
+            f"Ollama недоступна ({OLLAMA_URL}): {e}. "
+            "Проверьте на сервере: 1) запущен ли сервис Ollama (systemctl status ollama); "
+            "2) слушает ли он 0.0.0.0, а не только 127.0.0.1 (переменная OLLAMA_HOST=0.0.0.0 "
+            "в systemd-юните ollama.service, затем systemctl restart ollama); "
+            "3) актуален ли OLLAMA_URL в .env на сервере (для backend в Docker - "
+            "http://host.docker.internal:11434, для backend на хосте - http://localhost:11434) "
+            "и был ли пересоздан контейнер web после изменения .env "
+            "(docker compose up -d --build web)."
+        )
         raise HTTPException(status_code=500, detail="Сервис ИИ временно недоступен. Попробуйте позже.")
     except httpx.HTTPStatusError as e:
         logger.error(f"Ollama вернула ошибку {e.response.status_code}: {e.response.text}")
