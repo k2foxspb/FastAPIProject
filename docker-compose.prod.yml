@@ -19,6 +19,12 @@ x-common-env: &common-env
   STORAGE_ROOT: ${STORAGE_ROOT:-/home/fast/app/media}
   STORAGE_DISKS: ${STORAGE_DISKS:-}
   STORAGE_STRATEGY: ${STORAGE_STRATEGY:-first_available}
+  # Значение по умолчанию задано прямо тут (а не только в .env), чтобы
+  # не "откатываться" на localhost:11434, если .env на сервере отсутствует,
+  # был пересоздан "с нуля" при редеплое или потерял эту переменную
+  # (.env не версионируется и не попадает в git).
+  OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}
+  OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:7b-instruct}
 
 services:
 

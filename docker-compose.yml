@@ -18,6 +18,12 @@ services:
       - POSTGRES_USER=${POSTGRES_USER:-ecommerce_user}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-xxxxxxxx}
       - POSTGRES_DB=${POSTGRES_DB:-ecommerce_db}
+      # Значение по умолчанию задано прямо тут (а не только в .env), чтобы
+      # не "откатываться" на localhost:11434, если .env на сервере отсутствует,
+      # был пересоздан "с нуля" при редеплое или потерял эту переменную
+      # (.env не версионируется и не попадает в git).
+      - OLLAMA_URL=${OLLAMA_URL:-http://host.docker.internal:11434}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen2.5:7b-instruct}
     # Позволяет контейнеру обращаться к Ollama, запущенной на хосте,
     # через OLLAMA_URL=http://host.docker.internal:11434 (см. .env).
     extra_hosts:
