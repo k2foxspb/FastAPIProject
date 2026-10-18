@@ -156,6 +156,31 @@ export default function AiChatScreen({ navigation }) {
     setForwardModalVisible(true);
   };
 
+  // Начать новый диалог с ассистентом: очищает историю в state и в AsyncStorage,
+  // чтобы не "захламлять" контекст, отправляемый в Ollama при каждом сообщении.
+  const handleNewDialog = () => {
+    if (messages.length === 0) return;
+    Alert.alert(
+      'Новый диалог',
+      'Начать новый диалог? Текущая история переписки будет удалена.',
+      [
+        { text: 'Отмена', style: 'cancel' },
+        {
+          text: 'Начать заново',
+          style: 'destructive',
+          onPress: () => {
+            setMessages([]);
+            setError(null);
+            clearSelection();
+            storage.removeItem(historyKey).catch((e) => {
+              console.error('[AiChatScreen] Failed to clear chat history:', e);
+            });
+          },
+        },
+      ]
+    );
+  };
+
   // Пересылаем выбранные сообщения ассистента как обычные текстовые сообщения в выбранные чаты.
   // У ассистента нет учётной записи пользователя, поэтому вместо служебного поля forwarded_from_id
   // используем текстовую пометку прямо в теле сообщения.
@@ -228,7 +253,9 @@ export default function AiChatScreen({ navigation }) {
             <MaterialIcons name="forward" size={24} color={colors.primary} />
           </TouchableOpacity>
         ) : (
-          <View style={styles.headerButton} />
+          <TouchableOpacity onPress={handleNewDialog} style={styles.headerButton}>
+            <MaterialIcons name="refresh" size={24} color={colors.text} />
+          </TouchableOpacity>
         )}
       </View>
 
