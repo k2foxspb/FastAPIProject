@@ -12,6 +12,7 @@ from app.api.routers import (
     structure,
     announcements,
     timesheet,
+    statements,
     ai,
 )
 
@@ -27,6 +28,7 @@ public_routers = [
     (structure.router, ["organization"]),
     (announcements.router, ["announcements"]),
     (timesheet.router, ["timesheet"]),
+    (statements.router, ["statements"]),
     (ai.router, ["ai"]),
 ]
 

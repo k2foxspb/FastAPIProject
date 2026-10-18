@@ -111,3 +111,26 @@ async def find_nearest_supervisors(db: AsyncSession, target: UserModel) -> list[
 
     nearest_level = max(level for level, _ in supervisors)
     return [user for level, user in supervisors if level == nearest_level]
+
+
+async def find_all_supervisors(db: AsyncSession, target: UserModel) -> list[UserModel]:
+    """
+    Находит всех вышестоящих пользователей (всю цепочку руководителей, а не
+    только ближайший уровень) по иерархии должностей в зоне ответственности
+    target - используется, чтобы дать сотруднику выбрать галочками,
+    кого из вышестоящих руководителей дополнительно уведомить об изменении
+    табеля, помимо ближайшего руководителя, который уведомляется всегда.
+    """
+    target_level = get_role_level(target.role)
+    result = await db.execute(select(UserModel).where(UserModel.is_active == True))
+    candidates = result.scalars().all()
+
+    scoped_target = to_scoped(target)
+    supervisors = [
+        candidate for candidate in candidates
+        if candidate.id != target.id
+        and get_role_level(candidate.role) < target_level
+        and can_manage_user(to_scoped(candidate), scoped_target)
+    ]
+    supervisors.sort(key=lambda u: get_role_level(u.role), reverse=True)
+    return supervisors

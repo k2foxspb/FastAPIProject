@@ -50,6 +50,7 @@ export default function TabelScreen({ navigation, route }) {
   const [days, setDays] = useState([]);
   const [loading, setLoading] = useState(true);
   const [pendingCount, setPendingCount] = useState(0);
+  const [pendingTimesheetCount, setPendingTimesheetCount] = useState(0);
   const [exporting, setExporting] = useState(false);
 
   React.useEffect(() => {
@@ -74,8 +75,12 @@ export default function TabelScreen({ navigation, route }) {
   const fetchPendingCount = useCallback(async () => {
     if (!canPickEmployee) return;
     try {
-      const res = await timesheetApi.getPendingEntries();
-      setPendingCount(res.data.length);
+      const [productionRes, timesheetRes] = await Promise.all([
+        timesheetApi.getPendingEntries(),
+        timesheetApi.getPendingTimesheetEntries(),
+      ]);
+      setPendingCount(productionRes.data.length);
+      setPendingTimesheetCount(timesheetRes.data.length);
     } catch (e) {
       // молча игнорируем - не критично для отображения табеля
     }
@@ -125,6 +130,7 @@ export default function TabelScreen({ navigation, route }) {
     navigation.navigate('ProductionEntryForm', {
       date: day.date,
       entryId: day.entry?.id,
+      timesheetEntryId: day.timesheetEntryId,
       baseHours: day.baseHours,
       overtimeHours: day.overtimeHours,
       textValue: day.textValue,
@@ -188,6 +194,8 @@ export default function TabelScreen({ navigation, route }) {
         overtimeHours: info?.overtime_hours ?? 0,
         textValue: info?.text_value || null,
         entry: info?.entry || null,
+        timesheetStatus: info?.timesheet_status || null,
+        timesheetEntryId: info?.timesheet_entry_id || null,
       });
     }
     while (cells.length % 7 !== 0) cells.push(null);
@@ -295,6 +303,25 @@ export default function TabelScreen({ navigation, route }) {
               )}
             </TouchableOpacity>
           )}
+          {canPickEmployee && (
+            <TouchableOpacity
+              style={styles.headerIconBtn}
+              onPress={() => navigation.navigate('TimesheetApprovalList')}
+            >
+              <Icon name="time-outline" size={22} color={colors.primary} />
+              {pendingTimesheetCount > 0 && (
+                <View style={[styles.badge, { backgroundColor: colors.error }]}>
+                  <Text style={styles.badgeText}>{pendingTimesheetCount}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity
+            style={styles.headerIconBtn}
+            onPress={() => navigation.navigate('StatementList')}
+          >
+            <Icon name="document-text-outline" size={22} color={colors.primary} />
+          </TouchableOpacity>
           <TouchableOpacity style={styles.headerIconBtn} onPress={handleExport} disabled={exporting}>
             {exporting ? (
               <ActivityIndicator size="small" color={colors.primary} />

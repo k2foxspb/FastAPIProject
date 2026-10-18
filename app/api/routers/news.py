@@ -189,7 +189,7 @@ async def get_news(
         query = query.add_columns(literal(None).label("my_reaction"))
 
     query = query.options(selectinload(NewsModel.images)).where(
-        NewsModel.moderation_status.in_(["approved", "pending", "rejected"]),
+        NewsModel.moderation_status == "approved",
         NewsModel.is_active == True
     ).order_by(NewsModel.created_at.desc())
 
@@ -263,12 +263,12 @@ async def get_user_news(
     else:
         query = query.add_columns(literal(None).label("my_reaction"))
 
-    # Логика видимости: 
-    # Если запрашиваем чужие новости - только approved
-    # Если свои - все (включая pending/rejected)
+    # Логика видимости:
+    # Если запрашиваем чужие новости - только approved (модерация в ленте/на чужой странице)
+    # Если свои - все (включая pending/rejected), т.к. автор видит свои посты сразу после публикации
     if not current_user or current_user.id != user_id:
         if not current_user or current_user.role not in ["admin", "owner"]:
-            query = query.where(NewsModel.moderation_status.in_(["approved", "pending", "rejected"]))
+            query = query.where(NewsModel.moderation_status == "approved")
 
     query = query.options(selectinload(NewsModel.images)).order_by(NewsModel.created_at.desc())
 

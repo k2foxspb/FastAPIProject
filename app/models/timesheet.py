@@ -34,12 +34,23 @@ PRODUCTION_STATUSES = [
     PRODUCTION_STATUS_REJECTED,
 ]
 
+# Отдельный статус строки TimesheetEntryApproval для руководителей, которых
+# нужно просто уведомить об изменении часов, без требования согласования -
+# такие строки не учитываются при определении "кто ещё должен согласовать"
+# и не могут быть подтверждены/отклонены.
+TIMESHEET_APPROVAL_STATUS_NOTIFIED = "notified"
+
 
 class TimesheetEntry(Base):
     """
     Запись табеля учёта рабочего времени - количество отработанных часов
     конкретным пользователем за конкретный день. Одна запись на пользователя
     и день (уникальность по (user_id, date)).
+
+    Изменение часов сотрудником за самого себя требует согласования
+    вышестоящим руководителем (статус переходит в "pending"); изменение,
+    внесённое руководителем за подчинённого, считается уже согласованным
+    и сразу получает статус "approved".
     """
     __tablename__ = "timesheet_entries"
     __table_args__ = (
@@ -61,6 +72,17 @@ class TimesheetEntry(Base):
     text_value: Mapped[str | None] = mapped_column(String(100), nullable=True)
     comment: Mapped[str | None] = mapped_column(String, nullable=True)
 
+    # Статус согласования изменения часов (см. PRODUCTION_STATUS_* - используются те же значения).
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default=PRODUCTION_STATUS_APPROVED)
+    reviewer_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    reviewer_comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Номер раунда согласования - увеличивается при каждой отправке на
+    # согласование (или правке руководителем), чтобы сгруппировать историю
+    # (TimesheetAuditLog/TimesheetEntryApproval) по конкретным событиям.
+    approval_round: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
     created_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     updated_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
@@ -70,6 +92,59 @@ class TimesheetEntry(Base):
     )
 
     user: Mapped["User"] = relationship("User", foreign_keys=[user_id])
+    reviewer: Mapped["User | None"] = relationship("User", foreign_keys=[reviewer_id])
+    approvals: Mapped[list["TimesheetEntryApproval"]] = relationship(
+        "TimesheetEntryApproval", back_populates="entry", cascade="all, delete-orphan"
+    )
+    logs: Mapped[list["TimesheetAuditLog"]] = relationship(
+        "TimesheetAuditLog", back_populates="entry", cascade="all, delete-orphan"
+    )
+
+
+class TimesheetEntryApproval(Base):
+    """
+    Один обязательный согласующий в рамках одного раунда согласования
+    изменения часов (TimesheetEntry.approval_round) - чтобы можно было
+    требовать согласования сразу от нескольких вышестоящих руководителей:
+    пока хотя бы один не согласовал (status="pending"), запись в целом
+    остаётся "pending"; если любой из них отклонит - вся запись становится
+    "rejected".
+    """
+    __tablename__ = "timesheet_entry_approvals"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    entry_id: Mapped[int] = mapped_column(ForeignKey("timesheet_entries.id", ondelete="CASCADE"), nullable=False)
+    round: Mapped[int] = mapped_column(Integer, nullable=False)
+    approver_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default=PRODUCTION_STATUS_PENDING)
+    comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    entry: Mapped["TimesheetEntry"] = relationship("TimesheetEntry", back_populates="approvals")
+    approver: Mapped["User | None"] = relationship("User", foreign_keys=[approver_id])
+
+
+class TimesheetAuditLog(Base):
+    """
+    Журнал событий по записи табеля: отправка на согласование, повторная
+    отправка, правка часов вышестоящим руководителем напрямую (без
+    согласования). Каждая такая запись открывает новый "раунд"
+    (TimesheetEntry.approval_round) - используется, чтобы сгруппировать
+    историю карточки дня по конкретным событиям отправки на согласование.
+    """
+    __tablename__ = "timesheet_audit_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    entry_id: Mapped[int] = mapped_column(ForeignKey("timesheet_entries.id", ondelete="CASCADE"), nullable=False)
+    round: Mapped[int] = mapped_column(Integer, nullable=False)
+    actor_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    action: Mapped[str] = mapped_column(String(30), nullable=False)
+    # action: "submitted", "resubmitted", "updated_by_supervisor"
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    entry: Mapped["TimesheetEntry"] = relationship("TimesheetEntry", back_populates="logs")
+    actor: Mapped["User | None"] = relationship("User", foreign_keys=[actor_id])
 
 
 class Product(Base):

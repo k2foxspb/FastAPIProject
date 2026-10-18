@@ -279,6 +279,13 @@ export const timesheetApi = {
   upsertTimesheetDay: (userId, data) => api.put(`/timesheet/${userId}`, data),
   getExportUrl: (userId, year, month) => `${API_BASE_URL}/timesheet/${userId}/export?year=${year}&month=${month}`,
 
+  // Согласование изменений часов руководителем
+  getTimesheetSupervisors: (userId) => api.get(`/timesheet/${userId}/supervisors`),
+  getPendingTimesheetEntries: () => api.get('/timesheet/entries/pending'),
+  getTimesheetEntryDetail: (entryId) => api.get(`/timesheet/entry/${entryId}`),
+  approveTimesheetEntry: (entryId) => api.post(`/timesheet/entry/${entryId}/approve`),
+  rejectTimesheetEntry: (entryId, comment) => api.post(`/timesheet/entry/${entryId}/reject`, { comment }),
+
   // Справочник продукции
   getProducts: (includeInactive = false) => api.get('/timesheet/products/list', { params: { include_inactive: includeInactive } }),
   createProduct: (data) => api.post('/timesheet/products', data),
@@ -297,6 +304,24 @@ export const timesheetApi = {
   // Сводная таблица по подчинённым (часы по дням + статусы продукции)
   getSubordinatesSummary: (year, month) => api.get('/timesheet/subordinates/summary', { params: { year, month } }),
   getSubordinatesExportUrl: (year, month) => `${API_BASE_URL}/timesheet/subordinates/summary/export?year=${year}&month=${month}`,
+};
+
+export const statementsApi = {
+  // Свободные заявления с согласованием/уведомлением выбранных руководителей
+  getSupervisors: () => api.get('/statements/supervisors'),
+  createStatement: (data) => api.post('/statements', data),
+  getMyStatements: () => api.get('/statements/my'),
+  getPendingStatements: () => api.get('/statements/pending'),
+  getStatementDetail: (statementId) => api.get(`/statements/${statementId}`),
+  approveStatement: (statementId) => api.post(`/statements/${statementId}/approve`),
+  rejectStatement: (statementId, comment) => api.post(`/statements/${statementId}/reject`, { comment }),
+
+  // Шаблоны заявлений (настраиваются администратором)
+  getTemplates: (includeInactive = false) => api.get('/statements/templates', { params: { include_inactive: includeInactive } }),
+  getTemplateCandidates: () => api.get('/statements/templates/candidates'),
+  createTemplate: (data) => api.post('/statements/templates', data),
+  updateTemplate: (templateId, data) => api.put(`/statements/templates/${templateId}`, data),
+  deleteTemplate: (templateId) => api.delete(`/statements/templates/${templateId}`),
 };
 
 // ---------------------------------------------------------------------------

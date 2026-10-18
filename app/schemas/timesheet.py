@@ -12,6 +12,25 @@ class TimesheetEntryUpsert(BaseModel):
     overtime_hours: Decimal = Field(default=Decimal("0"), ge=0, le=24, description="Сверхурочное время за день")
     text_value: Optional[str] = Field(default=None, max_length=100, description="Текст вместо часов, например 'Больничный лист' или 'Отпуск'")
     comment: Optional[str] = None
+    extra_approver_user_ids: list[int] = Field(
+        default_factory=list,
+        description="Дополнительные вышестоящие руководители, которых нужно включить в обязательное согласование помимо ближайшего",
+    )
+    extra_notify_user_ids: list[int] = Field(
+        default_factory=list,
+        description="Дополнительные вышестоящие руководители, которых нужно просто уведомить (без требования согласования)",
+    )
+
+
+class TimesheetReviewerBrief(BaseModel):
+    id: int
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    model_config = ConfigDict(from_attributes=True)
+
+
+class TimesheetEntryReject(BaseModel):
+    comment: str = Field(min_length=1, description="Комментарий обязателен при отклонении")
 
 
 class TimesheetEntry(BaseModel):
@@ -22,9 +41,50 @@ class TimesheetEntry(BaseModel):
     overtime_hours: Decimal = Decimal("0")
     text_value: Optional[str] = None
     comment: Optional[str] = None
+    status: str = "approved"
+    reviewer_id: Optional[int] = None
+    reviewer: Optional[TimesheetReviewerBrief] = None
+    reviewer_comment: Optional[str] = None
+    reviewed_at: Optional[datetime] = None
+    submitted_at: Optional[datetime] = None
+    approval_round: int = 0
+    pending_approvers: list[TimesheetReviewerBrief] = Field(
+        default_factory=list, description="Руководители, чьё согласование ещё требуется в текущем раунде"
+    )
     created_at: datetime
     updated_at: datetime
     model_config = ConfigDict(from_attributes=True)
+
+
+class TimesheetApprovalEntry(BaseModel):
+    """Один согласующий в рамках раунда согласования - кто и как согласовал/отклонил."""
+    approver_id: Optional[int] = None
+    approver: Optional[TimesheetReviewerBrief] = None
+    status: str
+    comment: Optional[str] = None
+    decided_at: Optional[datetime] = None
+    created_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+
+class TimesheetApprovalRound(BaseModel):
+    """
+    Один блок истории карточки дня - событие отправки на согласование (или
+    правки часов руководителем напрямую) и список того, кто и как согласовал
+    в рамках этого же раунда.
+    """
+    round: int
+    action: str
+    actor_id: Optional[int] = None
+    actor: Optional[TimesheetReviewerBrief] = None
+    created_at: datetime
+    approvals: list[TimesheetApprovalEntry] = Field(default_factory=list)
+    model_config = ConfigDict(from_attributes=True)
+
+
+class TimesheetEntryDetail(TimesheetEntry):
+    """Карточка дня табеля с полной историей согласования, сгруппированной по раундам."""
+    history: list[TimesheetApprovalRound] = Field(default_factory=list)
 
 
 class TimesheetMonthRequest(BaseModel):
@@ -149,6 +209,8 @@ class DayTimesheetInfo(BaseModel):
     base_hours: Decimal = Decimal("0")
     overtime_hours: Decimal = Decimal("0")
     text_value: Optional[str] = None
+    timesheet_status: Optional[str] = Field(default=None, description="Статус согласования часов за этот день")
+    timesheet_entry_id: Optional[int] = None
     entry: Optional[ProductionEntry] = None
 
 
@@ -163,6 +225,8 @@ class SubordinateDay(BaseModel):
     text_value: Optional[str] = None
     status: Optional[str] = None
     entry_id: Optional[int] = None
+    timesheet_status: Optional[str] = Field(default=None, description="Статус согласования часов за этот день")
+    timesheet_entry_id: Optional[int] = None
 
 
 class SubordinateSummary(BaseModel):
@@ -175,3 +239,4 @@ class SubordinateSummary(BaseModel):
     days: list[SubordinateDay] = Field(default_factory=list)
     total_hours: Decimal = Decimal("0")
     pending_count: int = 0
+    pending_timesheet_count: int = Field(default=0, description="Сколько дней с часами ожидают согласования руководителем")

@@ -38,6 +38,7 @@ services:
     command: sh -c "alembic upgrade head && python -m app.init_db && gunicorn app.main:app --workers 2 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000"
     volumes:
       - media_data:/home/fast/app/media
+      - ./firebase-service-account.json:/run/secrets/firebase-service-account.json:ro
     env_file:
       - .env
     # Переменные ниже задают значения по умолчанию, которых нет в .env
@@ -47,6 +48,8 @@ services:
       ENABLE_API_DOCS: ${ENABLE_API_DOCS:-false}
     # Позволяет контейнеру обращаться к Ollama, запущенной на хосте,
     # через OLLAMA_URL=http://host.docker.internal:11434 (см. .env).
+      FIREBASE_SERVICE_ACCOUNT_PATH: /run/secrets/firebase-service-account.json
+      GOOGLE_CLOUD_PROJECT: fastapi-f628e
     extra_hosts:
       - "host.docker.internal:host-gateway"
     healthcheck:
@@ -103,6 +106,8 @@ services:
     environment:
       <<: *common-env
       ENVIRONMENT: production
+      FIREBASE_SERVICE_ACCOUNT_PATH: /run/secrets/firebase-service-account.json
+      GOOGLE_CLOUD_PROJECT: fastapi-f628e
     depends_on:
       db:
         condition: service_healthy

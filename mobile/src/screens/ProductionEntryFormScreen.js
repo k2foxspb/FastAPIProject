@@ -8,13 +8,27 @@ import { Ionicons as Icon } from '@expo/vector-icons';
 import { timesheetApi } from '../api';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
-import { formatTimesheetDate } from '../utils/formatters';
+import { formatTimesheetDate, formatName, parseISODate } from '../utils/formatters';
 
 const STATUS_LABELS = {
   draft: 'Черновик',
   pending: 'На согласовании',
   approved: 'Подтверждено',
   rejected: 'Отклонено',
+  notified: 'Уведомлён',
+};
+
+const ROUND_ACTION_LABELS = {
+  submitted: 'Отправлено на согласование',
+  resubmitted: 'Повторно отправлено на согласование',
+  updated_by_supervisor: 'Изменено руководителем (без согласования)',
+};
+
+// Дата/время события истории согласования - например "18.10.2026 14:32".
+const formatDateTime = (value) => {
+  const d = parseISODate(value);
+  if (!d) return '';
+  return `${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
 };
 
 // Частые текстовые отметки, которые можно поставить вместо часов за день
@@ -40,6 +54,31 @@ export default function ProductionEntryFormScreen({ navigation, route }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [savingHours, setSavingHours] = useState(false);
+  const [supervisors, setSupervisors] = useState([]);
+  // Режим по каждому дополнительному руководителю: 'approve' - обязательное
+  // согласование наравне с ближайшим руководителем, 'notify' - просто
+  // уведомление без необходимости согласовывать. Ключ отсутствует, если
+  // руководитель не выбран вовсе.
+  const [supervisorModes, setSupervisorModes] = useState({});
+  const [timesheetEntryId, setTimesheetEntryId] = useState(route.params.timesheetEntryId || null);
+  const [timesheetStatus, setTimesheetStatus] = useState(null);
+  const [timesheetReviewerComment, setTimesheetReviewerComment] = useState(null);
+  const [timesheetPendingApprovers, setTimesheetPendingApprovers] = useState([]);
+  const [timesheetHistory, setTimesheetHistory] = useState([]);
+
+  const loadTimesheetDetail = useCallback(async (id) => {
+    if (!id) return;
+    try {
+      const detailRes = await timesheetApi.getTimesheetEntryDetail(id);
+      const detail = detailRes.data;
+      setTimesheetStatus(detail.status);
+      setTimesheetReviewerComment(detail.reviewer_comment);
+      setTimesheetPendingApprovers(detail.pending_approvers || []);
+      setTimesheetHistory(detail.history || []);
+    } catch (e) {
+      // история согласования часов не критична для работы экрана - молча игнорируем
+    }
+  }, []);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -47,6 +86,19 @@ export default function ProductionEntryFormScreen({ navigation, route }) {
       if (isOwnTimesheet) {
         const productsRes = await timesheetApi.getProducts();
         setProducts(productsRes.data);
+      }
+
+      if (isOwnTimesheet && canEditHours) {
+        try {
+          const supervisorsRes = await timesheetApi.getTimesheetSupervisors(userId);
+          setSupervisors(supervisorsRes.data);
+        } catch (e) {
+          // список руководителей не критичен для работы экрана - молча игнорируем
+        }
+      }
+
+      if (isOwnTimesheet && timesheetEntryId) {
+        await loadTimesheetDetail(timesheetEntryId);
       }
 
       if (entryId) {
@@ -75,7 +127,7 @@ export default function ProductionEntryFormScreen({ navigation, route }) {
     } finally {
       setLoading(false);
     }
-  }, [entryId, isOwnTimesheet]);
+  }, [entryId, isOwnTimesheet, canEditHours, userId, timesheetEntryId, loadTimesheetDetail]);
 
   useFocusEffect(useCallback(() => { loadData(); }, [loadData]));
 
@@ -142,6 +194,18 @@ export default function ProductionEntryFormScreen({ navigation, route }) {
     return true;
   };
 
+  const setSupervisorMode = (supervisorId, mode) => {
+    setSupervisorModes(prev => {
+      const next = { ...prev };
+      if (next[supervisorId] === mode) {
+        delete next[supervisorId];
+      } else {
+        next[supervisorId] = mode;
+      }
+      return next;
+    });
+  };
+
   const saveHours = async () => {
     const baseValue = baseHours.replace(',', '.').trim();
     const overtimeValue = overtimeHours.replace(',', '.').trim();
@@ -157,9 +221,22 @@ export default function ProductionEntryFormScreen({ navigation, route }) {
     }
     setSavingHours(true);
     try {
-      await timesheetApi.upsertTimesheetDay(userId, {
+      const extraApproverUserIds = Object.keys(supervisorModes)
+        .filter(id => supervisorModes[id] === 'approve')
+        .map(Number);
+      const extraNotifyUserIds = Object.keys(supervisorModes)
+        .filter(id => supervisorModes[id] === 'notify')
+        .map(Number);
+      const res = await timesheetApi.upsertTimesheetDay(userId, {
         date, hours: parsedBase, overtime_hours: parsedOvertime, text_value: textValue || null, comment: '',
+        extra_approver_user_ids: extraApproverUserIds,
+        extra_notify_user_ids: extraNotifyUserIds,
       });
+      setTimesheetEntryId(res.data.id);
+      setTimesheetStatus(res.data.status);
+      setTimesheetReviewerComment(res.data.reviewer_comment);
+      setTimesheetPendingApprovers(res.data.pending_approvers || []);
+      await loadTimesheetDetail(res.data.id);
     } catch (err) {
       Alert.alert('Ошибка', err.response?.data?.detail || 'Не удалось сохранить часы');
     } finally {
@@ -226,7 +303,11 @@ export default function ProductionEntryFormScreen({ navigation, route }) {
             placeholderTextColor={colors.textSecondary}
             editable={canEditHours}
           />
-          <Text style={[styles.hoursLabel, { color: colors.textSecondary, marginLeft: 16 }]}>Сверхурочное:</Text>
+          {savingHours && <ActivityIndicator size="small" color={colors.primary} style={{ marginLeft: 8 }} />}
+        </View>
+
+        <View style={styles.hoursRow}>
+          <Text style={[styles.hoursLabel, { color: colors.textSecondary }]}>Сверхурочное:</Text>
           <TextInput
             style={[
               styles.hoursInput,
@@ -240,7 +321,6 @@ export default function ProductionEntryFormScreen({ navigation, route }) {
             placeholderTextColor={colors.textSecondary}
             editable={canEditHours}
           />
-          {savingHours && <ActivityIndicator size="small" color={colors.primary} style={{ marginLeft: 8 }} />}
         </View>
 
         <View style={styles.hoursRow}>
@@ -264,8 +344,20 @@ export default function ProductionEntryFormScreen({ navigation, route }) {
           )}
         </View>
 
+        {isOwnTimesheet && canEditHours && timesheetStatus && (
+          <Text style={[styles.statusLabel, { color: colors.primary }]}>
+            Часы: {STATUS_LABELS[timesheetStatus] || timesheetStatus}
+            {timesheetStatus === 'pending' && timesheetPendingApprovers.length > 0
+              ? ` (ожидает: ${timesheetPendingApprovers.map(a => formatName(a) || `#${a.id}`).join(', ')})`
+              : ''}
+          </Text>
+        )}
+        {isOwnTimesheet && timesheetStatus === 'rejected' && timesheetReviewerComment ? (
+          <Text style={[styles.rejectComment, { color: colors.error }]}>Причина отклонения часов: {timesheetReviewerComment}</Text>
+        ) : null}
+
         {isOwnTimesheet && (
-          <Text style={[styles.statusLabel, { color: colors.primary }]}>{STATUS_LABELS[status] || status}</Text>
+          <Text style={[styles.statusLabel, { color: colors.primary }]}>Продукция: {STATUS_LABELS[status] || status}</Text>
         )}
         {isOwnTimesheet && status === 'rejected' && reviewerComment ? (
           <Text style={[styles.rejectComment, { color: colors.error }]}>Причина отклонения: {reviewerComment}</Text>
@@ -327,12 +419,76 @@ export default function ProductionEntryFormScreen({ navigation, route }) {
             <Text style={[styles.emptyText, { color: colors.textSecondary }]}>Позиций пока нет</Text>
           }
           ListFooterComponent={
-            !readOnly && (
-              <TouchableOpacity style={[styles.addBtn, { borderColor: colors.primary }]} onPress={addItem}>
-                <Icon name="add" size={20} color={colors.primary} />
-                <Text style={[styles.addBtnText, { color: colors.primary }]}>Добавить продукцию</Text>
-              </TouchableOpacity>
-            )
+            <>
+              {!readOnly && (
+                <TouchableOpacity style={[styles.addBtn, { borderColor: colors.primary }]} onPress={addItem}>
+                  <Icon name="add" size={20} color={colors.primary} />
+                  <Text style={[styles.addBtnText, { color: colors.primary }]}>Добавить продукцию</Text>
+                </TouchableOpacity>
+              )}
+              {!readOnly && supervisors.length > 0 && (
+                <View style={[styles.supervisorsBlock, { borderColor: colors.border }]}>
+                  <Text style={[styles.supervisorsTitle, { color: colors.text }]}>
+                    Дополнительные вышестоящие руководители:
+                  </Text>
+                  {supervisors.map(supervisor => {
+                    const supervisorName = `${supervisor.first_name || ''} ${supervisor.last_name || ''}`.trim() || `#${supervisor.id}`;
+                    const mode = supervisorModes[supervisor.id];
+                    return (
+                      <View key={supervisor.id} style={styles.supervisorRow}>
+                        <Text style={[styles.supervisorName, { color: colors.text }]}>{supervisorName}</Text>
+                        <View style={styles.supervisorModeOptions}>
+                          <TouchableOpacity
+                            style={styles.supervisorModeOption}
+                            onPress={() => setSupervisorMode(supervisor.id, 'approve')}
+                          >
+                            <Icon
+                              name={mode === 'approve' ? 'checkbox' : 'square-outline'}
+                              size={20}
+                              color={mode === 'approve' ? colors.primary : colors.textSecondary}
+                            />
+                            <Text style={[styles.supervisorModeLabel, { color: colors.textSecondary }]}>Согласование</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={styles.supervisorModeOption}
+                            onPress={() => setSupervisorMode(supervisor.id, 'notify')}
+                          >
+                            <Icon
+                              name={mode === 'notify' ? 'checkbox' : 'square-outline'}
+                              size={20}
+                              color={mode === 'notify' ? colors.primary : colors.textSecondary}
+                            />
+                            <Text style={[styles.supervisorModeLabel, { color: colors.textSecondary }]}>Уведомление</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    );
+                  })}
+                </View>
+              )}
+              {timesheetHistory.length > 0 && (
+                <View style={[styles.historyBlock, { borderColor: colors.border }]}>
+                  <Text style={[styles.historyTitle, { color: colors.text }]}>История согласования часов:</Text>
+                  {timesheetHistory.map(round => (
+                    <View key={round.round} style={[styles.historyRound, { borderColor: colors.border }]}>
+                      <Text style={[styles.historyRoundTitle, { color: colors.text }]}>
+                        {ROUND_ACTION_LABELS[round.action] || round.action}
+                      </Text>
+                      <Text style={[styles.historyMeta, { color: colors.textSecondary }]}>
+                        {formatName(round.actor) || `#${round.actor_id}`} · {formatDateTime(round.created_at)}
+                      </Text>
+                      {round.approvals.map(a => (
+                        <Text key={a.approver_id} style={[styles.historyApproval, { color: colors.textSecondary }]}>
+                          {'  '}{formatName(a.approver) || `#${a.approver_id}`}: {STATUS_LABELS[a.status] || a.status}
+                          {a.decided_at ? ` (${formatDateTime(a.decided_at)})` : ''}
+                          {a.status === 'rejected' && a.comment ? ` - ${a.comment}` : ''}
+                        </Text>
+                      ))}
+                    </View>
+                  ))}
+                </View>
+              )}
+            </>
           }
         />
       ) : (
@@ -398,6 +554,19 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderStyle: 'dashed', borderRadius: 10, padding: 12, marginTop: 5,
   },
   addBtnText: { marginLeft: 8, fontWeight: '600' },
+  supervisorsBlock: { borderTopWidth: 1, marginTop: 15, paddingTop: 12 },
+  supervisorsTitle: { fontSize: 13, fontWeight: '600', marginBottom: 8 },
+  supervisorRow: { paddingVertical: 8 },
+  supervisorName: { fontSize: 14, marginBottom: 4 },
+  supervisorModeOptions: { flexDirection: 'row' },
+  supervisorModeOption: { flexDirection: 'row', alignItems: 'center', marginRight: 20 },
+  supervisorModeLabel: { fontSize: 13, marginLeft: 6 },
+  historyBlock: { borderTopWidth: 1, marginTop: 15, paddingTop: 12 },
+  historyTitle: { fontSize: 13, fontWeight: '600', marginBottom: 8 },
+  historyRound: { borderLeftWidth: 2, paddingLeft: 10, marginBottom: 12 },
+  historyRoundTitle: { fontSize: 13, fontWeight: '600' },
+  historyMeta: { fontSize: 12, marginTop: 2 },
+  historyApproval: { fontSize: 12, marginTop: 4 },
   emptyText: { textAlign: 'center', marginTop: 20, fontStyle: 'italic' },
   footer: { flexDirection: 'row', padding: 15, borderTopWidth: 1 },
   footerBtn: { flex: 1, padding: 14, borderRadius: 10, alignItems: 'center', marginHorizontal: 5, borderWidth: 1, borderColor: 'transparent' },

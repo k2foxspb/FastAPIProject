@@ -40,6 +40,7 @@ export default function AdminScreen({ navigation }) {
     { title: 'Должности', icon: 'ribbon-outline', screen: 'AdminPositions', visible: canManagePositions(role) },
     { title: 'Сотрудники', icon: 'people-circle-outline', screen: 'AdminEmployees', visible: canAccessOrgAdmin(role) },
     { title: 'Продукция', icon: 'cube-outline', screen: 'AdminProducts', visible: canAccessOrgAdmin(role) },
+    { title: 'Шаблоны заявлений', icon: 'document-text-outline', screen: 'AdminStatementTemplates', visible: canAccessOrgAdmin(role) },
     { title: 'Пользователи', icon: 'people-outline', screen: 'AdminUsers', ownerOnly: true },
     { title: 'Модерация', icon: 'shield-outline', screen: 'AdminModeration' },
     { title: 'Новости', icon: 'newspaper-outline', screen: 'AdminNews' },

@@ -18,6 +18,7 @@ from app.core.production import (
     can_review_production,
     can_edit_production_entry,
     find_nearest_supervisors,
+    find_all_supervisors,
     get_subordinates,
 )
 from app.core.roles import get_table_role_label
@@ -27,6 +28,8 @@ from app.models.users import User as UserModel
 from app.models.structure import Workshop as WorkshopModel
 from app.models.timesheet import (
     TimesheetEntry as TimesheetEntryModel,
+    TimesheetEntryApproval as TimesheetEntryApprovalModel,
+    TimesheetAuditLog as TimesheetAuditLogModel,
     Product as ProductModel,
     ProductionEntry as ProductionEntryModel,
     ProductionEntryItem as ProductionEntryItemModel,
@@ -35,10 +38,14 @@ from app.models.timesheet import (
     PRODUCTION_STATUS_PENDING,
     PRODUCTION_STATUS_APPROVED,
     PRODUCTION_STATUS_REJECTED,
+    TIMESHEET_APPROVAL_STATUS_NOTIFIED,
 )
 from app.schemas.timesheet import (
     TimesheetEntryUpsert,
     TimesheetEntry as TimesheetEntrySchema,
+    TimesheetEntryDetail as TimesheetEntryDetailSchema,
+    TimesheetEntryReject,
+    TimesheetApprovalRound,
     Product as ProductSchema,
     ProductCreate,
     ProductUpdate,
@@ -67,6 +74,199 @@ async def _get_user_or_404(db: AsyncSession, user_id: int) -> UserModel:
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     return user
+
+
+async def _load_timesheet_entry(db: AsyncSession, entry_id: int) -> TimesheetEntryModel:
+    result = await db.execute(
+        select(TimesheetEntryModel)
+        .options(
+            selectinload(TimesheetEntryModel.user),
+            selectinload(TimesheetEntryModel.reviewer),
+            selectinload(TimesheetEntryModel.approvals),
+        )
+        .where(TimesheetEntryModel.id == entry_id)
+    )
+    entry = result.scalar_one_or_none()
+    if not entry:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Timesheet entry not found")
+    return entry
+
+
+async def _load_timesheet_entry_detail(db: AsyncSession, entry_id: int) -> TimesheetEntryModel:
+    result = await db.execute(
+        select(TimesheetEntryModel)
+        .options(
+            selectinload(TimesheetEntryModel.user),
+            selectinload(TimesheetEntryModel.reviewer),
+            selectinload(TimesheetEntryModel.approvals).selectinload(TimesheetEntryApprovalModel.approver),
+            selectinload(TimesheetEntryModel.logs).selectinload(TimesheetAuditLogModel.actor),
+        )
+        .where(TimesheetEntryModel.id == entry_id)
+    )
+    entry = result.scalar_one_or_none()
+    if not entry:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Timesheet entry not found")
+    return entry
+
+
+async def _resolve_required_approvers(
+    db: AsyncSession, target: UserModel, extra_approver_user_ids: list[int] | None = None,
+) -> list[UserModel]:
+    """
+    Определяет обязательный набор согласующих для изменения часов сотрудника
+    target - ближайший вышестоящий руководитель (всегда) плюс дополнительные
+    руководители, выбранные сотрудником галочкой "на согласование"
+    (extra_approver_user_ids), отфильтрованные через всю цепочку
+    руководителей, чтобы нельзя было указать произвольного пользователя. Все
+    они должны согласовать изменение - если хотя бы один отклонит, изменение
+    считается отклонённым целиком.
+    """
+    nearest = await find_nearest_supervisors(db, target)
+    approvers = {s.id: s for s in nearest}
+    if extra_approver_user_ids:
+        all_supervisors = await find_all_supervisors(db, target)
+        selected_ids = set(extra_approver_user_ids)
+        for s in all_supervisors:
+            if s.id in selected_ids:
+                approvers[s.id] = s
+    return list(approvers.values())
+
+
+async def _resolve_notify_only_recipients(
+    db: AsyncSession, target: UserModel, extra_notify_user_ids: list[int] | None, exclude_ids: set[int],
+) -> list[UserModel]:
+    """
+    Определяет руководителей, которых нужно просто уведомить об изменении
+    часов галочкой "уведомление" (без требования согласования) -
+    отфильтрованные через всю цепочку руководителей. Руководители, уже
+    попавшие в обязательные согласующие (exclude_ids), исключаются, чтобы не
+    создавать для одного и того же человека дублирующие записи.
+    """
+    if not extra_notify_user_ids:
+        return []
+    all_supervisors = await find_all_supervisors(db, target)
+    selected_ids = set(extra_notify_user_ids)
+    return [s for s in all_supervisors if s.id in selected_ids and s.id not in exclude_ids]
+
+
+def _timesheet_entry_to_schema(entry: TimesheetEntryModel) -> TimesheetEntrySchema:
+    schema = TimesheetEntrySchema.model_validate(entry)
+    pending = [
+        a.approver for a in entry.approvals
+        if a.round == entry.approval_round and a.status == PRODUCTION_STATUS_PENDING and a.approver is not None
+    ]
+    schema.pending_approvers = pending
+    return schema
+
+
+def _build_timesheet_history(entry: TimesheetEntryModel) -> list[TimesheetApprovalRound]:
+    """
+    Строит историю карточки дня по раундам - каждое событие отправки на
+    согласование (или правки часов руководителем) формирует отдельный блок,
+    внутри которого перечислено, кто и как согласовал/отклонил.
+    """
+    logs = sorted(entry.logs, key=lambda l: (l.round, l.created_at))
+    rounds = []
+    for log in logs:
+        approvals = sorted(
+            (a for a in entry.approvals if a.round == log.round),
+            key=lambda a: a.id,
+        )
+        rounds.append(TimesheetApprovalRound.model_validate({
+            "round": log.round,
+            "action": log.action,
+            "actor_id": log.actor_id,
+            "actor": log.actor,
+            "created_at": log.created_at,
+            "approvals": approvals,
+        }))
+    return rounds
+
+
+def _timesheet_entry_to_detail_schema(entry: TimesheetEntryModel) -> TimesheetEntryDetailSchema:
+    schema = TimesheetEntryDetailSchema.model_validate(entry)
+    pending = [
+        a.approver for a in entry.approvals
+        if a.round == entry.approval_round and a.status == PRODUCTION_STATUS_PENDING and a.approver is not None
+    ]
+    schema.pending_approvers = pending
+    schema.history = _build_timesheet_history(entry)
+    return schema
+
+
+def _notify_supervisors_about_timesheet(
+    entry: TimesheetEntryModel,
+    supervisors: list[UserModel],
+    resubmit: bool = False,
+    notify_only: list[UserModel] | None = None,
+):
+    """
+    Уведомляет всех обязательных согласующих (см. _resolve_required_approvers)
+    об изменении часов, ожидающем согласования, а также руководителей,
+    отмеченных только для уведомления (см. _resolve_notify_only_recipients) -
+    им не нужно ничего согласовывать, они просто информируются об изменении.
+    """
+    employee_name = _user_name(entry.user)
+    date_str = entry.date.isoformat()
+    body = f"{employee_name} - {date_str}: {entry.hours} ч (+{entry.overtime_hours} сверхурочных)"
+
+    def _send(recipients: list[UserModel], message_type: str, title: str, requires_action: bool):
+        if not recipients:
+            return
+        message = {
+            "type": message_type,
+            "entry_id": entry.id,
+            "employee_id": entry.user_id,
+            "employee_name": employee_name,
+            "date": date_str,
+            "hours": str(entry.hours),
+            "overtime_hours": str(entry.overtime_hours),
+            "requires_action": requires_action,
+        }
+        for recipient in recipients:
+            asyncio.create_task(notification_manager.send_personal_message(message, recipient.id))
+            if recipient.fcm_token:
+                asyncio.create_task(send_fcm_notification(
+                    token=recipient.fcm_token,
+                    title=title,
+                    body=body,
+                    data=message,
+                    sender_id=entry.user_id,
+                ))
+
+    _send(
+        supervisors,
+        "timesheet_entry_resubmitted" if resubmit else "timesheet_entry_submitted",
+        "Повторная отправка табеля на согласование" if resubmit else "Изменение табеля на согласовании",
+        requires_action=True,
+    )
+    _send(
+        notify_only or [],
+        "timesheet_entry_notified",
+        "Изменение табеля (уведомление)",
+        requires_action=False,
+    )
+
+
+def _notify_employee_about_timesheet_review(entry: TimesheetEntryModel, approved: bool):
+    """Уведомляет сотрудника о результате согласования изменения часов."""
+    message = {
+        "type": "timesheet_entry_approved" if approved else "timesheet_entry_rejected",
+        "entry_id": entry.id,
+        "date": entry.date.isoformat(),
+        "comment": entry.reviewer_comment,
+    }
+    asyncio.create_task(notification_manager.send_personal_message(message, entry.user_id))
+    if entry.user and entry.user.fcm_token:
+        title = "Изменение табеля подтверждено" if approved else "Изменение табеля отклонено"
+        body = f"За {entry.date.isoformat()}" if approved else (entry.reviewer_comment or f"За {entry.date.isoformat()}")
+        asyncio.create_task(send_fcm_notification(
+            token=entry.user.fcm_token,
+            title=title,
+            body=body,
+            data=message,
+            sender_id=entry.reviewer_id,
+        ))
 
 
 def _month_bounds(year: int, month: int) -> tuple[date, date]:
@@ -339,6 +539,54 @@ async def get_user_timesheet(
     return result.scalars().all()
 
 
+@router.get("/{user_id}/supervisors", response_model=list[EmployeeBrief])
+async def get_timesheet_supervisors(
+    user_id: int,
+    current_user: UserModel = Depends(get_current_production_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Возвращает всю цепочку вышестоящих руководителей пользователя - список
+    для чекбоксов на экране табеля, чтобы сотрудник мог дополнительно
+    выбрать, кого из вышестоящих руководителей (помимо ближайшего, который
+    уведомляется всегда) уведомить об изменении часов.
+    """
+    target = await _get_user_or_404(db, user_id)
+    if not can_edit_timesheet(current_user, target):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied to this timesheet")
+    return await find_all_supervisors(db, target)
+
+
+@router.get("/entries/pending", response_model=list[TimesheetEntrySchema])
+async def list_pending_timesheet_entries(
+    current_user: UserModel = Depends(get_current_production_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Изменения часов, ожидающие СОБСТВЕННОГО согласования текущего
+    пользователя - то есть он назначен одним из обязательных согласующих в
+    текущем раунде (см. _resolve_required_approvers) и ещё не принял
+    решение. Если выбрано несколько руководителей, каждый видит запись в
+    своём списке, пока не согласует хотя бы свою часть.
+    """
+    result = await db.execute(
+        select(TimesheetEntryModel)
+        .options(selectinload(TimesheetEntryModel.user), selectinload(TimesheetEntryModel.approvals))
+        .where(TimesheetEntryModel.status == PRODUCTION_STATUS_PENDING)
+        .order_by(TimesheetEntryModel.submitted_at.asc())
+    )
+    entries = result.scalars().all()
+    visible = [
+        e for e in entries
+        if can_review_production(current_user, e.user)
+        and any(
+            a.round == e.approval_round and a.approver_id == current_user.id and a.status == PRODUCTION_STATUS_PENDING
+            for a in e.approvals
+        )
+    ]
+    return [_timesheet_entry_to_schema(e) for e in visible]
+
+
 @router.put("/{user_id}", response_model=TimesheetEntrySchema)
 async def upsert_timesheet_day(
     user_id: int,
@@ -346,10 +594,20 @@ async def upsert_timesheet_day(
     current_user: UserModel = Depends(get_current_production_user),
     db: AsyncSession = Depends(get_async_db),
 ):
-    """Создаёт/обновляет количество часов за день (правило 1 - доступ по иерархии)."""
+    """
+    Создаёт/обновляет количество часов за день (правило 1 - доступ по
+    иерархии). Если часы правит сам сотрудник - изменение уходит на
+    согласование всем обязательным согласующим сразу (статус "pending") -
+    ближайшему руководителю и дополнительным, выбранным галочками; все они
+    должны согласовать, отказ любого отклоняет изменение целиком. Если часы
+    правит вышестоящий пользователь - изменение считается сразу
+    согласованным (статус "approved").
+    """
     target = await _get_user_or_404(db, user_id)
     if not can_edit_timesheet(current_user, target):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied to edit this timesheet")
+
+    is_self_edit = current_user.id == target.id
 
     result = await db.execute(
         select(TimesheetEntryModel).where(
@@ -358,28 +616,191 @@ async def upsert_timesheet_day(
         )
     )
     entry = result.scalar_one_or_none()
+    was_rejected = entry is not None and entry.status == PRODUCTION_STATUS_REJECTED
+
     if entry is None:
         entry = TimesheetEntryModel(
             user_id=user_id,
             date=data.date,
-            hours=data.hours,
-            overtime_hours=data.overtime_hours,
-            text_value=data.text_value,
-            comment=data.comment,
             created_by_id=current_user.id,
-            updated_by_id=current_user.id,
+            approval_round=0,
         )
         db.add(entry)
+
+    entry.hours = data.hours
+    entry.overtime_hours = data.overtime_hours
+    entry.text_value = data.text_value
+    entry.comment = data.comment
+    entry.updated_by_id = current_user.id
+
+    required_approvers: list[UserModel] = []
+    notify_only_recipients: list[UserModel] = []
+    entry.approval_round = (entry.approval_round or 0) + 1
+
+    if is_self_edit:
+        required_approvers = await _resolve_required_approvers(db, target, data.extra_approver_user_ids)
+        notify_only_recipients = await _resolve_notify_only_recipients(
+            db, target, data.extra_notify_user_ids, exclude_ids={a.id for a in required_approvers},
+        )
+        entry.status = PRODUCTION_STATUS_PENDING
+        entry.submitted_at = datetime.now(timezone.utc)
+        entry.reviewer_comment = None
+        entry.reviewed_at = None
+        entry.reviewer_id = None
     else:
-        entry.hours = data.hours
-        entry.overtime_hours = data.overtime_hours
-        entry.text_value = data.text_value
-        entry.comment = data.comment
-        entry.updated_by_id = current_user.id
+        entry.status = PRODUCTION_STATUS_APPROVED
+        entry.reviewer_id = current_user.id
+        entry.reviewed_at = datetime.now(timezone.utc)
+        entry.reviewer_comment = None
+
+    await db.flush()
+
+    if is_self_edit:
+        db.add(TimesheetAuditLogModel(
+            entry_id=entry.id,
+            round=entry.approval_round,
+            actor_id=current_user.id,
+            action="resubmitted" if was_rejected else "submitted",
+        ))
+        for approver in required_approvers:
+            db.add(TimesheetEntryApprovalModel(
+                entry_id=entry.id,
+                round=entry.approval_round,
+                approver_id=approver.id,
+                status=PRODUCTION_STATUS_PENDING,
+            ))
+        for recipient in notify_only_recipients:
+            db.add(TimesheetEntryApprovalModel(
+                entry_id=entry.id,
+                round=entry.approval_round,
+                approver_id=recipient.id,
+                status=TIMESHEET_APPROVAL_STATUS_NOTIFIED,
+                decided_at=datetime.now(timezone.utc),
+            ))
+    else:
+        db.add(TimesheetAuditLogModel(
+            entry_id=entry.id,
+            round=entry.approval_round,
+            actor_id=current_user.id,
+            action="updated_by_supervisor",
+        ))
 
     await db.commit()
-    await db.refresh(entry)
-    return entry
+
+    entry = await _load_timesheet_entry(db, entry.id)
+
+    if is_self_edit:
+        _notify_supervisors_about_timesheet(
+            entry, required_approvers, resubmit=was_rejected, notify_only=notify_only_recipients,
+        )
+
+    return _timesheet_entry_to_schema(entry)
+
+
+@router.get("/entry/{entry_id}", response_model=TimesheetEntryDetailSchema)
+async def get_timesheet_entry_detail(
+    entry_id: int,
+    current_user: UserModel = Depends(get_current_production_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Карточка дня табеля с полной историей согласования часов внизу,
+    сгруппированной по каждой отправке на согласование (кто отправил и кто
+    как согласовал/отклонил в рамках этой отправки).
+    """
+    entry = await _load_timesheet_entry_detail(db, entry_id)
+    if not can_view_timesheet(current_user, entry.user):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+    return _timesheet_entry_to_detail_schema(entry)
+
+
+@router.post("/entry/{entry_id}/approve", response_model=TimesheetEntrySchema)
+async def approve_timesheet_entry(
+    entry_id: int,
+    current_user: UserModel = Depends(get_current_production_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Подтверждает свою часть согласования изменения часов. Если выбрано
+    несколько обязательных согласующих, запись переходит в "approved"
+    только когда согласуют ВСЕ из них (правило 11 - только вышестоящий
+    пользователь, не сам сотрудник, и только тот, кто назначен согласующим
+    в текущем раунде).
+    """
+    entry = await _load_timesheet_entry(db, entry_id)
+    if not can_review_production(current_user, entry.user):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+    if entry.status != PRODUCTION_STATUS_PENDING:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Entry is not pending approval")
+
+    approval = next(
+        (a for a in entry.approvals if a.round == entry.approval_round and a.approver_id == current_user.id
+         and a.status == PRODUCTION_STATUS_PENDING),
+        None,
+    )
+    if approval is None:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You are not assigned to approve this entry")
+
+    approval.status = PRODUCTION_STATUS_APPROVED
+    approval.decided_at = datetime.now(timezone.utc)
+    approval.comment = None
+    await db.flush()
+
+    fully_approved = not any(
+        a.round == entry.approval_round and a.status == PRODUCTION_STATUS_PENDING for a in entry.approvals
+    )
+    if fully_approved:
+        entry.status = PRODUCTION_STATUS_APPROVED
+        entry.reviewer_id = current_user.id
+        entry.reviewed_at = datetime.now(timezone.utc)
+        entry.reviewer_comment = None
+    await db.commit()
+
+    entry = await _load_timesheet_entry(db, entry.id)
+    if fully_approved:
+        _notify_employee_about_timesheet_review(entry, approved=True)
+    return _timesheet_entry_to_schema(entry)
+
+
+@router.post("/entry/{entry_id}/reject", response_model=TimesheetEntrySchema)
+async def reject_timesheet_entry(
+    entry_id: int,
+    data: TimesheetEntryReject,
+    current_user: UserModel = Depends(get_current_production_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Отклоняет изменение часов - комментарий обязателен (правило 11). Отказ
+    хотя бы одного из обязательных согласующих отклоняет запись целиком,
+    независимо от решения остальных.
+    """
+    entry = await _load_timesheet_entry(db, entry_id)
+    if not can_review_production(current_user, entry.user):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+    if entry.status != PRODUCTION_STATUS_PENDING:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Entry is not pending approval")
+
+    approval = next(
+        (a for a in entry.approvals if a.round == entry.approval_round and a.approver_id == current_user.id
+         and a.status == PRODUCTION_STATUS_PENDING),
+        None,
+    )
+    if approval is None:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You are not assigned to approve this entry")
+
+    approval.status = PRODUCTION_STATUS_REJECTED
+    approval.decided_at = datetime.now(timezone.utc)
+    approval.comment = data.comment
+
+    entry.status = PRODUCTION_STATUS_REJECTED
+    entry.reviewer_id = current_user.id
+    entry.reviewed_at = datetime.now(timezone.utc)
+    entry.reviewer_comment = data.comment
+    await db.commit()
+
+    entry = await _load_timesheet_entry(db, entry.id)
+    _notify_employee_about_timesheet_review(entry, approved=False)
+    return _timesheet_entry_to_schema(entry)
 
 
 # ------------------------------------------------------------------
@@ -568,8 +989,8 @@ async def get_subordinates_summary(
             TimesheetEntryModel.date <= end,
         )
     )
-    hours_by_key: dict[tuple[int, date], tuple[Decimal, Decimal, str | None]] = {
-        (e.user_id, e.date): (e.hours, e.overtime_hours, e.text_value) for e in hours_result.scalars().all()
+    hours_by_key: dict[tuple[int, date], TimesheetEntryModel] = {
+        (e.user_id, e.date): e for e in hours_result.scalars().all()
     }
 
     entries_result = await db.execute(
@@ -588,16 +1009,23 @@ async def get_subordinates_summary(
         days = []
         total_hours = Decimal("0")
         pending_count = 0
+        pending_timesheet_count = 0
         for day_num in range(1, end.day + 1):
             day = date(year, month, day_num)
-            base_hours, overtime_hours, text_value = hours_by_key.get(
-                (user.id, day), (_default_base_hours(user, day), Decimal("0"), None)
-            )
+            timesheet_entry = hours_by_key.get((user.id, day))
+            if timesheet_entry is not None:
+                base_hours = timesheet_entry.hours
+                overtime_hours = timesheet_entry.overtime_hours
+                text_value = timesheet_entry.text_value
+            else:
+                base_hours, overtime_hours, text_value = _default_base_hours(user, day), Decimal("0"), None
             hours = base_hours + overtime_hours
             total_hours += hours
             entry = entries_by_key.get((user.id, day))
             if entry is not None and entry.status == PRODUCTION_STATUS_PENDING:
                 pending_count += 1
+            if timesheet_entry is not None and timesheet_entry.status == PRODUCTION_STATUS_PENDING:
+                pending_timesheet_count += 1
             days.append(SubordinateDay(
                 date=day,
                 hours=hours,
@@ -606,12 +1034,15 @@ async def get_subordinates_summary(
                 text_value=text_value,
                 status=entry.status if entry else None,
                 entry_id=entry.id if entry else None,
+                timesheet_status=timesheet_entry.status if timesheet_entry else None,
+                timesheet_entry_id=timesheet_entry.id if timesheet_entry else None,
             ))
         summaries.append(SubordinateSummary(
             user=EmployeeBrief.model_validate(user),
             days=days,
             total_hours=total_hours,
             pending_count=pending_count,
+            pending_timesheet_count=pending_timesheet_count,
         ))
     return summaries
 
@@ -751,7 +1182,7 @@ async def get_user_production_month(
             TimesheetEntryModel.date <= end,
         )
     )
-    hours_by_date = {e.date: (e.hours, e.overtime_hours, e.text_value) for e in hours_result.scalars().all()}
+    hours_by_date = {e.date: e for e in hours_result.scalars().all()}
 
     entries_result = await db.execute(
         select(ProductionEntryModel)
@@ -771,14 +1202,20 @@ async def get_user_production_month(
     days = []
     for day_num in range(1, end.day + 1):
         day = date(year, month, day_num)
-        base_hours, overtime_hours, text_value = hours_by_date.get(
-            day, (_default_base_hours(target, day), Decimal("0"), None)
-        )
+        timesheet_entry = hours_by_date.get(day)
+        if timesheet_entry is not None:
+            base_hours = timesheet_entry.hours
+            overtime_hours = timesheet_entry.overtime_hours
+            text_value = timesheet_entry.text_value
+        else:
+            base_hours, overtime_hours, text_value = _default_base_hours(target, day), Decimal("0"), None
         entry = entries_by_date.get(day)
         entry_schema = _entry_to_schema(entry, current_user, base_hours, overtime_hours, text_value) if entry else None
         days.append(DayTimesheetInfo(
             date=day, hours=base_hours + overtime_hours,
             base_hours=base_hours, overtime_hours=overtime_hours, text_value=text_value, entry=entry_schema,
+            timesheet_status=timesheet_entry.status if timesheet_entry else None,
+            timesheet_entry_id=timesheet_entry.id if timesheet_entry else None,
         ))
     return days
 

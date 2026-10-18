@@ -2634,7 +2634,7 @@ async def get_my_liked_news(
      .where(
          NewsReactionModel.user_id == current_user.id,
          NewsReactionModel.reaction_type == 1,
-         NewsModel.moderation_status.in_(["approved", "pending", "rejected"]),
+         NewsModel.moderation_status == "approved",
          NewsModel.is_active == True
      ).options(selectinload(NewsModel.images)).order_by(NewsModel.created_at.desc())
 

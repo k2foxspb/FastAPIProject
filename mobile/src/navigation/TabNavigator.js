@@ -27,7 +27,11 @@ import TabelSubordinatesTableScreen from '../screens/TabelSubordinatesTableScree
 import ProductionEntryFormScreen from '../screens/ProductionEntryFormScreen';
 import ProductionApprovalListScreen from '../screens/ProductionApprovalListScreen';
 import ProductionEntryDetailScreen from '../screens/ProductionEntryDetailScreen';
+import TimesheetApprovalListScreen from '../screens/TimesheetApprovalListScreen';
+import StatementListScreen from '../screens/StatementListScreen';
+import StatementFormScreen from '../screens/StatementFormScreen';
 import AdminProductsScreen from '../screens/AdminProductsScreen';
+import AdminStatementTemplatesScreen from '../screens/AdminStatementTemplatesScreen';
 import NewsDetailScreen from '../screens/NewsDetailScreen';
 import MyLikesScreen from '../screens/MyLikesScreen';
 import MyReviewsScreen from '../screens/MyReviewsScreen';
@@ -161,6 +165,7 @@ function ProfileStack() {
       <Stack.Screen name="AdminAppUpload" component={AdminAppUploadScreen} options={{ title: 'Загрузить приложение' }} />
       <Stack.Screen name="AdminLogs" component={AdminLogsScreen} options={{ title: 'Логи системы' }} />
       <Stack.Screen name="AdminProducts" component={AdminProductsScreen} options={{ title: 'Продукция' }} />
+      <Stack.Screen name="AdminStatementTemplates" component={AdminStatementTemplatesScreen} options={{ title: 'Шаблоны заявлений' }} />
       <Stack.Screen name="MyLikes" component={MyLikesScreen} options={{ title: 'Понравилось' }} />
       <Stack.Screen name="MyReviews" component={MyReviewsScreen} options={{ title: 'Мои отзывы' }} />
       <Stack.Screen name="UserProfile" component={UserProfileScreen} options={{ title: 'Профиль пользователя' }} />
@@ -197,6 +202,9 @@ function TabelStack() {
       <Stack.Screen name="ProductionEntryForm" component={ProductionEntryFormScreen} options={{ title: 'Сданная продукция' }} />
       <Stack.Screen name="ProductionApprovalList" component={ProductionApprovalListScreen} options={{ title: 'На согласовании' }} />
       <Stack.Screen name="ProductionEntryDetail" component={ProductionEntryDetailScreen} options={{ title: 'Согласование' }} />
+      <Stack.Screen name="TimesheetApprovalList" component={TimesheetApprovalListScreen} options={{ title: 'Согласование часов' }} />
+      <Stack.Screen name="StatementList" component={StatementListScreen} options={{ title: 'Заявления' }} />
+      <Stack.Screen name="StatementForm" component={StatementFormScreen} options={{ title: 'Новое заявление' }} />
     </Stack.Navigator>
   );
 }
