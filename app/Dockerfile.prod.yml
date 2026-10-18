@@ -7,6 +7,12 @@ ENV HOME=/home/fast \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
+# curl нужен только для ручной диагностики сети изнутри контейнера
+# (например, docker compose exec web curl http://host.docker.internal:11434/api/tags)
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends curl \
+ && rm -rf /var/lib/apt/lists/*
+
 # создаем рабочую директорию
 RUN mkdir -p $APP_HOME
 
