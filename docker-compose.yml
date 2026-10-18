@@ -18,6 +18,10 @@ services:
       - POSTGRES_USER=${POSTGRES_USER:-ecommerce_user}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-xxxxxxxx}
       - POSTGRES_DB=${POSTGRES_DB:-ecommerce_db}
+    # Позволяет контейнеру обращаться к Ollama, запущенной на хосте,
+    # через OLLAMA_URL=http://host.docker.internal:11434 (см. .env).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       - db
       - redis

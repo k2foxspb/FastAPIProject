@@ -45,6 +45,7 @@ import AdminChatsScreen from '../screens/AdminChatsScreen';
 import AdminChatDetailScreen from '../screens/AdminChatDetailScreen';
 import AdminAppUploadScreen from '../screens/AdminAppUploadScreen';
 import AdminLogsScreen from '../screens/AdminLogsScreen';
+import AiChatScreen from '../screens/aiChat/AiChatScreen';
 
 
 const Tab = createBottomTabNavigator();

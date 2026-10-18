@@ -39,6 +39,10 @@ services:
       <<: *common-env
       ENVIRONMENT: production
       ENABLE_API_DOCS: ${ENABLE_API_DOCS:-false}
+    # Позволяет контейнеру обращаться к Ollama, запущенной на хосте,
+    # через OLLAMA_URL=http://host.docker.internal:11434 (см. .env).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 10s
