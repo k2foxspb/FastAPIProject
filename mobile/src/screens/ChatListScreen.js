@@ -9,11 +9,14 @@ import { theme as themeConstants } from '../constants/theme';
 import { API_BASE_URL } from '../constants';
 import { groupChatApi } from '../api';
 import { formatName, formatMessageTime, parseISODate, getAvatarUrl } from '../utils/formatters';
+import { storage } from '../utils/storage';
+import { AI_ASSISTANT_NAME, AI_ASSISTANT_SUBTITLE, AI_ASSISTANT_ICON, getAiChatHistoryKey } from '../constants/ai';
 
 export default function ChatListScreen({ navigation }) {
-  const { dialogs, fetchDialogs, isConnected } = useNotifications();
+  const { dialogs, fetchDialogs, isConnected, currentUserId } = useNotifications();
   const [refreshing, setRefreshing] = useState(false);
   const [groups, setGroups] = useState([]);
+  const [aiPreview, setAiPreview] = useState(null);
   // Панель вкладок теперь всегда position:'absolute' (см. TabNavigator.js) и не резервирует место
   // во flex-раскладке сама — поэтому список диалогов сам добавляет отступ под неё, чтобы последний
   // элемент списка не оказался под панелью.
@@ -27,6 +30,19 @@ export default function ChatListScreen({ navigation }) {
       console.error('[ChatListScreen] Failed to fetch groups:', e);
     }
   }, []);
+
+  // Подгружаем последнее сообщение из локальной истории переписки с ИИ-ассистентом,
+  // чтобы закреплённая строка сверху списка показывала актуальный превью, как обычный диалог.
+  const fetchAiPreview = useCallback(async () => {
+    try {
+      const raw = await storage.getItem(getAiChatHistoryKey(currentUserId));
+      const history = raw ? JSON.parse(raw) : [];
+      const lastMessage = history.length > 0 ? history[history.length - 1] : null;
+      setAiPreview(lastMessage);
+    } catch (e) {
+      console.error('[ChatListScreen] Failed to load AI chat preview:', e);
+    }
+  }, [currentUserId]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -42,7 +58,8 @@ export default function ChatListScreen({ navigation }) {
       // чтобы гарантировать актуальность статусов и последних сообщений
       fetchDialogs();
       fetchGroups();
-    }, [fetchDialogs, fetchGroups])
+      fetchAiPreview();
+    }, [fetchDialogs, fetchGroups, fetchAiPreview])
   );
 
 
@@ -109,6 +126,34 @@ export default function ChatListScreen({ navigation }) {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background, flex: 1 }]}>
+      {/* Закреплённая строка ИИ-ассистента: всегда сверху списка, вне FlatList, как закреплённый чат */}
+      <TouchableOpacity
+        style={[styles.dialogItem, styles.aiDialogItem, { borderBottomColor: colors.border, backgroundColor: colors.surface }]}
+        onPress={() => navigation.navigate('AiChat')}
+      >
+        <View style={[styles.avatar, styles.aiAvatar, { backgroundColor: colors.primary }]}>
+          <Icon name={AI_ASSISTANT_ICON} size={24} color="#fff" />
+        </View>
+        <View style={styles.content}>
+          <View style={styles.header}>
+            <View style={styles.aiNameRow}>
+              <Text style={[styles.email, { color: colors.text }]} numberOfLines={1}>{AI_ASSISTANT_NAME}</Text>
+              <View style={[styles.pinnedBadge, { backgroundColor: colors.primary + '20' }]}>
+                <Icon name="pin" size={10} color={colors.primary} />
+              </View>
+            </View>
+            {aiPreview && (
+              <Text style={[styles.time, { color: colors.textSecondary }]}>
+                {formatTime(aiPreview.timestamp)}
+              </Text>
+            )}
+          </View>
+          <Text style={[styles.lastMessage, { color: colors.textSecondary }]} numberOfLines={1}>
+            {aiPreview ? aiPreview.content : AI_ASSISTANT_SUBTITLE}
+          </Text>
+        </View>
+      </TouchableOpacity>
+
       <TouchableOpacity
         style={[styles.createGroupButton, { borderBottomColor: colors.border }]}
         onPress={() => navigation.navigate('CreateGroup')}
@@ -185,4 +230,15 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   createGroupText: { fontSize: 15, fontWeight: '600' },
+  aiDialogItem: { borderBottomWidth: 1 },
+  aiAvatar: { justifyContent: 'center', alignItems: 'center' },
+  aiNameRow: { flexDirection: 'row', alignItems: 'center', flex: 1 },
+  pinnedBadge: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 6,
+  },
 });

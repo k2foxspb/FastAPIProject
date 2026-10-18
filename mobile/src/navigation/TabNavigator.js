@@ -73,6 +73,11 @@ function ChatStack() {
       }}
     >
       <Stack.Screen name="ChatList" component= {ChatListScreen} options={{ title: 'Сообщения' }} />
+      <Stack.Screen
+        name="AiChat"
+        component={AiChatScreen}
+        options={{ headerShown: false }} // Экран сам рисует свой заголовок (см. AiChatScreen)
+      />
       <Stack.Screen 
         name="Chat" 
         component={ChatScreen} 
@@ -129,11 +134,6 @@ function ProfileStack() {
       }}
     >
       <Stack.Screen name="ProfileMain" component={ProfileScreen} options={{ title: 'Профиль' }} />
-      <Stack.Screen
-        name="AiChat"
-        component={AiChatScreen}
-        options={{ headerShown: false }} // Экран сам рисует свой заголовок (см. AiChatScreen)
-      />
       <Stack.Screen name="CreateAlbum" component={CreateAlbumScreen} options={{ title: 'Новый альбом' }} />
       <Stack.Screen name="AlbumDetail" component={AlbumDetailScreen} options={{ title: 'Альбом' }} />
       <Stack.Screen name="UserMedia" component={UserMediaScreen} options={{ title: 'Медиафайлы' }} />

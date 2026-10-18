@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,39 +7,80 @@ import {
   Platform,
   TouchableOpacity,
   StyleSheet,
+  Alert,
 } from 'react-native';
-import { Ionicons as Icon } from '@expo/vector-icons';
+import { Ionicons as Icon, MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as Haptics from 'expo-haptics';
 
 import { aiChatApi } from '../../api/aiChat';
+import { chatApi } from '../../api';
 import { useTheme } from '../../context/ThemeContext';
+import { useNotifications } from '../../context/NotificationContext';
 import { theme as themeConstants } from '../../constants/theme';
+import { storage } from '../../utils/storage';
+import { AI_ASSISTANT_NAME, AI_ASSISTANT_SUBTITLE, getAiChatHistoryKey } from '../../constants/ai';
+import { generateClientId } from '../chat/utils';
+import ForwardMessageModal from '../chat/components/ForwardMessageModal';
 import MessageBubble from './components/MessageBubble';
 import ChatInput from './components/ChatInput';
 
 // Генерация простого уникального id для сообщения в локальном state.
-// TODO: когда появится сохранение истории чата в БД, id будут приходить с backend.
 let messageIdCounter = 0;
 const generateMessageId = () => `${Date.now()}_${messageIdCounter++}`;
 
-// Экран чата с локальным ИИ (Ollama через backend).
+// Экран чата с локальным ИИ-ассистентом (Ollama через backend), под именем "Фокси".
 // Приложение НИКОГДА не обращается к Ollama напрямую - только к
 // backend-эндпоинту POST /api/ai/chat (см. mobile/src/api/aiChat.js).
+// История переписки сохраняется локально на устройстве (AsyncStorage), чтобы не теряться при закрытии экрана.
 //
 // TODO (на будущее, не ломает текущую архитектуру):
-//  - авторизация пользователя (сейчас запрос анонимный, backend публичный);
-//  - сохранение истории сообщений в БД на backend и подгрузка её при открытии экрана.
+//  - авторизация пользователя на запросе к Ollama (сейчас запрос анонимный, backend публичный);
+//  - сохранение истории сообщений на backend вместо локального хранилища (например, для синхронизации между устройствами).
 export default function AiChatScreen({ navigation }) {
   const { theme } = useTheme();
   const colors = themeConstants[theme];
   const insets = useSafeAreaInsets();
+  const { currentUserId, dialogs, fetchDialogs } = useNotifications();
+  const historyKey = getAiChatHistoryKey(currentUserId);
 
-  // История сообщений хранится в state экрана (пока без персистентности на backend).
+  // История сообщений хранится в state экрана и персистируется в AsyncStorage (см. ниже).
   const [messages, setMessages] = useState([]);
   const [inputText, setInputText] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState(null);
+  const [isHistoryLoaded, setHistoryLoaded] = useState(false);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [isForwardModalVisible, setForwardModalVisible] = useState(false);
   const listRef = useRef(null);
+
+  // Загрузка сохранённой истории при открытии экрана.
+  useEffect(() => {
+    let isActive = true;
+    (async () => {
+      try {
+        const raw = await storage.getItem(historyKey);
+        if (isActive && raw) {
+          setMessages(JSON.parse(raw));
+        }
+      } catch (e) {
+        console.error('[AiChatScreen] Failed to load chat history:', e);
+      } finally {
+        if (isActive) setHistoryLoaded(true);
+      }
+    })();
+    return () => { isActive = false; };
+  }, [historyKey]);
+
+  // Сохраняем историю при каждом изменении сообщений (только после завершения загрузки,
+  // чтобы не затереть сохранённую историю пустым начальным state).
+  useEffect(() => {
+    if (!isHistoryLoaded) return;
+    storage.saveItem(historyKey, JSON.stringify(messages)).catch((e) => {
+      console.error('[AiChatScreen] Failed to save chat history:', e);
+    });
+  }, [messages, isHistoryLoaded, historyKey]);
 
   const handleSend = useCallback(async () => {
     const text = inputText.trim();
@@ -81,7 +122,85 @@ export default function AiChatScreen({ navigation }) {
     }
   }, [inputText, isSending, messages]);
 
-  const renderItem = ({ item }) => <MessageBubble message={item} colors={colors} />;
+  // Выделение сообщений для пересылки (long-press), по аналогии с обычными чатами.
+  const toggleSelection = (id) => {
+    setSelectedIds((prev) => {
+      if (prev.includes(id)) {
+        const next = prev.filter((x) => x !== id);
+        if (next.length === 0) setSelectionMode(false);
+        return next;
+      }
+      return [...prev, id];
+    });
+  };
+
+  const clearSelection = () => {
+    setSelectionMode(false);
+    setSelectedIds([]);
+  };
+
+  const handlePressMessage = (id) => {
+    if (selectionMode) toggleSelection(id);
+  };
+
+  const handleLongPressMessage = (id) => {
+    if (!selectionMode) {
+      setSelectionMode(true);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+    toggleSelection(id);
+  };
+
+  const openForwardModal = () => {
+    if (selectedIds.length === 0) return;
+    setForwardModalVisible(true);
+  };
+
+  // Пересылаем выбранные сообщения ассистента как обычные текстовые сообщения в выбранные чаты.
+  // У ассистента нет учётной записи пользователя, поэтому вместо служебного поля forwarded_from_id
+  // используем текстовую пометку прямо в теле сообщения.
+  const handleForward = async (receiverIds) => {
+    if (!receiverIds || receiverIds.length === 0 || selectedIds.length === 0) return;
+
+    const messagesToForward = messages.filter((m) => selectedIds.includes(m.id));
+    if (messagesToForward.length === 0) return;
+
+    setForwardModalVisible(false);
+    clearSelection();
+
+    let hasFailures = false;
+    for (const receiverId of receiverIds) {
+      for (const message of messagesToForward) {
+        try {
+          await chatApi.sendMessage({
+            receiver_id: receiverId,
+            client_id: generateClientId(),
+            message_type: 'text',
+            message: `Переслано от ${AI_ASSISTANT_NAME}:\n${message.content}`,
+          });
+        } catch (e) {
+          console.error('[AiChatScreen] Failed to forward message:', e);
+          hasFailures = true;
+        }
+      }
+    }
+
+    fetchDialogs();
+
+    if (hasFailures) {
+      Alert.alert('Внимание', 'Не удалось переслать некоторые сообщения. Проверьте соединение.');
+    }
+  };
+
+  const renderItem = ({ item }) => (
+    <MessageBubble
+      message={item}
+      colors={colors}
+      isSelected={selectedIds.includes(item.id)}
+      onPress={() => handlePressMessage(item.id)}
+      onLongPress={() => handleLongPressMessage(item.id)}
+    />
+  );
 
   return (
     <KeyboardAvoidingView
@@ -90,18 +209,34 @@ export default function AiChatScreen({ navigation }) {
       keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top : 0}
     >
       <View style={[styles.header, { borderBottomColor: colors.border }]}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerButton}>
-          <Icon name="arrow-back" size={24} color={colors.text} />
+        <TouchableOpacity
+          onPress={() => (selectionMode ? clearSelection() : navigation.goBack())}
+          style={styles.headerButton}
+        >
+          <Icon name={selectionMode ? 'close' : 'arrow-back'} size={24} color={colors.text} />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: colors.text }]}>ИИ-ассистент</Text>
-        <View style={styles.headerButton} />
+        {selectionMode ? (
+          <Text style={[styles.headerTitle, { color: colors.text }]}>Выбрано: {selectedIds.length}</Text>
+        ) : (
+          <View style={styles.headerTitleBlock}>
+            <Text style={[styles.headerTitle, { color: colors.text }]}>{AI_ASSISTANT_NAME}</Text>
+            <Text style={[styles.headerSubtitle, { color: colors.textSecondary }]}>{AI_ASSISTANT_SUBTITLE}</Text>
+          </View>
+        )}
+        {selectionMode ? (
+          <TouchableOpacity onPress={openForwardModal} style={styles.headerButton}>
+            <MaterialIcons name="forward" size={24} color={colors.primary} />
+          </TouchableOpacity>
+        ) : (
+          <View style={styles.headerButton} />
+        )}
       </View>
 
       {messages.length === 0 ? (
         <View style={styles.emptyContainer}>
           <Icon name="chatbubble-ellipses-outline" size={48} color={colors.textSecondary} />
           <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
-            Задайте вопрос ассистенту - он ответит кратко и по делу
+            Задайте вопрос ассистенту {AI_ASSISTANT_NAME} - он ответит кратко и по делу
           </Text>
         </View>
       ) : (
@@ -128,6 +263,14 @@ export default function AiChatScreen({ navigation }) {
         isSending={isSending}
         colors={colors}
       />
+
+      <ForwardMessageModal
+        visible={isForwardModalVisible}
+        dialogs={dialogs || []}
+        colors={colors}
+        onClose={() => setForwardModalVisible(false)}
+        onForward={handleForward}
+      />
     </KeyboardAvoidingView>
   );
 }
@@ -148,9 +291,15 @@ const styles = StyleSheet.create({
     width: 40,
     alignItems: 'center',
   },
+  headerTitleBlock: {
+    alignItems: 'center',
+  },
   headerTitle: {
     fontSize: 17,
     fontWeight: '600',
+  },
+  headerSubtitle: {
+    fontSize: 12,
   },
   listContent: {
     paddingHorizontal: 12,

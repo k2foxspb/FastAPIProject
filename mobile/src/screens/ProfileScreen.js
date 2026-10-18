@@ -445,17 +445,6 @@ export default function ProfileScreen({ navigation }) {
                   <Text style={[styles.menuItemText, { color: colors.text }]}>Редактировать профиль</Text>
                 </TouchableOpacity>
 
-                <TouchableOpacity
-                  style={[styles.menuItem, { borderBottomWidth: 1, borderBottomColor: colors.border }]}
-                  onPress={() => {
-                    setSettingsVisible(false);
-                    navigation.navigate('AiChat');
-                  }}
-                >
-                  <Icon name="chatbubble-ellipses-outline" size={22} color={colors.primary} />
-                  <Text style={[styles.menuItemText, { color: colors.text }]}>ИИ-ассистент</Text>
-                </TouchableOpacity>
-
                 <View style={styles.menuSection}>
                   <Text style={[styles.menuSectionTitle, { color: colors.textSecondary }]}>Тема оформления</Text>
                   <View style={styles.themeToggleRow}>
