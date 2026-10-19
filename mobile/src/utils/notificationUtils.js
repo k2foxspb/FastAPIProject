@@ -55,6 +55,28 @@ export async function ensureNotificationChannel() {
   }
 }
 
+// Канал для "тихих часов" (ночное время в настройках): уведомление по-прежнему
+// показывается, но без звука и вибрации. Сервер передаёт data.silent/
+// data.android_channel_id = "silent", когда у получателя сейчас действуют тихие часы.
+export async function ensureSilentNotificationChannel() {
+  if (Platform.OS !== 'android') return 'default';
+  try {
+    if (!notifee || typeof notifee.createChannel !== 'function') {
+      return 'default';
+    }
+    return await notifee.createChannel({
+      id: 'silent',
+      name: 'Без звука (тихие часы)',
+      importance: AndroidImportance.LOW,
+      vibration: false,
+      sound: null,
+    });
+  } catch (e) {
+    console.log('[Notifee] ensureSilentNotificationChannel error:', e?.message || e);
+    return 'default';
+  }
+}
+
 export async function displayBundledMessage(remoteMessage) {
   try {
     console.log(`[Notifee] displayBundledMessage called for messageId: ${remoteMessage?.messageId}`);
@@ -127,8 +149,9 @@ export async function displayBundledMessage(remoteMessage) {
       return;
     }
 
-    const channelId = await ensureNotificationChannel();
-    console.log(`[Notifee] Using channel: ${channelId}`);
+    const isSilent = data.silent === 'true' || data.android_channel_id === 'silent';
+    const channelId = isSilent ? await ensureSilentNotificationChannel() : await ensureNotificationChannel();
+    console.log(`[Notifee] Using channel: ${channelId} (silent: ${isSilent})`);
     
     const groupId = senderId ? `group_sender_${senderId}` : (newsId ? `group_news_${newsId}` : 'group_general');
 
@@ -176,7 +199,7 @@ export async function displayBundledMessage(remoteMessage) {
           groupId: groupId,
           smallIcon: 'notification_icon',
           color: '#023c69',
-          importance: AndroidImportance.HIGH,
+          importance: isSilent ? AndroidImportance.LOW : AndroidImportance.HIGH,
           pressAction: { id: 'default', launchActivity: 'default' },
           style: {
             type: AndroidStyle.MESSAGING,
@@ -217,11 +240,12 @@ export async function displayBundledMessage(remoteMessage) {
           smallIcon: 'notification_icon',
           color: '#023c69',
           pressAction: { id: 'default', launchActivity: 'default' },
-          importance: AndroidImportance.HIGH,
+          importance: isSilent ? AndroidImportance.LOW : AndroidImportance.HIGH,
         },
         ios: {
           categoryId: type === 'new_message' ? 'message_actions' : undefined,
           threadId: groupId,
+          sound: isSilent ? undefined : 'default',
         }
       };
 

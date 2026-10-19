@@ -580,5 +580,23 @@ class AppLogRequest(BaseModel):
     device_info: Optional[str] = None
 
 
+class NotificationSettingsResponse(BaseModel):
+    """Настройки уведомлений пользователя (см. app.core.notifications)."""
+    disabled_groups: list[str] = []
+    quiet_hours_enabled: bool = False
+    quiet_hours_start: str = "22:00"
+    quiet_hours_end: str = "07:00"
+    # Справочник доступных групп оповещений (код -> название) для отображения в UI
+    available_groups: dict[str, str] = {}
+
+
+class NotificationSettingsUpdate(BaseModel):
+    """Частичное обновление настроек уведомлений - передаются только изменяемые поля."""
+    disabled_groups: Optional[list[str]] = None
+    quiet_hours_enabled: Optional[bool] = None
+    quiet_hours_start: Optional[str] = Field(default=None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+    quiet_hours_end: Optional[str] = Field(default=None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+
+
 
 

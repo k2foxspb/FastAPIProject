@@ -14,6 +14,7 @@ from app.api.routers import (
     timesheet,
     statements,
     ai,
+    acting,
 )
 
 # Основной роутер для API v1
@@ -30,6 +31,7 @@ public_routers = [
     (timesheet.router, ["timesheet"]),
     (statements.router, ["statements"]),
     (ai.router, ["ai"]),
+    (acting.router, ["acting"]),
 ]
 
 for router, tags in public_routers:

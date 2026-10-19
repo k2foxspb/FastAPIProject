@@ -28,8 +28,9 @@ from app.schemas.users import (
     UserPhotoComment as UserPhotoCommentSchema, UserPhotoCommentCreate,
     TokenResponse, FirebaseConfigResponse, VerifyCodeRequest, ResendCodeRequest,
     GoogleAuthRequest, FirebaseAuthRequest, RequestCodeRequest, PhoneCodeResponse,
-    ReactorInfo
+    ReactorInfo, NotificationSettingsResponse, NotificationSettingsUpdate
 )
+from app.core.notifications import NOTIFICATION_GROUPS, get_notification_settings
 from app.schemas.news import News as NewsSchema, NewsComment as NewsCommentSchema
 from app.api.dependencies import get_async_db, get_friendship_status, can_view_content
 from app.core.auth import (
@@ -335,6 +336,48 @@ async def get_me(
         pass
     
     return UserSchema.model_validate(user)
+
+
+@router.get("/me/notification-settings", response_model=NotificationSettingsResponse)
+async def get_notification_settings_endpoint(
+    current_user: UserModel = Depends(get_current_user),
+):
+    """
+    Возвращает настройки уведомлений текущего пользователя: отключённые
+    группы оповещений и "тихие часы" (ночное время без звука).
+    """
+    settings = get_notification_settings(current_user)
+    return NotificationSettingsResponse(**settings, available_groups=NOTIFICATION_GROUPS)
+
+
+@router.patch("/me/notification-settings", response_model=NotificationSettingsResponse)
+async def update_notification_settings(
+    data: NotificationSettingsUpdate,
+    current_user: UserModel = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Частично обновляет настройки уведомлений текущего пользователя
+    (отключённые группы оповещений и/или тихие часы).
+    """
+    settings = get_notification_settings(current_user)
+
+    if data.disabled_groups is not None:
+        unknown = [g for g in data.disabled_groups if g not in NOTIFICATION_GROUPS]
+        if unknown:
+            raise HTTPException(status_code=400, detail=f"Unknown notification group(s): {', '.join(unknown)}")
+        settings["disabled_groups"] = data.disabled_groups
+    if data.quiet_hours_enabled is not None:
+        settings["quiet_hours_enabled"] = data.quiet_hours_enabled
+    if data.quiet_hours_start is not None:
+        settings["quiet_hours_start"] = data.quiet_hours_start
+    if data.quiet_hours_end is not None:
+        settings["quiet_hours_end"] = data.quiet_hours_end
+
+    current_user.notification_settings = settings
+    await db.commit()
+
+    return NotificationSettingsResponse(**settings, available_groups=NOTIFICATION_GROUPS)
 
 
 @router.patch("/me", response_model=UserSchema)

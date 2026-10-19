@@ -26,6 +26,7 @@ export default function ProfileScreen({ navigation }) {
   const [refreshing, setRefreshing] = useState(false);
   const fetchProfileRef = useRef(null);
   const [quietHours, setQuietHours] = useState({ enabled: false, start: '22:00', end: '08:00' });
+  const [notificationGroups, setNotificationGroups] = useState({ disabled: [], available: {} });
   const { disconnect, currentUser, loadingUser, loadUser } = useNotifications();
   const { theme, isDark, toggleTheme, isSystemTheme, useSystemThemeSetting } = useTheme();
   const colors = themeConstants[theme];
@@ -227,18 +228,40 @@ export default function ProfileScreen({ navigation }) {
       fetchProfileRef.current = fetchProfile;
       fetchProfile();
 
-      // Загрузка настроек тихих часов
-      storage.getItem('quiet_hours_enabled').then(enabled => {
-        storage.getItem('quiet_hours_start').then(start => {
-          storage.getItem('quiet_hours_end').then(end => {
-            setQuietHours({
-              enabled: enabled === 'true',
-              start: start || '22:00',
-              end: end || '08:00'
-            });
+      // Загрузка настроек уведомлений (тихие часы + отключённые группы) с сервера.
+      // Сервер - источник истины (единые настройки на всех устройствах), но
+      // дублируем тихие часы в локальное хранилище, чтобы isWithinQuietHours()
+      // могла быстро проверить их офлайн (для звука уведомлений внутри приложения).
+      usersApi.getNotificationSettings()
+        .then(res => {
+          const data = res.data || {};
+          setQuietHours({
+            enabled: !!data.quiet_hours_enabled,
+            start: data.quiet_hours_start || '22:00',
+            end: data.quiet_hours_end || '08:00',
+          });
+          setNotificationGroups({
+            disabled: data.disabled_groups || [],
+            available: data.available_groups || {},
+          });
+          storage.saveItem('quiet_hours_enabled', data.quiet_hours_enabled ? 'true' : 'false');
+          storage.saveItem('quiet_hours_start', data.quiet_hours_start || '22:00');
+          storage.saveItem('quiet_hours_end', data.quiet_hours_end || '08:00');
+        })
+        .catch(() => {
+          // Сервер недоступен - используем последние известные локальные значения
+          storage.getItem('quiet_hours_enabled').then(enabled => {
+            storage.getItem('quiet_hours_start').then(start => {
+              storage.getItem('quiet_hours_end').then(end => {
+                setQuietHours({
+                  enabled: enabled === 'true',
+                  start: start || '22:00',
+                  end: end || '08:00'
+                });
+              }).catch(() => {});
+            }).catch(() => {});
           }).catch(() => {});
-        }).catch(() => {});
-      }).catch(() => {});
+        });
     }, [navigation, colors.text, loadUser, loadingUser])
   );
 
@@ -246,6 +269,7 @@ export default function ProfileScreen({ navigation }) {
     const newState = { ...quietHours, enabled: !quietHours.enabled };
     setQuietHours(newState);
     await storage.saveItem('quiet_hours_enabled', newState.enabled ? 'true' : 'false');
+    usersApi.updateNotificationSettings({ quiet_hours_enabled: newState.enabled }).catch(() => {});
   };
 
   const changeQuietTime = (type) => {
@@ -263,11 +287,28 @@ export default function ProfileScreen({ navigation }) {
             const newState = { ...quietHours, [type]: t };
             setQuietHours(newState);
             await storage.saveItem(`quiet_hours_${type}`, t);
+            usersApi.updateNotificationSettings(
+              type === 'start' ? { quiet_hours_start: t } : { quiet_hours_end: t }
+            ).catch(() => {});
           }
         })),
         { text: 'Отмена', style: 'cancel' }
       ]
     );
+  };
+
+  const toggleNotificationGroup = async (groupCode) => {
+    const isDisabled = notificationGroups.disabled.includes(groupCode);
+    const newDisabled = isDisabled
+      ? notificationGroups.disabled.filter(g => g !== groupCode)
+      : [...notificationGroups.disabled, groupCode];
+    setNotificationGroups({ ...notificationGroups, disabled: newDisabled });
+    try {
+      await usersApi.updateNotificationSettings({ disabled_groups: newDisabled });
+    } catch (e) {
+      // Откатываем состояние при ошибке сохранения на сервере
+      setNotificationGroups({ ...notificationGroups, disabled: notificationGroups.disabled });
+    }
   };
 
   const handleHideUpdate = async (id) => {
@@ -392,13 +433,22 @@ export default function ProfileScreen({ navigation }) {
         </View>
 
         {isProductionRole(user.role) ? (
-          <TouchableOpacity
-            style={[styles.hierarchyBtn, { borderColor: colors.primary, borderWidth: 1 }]}
-            onPress={() => navigation.navigate('UserHierarchy', { userId: user.id, userName: formatName(user) })}
-          >
-            <Icon name="git-network-outline" size={18} color={colors.primary} />
-            <Text style={[styles.hierarchyBtnText, { color: colors.primary }]}>Сотрудники</Text>
-          </TouchableOpacity>
+          <View style={styles.productionActionsRow}>
+            <TouchableOpacity
+              style={[styles.hierarchyBtn, { borderColor: colors.primary, borderWidth: 1 }]}
+              onPress={() => navigation.navigate('UserHierarchy', { userId: user.id, userName: formatName(user) })}
+            >
+              <Icon name="git-network-outline" size={18} color={colors.primary} />
+              <Text style={[styles.hierarchyBtnText, { color: colors.primary }]}>Сотрудники</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.hierarchyBtn, { borderColor: colors.primary, borderWidth: 1 }]}
+              onPress={() => navigation.navigate('ActingAssignments')}
+            >
+              <Icon name="swap-horizontal-outline" size={18} color={colors.primary} />
+              <Text style={[styles.hierarchyBtnText, { color: colors.primary }]}>И.о.</Text>
+            </TouchableOpacity>
+          </View>
         ) : null}
       </View>
 
@@ -502,9 +552,29 @@ export default function ProfileScreen({ navigation }) {
                     </View>
                   )}
                   <Text style={[styles.menuHint, { color: colors.textSecondary }]}>
-                    В это время звуковые уведомления в приложении будут отключены.
+                    В это время уведомления будут приходить без звука и вибрации.
                   </Text>
                 </View>
+
+                {Object.keys(notificationGroups.available).length > 0 && (
+                  <View style={[styles.menuSection, { borderTopWidth: 1, borderTopColor: colors.border, marginTop: 5 }]}>
+                    <Text style={[styles.menuSectionTitle, { color: colors.textSecondary }]}>Группы оповещений</Text>
+                    {Object.entries(notificationGroups.available).map(([code, label]) => (
+                      <View key={code} style={styles.quietHoursHeader}>
+                        <Text style={[styles.menuItemText, { color: colors.text, marginLeft: 0 }]}>{label}</Text>
+                        <Switch
+                          value={!notificationGroups.disabled.includes(code)}
+                          onValueChange={() => toggleNotificationGroup(code)}
+                          trackColor={{ false: colors.border, true: colors.primary + '80' }}
+                          thumbColor={!notificationGroups.disabled.includes(code) ? colors.primary : '#f4f3f4'}
+                        />
+                      </View>
+                    ))}
+                    <Text style={[styles.menuHint, { color: colors.textSecondary }]}>
+                      Отключённые группы не будут присылать push-уведомления.
+                    </Text>
+                  </View>
+                )}
 
                 <View style={[styles.menuDivider, { backgroundColor: colors.border }]} />
 
@@ -653,6 +723,7 @@ const styles = StyleSheet.create({
   statValue: { fontSize: 18, fontWeight: '700' },
   statLabel: { fontSize: 12, marginTop: 2 },
   role: { color: 'gray' },
+  productionActionsRow: { flexDirection: 'row', marginTop: 15 },
   hierarchyBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -660,7 +731,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 15,
     paddingVertical: 10,
     borderRadius: 20,
-    marginTop: 15,
+    marginLeft: 10,
   },
   hierarchyBtnText: { marginLeft: 8, fontWeight: '600' },
   section: { padding: 20 },

@@ -285,6 +285,74 @@ def can_move_worker(current: ScopedUser, worker: ScopedUser, target_section_id: 
     return False
 
 
+def can_assign_acting(current_role: str | None, acting_role: str, assignee_current_role: str | None) -> bool:
+    """
+    Проверяет, может ли пользователь с ролью current_role назначить и.о.
+    на должность acting_role сотрудника, чья СОБСТВЕННАЯ (основная)
+    должность - assignee_current_role.
+    Назначать может только тот, кто строго выше по иерархии и замещаемой
+    должности, и исходной должности того, кого назначают и.о.
+    """
+    if not is_production_role(acting_role):
+        return False
+    current_level = get_role_level(current_role)
+    if get_role_level(acting_role) <= current_level:
+        return False
+    if get_role_level(assignee_current_role) <= current_level:
+        return False
+    return True
+
+
+async def get_active_acting_assignment(db, user_id: int):
+    """
+    Возвращает активное на текущий момент назначение и.о. (app.models.structure.ActingAssignment)
+    для указанного пользователя, либо None, если такого назначения нет.
+    """
+    from datetime import datetime, timezone
+    from sqlalchemy import select, or_
+    from app.models.structure import ActingAssignment
+
+    now = datetime.now(timezone.utc)
+    result = await db.execute(
+        select(ActingAssignment).where(
+            ActingAssignment.user_id == user_id,
+            ActingAssignment.is_active == True,  # noqa: E712
+            ActingAssignment.starts_at <= now,
+            or_(ActingAssignment.ends_at.is_(None), ActingAssignment.ends_at >= now),
+        )
+    )
+    return result.scalars().first()
+
+
+async def apply_effective_role(user, db) -> None:
+    """
+    Единая точка входа для подмены эффективной должности пользователя.
+    Если у user есть активное назначение и.о. (ActingAssignment), подменяет
+    его role/workshop_id/section_id на снимок замещаемой должности
+    (acting_role/acting_workshop_id/acting_section_id), зафиксированный на
+    момент создания назначения.
+
+    Подмена происходит ТОЛЬКО в памяти текущего запроса: объект
+    отсоединяется от сессии (db.expunge), чтобы случайный commit() где-то
+    дальше по цепочке обработки запроса не сохранил эту подмену в БД и не
+    затронул настоящую должность пользователя (users.role). Исходные
+    значения сохраняются в user.original_role/original_workshop_id/
+    original_section_id - например, для отображения в профиле.
+    """
+    assignment = await get_active_acting_assignment(db, user.id)
+    if assignment is None:
+        return
+
+    db.expunge(user)
+    user.original_role = user.role
+    user.original_workshop_id = user.workshop_id
+    user.original_section_id = user.section_id
+    user.acting_assignment_id = assignment.id
+    user.role = assignment.acting_role
+    user.workshop_id = assignment.acting_workshop_id
+    user.section_id = assignment.acting_section_id
+
+
 def get_notification_scope_filter(current: ScopedUser):
     """
     Возвращает информацию, какая часть пользователей должна получить

@@ -6,6 +6,15 @@ from typing import Optional
 class AnnouncementCreate(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     content: str = Field(min_length=1)
+    # Необязательное сужение зоны рассылки в пределах собственной зоны
+    # ответственности автора (например, начальник цеха может разослать
+    # объявление только одному участку, а не всему цеху).
+    target_workshop_id: Optional[int] = Field(
+        default=None, description="Разослать только по этому цеху (должен быть в зоне ответственности автора)"
+    )
+    target_section_id: Optional[int] = Field(
+        default=None, description="Разослать только по этому участку (должен быть в зоне ответственности автора)"
+    )
 
 
 class AnnouncementAuthor(BaseModel):
@@ -29,3 +38,17 @@ class Announcement(BaseModel):
     recipients_count: int = 0
     is_read: Optional[bool] = None
     model_config = ConfigDict(from_attributes=True)
+
+    @classmethod
+    def model_validate(cls, obj, **kwargs):
+        item = super().model_validate(obj, **kwargs)
+        workshop = getattr(obj, "workshop", None)
+        if workshop is not None:
+            item.workshop_name = workshop.name
+        section = getattr(obj, "section", None)
+        if section is not None:
+            item.section_name = section.name
+        return item
+
+    workshop_name: Optional[str] = None
+    section_name: Optional[str] = None

@@ -176,6 +176,9 @@ export const usersApi = {
   getLikedPhotos: () => api.get('/users/me/liked-photos'),
   getMyNewsComments: () => api.get('/users/me/news-comments'),
   getMyPhotoComments: () => api.get('/users/me/photo-comments'),
+  // Настройки уведомлений: отключение по группам + "тихие часы" (без звука)
+  getNotificationSettings: () => api.get('/users/me/notification-settings'),
+  updateNotificationSettings: (data) => api.patch('/users/me/notification-settings', data),
 };
 
 export const orgApi = {
@@ -202,6 +205,21 @@ export const orgApi = {
   updateEmployeeAssignment: (userId, data) => api.patch(`/org/employees/${userId}/assignment`, data),
   deleteEmployee: (userId) => api.delete(`/org/employees/${userId}`),
   moveWorker: (userId, sectionId) => api.post(`/org/employees/${userId}/move`, { section_id: sectionId }),
+};
+
+export const actingApi = {
+  // Назначение исполняющего обязанности (и.о.) на должность другого сотрудника
+  getAssignments: (includeInactive = false) => api.get('/acting/assignments', { params: { include_inactive: includeInactive } }),
+  createAssignment: (data) => api.post('/acting/assignments', data),
+  revokeAssignment: (assignmentId) => api.delete(`/acting/assignments/${assignmentId}`),
+};
+
+export const announcementsApi = {
+  // Объявления по иерархии - автор может сузить группу получателей через
+  // target_workshop_id/target_section_id (см. app/api/routers/announcements.py)
+  getAnnouncements: () => api.get('/announcements/'),
+  createAnnouncement: (data) => api.post('/announcements/', data),
+  markAsRead: (announcementId) => api.post(`/announcements/${announcementId}/read`),
 };
 
 export const newsApi = {

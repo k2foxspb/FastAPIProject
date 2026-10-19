@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import Boolean, Integer, String, ForeignKey, DateTime, Numeric
+from sqlalchemy import Boolean, Integer, String, ForeignKey, DateTime, Numeric, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from typing import TYPE_CHECKING
@@ -39,6 +39,14 @@ class User(Base):
     avatar_preview_url: Mapped[str | None] = mapped_column(String, nullable=True)
     verification_code: Mapped[str | None] = mapped_column(String, nullable=True)
     fcm_token: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    # Настройки уведомлений пользователя: отключённые группы оповещений и
+    # "тихие часы" (ночное время, когда уведомления приходят без звука).
+    # Формат: {"disabled_groups": ["announcements", ...],
+    #          "quiet_hours_enabled": bool,
+    #          "quiet_hours_start": "HH:MM", "quiet_hours_end": "HH:MM"}
+    # См. app.core.notifications - единая точка применения этих настроек.
+    notification_settings: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     photos: Mapped[list["UserPhoto"]] = relationship("UserPhoto", back_populates="user", cascade="all, delete-orphan")
     photo_comments: Mapped[list["UserPhotoComment"]] = relationship("UserPhotoComment", back_populates="user", cascade="all, delete-orphan")

@@ -88,11 +88,16 @@ async def send_fcm_notification(
     body: str, 
     data: Optional[dict] = None,
     sender_id: Optional[int] = None,
-    sender_avatar: Optional[str] = None
+    sender_avatar: Optional[str] = None,
+    silent: bool = False
 ):
     """
     Отправляет пуш-уведомление через Firebase Cloud Messaging (HTTP v1 API)
     используя Firebase Admin SDK.
+
+    silent=True используется для "тихих часов" (ночное время в настройках
+    пользователя) - уведомление по-прежнему доставляется (и будет показано
+    клиентом), но без звука и вибрации.
     """
     if not firebase_admin._apps:
         logger.warning("FCM: Firebase Admin SDK not initialized, skipping notification")
@@ -130,12 +135,17 @@ async def send_fcm_notification(
             if "text" not in fcm_data:
                 fcm_data["text"] = str(body)
         
-        # Указываем ID канала (соответствует каналу "Сообщения" в приложении)
+        # Указываем ID канала (соответствует каналу "Сообщения" в приложении).
+        # Для тихих часов используем отдельный беззвучный канал "silent",
+        # который клиент должен создать без звука и вибрации.
         if "android_channel_id" not in fcm_data:
-            fcm_data["android_channel_id"] = "messages"
+            fcm_data["android_channel_id"] = "silent" if silent else "messages"
         
         if "type" not in fcm_data:
             fcm_data["type"] = "new_message"
+
+        # Флаг для клиента: показать уведомление без звука/вибрации (ночной режим)
+        fcm_data["silent"] = "true" if silent else "false"
 
         # Формируем уникальный тег для группировки и замены уведомлений на Android
         msg_type = fcm_data.get("type")
@@ -169,7 +179,8 @@ async def send_fcm_notification(
             direct_boot_ok=True,
         )
 
-        # Настройки для iOS (APNS)
+        # Настройки для iOS (APNS). В тихие часы не передаём sound, чтобы
+        # уведомление пришло без звука (но по-прежнему отобразилось).
         apns_config = messaging.APNSConfig(
             headers={
                 "apns-priority": "10",
@@ -178,7 +189,7 @@ async def send_fcm_notification(
             payload=messaging.APNSPayload(
                 aps=messaging.Aps(
                     alert=messaging.ApsAlert(title=title, body=body),
-                    sound="default",
+                    sound=None if silent else "default",
                     thread_id=str(sender_id) if sender_id else (fcm_data.get("chat_id") or fcm_data.get("news_id")),
                     content_available=True,
                     mutable_content=True,

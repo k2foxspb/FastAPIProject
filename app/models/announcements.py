@@ -7,6 +7,7 @@ from app.database import Base
 
 if TYPE_CHECKING:
     from app.models.users import User
+    from app.models.structure import Workshop, Section
 
 
 class Announcement(Base):
@@ -26,6 +27,8 @@ class Announcement(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     author: Mapped["User"] = relationship("User")
+    workshop: Mapped["Workshop | None"] = relationship("Workshop")
+    section: Mapped["Section | None"] = relationship("Section")
     recipients: Mapped[list["AnnouncementRecipient"]] = relationship(
         "AnnouncementRecipient", back_populates="announcement", cascade="all, delete-orphan"
     )

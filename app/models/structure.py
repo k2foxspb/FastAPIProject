@@ -66,3 +66,38 @@ class Section(Base):
     employees: Mapped[list["User"]] = relationship(
         "User", back_populates="section", foreign_keys="[User.section_id]"
     )
+
+
+class ActingAssignment(Base):
+    """
+    Временное назначение исполняющего обязанности (и.о.) ДОЛЖНОСТИ другого
+    сотрудника (например, мастер ушёл в отпуск - кто-то назначается и.о.
+    мастера). Замещается именно должность: acting_role/acting_workshop_id/
+    acting_section_id - это снимок замещаемой должности и её зоны
+    ответственности на момент создания назначения, а не ссылка на текущую
+    должность replaced_user. Поэтому последующее изменение должности
+    замещаемого сотрудника не влияет на уже выданные права и.о.
+    """
+    __tablename__ = "acting_assignments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    # Кто исполняет обязанности.
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    # Кого замещают - опционально, нужно только для истории и уведомлений,
+    # НЕ является источником эффективных прав и.о.
+    replaced_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    # Снимок замещаемой должности и её зоны ответственности на момент создания.
+    acting_role: Mapped[str] = mapped_column(String(50), nullable=False)
+    acting_workshop_id: Mapped[int | None] = mapped_column(ForeignKey("workshops.id", ondelete="SET NULL"), nullable=True)
+    acting_section_id: Mapped[int | None] = mapped_column(ForeignKey("sections.id", ondelete="SET NULL"), nullable=True)
+    # Кто назначил и.о. (обязан быть вышестоящим и над acting_role, и над user).
+    assigned_by_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    user: Mapped["User"] = relationship("User", foreign_keys=[user_id])
+    replaced_user: Mapped["User | None"] = relationship("User", foreign_keys=[replaced_user_id])
+    assigned_by: Mapped["User"] = relationship("User", foreign_keys=[assigned_by_id])

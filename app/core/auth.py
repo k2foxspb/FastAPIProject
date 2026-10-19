@@ -188,25 +188,43 @@ async def get_current_owner(current_user: UserModel = Depends(get_current_user))
     return current_user
 
 
-async def get_current_production_user(current_user: UserModel = Depends(get_current_user)):
+async def get_current_production_user(
+    current_user: UserModel = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
     """
     Проверяет, что пользователь имеет одну из ролей производственной иерархии
     (владелец, начальник цеха/участка, мастер, помощник мастера, рабочий).
+
+    Если у пользователя есть активное назначение исполняющего обязанности
+    (и.о.), его эффективная должность/зона ответственности подменяются на
+    замещаемые (см. app.core.roles.apply_effective_role) - это единая точка
+    входа, благодаря которой все роутеры, читающие current_user.role/
+    workshop_id/section_id, автоматически учитывают права и.о.
     """
-    from app.core.roles import is_production_role
+    from app.core.roles import is_production_role, apply_effective_role
     if not is_production_role(current_user.role):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied: not a production role")
+    await apply_effective_role(current_user, db)
     return current_user
 
 
-async def get_current_admin_or_production_user(current_user: UserModel = Depends(get_current_user)):
+async def get_current_admin_or_production_user(
+    current_user: UserModel = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
     """
     Проверяет, что пользователь либо администратор/владелец (для раздела
     администрирования: модерация должностей, цехов и участков), либо
     состоит в производственной иерархии (для управления своими подчинёнными).
+    Для производственных ролей дополнительно учитывает активное назначение
+    и.о. (см. get_current_production_user).
     """
-    from app.core.roles import is_production_role
-    if current_user.role in ("admin", "owner") or is_production_role(current_user.role):
+    from app.core.roles import is_production_role, apply_effective_role
+    if current_user.role in ("admin", "owner"):
+        return current_user
+    if is_production_role(current_user.role):
+        await apply_effective_role(current_user, db)
         return current_user
     raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
 

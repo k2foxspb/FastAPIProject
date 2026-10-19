@@ -4,7 +4,7 @@ import { View, Text, FlatList, StyleSheet, TouchableOpacity, RefreshControl, Ima
 import notifee from '@notifee/react-native';
 import FadeInImage from '../components/FadeInImage';
 import FadeInView from '../components/FadeInView';
-import { newsApi } from '../api';
+import { newsApi, announcementsApi } from '../api';
 import { getFullUrl, stripHtml } from '../utils/formatters';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
@@ -12,17 +12,22 @@ import { NewsSkeleton } from '../components/SkeletonLoader';
 import { Ionicons as Icon } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useNotifications } from '../context/NotificationContext';
+import { isProductionRole, getRoleScope } from '../constants/roles';
 
 export default function FeedScreen({ navigation }) {
   const { theme } = useTheme();
   const colors = themeConstants[theme];
   const { currentUser, loadingUser } = useNotifications();
-  const [news, setNews] = useState([]);
+  const [feedItems, setFeedItems] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState(null);
   const isLoadedRef = useRef(false);
   const loadingInProgressRef = useRef(false);
+
+  // Может ли текущий пользователь публиковать объявления (есть подчинённые) -
+  // совпадает с app/api/routers/announcements.py: рабочий (scope="self") не может публиковать.
+  const canCreateAnnouncement = currentUser && isProductionRole(currentUser.role) && getRoleScope(currentUser.role) !== 'self';
 
   const loadData = useCallback(async (isRefresh = false) => {
     console.log('[FeedScreen] loadData starting... loadingUser:', loadingUser, 'currentUser:', !!currentUser);
@@ -39,14 +44,26 @@ export default function FeedScreen({ navigation }) {
     loadingInProgressRef.current = true;
 
     try {
-      const newsRes = await newsApi.getNews().catch(() => ({ data: [] }));
+      const isProduction = currentUser && isProductionRole(currentUser.role);
+      const [newsRes, announcementsRes] = await Promise.all([
+        newsApi.getNews().catch(() => ({ data: [] })),
+        isProduction ? announcementsApi.getAnnouncements().catch(() => ({ data: [] })) : Promise.resolve({ data: [] }),
+      ]);
 
       if (currentUser) {
         setUser(currentUser);
       } else {
         setUser(null);
       }
-      setNews(newsRes.data || []);
+
+      // Объединяем новости и объявления в единую ленту, отсортированную по дате.
+      const newsItems = (newsRes.data || []).map(item => ({ ...item, __feedType: 'news' }));
+      const announcementItems = (announcementsRes.data || []).map(item => ({ ...item, __feedType: 'announcement' }));
+      const merged = [...newsItems, ...announcementItems].sort(
+        (a, b) => new Date(b.created_at) - new Date(a.created_at)
+      );
+
+      setFeedItems(merged);
       isLoadedRef.current = true;
     } catch (err) {
       console.log('[FeedScreen] loadData error:', err);
@@ -80,6 +97,46 @@ export default function FeedScreen({ navigation }) {
   };
 
   const canManageNews = user?.role === 'admin' || user?.role === 'owner';
+
+  const handleAnnouncementPress = (item) => {
+    if (!item.is_read) {
+      announcementsApi.markAsRead(item.id).catch(() => {});
+      setFeedItems(prev => prev.map(i => (i.__feedType === 'announcement' && i.id === item.id ? { ...i, is_read: true } : i)));
+    }
+  };
+
+  const renderAnnouncementItem = ({ item }) => {
+    const authorName = item.author
+      ? `${item.author.first_name || ''} ${item.author.last_name || ''}`.trim() || 'Пользователь'
+      : 'Пользователь';
+    const groupLabel = item.section_name || item.workshop_name || null;
+
+    return (
+      <TouchableOpacity
+        style={[styles.announcementCard, { backgroundColor: colors.surface, borderColor: colors.primary }]}
+        onPress={() => handleAnnouncementPress(item)}
+        activeOpacity={0.8}
+      >
+        <View style={styles.announcementHeader}>
+          <View style={[styles.announcementBadge, { backgroundColor: colors.primary }]}>
+            <Icon name="megaphone-outline" size={14} color="#fff" />
+            <Text style={styles.announcementBadgeText}>Объявление</Text>
+          </View>
+          {!item.is_read && <View style={[styles.unreadDot, { backgroundColor: colors.error }]} />}
+        </View>
+        <Text style={[styles.newsTitle, { color: colors.text, marginTop: 8 }]}>{item.title}</Text>
+        <Text style={[styles.newsContentText, { color: colors.textSecondary, marginTop: 4 }]} numberOfLines={4}>
+          {item.content}
+        </Text>
+        <View style={styles.newsFooter}>
+          <Text style={[styles.newsDate, { color: colors.textSecondary }]}>
+            {authorName} · {new Date(item.created_at).toLocaleDateString()}
+            {groupLabel ? ` · ${groupLabel}` : ''}
+          </Text>
+        </View>
+      </TouchableOpacity>
+    );
+  };
 
   const renderNewsItem = ({ item }) => {
     const newsThumbnail = item.images && item.images.length > 0 
@@ -151,6 +208,9 @@ export default function FeedScreen({ navigation }) {
     );
   };
 
+  const renderFeedItem = (props) => (
+    props.item.__feedType === 'announcement' ? renderAnnouncementItem(props) : renderNewsItem(props)
+  );
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -162,9 +222,9 @@ export default function FeedScreen({ navigation }) {
       ) : (
         <FadeInView visible={!loading} duration={250}>
           <FlatList
-          data={news}
-          keyExtractor={(item) => item.id.toString()}
-          renderItem={renderNewsItem}
+          data={feedItems}
+          keyExtractor={(item) => `${item.__feedType}_${item.id}`}
+          renderItem={renderFeedItem}
           contentContainerStyle={styles.listContent}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[colors.primary]} />
@@ -187,6 +247,15 @@ export default function FeedScreen({ navigation }) {
           onPress={() => navigation.navigate('EditNews')}
         >
           <Icon name="add-outline" size={30} color="#fff" />
+        </TouchableOpacity>
+      )}
+
+      {canCreateAnnouncement && (
+        <TouchableOpacity
+          style={[styles.fab, styles.fabSecondary, { backgroundColor: colors.surface, borderColor: colors.primary }]}
+          onPress={() => navigation.navigate('CreateAnnouncement')}
+        >
+          <Icon name="megaphone-outline" size={26} color={colors.primary} />
         </TouchableOpacity>
       )}
     </View>
@@ -212,6 +281,12 @@ const styles = StyleSheet.create({
   reactionItem: { flexDirection: 'row', alignItems: 'center' },
   reactionCount: { fontSize: 12, marginLeft: 4 },
   fab: { position: 'absolute', bottom: 20, right: 20, width: 60, height: 60, borderRadius: 30, justifyContent: 'center', alignItems: 'center', ...getShadow('#000', { width: 0, height: 4 }, 0.3, 4.65, 8) },
+  fabSecondary: { bottom: 90, width: 52, height: 52, borderRadius: 26, borderWidth: 1 },
+  announcementCard: { borderRadius: 12, marginBottom: 16, padding: 14, borderWidth: 1.5, ...getShadow('#000', { width: 0, height: 2 }, 0.1, 4, 4) },
+  announcementHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  announcementBadge: { flexDirection: 'row', alignItems: 'center', borderRadius: 12, paddingVertical: 4, paddingHorizontal: 10 },
+  announcementBadgeText: { color: '#fff', fontSize: 11, fontWeight: 'bold', marginLeft: 4 },
+  unreadDot: { width: 10, height: 10, borderRadius: 5 },
   emptyContainer: { 
     flex: 1, 
     justifyContent: 'center', 
