@@ -328,6 +328,10 @@ export const statementsApi = {
   // Свободные заявления с согласованием/уведомлением выбранных руководителей
   getSupervisors: () => api.get('/statements/supervisors'),
   createStatement: (data) => api.post('/statements', data),
+  updateStatement: (statementId, data) => api.put(`/statements/${statementId}`, data),
+  submitDraftStatement: (statementId) => api.post(`/statements/${statementId}/submit`),
+  resubmitStatement: (statementId, data) => api.post(`/statements/${statementId}/resubmit`, data),
+  cancelStatement: (statementId) => api.post(`/statements/${statementId}/cancel`),
   getMyStatements: () => api.get('/statements/my'),
   getPendingStatements: () => api.get('/statements/pending'),
   getStatementDetail: (statementId) => api.get(`/statements/${statementId}`),
