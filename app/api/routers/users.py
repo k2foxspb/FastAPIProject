@@ -36,7 +36,8 @@ from app.schemas.users import (
     ProfilePostCommentCreate, ProfilePostCommentResponse,
     ProfilePostReactionCreate, ProfilePostReactionResponse,
 )
-from app.core.notifications import NOTIFICATION_GROUPS, get_notification_settings
+from app.core.notifications import NOTIFICATION_GROUPS, get_notification_settings, dispatch_notification
+from app.api.routers.notifications import manager as notification_manager
 from app.schemas.news import News as NewsSchema, NewsComment as NewsCommentSchema
 from app.api.dependencies import get_async_db, get_friendship_status, can_view_content
 from app.core.auth import (
@@ -2808,7 +2809,11 @@ async def create_profile_post(
 
     res = await db.execute(
         select(ProfilePostModel)
-        .options(selectinload(ProfilePostModel.user))
+        .options(
+            selectinload(ProfilePostModel.user),
+            selectinload(ProfilePostModel.reactions),
+            selectinload(ProfilePostModel.comments),
+        )
         .where(ProfilePostModel.id == post.id)
     )
     post_obj = res.scalar_one()

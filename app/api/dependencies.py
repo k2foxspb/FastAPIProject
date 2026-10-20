@@ -30,11 +30,21 @@ async def refresh_positions_cache_dep(db: AsyncSession = Depends(get_async_db)) 
     await load_positions_cache(db)
 
 
-async def get_friendship_status(user1_id: int, user2_id: int, db: AsyncSession) -> str | None:
+async def get_friendship_status(user1_id_or_db, user2_id_or_user1, db_or_user2) -> str | None:
     """
     Возвращает статус дружбы между двумя пользователями.
     "accepted", "requested_by_me", "requested_by_them" или None.
+    Поддерживает вызов как (user1_id, user2_id, db), так и (db, user1_id, user2_id).
     """
+    if isinstance(user1_id_or_db, AsyncSession):
+        db = user1_id_or_db
+        user1_id = user2_id_or_user1
+        user2_id = db_or_user2
+    else:
+        user1_id = user1_id_or_db
+        user2_id = user2_id_or_user1
+        db = db_or_user2
+
     if user1_id == user2_id:
         return "self"
 

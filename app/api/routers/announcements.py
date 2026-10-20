@@ -281,6 +281,7 @@ async def list_announcements(
     recipients_count_sub = (
         select(func.count(AnnouncementRecipientModel.id))
         .where(AnnouncementRecipientModel.announcement_id == AnnouncementModel.id)
+        .correlate(AnnouncementModel)
         .scalar_subquery()
     )
     my_is_read_sub = (
@@ -289,6 +290,7 @@ async def list_announcements(
             AnnouncementRecipientModel.announcement_id == AnnouncementModel.id,
             AnnouncementRecipientModel.user_id == current_user.id,
         )
+        .correlate(AnnouncementModel)
         .scalar_subquery()
     )
     my_read_at_sub = (
@@ -297,6 +299,7 @@ async def list_announcements(
             AnnouncementRecipientModel.announcement_id == AnnouncementModel.id,
             AnnouncementRecipientModel.user_id == current_user.id,
         )
+        .correlate(AnnouncementModel)
         .scalar_subquery()
     )
 
