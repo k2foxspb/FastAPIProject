@@ -13,12 +13,17 @@
     },
     "production": {
       "autoIncrement": true, 
-      "distribution": "internal"
-
+      "distribution": "internal",
+      "env": {
+        "GOOGLE_SERVICES_JSON_BASE64": "google-services.json"
+      }
     },
     "apk": {
       "autoIncrement": true,
       "distribution": "internal",
+      "env": {
+        "GOOGLE_SERVICES_JSON_BASE64": "google-services.json"
+      },
       "android": {
         "buildType": "apk"
       }
