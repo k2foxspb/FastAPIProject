@@ -177,7 +177,7 @@ async def get_news(
      )
 
     # Если пользователь авторизован, добавляем его реакцию
-    if current_user:
+    if current_user and isinstance(current_user, UserModel):
         my_reaction_sub = select(
             NewsReactionModel.news_id,
             NewsReactionModel.reaction_type
@@ -295,23 +295,33 @@ async def get_user_news(
 
 @router.post("/", response_model=NewsSchema, status_code=status.HTTP_201_CREATED)
 async def create_news(
-    title: str = Form(...),
-    content: str = Form(...),
+    title: str | NewsCreate = Form(...),
+    content: str = Form(None),
     images: list[UploadFile] = File(None),
     current_user: UserModel = Depends(get_current_user),
     db: AsyncSession = Depends(get_async_db)
 ):
     """Создает новость. По умолчанию статус 'pending'."""
     from loguru import logger
-    logger.info(f"NEWS_CREATE_DEBUG: Starting create_news for user {current_user.email}, title={title}")
+
+    news_title = title
+    news_content = content
+    if isinstance(title, NewsCreate):
+        news_title = title.title
+        news_content = title.content
+    elif isinstance(title, str) and content is None:
+        news_title = title
+        news_content = ""
+
+    logger.info(f"NEWS_CREATE_DEBUG: Starting create_news for user {current_user.email}, title={news_title}")
 
     # 1. Сначала полностью вычитываем файлы из запроса
     validated_images_data: list[tuple[UploadFile, bytes]] = []
-    if images:
+    if images and isinstance(images, list):
         logger.info(f"NEWS_CREATE_DEBUG: Found images in request")
         # Обработка случая, когда images может содержать пустой файл или быть странного типа
         for img in images:
-            if not img.filename:
+            if not getattr(img, 'filename', None):
                 continue
             img_content = await img.read()
             if len(img_content) == 0:
@@ -327,8 +337,8 @@ async def create_news(
     try:
         # 2. Создаем объект новости
         db_news = NewsModel(
-            title=title,
-            content=content,
+            title=news_title,
+            content=news_content,
             author_id=current_user.id,
             moderation_status="approved" if current_user.role in ["admin", "owner"] else "pending"
         )

@@ -106,7 +106,7 @@ export default function UserHierarchyScreen({ route, navigation }) {
         <Text style={[styles.headerRole, { color: colors.textSecondary }]}>{getRoleLabel(data.user.role)}</Text>
       </View>
 
-      {renderSection('Начальники', 'arrow-up-circle-outline', data.superiors, 'Нет вышестоящих руководителей')}
+      {renderSection('Руководители', 'arrow-up-circle-outline', data.superiors, 'Нет вышестоящих руководителей')}
       {renderSection('Подчинённые', 'arrow-down-circle-outline', data.subordinates, 'Нет подчинённых сотрудников')}
     </ScrollView>
   );

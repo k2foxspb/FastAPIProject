@@ -31,7 +31,10 @@ yarn-error.*
 *.pem
 
 # local env files
+.env
 .env*.local
+google-services.json
+firebase-service-account.json
 
 # typescript
 *.tsbuildinfo
@@ -75,7 +78,10 @@ yarn-error.*
 *.pem
 
 # local env files
+.env
 .env*.local
+google-services.json
+firebase-service-account.json
 
 # typescript
 *.tsbuildinfo

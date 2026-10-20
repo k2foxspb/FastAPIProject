@@ -15,15 +15,17 @@ import { theme as themeConstants } from '../constants/theme';
 // руководителей должен его согласовать ("Согласование" - все выбранные
 // обязаны согласовать, отказ любого отклоняет заявление целиком), а кого
 // просто поставить в известность ("Уведомление").
-export default function StatementFormScreen({ navigation }) {
+export default function StatementFormScreen({ navigation, route }) {
   const { theme } = useTheme();
   const colors = themeConstants[theme];
 
-  const [message, setMessage] = useState('');
+  const editingStatement = route.params?.statement || null;
+
+  const [message, setMessage] = useState(editingStatement?.message || '');
   const [supervisors, setSupervisors] = useState([]);
   const [supervisorModes, setSupervisorModes] = useState({});
   const [templates, setTemplates] = useState([]);
-  const [selectedTemplateId, setSelectedTemplateId] = useState(null);
+  const [selectedTemplateId, setSelectedTemplateId] = useState(editingStatement?.template_id || null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -72,13 +74,28 @@ export default function StatementFormScreen({ navigation }) {
     });
   };
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (isDraft = false) => {
     if (!message.trim()) {
       Alert.alert('Ошибка', 'Введите текст заявления');
       return;
     }
 
-    const payload = { message: message.trim() };
+    if (editingStatement) {
+      setSaving(true);
+      try {
+        await statementsApi.updateStatement(editingStatement.id, { message: message.trim() });
+        Alert.alert('Готово', 'Изменения сохранены', [
+          { text: 'OK', onPress: () => navigation.goBack() },
+        ]);
+      } catch (err) {
+        Alert.alert('Ошибка', err.response?.data?.detail || 'Не удалось сохранить изменения');
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
+
+    const payload = { message: message.trim(), is_draft: isDraft };
 
     if (selectedTemplate) {
       payload.template_id = selectedTemplate.id;
@@ -89,7 +106,7 @@ export default function StatementFormScreen({ navigation }) {
       const notifyUserIds = Object.keys(supervisorModes)
         .filter(id => supervisorModes[id] === 'notify')
         .map(Number);
-      if (approverUserIds.length === 0) {
+      if (!isDraft && approverUserIds.length === 0) {
         Alert.alert('Ошибка', 'Выберите хотя бы одного согласующего руководителя');
         return;
       }
@@ -100,7 +117,7 @@ export default function StatementFormScreen({ navigation }) {
     setSaving(true);
     try {
       await statementsApi.createStatement(payload);
-      Alert.alert('Готово', 'Заявление отправлено на согласование', [
+      Alert.alert('Готово', isDraft ? 'Черновик заявления сохранён' : 'Заявление отправлено на согласование', [
         { text: 'OK', onPress: () => navigation.goBack() },
       ]);
     } catch (err) {
@@ -236,13 +253,24 @@ export default function StatementFormScreen({ navigation }) {
       </ScrollView>
 
       <View style={[styles.footer, { borderTopColor: colors.border, backgroundColor: colors.surface }]}>
+        {!editingStatement && (
+          <TouchableOpacity
+            style={[styles.draftBtn, { borderColor: colors.border, backgroundColor: colors.background }]}
+            onPress={() => handleSubmit(true)}
+            disabled={saving}
+          >
+            <Text style={[styles.draftBtnText, { color: colors.text }]}>Сохранить как черновик</Text>
+          </TouchableOpacity>
+        )}
         <TouchableOpacity
-          style={[styles.submitBtn, { backgroundColor: colors.primary }]}
-          onPress={handleSubmit}
+          style={[styles.submitBtn, { backgroundColor: colors.primary, marginTop: !editingStatement ? 8 : 0 }]}
+          onPress={() => handleSubmit(false)}
           disabled={saving}
         >
           {saving ? <ActivityIndicator color="#fff" /> : (
-            <Text style={styles.submitBtnText}>Отправить на согласование</Text>
+            <Text style={styles.submitBtnText}>
+              {editingStatement ? 'Сохранить изменения' : 'Отправить на согласование'}
+            </Text>
           )}
         </TouchableOpacity>
       </View>
@@ -270,6 +298,8 @@ const styles = StyleSheet.create({
   supervisorModeOption: { flexDirection: 'row', alignItems: 'center', marginRight: 20 },
   supervisorModeLabel: { fontSize: 13, marginLeft: 6 },
   footer: { padding: 15, borderTopWidth: 1 },
+  draftBtn: { padding: 12, borderRadius: 10, borderWidth: 1, alignItems: 'center' },
+  draftBtnText: { fontWeight: '600', fontSize: 14 },
   submitBtn: { padding: 14, borderRadius: 10, alignItems: 'center' },
   submitBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 14 },
 });

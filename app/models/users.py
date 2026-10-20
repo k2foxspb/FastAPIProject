@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import Boolean, Integer, String, ForeignKey, DateTime, Numeric, JSON
+from sqlalchemy import Boolean, Integer, String, ForeignKey, DateTime, Numeric, JSON, func, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from typing import TYPE_CHECKING
@@ -48,6 +48,7 @@ class User(Base):
     # См. app.core.notifications - единая точка применения этих настроек.
     notification_settings: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
+    posts: Mapped[list["ProfilePost"]] = relationship("ProfilePost", back_populates="user", cascade="all, delete-orphan")
     photos: Mapped[list["UserPhoto"]] = relationship("UserPhoto", back_populates="user", cascade="all, delete-orphan")
     photo_comments: Mapped[list["UserPhotoComment"]] = relationship("UserPhotoComment", back_populates="user", cascade="all, delete-orphan")
     photo_reactions: Mapped[list["UserPhotoReaction"]] = relationship("UserPhotoReaction", back_populates="user", cascade="all, delete-orphan")
@@ -212,6 +213,59 @@ class PhotoAlbumCommentReaction(Base):
 
     user: Mapped["User"] = relationship("User")
     comment: Mapped["PhotoAlbumComment"] = relationship("PhotoAlbumComment", back_populates="reactions")
+
+
+class ProfilePost(Base):
+    """Личные публикации в профиле пользователя (без модерации, не попадают в новости/объявления)."""
+    __tablename__ = "profile_posts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    content: Mapped[str | None] = mapped_column(String, nullable=True)
+    media_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    media_type: Mapped[str | None] = mapped_column(String(50), nullable=True)  # "image", "video", etc.
+    privacy: Mapped[str] = mapped_column(String(20), default="public", server_default="public", nullable=False)  # "public", "friends", "private"
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1", nullable=False)
+
+    user: Mapped["User"] = relationship("User", back_populates="posts")
+    comments: Mapped[list["ProfilePostComment"]] = relationship(
+        "ProfilePostComment", back_populates="post", cascade="all, delete-orphan", order_by="ProfilePostComment.created_at.asc()"
+    )
+    reactions: Mapped[list["ProfilePostReaction"]] = relationship(
+        "ProfilePostReaction", back_populates="post", cascade="all, delete-orphan"
+    )
+
+
+class ProfilePostComment(Base):
+    """Комментарии к публикации в профиле."""
+    __tablename__ = "profile_post_comments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    post_id: Mapped[int] = mapped_column(ForeignKey("profile_posts.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    comment: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    post: Mapped["ProfilePost"] = relationship("ProfilePost", back_populates="comments")
+    user: Mapped["User"] = relationship("User")
+
+
+class ProfilePostReaction(Base):
+    """Реакции на публикацию в профиле (уникальность: post_id + user_id)."""
+    __tablename__ = "profile_post_reactions"
+    __table_args__ = (
+        UniqueConstraint("post_id", "user_id", name="uq_profile_post_reactions_post_user"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    post_id: Mapped[int] = mapped_column(ForeignKey("profile_posts.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    reaction_type: Mapped[str] = mapped_column(String(50), nullable=False)  # "like", "heart", "1", etc.
+
+    post: Mapped["ProfilePost"] = relationship("ProfilePost", back_populates="reactions")
+    user: Mapped["User"] = relationship("User")
 
 
 

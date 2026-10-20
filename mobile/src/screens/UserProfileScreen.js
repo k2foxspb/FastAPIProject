@@ -1,7 +1,9 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { getShadow } from '../utils/shadowStyles';
-import { View, Text, StyleSheet, Image, FlatList, ScrollView, TouchableOpacity, ActivityIndicator, Platform, RefreshControl, Alert, Modal, TouchableWithoutFeedback } from 'react-native';
+import { View, Text, StyleSheet, Image, FlatList, ScrollView, TouchableOpacity, ActivityIndicator, Platform, RefreshControl, Alert, Modal, TouchableWithoutFeedback, TextInput, Dimensions } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useFocusEffect } from '@react-navigation/native';
+import RenderHTML from 'react-native-render-html';
 import { usersApi, adminApi, newsApi, orgApi } from '../api';
 import { API_BASE_URL } from '../constants';
 import { Ionicons as Icon } from '@expo/vector-icons';
@@ -23,6 +25,14 @@ export default function UserProfileScreen({ route, navigation }) {
   const [refreshing, setRefreshing] = useState(false);
   const [pickerState, setPickerState] = useState(null);
   const [assigningRole, setAssigningRole] = useState(false);
+
+  // Комментарии к публикации
+  const [commentsVisible, setCommentsVisible] = useState(false);
+  const [activePostForComments, setActivePostForComments] = useState(null);
+  const [postComments, setPostComments] = useState([]);
+  const [loadingComments, setLoadingComments] = useState(false);
+  const [newCommentText, setNewCommentText] = useState('');
+  const [submittingComment, setSubmittingComment] = useState(false);
 
   // Показывает модальное окно выбора варианта (роль/цех/участок) и
   // возвращает промис с выбранным значением (или null при отмене).
@@ -62,8 +72,8 @@ export default function UserProfileScreen({ route, navigation }) {
       
       setUser(userData);
       
-      const postsRes = await newsApi.getUserNews(userId);
-      setPosts(postsRes.data);
+      const postsRes = await usersApi.getProfilePosts(userId);
+      setPosts(postsRes.data || []);
       
       setError(null);
     } catch (err) {
@@ -242,16 +252,81 @@ export default function UserProfileScreen({ route, navigation }) {
   );
 
 
+  const handleReactToPost = async (postId) => {
+    try {
+      const res = await usersApi.reactToProfilePost(postId, 'like');
+      const action = res.data?.action;
+      setPosts(prev => prev.map(p => {
+        if (p.id === postId) {
+          const currentCount = p.reactions_count || 0;
+          if (action === 'added') {
+            return { ...p, my_reaction: 'like', reactions_count: currentCount + 1 };
+          } else if (action === 'removed') {
+            return { ...p, my_reaction: null, reactions_count: Math.max(0, currentCount - 1) };
+          }
+        }
+        return p;
+      }));
+    } catch (err) {
+      console.log('React error:', err);
+    }
+  };
+
+  const openComments = async (post) => {
+    setActivePostForComments(post);
+    setCommentsVisible(true);
+    setLoadingComments(true);
+    try {
+      const res = await usersApi.getProfilePostComments(post.id);
+      setPostComments(res.data || []);
+    } catch (err) {
+      Alert.alert('Ошибка', 'Не удалось загрузить комментарии');
+    } finally {
+      setLoadingComments(false);
+    }
+  };
+
+  const handleAddComment = async () => {
+    if (!newCommentText.trim() || !activePostForComments) return;
+    setSubmittingComment(true);
+    try {
+      const res = await usersApi.addProfilePostComment(activePostForComments.id, newCommentText.trim());
+      setPostComments(prev => [...prev, res.data]);
+      setNewCommentText('');
+      setPosts(prev => prev.map(p => p.id === activePostForComments.id ? { ...p, comments_count: (p.comments_count || 0) + 1 } : p));
+    } catch (err) {
+      Alert.alert('Ошибка', 'Не удалось отправить комментарий');
+    } finally {
+      setSubmittingComment(false);
+    }
+  };
+
+  const handleDeleteComment = async (commentId) => {
+    try {
+      await usersApi.deleteProfilePostComment(commentId);
+      setPostComments(prev => prev.filter(c => c.id !== commentId));
+      if (activePostForComments) {
+        setPosts(prev => prev.map(p => p.id === activePostForComments.id ? { ...p, comments_count: Math.max(0, (p.comments_count || 1) - 1) } : p));
+      }
+    } catch (err) {
+      Alert.alert('Ошибка', 'Не удалось удалить комментарий');
+    }
+  };
+
+  const getPrivacyBadge = (privacy) => {
+    if (privacy === 'friends') return { label: 'Для друзей', icon: 'people-outline' };
+    if (privacy === 'private') return { label: 'Только я', icon: 'lock-closed-outline' };
+    return { label: 'Публично', icon: 'globe-outline' };
+  };
+
   const renderPostItem = (item) => {
-    const postThumbnail = item.images && item.images.length > 0 
-      ? item.images[0].thumbnail_url 
-      : item.image_url;
+    const privacyInfo = getPrivacyBadge(item.privacy);
+    const hasMedia = !!item.media_url;
 
     return (
-      <TouchableOpacity 
+      <View 
         key={item.id}
         style={[styles.postCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
-        onPress={() => navigation.navigate('NewsDetail', { newsId: item.id, newsItem: item })}
       >
         <View style={styles.postAuthorHeader}>
           <View style={styles.authorInfo}>
@@ -261,42 +336,75 @@ export default function UserProfileScreen({ route, navigation }) {
             />
             <View>
               <Text style={[styles.authorName, { color: colors.text }]}>{formatName(user)}</Text>
-              <Text style={[styles.postDate, { color: colors.textSecondary }]}>
-                {new Date(item.created_at).toLocaleDateString()}
-              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
+                <Text style={[styles.postDate, { color: colors.textSecondary }]}>
+                  {new Date(item.created_at).toLocaleDateString()}
+                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginLeft: 8 }}>
+                  <Icon name={privacyInfo.icon} size={11} color={colors.textSecondary} />
+                  <Text style={{ fontSize: 10, color: colors.textSecondary, marginLeft: 3 }}>
+                    {privacyInfo.label}
+                  </Text>
+                </View>
+              </View>
             </View>
           </View>
         </View>
 
-        <View style={styles.postContentRow}>
-          {postThumbnail && (
-            <Image 
-              source={{ uri: getAvatarUrl(postThumbnail) }} 
-              style={styles.postThumbnail} 
+        {!!item.content && (
+          item.content.includes('<') && item.content.includes('>') ? (
+            <RenderHTML
+              contentWidth={Dimensions.get('window').width - 60}
+              source={{ html: item.content }}
+              tagsStyles={{
+                body: { color: colors.text, fontSize: 14, lineHeight: 20 },
+                p: { marginBottom: 6 },
+                img: { borderRadius: 8, marginVertical: 6, maxWidth: '100%' },
+              }}
             />
-          )}
-          <View style={styles.postTextContainer}>
-            <Text style={[styles.postTitle, { color: colors.text }]} numberOfLines={1}>{item.title}</Text>
-            <Text style={[styles.postContent, { color: colors.textSecondary }]} numberOfLines={2}>
-              {stripHtml(item.content)}
+          ) : (
+            <Text style={{ fontSize: 14, lineHeight: 20, color: colors.text, paddingHorizontal: 12, paddingVertical: 8 }}>
+              {item.content}
             </Text>
-          </View>
-        </View>
+          )
+        )}
+
+        {hasMedia && (
+          <Image
+            source={{ uri: getFullUrl(item.media_url) }}
+            style={{ width: '100%', height: 200, marginVertical: 4 }}
+            resizeMode="cover"
+          />
+        )}
 
         <View style={styles.postFooter}>
           <View style={styles.reactionsRow}>
-            <View style={styles.reactionItem}>
-              <Icon name={item.my_reaction === 1 ? "heart" : "heart-outline"} size={14} color={item.my_reaction === 1 ? colors.error : colors.textSecondary} />
-              <Text style={[styles.reactionCount, { color: colors.textSecondary }]}>{item.likes_count || 0}</Text>
-            </View>
-            <View style={[styles.reactionItem, { marginLeft: 15 }]}>
-              <Icon name="chatbubble-outline" size={14} color={colors.textSecondary} />
-              <Text style={[styles.reactionCount, { color: colors.textSecondary }]}>{item.comments_count || 0}</Text>
-            </View>
+            <TouchableOpacity 
+              style={styles.reactionItem}
+              onPress={() => handleReactToPost(item.id)}
+            >
+              <Icon 
+                name={item.my_reaction ? "heart" : "heart-outline"} 
+                size={18} 
+                color={item.my_reaction ? (colors.error || '#e53935') : colors.textSecondary} 
+              />
+              <Text style={[styles.reactionCount, { color: colors.textSecondary }]}>
+                {item.reactions_count || 0}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={[styles.reactionItem, { marginLeft: 16 }]}
+              onPress={() => openComments(item)}
+            >
+              <Icon name="chatbubble-outline" size={17} color={colors.textSecondary} />
+              <Text style={[styles.reactionCount, { color: colors.textSecondary }]}>
+                {item.comments_count || 0}
+              </Text>
+            </TouchableOpacity>
           </View>
-          <Icon name="chevron-forward" size={14} color={colors.border} />
         </View>
-      </TouchableOpacity>
+      </View>
     );
   };
 
@@ -489,13 +597,110 @@ export default function UserProfileScreen({ route, navigation }) {
       </View>
 
       <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: colors.text }]}>Записи</Text>
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>Публикации</Text>
         {posts.length > 0 ? (
           posts.map((item) => renderPostItem(item))
         ) : (
-          <Text style={[styles.emptyText, { color: colors.textSecondary }]}>У пользователя пока нет записей</Text>
+          <Text style={[styles.emptyText, { color: colors.textSecondary }]}>У пользователя пока нет публикаций</Text>
         )}
       </View>
+
+      {/* Модальное окно комментариев к публикации */}
+      <Modal
+        visible={commentsVisible}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setCommentsVisible(false)}
+      >
+        <KeyboardAvoidingView
+          behavior="padding"
+          style={styles.modalOverlay}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 40 : 0}
+        >
+          <View style={[styles.modalCard, { backgroundColor: colors.surface, maxHeight: '80%' }]}>
+            <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Комментарии</Text>
+              <TouchableOpacity onPress={() => setCommentsVisible(false)}>
+                <Icon name="close" size={24} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+
+            {loadingComments ? (
+              <ActivityIndicator size="large" color={colors.primary} style={{ margin: 30 }} />
+            ) : (
+              <ScrollView style={styles.commentsList}>
+                {postComments.length === 0 ? (
+                  <Text style={[styles.emptyCommentsText, { color: colors.textSecondary }]}>
+                    Пока нет комментариев
+                  </Text>
+                ) : (
+                  postComments.map((c) => {
+                    const cAuthorName = c.user
+                      ? `${c.user.first_name || ''} ${c.user.last_name || ''}`.trim() || 'Пользователь'
+                      : 'Пользователь';
+                    const canDelete =
+                      currentUser &&
+                      (currentUser.id === c.user_id ||
+                        currentUser.id === activePostForComments?.user_id ||
+                        ['admin', 'owner'].includes(currentUser.role));
+
+                    return (
+                      <View
+                        key={c.id}
+                        style={[styles.commentItem, { borderBottomColor: colors.border }]}
+                      >
+                        <Image
+                          source={{
+                            uri: getAvatarUrl(c.user?.avatar_url || c.avatar_url) || 'https://via.placeholder.com/32',
+                          }}
+                          style={styles.commentAvatar}
+                        />
+                        <View style={{ flex: 1 }}>
+                          <View style={styles.commentHeaderRow}>
+                            <Text style={[styles.commentAuthorName, { color: colors.text }]}>
+                              {cAuthorName}
+                            </Text>
+                            {canDelete && (
+                              <TouchableOpacity onPress={() => handleDeleteComment(c.id)}>
+                                <Icon name="trash-outline" size={14} color={colors.error || '#e53935'} />
+                              </TouchableOpacity>
+                            )}
+                          </View>
+                          <Text style={[styles.commentText, { color: colors.text }]}>{c.comment}</Text>
+                        </View>
+                      </View>
+                    );
+                  })
+                )}
+              </ScrollView>
+            )}
+
+            <View style={[styles.commentInputRow, { borderTopColor: colors.border }]}>
+              <TextInput
+                style={[
+                  styles.commentInput,
+                  { backgroundColor: colors.background, color: colors.text, borderColor: colors.border },
+                ]}
+                placeholder="Написать комментарий..."
+                placeholderTextColor={colors.textSecondary}
+                value={newCommentText}
+                onChangeText={setNewCommentText}
+              />
+              <TouchableOpacity
+                style={[styles.sendCommentBtn, { backgroundColor: colors.primary }]}
+                onPress={handleAddComment}
+                disabled={submittingComment}
+              >
+                {submittingComment ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Icon name="send" size={16} color="#fff" />
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </ScrollView>
   );
 }
@@ -594,4 +799,67 @@ const styles = StyleSheet.create({
   pickerMessage: { fontSize: 14, marginBottom: 10 },
   pickerList: { flexGrow: 0 },
   pickerRow: { paddingVertical: 14, borderBottomWidth: 1 },
+  modalCard: {
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+    paddingBottom: 30,
+  },
+  commentsList: {
+    paddingHorizontal: 16,
+    maxHeight: 300,
+  },
+  emptyCommentsText: {
+    textAlign: 'center',
+    marginVertical: 20,
+    fontSize: 13,
+  },
+  commentItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  commentAvatar: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    marginRight: 8,
+  },
+  commentHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  commentAuthorName: {
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  commentText: {
+    fontSize: 13,
+    marginTop: 2,
+  },
+  commentInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  commentInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    fontSize: 13,
+    marginRight: 8,
+  },
+  sendCommentBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 });

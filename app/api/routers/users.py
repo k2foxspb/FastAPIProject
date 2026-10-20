@@ -17,7 +17,10 @@ from app.models.users import (
     UserPhotoCommentReaction as UserPhotoCommentReactionModel,
     PhotoAlbumReaction as PhotoAlbumReactionModel,
     PhotoAlbumComment as PhotoAlbumCommentModel,
-    PhotoAlbumCommentReaction as PhotoAlbumCommentReactionModel
+    PhotoAlbumCommentReaction as PhotoAlbumCommentReactionModel,
+    ProfilePost as ProfilePostModel,
+    ProfilePostComment as ProfilePostCommentModel,
+    ProfilePostReaction as ProfilePostReactionModel,
 )
 from app.schemas.users import (
     UserCreate, UserUpdate, User as UserSchema, RefreshTokenRequest, 
@@ -28,9 +31,13 @@ from app.schemas.users import (
     UserPhotoComment as UserPhotoCommentSchema, UserPhotoCommentCreate,
     TokenResponse, FirebaseConfigResponse, VerifyCodeRequest, ResendCodeRequest,
     GoogleAuthRequest, FirebaseAuthRequest, RequestCodeRequest, PhoneCodeResponse,
-    ReactorInfo, NotificationSettingsResponse, NotificationSettingsUpdate
+    ReactorInfo, NotificationSettingsResponse, NotificationSettingsUpdate,
+    ProfilePostCreate, ProfilePostUpdate, ProfilePostResponse,
+    ProfilePostCommentCreate, ProfilePostCommentResponse,
+    ProfilePostReactionCreate, ProfilePostReactionResponse,
 )
-from app.core.notifications import NOTIFICATION_GROUPS, get_notification_settings
+from app.core.notifications import NOTIFICATION_GROUPS, get_notification_settings, dispatch_notification
+from app.api.routers.notifications import manager as notification_manager
 from app.schemas.news import News as NewsSchema, NewsComment as NewsCommentSchema
 from app.api.dependencies import get_async_db, get_friendship_status, can_view_content
 from app.core.auth import (
@@ -58,7 +65,7 @@ from firebase_admin import auth as firebase_auth
 # cv2 imported inside save_user_photo to avoid dependency issues if not installed
 from PIL import Image
 from fastapi import UploadFile, File, Form
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 from app.utils import storage
 
@@ -2778,5 +2785,332 @@ async def get_my_photo_comments(
         c.avatar_url = current_user.avatar_url
         
     return comments
+
+
+# --- Profile Posts Endpoints (Контур 3: Личные публикации в профиле) ---
+
+@router.post("/me/posts", response_model=ProfilePostResponse, status_code=status.HTTP_201_CREATED)
+async def create_profile_post(
+    data: ProfilePostCreate,
+    current_user: UserModel = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Создает публикацию в личном профиле (без премодерации)."""
+    post = ProfilePostModel(
+        user_id=current_user.id,
+        content=data.content,
+        media_url=data.media_url,
+        media_type=data.media_type,
+        privacy=data.privacy or "public",
+        is_active=True,
+    )
+    db.add(post)
+    await db.commit()
+
+    res = await db.execute(
+        select(ProfilePostModel)
+        .options(
+            selectinload(ProfilePostModel.user),
+            selectinload(ProfilePostModel.reactions),
+            selectinload(ProfilePostModel.comments),
+        )
+        .where(ProfilePostModel.id == post.id)
+    )
+    post_obj = res.scalar_one()
+    resp = ProfilePostResponse.model_validate(post_obj)
+    resp.reactions_count = 0
+    resp.comments_count = 0
+    resp.my_reaction = None
+    return resp
+
+
+@router.get("/{user_id}/posts", response_model=list[ProfilePostResponse])
+async def get_user_profile_posts(
+    user_id: int,
+    current_user: UserModel = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Возвращает публикации профиля пользователя с учетом настроек приватности."""
+    target_user_res = await db.execute(select(UserModel).where(UserModel.id == user_id))
+    target_user = target_user_res.scalar_one_or_none()
+    if not target_user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+
+    friendship_status = await get_friendship_status(db, current_user.id, user_id)
+
+    posts_res = await db.execute(
+        select(ProfilePostModel)
+        .options(
+            selectinload(ProfilePostModel.user),
+            selectinload(ProfilePostModel.reactions).selectinload(ProfilePostReactionModel.user),
+            selectinload(ProfilePostModel.comments).selectinload(ProfilePostCommentModel.user),
+        )
+        .where(
+            ProfilePostModel.user_id == user_id,
+            ProfilePostModel.is_active == True,
+        )
+        .order_by(ProfilePostModel.created_at.desc())
+    )
+    posts = posts_res.scalars().all()
+
+    result = []
+    for p in posts:
+        if not can_view_content(p.user_id, current_user.id, p.privacy, friendship_status):
+            continue
+        p_resp = ProfilePostResponse.model_validate(p)
+        p_resp.reactions_count = len(p.reactions)
+        p_resp.comments_count = len(p.comments)
+
+        my_react = next((r.reaction_type for r in p.reactions if r.user_id == current_user.id), None)
+        p_resp.my_reaction = my_react
+        result.append(p_resp)
+
+    return result
+
+
+@router.patch("/me/posts/{post_id}", response_model=ProfilePostResponse)
+async def update_profile_post(
+    post_id: int,
+    data: ProfilePostUpdate,
+    current_user: UserModel = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Редактирует публикацию текущего пользователя."""
+    res = await db.execute(
+        select(ProfilePostModel)
+        .options(
+            selectinload(ProfilePostModel.user),
+            selectinload(ProfilePostModel.reactions),
+            selectinload(ProfilePostModel.comments),
+        )
+        .where(
+            ProfilePostModel.id == post_id,
+            ProfilePostModel.user_id == current_user.id,
+            ProfilePostModel.is_active == True,
+        )
+    )
+    post = res.scalar_one_or_none()
+    if not post:
+        raise HTTPException(status_code=404, detail="Публикация не найдена")
+
+    if data.content is not None:
+        post.content = data.content
+    if data.media_url is not None:
+        post.media_url = data.media_url
+    if data.media_type is not None:
+        post.media_type = data.media_type
+    if data.privacy is not None:
+        post.privacy = data.privacy
+    post.updated_at = datetime.now(timezone.utc)
+
+    await db.commit()
+    p_resp = ProfilePostResponse.model_validate(post)
+    p_resp.reactions_count = len(post.reactions)
+    p_resp.comments_count = len(post.comments)
+    p_resp.my_reaction = next((r.reaction_type for r in post.reactions if r.user_id == current_user.id), None)
+    return p_resp
+
+
+@router.delete("/me/posts/{post_id}")
+async def delete_profile_post(
+    post_id: int,
+    current_user: UserModel = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Мягко удаляет публикацию текущего пользователя."""
+    res = await db.execute(
+        select(ProfilePostModel).where(
+            ProfilePostModel.id == post_id,
+            ProfilePostModel.user_id == current_user.id,
+        )
+    )
+    post = res.scalar_one_or_none()
+    if not post:
+        raise HTTPException(status_code=404, detail="Публикация не найдена")
+
+    post.is_active = False
+    await db.commit()
+    return {"status": "ok"}
+
+
+@router.post("/posts/{post_id}/react")
+async def react_to_profile_post(
+    post_id: int,
+    reaction_data: ProfilePostReactionCreate = None,
+    reaction_type: str = None,
+    current_user: UserModel = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Добавляет, обновляет или снимает реакцию на публикацию профиля."""
+    r_type = reaction_type or (reaction_data.reaction_type if reaction_data else "like")
+
+    res = await db.execute(
+        select(ProfilePostModel)
+        .options(selectinload(ProfilePostModel.user))
+        .where(ProfilePostModel.id == post_id, ProfilePostModel.is_active == True)
+    )
+    post = res.scalar_one_or_none()
+    if not post:
+        raise HTTPException(status_code=404, detail="Публикация не найдена")
+
+    friendship_status = await get_friendship_status(db, current_user.id, post.user_id)
+    if not can_view_content(post.user_id, current_user.id, post.privacy, friendship_status):
+        raise HTTPException(status_code=403, detail="Доступ запрещен настройками приватности")
+
+    react_res = await db.execute(
+        select(ProfilePostReactionModel).where(
+            ProfilePostReactionModel.post_id == post_id,
+            ProfilePostReactionModel.user_id == current_user.id,
+        )
+    )
+    existing_reaction = react_res.scalar_one_or_none()
+
+    if existing_reaction:
+        if existing_reaction.reaction_type == r_type:
+            await db.delete(existing_reaction)
+            await db.commit()
+            return {"status": "ok", "action": "removed", "reaction_type": None}
+        else:
+            existing_reaction.reaction_type = r_type
+            await db.commit()
+            return {"status": "ok", "action": "updated", "reaction_type": r_type}
+    else:
+        new_reaction = ProfilePostReactionModel(
+            post_id=post_id,
+            user_id=current_user.id,
+            reaction_type=r_type,
+        )
+        db.add(new_reaction)
+        await db.commit()
+
+        if post.user_id != current_user.id and post.user:
+            author_name = f"{current_user.first_name or ''} {current_user.last_name or ''}".strip() or current_user.email or "Пользователь"
+            dispatch_notification(
+                post.user,
+                group="news",
+                title="Новая реакция",
+                body=f"{author_name} поставил(а) реакцию на вашу публикацию",
+                data={"type": "profile_post_reaction", "post_id": post.id, "user_id": current_user.id},
+                sender_id=current_user.id,
+                ws_manager=notification_manager,
+                ws_message={"type": "profile_post_reaction", "post_id": post.id},
+            )
+
+        return {"status": "ok", "action": "added", "reaction_type": r_type}
+
+
+@router.get("/posts/{post_id}/comments", response_model=list[ProfilePostCommentResponse])
+async def get_profile_post_comments(
+    post_id: int,
+    current_user: UserModel = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Возвращает комментарии к публикации профиля."""
+    res = await db.execute(
+        select(ProfilePostModel).where(ProfilePostModel.id == post_id, ProfilePostModel.is_active == True)
+    )
+    post = res.scalar_one_or_none()
+    if not post:
+        raise HTTPException(status_code=404, detail="Публикация не найдена")
+
+    friendship_status = await get_friendship_status(db, current_user.id, post.user_id)
+    if not can_view_content(post.user_id, current_user.id, post.privacy, friendship_status):
+        raise HTTPException(status_code=403, detail="Доступ запрещен настройками приватности")
+
+    comments_res = await db.execute(
+        select(ProfilePostCommentModel)
+        .options(selectinload(ProfilePostCommentModel.user))
+        .where(ProfilePostCommentModel.post_id == post_id)
+        .order_by(ProfilePostCommentModel.created_at.asc())
+    )
+    comments = comments_res.scalars().all()
+    return [ProfilePostCommentResponse.model_validate(c) for c in comments]
+
+
+@router.post("/posts/{post_id}/comments", response_model=ProfilePostCommentResponse, status_code=status.HTTP_201_CREATED)
+async def add_profile_post_comment(
+    post_id: int,
+    data: ProfilePostCommentCreate,
+    current_user: UserModel = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Добавляет комментарий к публикации профиля."""
+    res = await db.execute(
+        select(ProfilePostModel)
+        .options(selectinload(ProfilePostModel.user))
+        .where(ProfilePostModel.id == post_id, ProfilePostModel.is_active == True)
+    )
+    post = res.scalar_one_or_none()
+    if not post:
+        raise HTTPException(status_code=404, detail="Публикация не найдена")
+
+    friendship_status = await get_friendship_status(db, current_user.id, post.user_id)
+    if not can_view_content(post.user_id, current_user.id, post.privacy, friendship_status):
+        raise HTTPException(status_code=403, detail="Доступ запрещен настройками приватности")
+
+    comment = ProfilePostCommentModel(
+        post_id=post_id,
+        user_id=current_user.id,
+        comment=data.comment,
+    )
+    db.add(comment)
+    await db.commit()
+
+    loaded_comment_res = await db.execute(
+        select(ProfilePostCommentModel)
+        .options(selectinload(ProfilePostCommentModel.user))
+        .where(ProfilePostCommentModel.id == comment.id)
+    )
+    loaded_comment = loaded_comment_res.scalar_one()
+
+    if post.user_id != current_user.id and post.user:
+        author_name = f"{current_user.first_name or ''} {current_user.last_name or ''}".strip() or current_user.email or "Пользователь"
+        dispatch_notification(
+            post.user,
+            group="news",
+            title="Новый комментарий к публикации",
+            body=f"{author_name}: {data.comment[:50]}",
+            data={"type": "profile_post_comment", "post_id": post.id, "comment_id": comment.id},
+            sender_id=current_user.id,
+            ws_manager=notification_manager,
+            ws_message={"type": "profile_post_comment", "post_id": post.id},
+        )
+
+    return ProfilePostCommentResponse.model_validate(loaded_comment)
+
+
+@router.delete("/posts/comments/{comment_id}")
+async def delete_profile_post_comment(
+    comment_id: int,
+    current_user: UserModel = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Удаляет комментарий к публикации профиля.
+    Удалять комментарий может автор комментария, автор поста или admin/owner.
+    """
+    res = await db.execute(
+        select(ProfilePostCommentModel)
+        .options(selectinload(ProfilePostCommentModel.post))
+        .where(ProfilePostCommentModel.id == comment_id)
+    )
+    comment = res.scalar_one_or_none()
+    if not comment:
+        raise HTTPException(status_code=404, detail="Комментарий не найден")
+
+    post_author_id = comment.post.user_id if comment.post else None
+    if (
+        comment.user_id != current_user.id
+        and post_author_id != current_user.id
+        and current_user.role not in ("admin", "owner")
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Недостаточно прав для удаления комментария",
+        )
+
+    await db.delete(comment)
+    await db.commit()
+    return {"status": "ok"}
 
 

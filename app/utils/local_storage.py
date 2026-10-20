@@ -20,7 +20,7 @@ import shutil
 import threading
 import uuid
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import IO, Iterator, List, Optional
 
 from loguru import logger
@@ -243,7 +243,7 @@ class LocalStorageService:
             original_filename=original_filename,
             mime_type=mime_type,
             size=size,
-            uploaded_at=datetime.utcnow(),
+            uploaded_at=datetime.now(timezone.utc),
         )
 
     def exists(self, metadata: FileMetadata) -> bool:

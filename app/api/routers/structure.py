@@ -494,7 +494,7 @@ async def get_employee_hierarchy(
         if u.id != target.id and can_manage_user(target_scoped, _to_scoped(u))
     ]
 
-    # Сортируем по уровню иерархии: начальники - от самого верхнего к ближайшему,
+    # Сортируем по уровню иерархии: Руководители - от самого верхнего к ближайшему,
     # подчинённые - от ближайшего к самому нижнему.
     superiors.sort(key=lambda u: get_role_level(u.role))
     subordinates.sort(key=lambda u: get_role_level(u.role))

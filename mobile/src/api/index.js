@@ -179,6 +179,15 @@ export const usersApi = {
   // Настройки уведомлений: отключение по группам + "тихие часы" (без звука)
   getNotificationSettings: () => api.get('/users/me/notification-settings'),
   updateNotificationSettings: (data) => api.patch('/users/me/notification-settings', data),
+  // Личные публикации в профиле (Profile Posts)
+  getProfilePosts: (userId) => api.get(`/users/${userId}/posts`),
+  createProfilePost: (data) => api.post('/users/me/posts', data),
+  updateProfilePost: (postId, data) => api.patch(`/users/me/posts/${postId}`, data),
+  deleteProfilePost: (postId) => api.delete(`/users/me/posts/${postId}`),
+  reactToProfilePost: (postId, reactionType) => api.post(`/users/posts/${postId}/react`, null, { params: { reaction_type: reactionType } }),
+  getProfilePostComments: (postId) => api.get(`/users/posts/${postId}/comments`),
+  addProfilePostComment: (postId, comment) => api.post(`/users/posts/${postId}/comments`, { comment }),
+  deleteProfilePostComment: (commentId) => api.delete(`/users/posts/comments/${commentId}`),
 };
 
 export const orgApi = {
@@ -220,6 +229,8 @@ export const announcementsApi = {
   getAnnouncements: () => api.get('/announcements/'),
   createAnnouncement: (data) => api.post('/announcements/', data),
   markAsRead: (announcementId) => api.post(`/announcements/${announcementId}/read`),
+  getRecipients: (announcementId) => api.get(`/announcements/${announcementId}/recipients`),
+  deleteAnnouncement: (announcementId) => api.delete(`/announcements/${announcementId}`),
 };
 
 export const newsApi = {
@@ -328,6 +339,10 @@ export const statementsApi = {
   // Свободные заявления с согласованием/уведомлением выбранных руководителей
   getSupervisors: () => api.get('/statements/supervisors'),
   createStatement: (data) => api.post('/statements', data),
+  updateStatement: (statementId, data) => api.put(`/statements/${statementId}`, data),
+  submitDraftStatement: (statementId) => api.post(`/statements/${statementId}/submit`),
+  resubmitStatement: (statementId, data) => api.post(`/statements/${statementId}/resubmit`, data),
+  cancelStatement: (statementId) => api.post(`/statements/${statementId}/cancel`),
   getMyStatements: () => api.get('/statements/my'),
   getPendingStatements: () => api.get('/statements/pending'),
   getStatementDetail: (statementId) => api.get(`/statements/${statementId}`),

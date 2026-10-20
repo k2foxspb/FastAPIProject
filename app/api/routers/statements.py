@@ -16,11 +16,16 @@ from app.models.users import User as UserModel
 from app.models.statements import (
     Statement as StatementModel,
     StatementApproval as StatementApprovalModel,
+    StatementAuditLog as StatementAuditLogModel,
     StatementTemplate as StatementTemplateModel,
     StatementTemplateRecipient as StatementTemplateRecipientModel,
+    STATEMENT_STATUS_DRAFT,
     STATEMENT_STATUS_PENDING,
+    STATEMENT_STATUS_REVISION,
+    STATEMENT_STATUS_RESUBMITTED,
     STATEMENT_STATUS_APPROVED,
     STATEMENT_STATUS_REJECTED,
+    STATEMENT_STATUS_CANCELLED,
     STATEMENT_APPROVAL_STATUS_NOTIFIED,
     STATEMENT_TEMPLATE_RECIPIENT_APPROVE,
     STATEMENT_TEMPLATE_RECIPIENT_NOTIFY,
@@ -28,6 +33,8 @@ from app.models.statements import (
 from app.schemas.timesheet import EmployeeBrief
 from app.schemas.statements import (
     StatementCreate,
+    StatementUpdate,
+    StatementResubmit,
     Statement as StatementSchema,
     StatementReject,
     StatementTemplateCreate,
@@ -64,11 +71,13 @@ def _user_name(user: UserModel | None) -> str:
 async def _load_statement(db: AsyncSession, statement_id: int) -> StatementModel:
     result = await db.execute(
         select(StatementModel)
+        .execution_options(populate_existing=True)
         .options(
             selectinload(StatementModel.author),
             selectinload(StatementModel.reviewer),
             selectinload(StatementModel.template),
             selectinload(StatementModel.approvals).selectinload(StatementApprovalModel.approver),
+            selectinload(StatementModel.logs).selectinload(StatementAuditLogModel.actor),
         )
         .where(StatementModel.id == statement_id)
     )
@@ -100,14 +109,23 @@ async def _load_statement_template(db: AsyncSession, template_id: int) -> Statem
     return template
 
 
-def _notify_about_statement(statement: StatementModel, approvers: list[UserModel], notify_only: list[UserModel]):
+def _notify_about_statement(
+    statement: StatementModel,
+    approvers: list[UserModel],
+    notify_only: list[UserModel] | None = None,
+    is_resubmitted: bool = False,
+):
     """
-    Уведомляет обязательных согласующих о новом заявлении, ожидающем
-    согласования, а также руководителей, отмеченных только для уведомления -
-    им ничего согласовывать не нужно, они просто информируются о заявлении.
+    Уведомляет обязательных согласующих о заявлении, ожидающем согласования
+    (новом или повторно отправленном), а также руководителей, отмеченных для уведомления.
     """
+    if notify_only is None:
+        notify_only = []
     author_name = _user_name(statement.author)
     body = f"{author_name}: {statement.message[:200]}"
+
+    msg_type = "statement_resubmitted" if is_resubmitted else "statement_submitted"
+    title_approver = "Заявление повторно отправлено на согласование" if is_resubmitted else "Новое заявление на согласовании"
 
     def _send(recipients: list[UserModel], message_type: str, title: str, requires_action: bool):
         if not recipients:
@@ -131,26 +149,57 @@ def _notify_about_statement(statement: StatementModel, approvers: list[UserModel
                     sender_id=statement.author_id,
                 ))
 
-    _send(approvers, "statement_submitted", "Новое заявление на согласовании", requires_action=True)
-    _send(notify_only, "statement_notified", "Новое заявление (уведомление)", requires_action=False)
+    _send(approvers, msg_type, title_approver, requires_action=True)
+    if notify_only:
+        _send(notify_only, "statement_notified", "Новое заявление (уведомление)", requires_action=False)
 
 
-def _notify_author_about_review(statement: StatementModel, approved: bool):
-    """Уведомляет автора заявления о результате согласования."""
+def _notify_author_about_review(
+    statement: StatementModel,
+    approved: bool,
+    reviewer: UserModel | None = None,
+    comment: str | None = None,
+):
+    """Уведомляет автора заявления о результате согласования или возврате на доработку."""
+    reviewer_user = reviewer or statement.reviewer
+    reviewer_name = _user_name(reviewer_user)
+    reviewer_id = reviewer_user.id if reviewer_user else statement.reviewer_id
+
+    if approved:
+        message_type = "statement_approved"
+        title = "Заявление согласовано"
+        body = statement.message[:200]
+    else:
+        message_type = "statement_revision"
+        title = "Заявление возвращено на доработку"
+        body = f"{reviewer_name}: {comment}" if (reviewer_name and comment) else (comment or statement.message[:200])
+
     message = {
-        "type": "statement_approved" if approved else "statement_rejected",
+        "type": message_type,
         "statement_id": statement.id,
-        "comment": statement.reviewer_comment,
+        "reviewer_id": reviewer_id,
+        "reviewer_name": reviewer_name,
+        "comment": comment or statement.reviewer_comment,
     }
     asyncio.create_task(notification_manager.send_personal_message(message, statement.author_id))
     if statement.author and statement.author.fcm_token:
         asyncio.create_task(send_fcm_notification(
             token=statement.author.fcm_token,
-            title="Заявление согласовано" if approved else "Заявление отклонено",
-            body=statement.message[:200],
+            title=title,
+            body=body,
             data=message,
-            sender_id=statement.reviewer_id,
+            sender_id=reviewer_id,
         ))
+
+
+def _notify_author_resubmitted(statement: StatementModel):
+    """Уведомляет автора о подтверждении повторной отправки заявления."""
+    message = {
+        "type": "statement_resubmitted_confirm",
+        "statement_id": statement.id,
+        "status": statement.status,
+    }
+    asyncio.create_task(notification_manager.send_personal_message(message, statement.author_id))
 
 
 @router.get("/supervisors", response_model=list[EmployeeBrief])
@@ -308,12 +357,9 @@ async def create_statement(
     db: AsyncSession = Depends(get_async_db),
 ):
     """
-    Создаёт новое заявление от текущего пользователя. Если указан template_id,
-    обязательные согласующие и уведомляемые берутся из настроек шаблона
-    (заданы администратором); иначе используется ручной выбор галочками -
-    все выбранные согласующие должны согласовать заявление (отказ любого
-    отклоняет его целиком), дополнительно выбранные руководители просто
-    уведомляются, без необходимости согласования.
+    Создаёт новое заявление (или черновик) от текущего пользователя.
+    Если указан template_id, обязательные согласующие и уведомляемые берутся из настроек шаблона;
+    иначе используется ручной выбор из цепочки вышестоящих руководителей.
     """
     template: StatementTemplateModel | None = None
     if data.template_id is not None:
@@ -322,7 +368,7 @@ async def create_statement(
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Statement template is not active")
         approvers = [r.user for r in template.recipients if r.role == STATEMENT_TEMPLATE_RECIPIENT_APPROVE and r.user is not None]
         notify_only = [r.user for r in template.recipients if r.role == STATEMENT_TEMPLATE_RECIPIENT_NOTIFY and r.user is not None]
-        if not approvers:
+        if not approvers and not data.is_draft:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="В выбранном шаблоне не настроено ни одного согласующего",
@@ -333,7 +379,7 @@ async def create_statement(
 
         approver_ids = set(data.approver_user_ids)
         approvers = [supervisors_by_id[uid] for uid in approver_ids if uid in supervisors_by_id]
-        if not approvers:
+        if not approvers and not data.is_draft:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Необходимо выбрать хотя бы одного согласующего из числа вышестоящих руководителей",
@@ -342,11 +388,13 @@ async def create_statement(
         notify_ids = set(data.notify_user_ids) - approver_ids
         notify_only = [supervisors_by_id[uid] for uid in notify_ids if uid in supervisors_by_id]
 
+    init_status = STATEMENT_STATUS_DRAFT if data.is_draft else STATEMENT_STATUS_PENDING
     statement = StatementModel(
         author_id=current_user.id,
         template_id=template.id if template else None,
         message=data.message,
-        status=STATEMENT_STATUS_PENDING,
+        status=init_status,
+        round=1,
     )
     db.add(statement)
     await db.flush()
@@ -365,10 +413,196 @@ async def create_statement(
             decided_at=datetime.now(timezone.utc),
         ))
 
+    db.add(StatementAuditLogModel(
+        statement_id=statement.id,
+        round=1,
+        actor_id=current_user.id,
+        action="draft_created" if data.is_draft else "submitted",
+        message_snapshot=data.message,
+    ))
+
     await db.commit()
 
     statement = await _load_statement(db, statement.id)
+    if not data.is_draft:
+        _notify_about_statement(statement, approvers, notify_only)
+    return _statement_to_schema(statement)
+
+
+@router.put("/{statement_id}", response_model=StatementSchema)
+async def update_statement(
+    statement_id: int,
+    data: StatementUpdate,
+    current_user: UserModel = Depends(get_current_production_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Редактирует текст заявления в статусе черновика или на доработке."""
+    statement = await _load_statement(db, statement_id)
+    if statement.author_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only author can edit statement")
+
+    if statement.status not in (STATEMENT_STATUS_DRAFT, STATEMENT_STATUS_REVISION):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Редактирование заявления возможно только в статусе черновика или на доработке",
+        )
+
+    statement.message = data.message
+    db.add(StatementAuditLogModel(
+        statement_id=statement.id,
+        round=statement.round,
+        actor_id=current_user.id,
+        action="edited",
+        message_snapshot=data.message,
+    ))
+    await db.commit()
+    statement = await _load_statement(db, statement.id)
+    return _statement_to_schema(statement)
+
+
+@router.post("/{statement_id}/submit", response_model=StatementSchema)
+async def submit_draft_statement(
+    statement_id: int,
+    current_user: UserModel = Depends(get_current_production_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Отправляет черновик заявления на согласование."""
+    statement = await _load_statement(db, statement_id)
+    if statement.author_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only author can submit statement")
+
+    if statement.status != STATEMENT_STATUS_DRAFT:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Statement is not a draft")
+
+    approvers = [a.approver for a in statement.approvals if a.status == STATEMENT_STATUS_PENDING and a.approver is not None]
+    if not approvers:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="У заявления нет назначенных согласующих",
+        )
+
+    statement.status = STATEMENT_STATUS_PENDING
+    db.add(StatementAuditLogModel(
+        statement_id=statement.id,
+        round=statement.round,
+        actor_id=current_user.id,
+        action="submitted",
+        message_snapshot=statement.message,
+    ))
+    await db.commit()
+
+    statement = await _load_statement(db, statement.id)
+    notify_only = [a.approver for a in statement.approvals if a.status == STATEMENT_APPROVAL_STATUS_NOTIFIED and a.approver is not None]
     _notify_about_statement(statement, approvers, notify_only)
+    return _statement_to_schema(statement)
+
+
+@router.post("/{statement_id}/resubmit", response_model=StatementSchema)
+async def resubmit_statement(
+    statement_id: int,
+    data: StatementResubmit,
+    current_user: UserModel = Depends(get_current_production_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Повторная отправка заявления после доработки:
+    - mode='all': «Согласовать заново со всеми» — прежние согласования сбрасываются;
+    - mode='rejected_only': «Отправить только вернувшему на доработку» — согласования остальных сохраняются.
+    """
+    statement = await _load_statement(db, statement_id)
+    if statement.author_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only author can resubmit statement")
+
+    if statement.status != STATEMENT_STATUS_REVISION:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Повторная отправка возможна только для заявлений в статусе 'На доработке'",
+        )
+
+    if data.message is not None:
+        statement.message = data.message
+
+    statement.round += 1
+    statement.status = STATEMENT_STATUS_RESUBMITTED
+    statement.reviewer_id = None
+    statement.reviewer_comment = None
+    statement.reviewed_at = None
+
+    approvers_to_notify: list[UserModel] = []
+
+    if data.mode == "all":
+        # Сброс всех согласований (кроме уведомляемых)
+        for a in statement.approvals:
+            if a.status != STATEMENT_APPROVAL_STATUS_NOTIFIED:
+                a.status = STATEMENT_STATUS_PENDING
+                a.decided_at = None
+                a.comment = None
+                if a.approver is not None:
+                    approvers_to_notify.append(a.approver)
+    elif data.mode == "rejected_only":
+        # Сброс только отклонивших/вернувших на доработку
+        for a in statement.approvals:
+            if a.status == STATEMENT_STATUS_REJECTED:
+                a.status = STATEMENT_STATUS_PENDING
+                a.decided_at = None
+                a.comment = None
+                if a.approver is not None:
+                    approvers_to_notify.append(a.approver)
+
+    if not approvers_to_notify:
+        for a in statement.approvals:
+            if a.status != STATEMENT_APPROVAL_STATUS_NOTIFIED:
+                a.status = STATEMENT_STATUS_PENDING
+                a.decided_at = None
+                a.comment = None
+                if a.approver is not None:
+                    approvers_to_notify.append(a.approver)
+
+    db.add(StatementAuditLogModel(
+        statement_id=statement.id,
+        round=statement.round,
+        actor_id=current_user.id,
+        action="resubmitted",
+        resubmit_mode=data.mode,
+        comment="Согласовать заново со всеми" if data.mode == "all" else "Отправлено только вернувшим на доработку",
+        message_snapshot=statement.message,
+    ))
+
+    await db.commit()
+
+    statement = await _load_statement(db, statement.id)
+    _notify_about_statement(statement, approvers_to_notify, is_resubmitted=True)
+    _notify_author_resubmitted(statement)
+    return _statement_to_schema(statement)
+
+
+@router.post("/{statement_id}/cancel", response_model=StatementSchema)
+async def cancel_statement(
+    statement_id: int,
+    current_user: UserModel = Depends(get_current_production_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Отменяет заявление (доступно автору)."""
+    statement = await _load_statement(db, statement_id)
+    if statement.author_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only author can cancel statement")
+
+    if statement.status in (STATEMENT_STATUS_APPROVED, STATEMENT_STATUS_CANCELLED):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Нельзя отменить уже утверждённое или отменённое заявление",
+        )
+
+    statement.status = STATEMENT_STATUS_CANCELLED
+    db.add(StatementAuditLogModel(
+        statement_id=statement.id,
+        round=statement.round,
+        actor_id=current_user.id,
+        action="cancelled",
+    ))
+    await db.commit()
+
+    statement = await _load_statement(db, statement.id)
     return _statement_to_schema(statement)
 
 
@@ -377,14 +611,16 @@ async def list_my_statements(
     current_user: UserModel = Depends(get_current_production_user),
     db: AsyncSession = Depends(get_async_db),
 ):
-    """Список заявлений, созданных текущим пользователем."""
+    """Список всех заявлений, созданных текущим пользователем."""
     result = await db.execute(
         select(StatementModel)
+        .execution_options(populate_existing=True)
         .options(
             selectinload(StatementModel.author),
             selectinload(StatementModel.reviewer),
             selectinload(StatementModel.template),
             selectinload(StatementModel.approvals).selectinload(StatementApprovalModel.approver),
+            selectinload(StatementModel.logs).selectinload(StatementAuditLogModel.actor),
         )
         .where(StatementModel.author_id == current_user.id)
         .order_by(StatementModel.created_at.desc())
@@ -401,17 +637,18 @@ async def list_pending_statements(
     """
     Заявления, ожидающие собственного согласования текущего пользователя -
     он назначен одним из обязательных согласующих и ещё не принял решение.
-    Согласующий, назначенный через шаблон, может не быть прямым
-    руководителем автора по иерархии - достаточно самого факта назначения.
+    Включает как первично отправленные (pending), так и повторно отправленные (resubmitted).
     """
     result = await db.execute(
         select(StatementModel)
+        .execution_options(populate_existing=True)
         .options(
             selectinload(StatementModel.author),
             selectinload(StatementModel.template),
             selectinload(StatementModel.approvals).selectinload(StatementApprovalModel.approver),
+            selectinload(StatementModel.logs).selectinload(StatementAuditLogModel.actor),
         )
-        .where(StatementModel.status == STATEMENT_STATUS_PENDING)
+        .where(StatementModel.status.in_([STATEMENT_STATUS_PENDING, STATEMENT_STATUS_RESUBMITTED]))
         .order_by(StatementModel.created_at.asc())
     )
     statements = result.scalars().all()
@@ -433,8 +670,7 @@ async def get_statement_detail(
 ):
     """
     Карточка заявления - доступна автору, всем назначенным согласующим/
-    уведомляемым (в том числе назначенным через шаблон, а не только через
-    иерархию), а также тем, кто может согласовывать автора по иерархии.
+    уведомляемым, а также тем, кто может согласовывать автора по иерархии.
     """
     statement = await _load_statement(db, statement_id)
     is_participant = statement.author_id == current_user.id or any(
@@ -453,10 +689,10 @@ async def approve_statement(
 ):
     """
     Подтверждает свою часть согласования заявления. Если согласующих
-    несколько, заявление переходит в "approved" только когда согласуют ВСЕ.
+    несколько, заявление переходит в "approved" только когда согласуют ВСЕ обязательные согласующие.
     """
     statement = await _load_statement(db, statement_id)
-    if statement.status != STATEMENT_STATUS_PENDING:
+    if statement.status not in (STATEMENT_STATUS_PENDING, STATEMENT_STATUS_RESUBMITTED):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Statement is not pending approval")
 
     approval = next(
@@ -469,19 +705,36 @@ async def approve_statement(
     approval.status = STATEMENT_STATUS_APPROVED
     approval.decided_at = datetime.now(timezone.utc)
     approval.comment = None
+
+    db.add(StatementAuditLogModel(
+        statement_id=statement.id,
+        round=statement.round,
+        actor_id=current_user.id,
+        action="approved",
+    ))
+
     await db.flush()
 
-    fully_approved = not any(a.status == STATEMENT_STATUS_PENDING for a in statement.approvals)
+    required_approvals = [a for a in statement.approvals if a.status != STATEMENT_APPROVAL_STATUS_NOTIFIED]
+    fully_approved = bool(required_approvals) and all(a.status == STATEMENT_STATUS_APPROVED for a in required_approvals)
+
     if fully_approved:
         statement.status = STATEMENT_STATUS_APPROVED
         statement.reviewer_id = current_user.id
         statement.reviewed_at = datetime.now(timezone.utc)
         statement.reviewer_comment = None
+        db.add(StatementAuditLogModel(
+            statement_id=statement.id,
+            round=statement.round,
+            actor_id=current_user.id,
+            action="fully_approved",
+        ))
+
     await db.commit()
 
     statement = await _load_statement(db, statement.id)
     if fully_approved:
-        _notify_author_about_review(statement, approved=True)
+        _notify_author_about_review(statement, approved=True, reviewer=current_user)
     return _statement_to_schema(statement)
 
 
@@ -492,9 +745,12 @@ async def reject_statement(
     current_user: UserModel = Depends(get_current_production_user),
     db: AsyncSession = Depends(get_async_db),
 ):
-    """Отклоняет заявление - комментарий обязателен. Отказ любого согласующего отклоняет заявление целиком."""
+    """
+    Возвращает заявление на доработку - комментарий/причина обязательна.
+    Заявление переводится в статус «На доработке» (revision).
+    """
     statement = await _load_statement(db, statement_id)
-    if statement.status != STATEMENT_STATUS_PENDING:
+    if statement.status not in (STATEMENT_STATUS_PENDING, STATEMENT_STATUS_RESUBMITTED):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Statement is not pending approval")
 
     approval = next(
@@ -508,12 +764,22 @@ async def reject_statement(
     approval.decided_at = datetime.now(timezone.utc)
     approval.comment = data.comment
 
-    statement.status = STATEMENT_STATUS_REJECTED
+    statement.status = STATEMENT_STATUS_REVISION
     statement.reviewer_id = current_user.id
     statement.reviewed_at = datetime.now(timezone.utc)
     statement.reviewer_comment = data.comment
+
+    db.add(StatementAuditLogModel(
+        statement_id=statement.id,
+        round=statement.round,
+        actor_id=current_user.id,
+        action="returned_for_revision",
+        comment=data.comment,
+        message_snapshot=statement.message,
+    ))
+
     await db.commit()
 
     statement = await _load_statement(db, statement.id)
-    _notify_author_about_review(statement, approved=False)
+    _notify_author_about_review(statement, approved=False, reviewer=current_user, comment=data.comment)
     return _statement_to_schema(statement)

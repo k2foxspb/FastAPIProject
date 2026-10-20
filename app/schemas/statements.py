@@ -32,6 +32,10 @@ class StatementCreate(BaseModel):
         default_factory=list,
         description="Руководители, которых нужно просто уведомить (используется, только если template_id не задан)",
     )
+    is_draft: bool = Field(
+        default=False,
+        description="Создать как черновик (не отправлять сразу на согласование)",
+    )
 
     @field_validator("message")
     @classmethod
@@ -39,6 +43,45 @@ class StatementCreate(BaseModel):
         if not v.strip():
             raise ValueError("Текст заявления не может быть пустым")
         return v.strip()
+
+
+class StatementUpdate(BaseModel):
+    """Редактирование текста заявления при доработке или редактировании черновика."""
+    message: str = Field(min_length=1, description="Обновлённый текст заявления")
+
+    @field_validator("message")
+    @classmethod
+    def message_not_blank(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("Текст заявления не может быть пустым")
+        return v.strip()
+
+
+class StatementResubmit(BaseModel):
+    """
+    Повторная отправка заявления после доработки:
+    mode='all' - согласовать заново со всеми (сброс согласований всех руководителей)
+    mode='rejected_only' - отправить только руководителю, вернувшему на доработку (согласования остальных сохраняются)
+    """
+    message: Optional[str] = Field(default=None, description="Обновлённый текст заявления (если редактировался)")
+    mode: str = Field(
+        default="all",
+        description="'all' - согласовать заново со всеми, 'rejected_only' - только вернувшему на доработку"
+    )
+
+    @field_validator("mode")
+    @classmethod
+    def mode_valid(cls, v: str) -> str:
+        if v not in ("all", "rejected_only"):
+            raise ValueError("mode должен быть 'all' или 'rejected_only'")
+        return v
+
+    @field_validator("message")
+    @classmethod
+    def message_not_blank(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and not v.strip():
+            raise ValueError("Текст заявления не может быть пустым")
+        return v.strip() if v is not None else v
 
 
 # --- Шаблоны заявлений (настраиваются администратором) ---
@@ -118,6 +161,21 @@ class StatementApprovalEntry(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class StatementAuditLogEntry(BaseModel):
+    """Запись в истории действий по заявлению."""
+    id: int
+    statement_id: int
+    round: int
+    actor_id: Optional[int] = None
+    actor: Optional[StatementUserBrief] = None
+    action: str
+    resubmit_mode: Optional[str] = None
+    comment: Optional[str] = None
+    message_snapshot: Optional[str] = None
+    created_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+
 class Statement(BaseModel):
     id: int
     author_id: int
@@ -126,6 +184,7 @@ class Statement(BaseModel):
     template_name: Optional[str] = None
     message: str
     status: str = "pending"
+    round: int = 1
     reviewer_id: Optional[int] = None
     reviewer: Optional[StatementUserBrief] = None
     reviewer_comment: Optional[str] = None
@@ -135,5 +194,8 @@ class Statement(BaseModel):
     approvals: list[StatementApprovalEntry] = Field(default_factory=list)
     pending_approvers: list[StatementUserBrief] = Field(
         default_factory=list, description="Руководители, чьё согласование ещё требуется"
+    )
+    logs: list[StatementAuditLogEntry] = Field(
+        default_factory=list, description="История действий по заявлению"
     )
     model_config = ConfigDict(from_attributes=True)

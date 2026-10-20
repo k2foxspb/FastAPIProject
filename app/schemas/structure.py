@@ -92,7 +92,7 @@ class EmployeeResponse(BaseModel):
 
 
 class EmployeeHierarchyResponse(BaseModel):
-    """Начальники и подчинённые конкретного сотрудника по иерархии ролей."""
+    """Руководители и подчинённые конкретного сотрудника по иерархии ролей."""
     user: EmployeeResponse
     superiors: list[EmployeeResponse] = Field(default_factory=list)
     subordinates: list[EmployeeResponse] = Field(default_factory=list)
