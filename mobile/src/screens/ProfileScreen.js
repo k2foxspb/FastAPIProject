@@ -1,8 +1,10 @@
 import React, { useState, useCallback, useRef } from 'react';
 import { getShadow } from '../utils/shadowStyles';
 import { View, Text, StyleSheet, Image, FlatList, ScrollView, TouchableOpacity, Modal, TouchableWithoutFeedback, Switch, Alert, Platform, Linking, RefreshControl, Dimensions, TextInput, ActivityIndicator } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
+import RenderHTML from 'react-native-render-html';
 import api, { usersApi, newsApi, setAuthToken } from '../api';
 import { API_BASE_URL } from '../constants';
 import { Ionicons as Icon } from '@expo/vector-icons';
@@ -257,9 +259,21 @@ export default function ProfileScreen({ navigation }) {
         </View>
 
         {!!item.content && (
-          <Text style={[styles.postContentText, { color: colors.text }]}>
-            {item.content}
-          </Text>
+          item.content.includes('<') && item.content.includes('>') ? (
+            <RenderHTML
+              contentWidth={Dimensions.get('window').width - 60}
+              source={{ html: item.content }}
+              tagsStyles={{
+                body: { color: colors.text, fontSize: 15, lineHeight: 22 },
+                p: { marginBottom: 6 },
+                img: { borderRadius: 8, marginVertical: 6, maxWidth: '100%' },
+              }}
+            />
+          ) : (
+            <Text style={[styles.postContentText, { color: colors.text }]}>
+              {item.content}
+            </Text>
+          )
         )}
 
         {hasMedia && (
@@ -829,7 +843,7 @@ export default function ProfileScreen({ navigation }) {
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
           <Text style={[styles.sectionTitle, { color: colors.text }]}>Публикации</Text>
-          <TouchableOpacity onPress={() => setCreatePostVisible(true)}>
+          <TouchableOpacity onPress={() => navigation.navigate('CreatePost')}>
             <Icon name="add-circle-outline" size={28} color={colors.primary} />
           </TouchableOpacity>
         </View>
@@ -841,118 +855,6 @@ export default function ProfileScreen({ navigation }) {
         )}
       </View>
 
-      {/* Модальное окно создания публикации профиля */}
-      <Modal
-        visible={createPostVisible}
-        transparent={true}
-        animationType="slide"
-        onRequestClose={() => setCreatePostVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalCard, { backgroundColor: colors.surface }]}>
-            <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
-              <Text style={[styles.modalTitle, { color: colors.text }]}>Новая публикация</Text>
-              <TouchableOpacity onPress={() => setCreatePostVisible(false)}>
-                <Icon name="close" size={24} color={colors.text} />
-              </TouchableOpacity>
-            </View>
-
-            <TextInput
-              style={[
-                styles.postInput,
-                { backgroundColor: colors.background, color: colors.text, borderColor: colors.border },
-              ]}
-              placeholder="Что у вас нового?"
-              placeholderTextColor={colors.textSecondary}
-              multiline
-              value={newPostContent}
-              onChangeText={setNewPostContent}
-            />
-
-            <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Кто может видеть:</Text>
-            <View style={styles.privacySelector}>
-              <TouchableOpacity
-                style={[
-                  styles.privacyOption,
-                  newPostPrivacy === 'public' && { backgroundColor: colors.primary },
-                ]}
-                onPress={() => setNewPostPrivacy('public')}
-              >
-                <Icon
-                  name="globe-outline"
-                  size={16}
-                  color={newPostPrivacy === 'public' ? '#fff' : colors.text}
-                />
-                <Text
-                  style={[
-                    styles.privacyOptionText,
-                    { color: newPostPrivacy === 'public' ? '#fff' : colors.text },
-                  ]}
-                >
-                  Все
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[
-                  styles.privacyOption,
-                  newPostPrivacy === 'friends' && { backgroundColor: colors.primary },
-                ]}
-                onPress={() => setNewPostPrivacy('friends')}
-              >
-                <Icon
-                  name="people-outline"
-                  size={16}
-                  color={newPostPrivacy === 'friends' ? '#fff' : colors.text}
-                />
-                <Text
-                  style={[
-                    styles.privacyOptionText,
-                    { color: newPostPrivacy === 'friends' ? '#fff' : colors.text },
-                  ]}
-                >
-                  Друзья
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[
-                  styles.privacyOption,
-                  newPostPrivacy === 'private' && { backgroundColor: colors.primary },
-                ]}
-                onPress={() => setNewPostPrivacy('private')}
-              >
-                <Icon
-                  name="lock-closed-outline"
-                  size={16}
-                  color={newPostPrivacy === 'private' ? '#fff' : colors.text}
-                />
-                <Text
-                  style={[
-                    styles.privacyOptionText,
-                    { color: newPostPrivacy === 'private' ? '#fff' : colors.text },
-                  ]}
-                >
-                  Только я
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            <TouchableOpacity
-              style={[styles.publishButton, { backgroundColor: colors.primary }]}
-              onPress={handleCreatePost}
-              disabled={creatingPost}
-            >
-              {creatingPost ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.publishButtonText}>Опубликовать</Text>
-              )}
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-
       {/* Модальное окно комментариев к публикации */}
       <Modal
         visible={commentsVisible}
@@ -960,7 +862,11 @@ export default function ProfileScreen({ navigation }) {
         animationType="slide"
         onRequestClose={() => setCommentsVisible(false)}
       >
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView
+          behavior="padding"
+          style={styles.modalOverlay}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 40 : 0}
+        >
           <View style={[styles.modalCard, { backgroundColor: colors.surface, maxHeight: '80%' }]}>
             <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
               <Text style={[styles.modalTitle, { color: colors.text }]}>Комментарии</Text>
@@ -1043,7 +949,7 @@ export default function ProfileScreen({ navigation }) {
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </ScrollView>
   );

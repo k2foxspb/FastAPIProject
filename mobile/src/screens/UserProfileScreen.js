@@ -1,7 +1,9 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { getShadow } from '../utils/shadowStyles';
-import { View, Text, StyleSheet, Image, FlatList, ScrollView, TouchableOpacity, ActivityIndicator, Platform, RefreshControl, Alert, Modal, TouchableWithoutFeedback, TextInput } from 'react-native';
+import { View, Text, StyleSheet, Image, FlatList, ScrollView, TouchableOpacity, ActivityIndicator, Platform, RefreshControl, Alert, Modal, TouchableWithoutFeedback, TextInput, Dimensions } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useFocusEffect } from '@react-navigation/native';
+import RenderHTML from 'react-native-render-html';
 import { usersApi, adminApi, newsApi, orgApi } from '../api';
 import { API_BASE_URL } from '../constants';
 import { Ionicons as Icon } from '@expo/vector-icons';
@@ -350,9 +352,21 @@ export default function UserProfileScreen({ route, navigation }) {
         </View>
 
         {!!item.content && (
-          <Text style={{ fontSize: 14, lineHeight: 20, color: colors.text, paddingHorizontal: 12, paddingVertical: 8 }}>
-            {item.content}
-          </Text>
+          item.content.includes('<') && item.content.includes('>') ? (
+            <RenderHTML
+              contentWidth={Dimensions.get('window').width - 60}
+              source={{ html: item.content }}
+              tagsStyles={{
+                body: { color: colors.text, fontSize: 14, lineHeight: 20 },
+                p: { marginBottom: 6 },
+                img: { borderRadius: 8, marginVertical: 6, maxWidth: '100%' },
+              }}
+            />
+          ) : (
+            <Text style={{ fontSize: 14, lineHeight: 20, color: colors.text, paddingHorizontal: 12, paddingVertical: 8 }}>
+              {item.content}
+            </Text>
+          )
         )}
 
         {hasMedia && (
@@ -598,7 +612,11 @@ export default function UserProfileScreen({ route, navigation }) {
         animationType="slide"
         onRequestClose={() => setCommentsVisible(false)}
       >
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView
+          behavior="padding"
+          style={styles.modalOverlay}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 40 : 0}
+        >
           <View style={[styles.modalCard, { backgroundColor: colors.surface, maxHeight: '80%' }]}>
             <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
               <Text style={[styles.modalTitle, { color: colors.text }]}>Комментарии</Text>
@@ -681,7 +699,7 @@ export default function UserProfileScreen({ route, navigation }) {
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </ScrollView>
   );

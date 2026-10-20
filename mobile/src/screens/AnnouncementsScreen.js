@@ -11,15 +11,24 @@ import {
   ScrollView,
   ActivityIndicator,
   Alert,
+  Dimensions,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons as Icon } from '@expo/vector-icons';
+import RenderHTML from 'react-native-render-html';
 import { announcementsApi } from '../api';
 import { getFullUrl } from '../utils/formatters';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
 import { useNotifications } from '../context/NotificationContext';
 import { getRoleLabel } from '../constants/roles';
+
+const { width } = Dimensions.get('window');
+
+const stripHtml = (html) => {
+  if (!html) return '';
+  return html.replace(/<[^>]*>?/gm, ' ').replace(/\s+/g, ' ').trim();
+};
 
 export default function AnnouncementsScreen({ navigation }) {
   const { theme } = useTheme();
@@ -173,12 +182,24 @@ export default function AnnouncementsScreen({ navigation }) {
 
         <Text style={[styles.title, { color: colors.text }]}>{item.title}</Text>
 
-        <Text
-          style={[styles.content, { color: colors.textSecondary }]}
-          numberOfLines={isExpanded ? undefined : 3}
-        >
-          {item.content}
-        </Text>
+        {isExpanded ? (
+          <RenderHTML
+            contentWidth={width - 50}
+            source={{ html: item.content || '' }}
+            tagsStyles={{
+              body: { color: colors.text, fontSize: 15, lineHeight: 22 },
+              p: { marginBottom: 8 },
+              img: { borderRadius: 8, marginVertical: 8, maxWidth: '100%' },
+            }}
+          />
+        ) : (
+          <Text
+            style={[styles.content, { color: colors.textSecondary }]}
+            numberOfLines={3}
+          >
+            {stripHtml(item.content)}
+          </Text>
+        )}
 
         <View style={styles.cardFooter}>
           <Text style={[styles.date, { color: colors.textSecondary }]}>
