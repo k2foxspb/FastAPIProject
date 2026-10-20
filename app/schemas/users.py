@@ -598,5 +598,102 @@ class NotificationSettingsUpdate(BaseModel):
     quiet_hours_end: Optional[str] = Field(default=None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
 
 
+# --- Схемы публикаций профиля (Profile Posts) ---
+
+class ProfilePostAuthor(BaseModel):
+    id: int
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    avatar_url: Optional[str] = None
+    role: Optional[str] = None
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ProfilePostCreate(BaseModel):
+    content: Optional[str] = None
+    media_url: Optional[str] = None
+    media_type: Optional[str] = None
+    privacy: str = "public"  # "public", "friends", "private"
+
+
+class ProfilePostUpdate(BaseModel):
+    content: Optional[str] = None
+    media_url: Optional[str] = None
+    media_type: Optional[str] = None
+    privacy: Optional[str] = None
+
+
+class ProfilePostCommentCreate(BaseModel):
+    comment: str = Field(min_length=1)
+
+
+class ProfilePostCommentResponse(BaseModel):
+    id: int
+    post_id: int
+    user_id: int
+    comment: str
+    created_at: datetime
+    user: Optional[ProfilePostAuthor] = None
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    avatar_url: Optional[str] = None
+    model_config = ConfigDict(from_attributes=True)
+
+    @classmethod
+    def model_validate(cls, obj, **kwargs):
+        item = super().model_validate(obj, **kwargs)
+        user = getattr(obj, "user", None)
+        if user is not None:
+            item.first_name = getattr(user, "first_name", None)
+            item.last_name = getattr(user, "last_name", None)
+            item.avatar_url = getattr(user, "avatar_url", None)
+        return item
+
+
+class ProfilePostReactionCreate(BaseModel):
+    reaction_type: str = "like"
+
+
+class ProfilePostReactionResponse(BaseModel):
+    id: int
+    post_id: int
+    user_id: int
+    reaction_type: str
+    user: Optional[ProfilePostAuthor] = None
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ProfilePostResponse(BaseModel):
+    id: int
+    user_id: int
+    content: Optional[str] = None
+    media_url: Optional[str] = None
+    media_type: Optional[str] = None
+    privacy: str = "public"
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    is_active: bool = True
+    user: Optional[ProfilePostAuthor] = None
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    avatar_url: Optional[str] = None
+    reactions_count: int = 0
+    comments_count: int = 0
+    my_reaction: Optional[str] = None
+    reactions: list[ProfilePostReactionResponse] = []
+    comments: list[ProfilePostCommentResponse] = []
+    model_config = ConfigDict(from_attributes=True)
+
+    @classmethod
+    def model_validate(cls, obj, **kwargs):
+        item = super().model_validate(obj, **kwargs)
+        user = getattr(obj, "user", None)
+        if user is not None:
+            item.first_name = getattr(user, "first_name", None)
+            item.last_name = getattr(user, "last_name", None)
+            item.avatar_url = getattr(user, "avatar_url", None)
+        return item
+
+
 
 

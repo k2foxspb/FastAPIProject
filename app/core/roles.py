@@ -32,6 +32,7 @@
 from dataclasses import dataclass
 from threading import Lock
 
+ROLE_ADMIN = "admin"
 ROLE_OWNER = "owner"
 ROLE_SHOP_CHIEF = "shop_chief"
 ROLE_SECTION_CHIEF = "section_chief"

@@ -22,6 +22,7 @@ import GroupChatScreen from '../screens/chat/GroupChatScreen';
 import GroupInfoScreen from '../screens/chat/GroupInfoScreen';
 import AddGroupMembersScreen from '../screens/chat/AddGroupMembersScreen';
 import FeedScreen from '../screens/FeedScreen';
+import AnnouncementsScreen from '../screens/AnnouncementsScreen';
 import CreateAnnouncementScreen from '../screens/CreateAnnouncementScreen';
 import TabelScreen from '../screens/TabelScreen';
 import TabelEmployeePickerScreen from '../screens/TabelEmployeePickerScreen';
@@ -141,6 +142,7 @@ function ProfileStack() {
       }}
     >
       <Stack.Screen name="ProfileMain" component={ProfileScreen} options={{ title: 'Профиль' }} />
+      <Stack.Screen name="Announcements" component={AnnouncementsScreen} options={{ title: 'Объявления' }} />
       <Stack.Screen name="CreateAlbum" component={CreateAlbumScreen} options={{ title: 'Новый альбом' }} />
       <Stack.Screen name="AlbumDetail" component={AlbumDetailScreen} options={{ title: 'Альбом' }} />
       <Stack.Screen name="UserMedia" component={UserMediaScreen} options={{ title: 'Медиафайлы' }} />
@@ -255,6 +257,7 @@ function FeedStack() {
       }}
     >
       <Stack.Screen name="FeedMain" component={FeedScreen} options={{ title: 'Новости' }} />
+      <Stack.Screen name="Announcements" component={AnnouncementsScreen} options={{ title: 'Объявления' }} />
       <Stack.Screen name="NewsDetail" component={NewsDetailScreen} options={{ title: 'Новость' }} />
       <Stack.Screen name="EditNews" component={EditNewsScreen} options={{ title: 'Редактировать новость' }} />
       <Stack.Screen name="CreateAnnouncement" component={CreateAnnouncementScreen} options={{ title: 'Новое объявление' }} />

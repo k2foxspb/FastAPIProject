@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useRef } from 'react';
 import { getShadow } from '../utils/shadowStyles';
-import { View, Text, StyleSheet, Image, FlatList, ScrollView, TouchableOpacity, Modal, TouchableWithoutFeedback, Switch, Alert, Platform, Linking, RefreshControl, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, Image, FlatList, ScrollView, TouchableOpacity, Modal, TouchableWithoutFeedback, Switch, Alert, Platform, Linking, RefreshControl, Dimensions, TextInput, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import api, { usersApi, newsApi, setAuthToken } from '../api';
@@ -27,6 +27,21 @@ export default function ProfileScreen({ navigation }) {
   const fetchProfileRef = useRef(null);
   const [quietHours, setQuietHours] = useState({ enabled: false, start: '22:00', end: '08:00' });
   const [notificationGroups, setNotificationGroups] = useState({ disabled: [], available: {} });
+
+  // Состояния для личных публикаций в профиле
+  const [createPostVisible, setCreatePostVisible] = useState(false);
+  const [newPostContent, setNewPostContent] = useState('');
+  const [newPostPrivacy, setNewPostPrivacy] = useState('public'); // 'public' | 'friends' | 'private'
+  const [creatingPost, setCreatingPost] = useState(false);
+
+  // Состояния для комментариев к публикации
+  const [commentsVisible, setCommentsVisible] = useState(false);
+  const [activePostForComments, setActivePostForComments] = useState(null);
+  const [postComments, setPostComments] = useState([]);
+  const [loadingComments, setLoadingComments] = useState(false);
+  const [newCommentText, setNewCommentText] = useState('');
+  const [submittingComment, setSubmittingComment] = useState(false);
+
   const { disconnect, currentUser, loadingUser, loadUser } = useNotifications();
   const { theme, isDark, toggleTheme, isSystemTheme, useSystemThemeSetting } = useTheme();
   const colors = themeConstants[theme];
@@ -99,21 +114,121 @@ export default function ProfileScreen({ navigation }) {
     }
   };
 
+  const handleCreatePost = async () => {
+    if (!newPostContent.trim()) {
+      Alert.alert('Ошибка', 'Введите текст публикации');
+      return;
+    }
+    setCreatingPost(true);
+    try {
+      const res = await usersApi.createProfilePost({
+        content: newPostContent.trim(),
+        privacy: newPostPrivacy,
+      });
+      setPosts(prev => [res.data, ...prev]);
+      setNewPostContent('');
+      setNewPostPrivacy('public');
+      setCreatePostVisible(false);
+    } catch (err) {
+      Alert.alert('Ошибка', 'Не удалось создать публикацию');
+    } finally {
+      setCreatingPost(false);
+    }
+  };
+
+  const handleDeletePost = (postId) => {
+    Alert.alert('Удаление публикации', 'Вы уверены, что хотите удалить эту публикацию?', [
+      { text: 'Отмена', style: 'cancel' },
+      {
+        text: 'Удалить',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await usersApi.deleteProfilePost(postId);
+            setPosts(prev => prev.filter(p => p.id !== postId));
+          } catch (err) {
+            Alert.alert('Ошибка', 'Не удалось удалить публикацию');
+          }
+        },
+      },
+    ]);
+  };
+
+  const handleReactToPost = async (postId) => {
+    try {
+      const res = await usersApi.reactToProfilePost(postId, 'like');
+      const action = res.data?.action;
+      setPosts(prev => prev.map(p => {
+        if (p.id === postId) {
+          const currentCount = p.reactions_count || 0;
+          if (action === 'added') {
+            return { ...p, my_reaction: 'like', reactions_count: currentCount + 1 };
+          } else if (action === 'removed') {
+            return { ...p, my_reaction: null, reactions_count: Math.max(0, currentCount - 1) };
+          }
+        }
+        return p;
+      }));
+    } catch (err) {
+      console.log('React error:', err);
+    }
+  };
+
+  const openComments = async (post) => {
+    setActivePostForComments(post);
+    setCommentsVisible(true);
+    setLoadingComments(true);
+    try {
+      const res = await usersApi.getProfilePostComments(post.id);
+      setPostComments(res.data || []);
+    } catch (err) {
+      Alert.alert('Ошибка', 'Не удалось загрузить комментарии');
+    } finally {
+      setLoadingComments(false);
+    }
+  };
+
+  const handleAddComment = async () => {
+    if (!newCommentText.trim() || !activePostForComments) return;
+    setSubmittingComment(true);
+    try {
+      const res = await usersApi.addProfilePostComment(activePostForComments.id, newCommentText.trim());
+      setPostComments(prev => [...prev, res.data]);
+      setNewCommentText('');
+      setPosts(prev => prev.map(p => p.id === activePostForComments.id ? { ...p, comments_count: (p.comments_count || 0) + 1 } : p));
+    } catch (err) {
+      Alert.alert('Ошибка', 'Не удалось отправить комментарий');
+    } finally {
+      setSubmittingComment(false);
+    }
+  };
+
+  const handleDeleteComment = async (commentId) => {
+    try {
+      await usersApi.deleteProfilePostComment(commentId);
+      setPostComments(prev => prev.filter(c => c.id !== commentId));
+      if (activePostForComments) {
+        setPosts(prev => prev.map(p => p.id === activePostForComments.id ? { ...p, comments_count: Math.max(0, (p.comments_count || 1) - 1) } : p));
+      }
+    } catch (err) {
+      Alert.alert('Ошибка', 'Не удалось удалить комментарий');
+    }
+  };
+
+  const getPrivacyBadge = (privacy) => {
+    if (privacy === 'friends') return { label: 'Для друзей', icon: 'people-outline' };
+    if (privacy === 'private') return { label: 'Только я', icon: 'lock-closed-outline' };
+    return { label: 'Публично', icon: 'globe-outline' };
+  };
+
   const renderPostItem = (item) => {
-    const stripHtml = (html) => {
-      if (!html) return '';
-      return html.replace(/<[^>]*>?/gm, '');
-    };
-    
-    const postThumbnail = item.images && item.images.length > 0 
-      ? item.images[0].thumbnail_url 
-      : item.image_url;
+    const privacyInfo = getPrivacyBadge(item.privacy);
+    const hasMedia = !!item.media_url;
 
     return (
-      <TouchableOpacity 
+      <View 
         key={item.id}
         style={[styles.postCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
-        onPress={() => navigation.navigate('NewsDetail', { newsId: item.id, newsItem: item })}
       >
         <View style={styles.postAuthorHeader}>
           <View style={styles.authorInfo}>
@@ -123,47 +238,66 @@ export default function ProfileScreen({ navigation }) {
             />
             <View>
               <Text style={[styles.authorName, { color: colors.text }]}>{formatName(user)}</Text>
-              <Text style={[styles.postDate, { color: colors.textSecondary }]}>
-                {new Date(item.created_at).toLocaleDateString()}
-              </Text>
+              <View style={styles.postMetaRow}>
+                <Text style={[styles.postDate, { color: colors.textSecondary }]}>
+                  {new Date(item.created_at).toLocaleDateString()}
+                </Text>
+                <View style={styles.privacyBadge}>
+                  <Icon name={privacyInfo.icon} size={11} color={colors.textSecondary} />
+                  <Text style={[styles.privacyText, { color: colors.textSecondary }]}>
+                    {privacyInfo.label}
+                  </Text>
+                </View>
+              </View>
             </View>
           </View>
-          {item.moderation_status === 'pending' && (
-            <View style={styles.pendingBadge}>
-              <Text style={styles.pendingText}>Ожидает</Text>
-            </View>
-          )}
+          <TouchableOpacity onPress={() => handleDeletePost(item.id)} style={{ padding: 4 }}>
+            <Icon name="trash-outline" size={16} color={colors.error || '#e53935'} />
+          </TouchableOpacity>
         </View>
 
-        <View style={styles.postContentRow}>
-          {postThumbnail && (
-            <Image 
-              source={{ uri: getFullUrl(postThumbnail) }} 
-              style={styles.postThumbnail} 
-            />
-          )}
-          <View style={styles.postTextContainer}>
-            <Text style={[styles.postTitle, { color: colors.text }]} numberOfLines={1}>{item.title}</Text>
-            <Text style={[styles.postContent, { color: colors.textSecondary }]} numberOfLines={2}>
-              {stripHtml(item.content)}
-            </Text>
-          </View>
-        </View>
+        {!!item.content && (
+          <Text style={[styles.postContentText, { color: colors.text }]}>
+            {item.content}
+          </Text>
+        )}
+
+        {hasMedia && (
+          <Image
+            source={{ uri: getFullUrl(item.media_url) }}
+            style={styles.postMedia}
+            resizeMode="cover"
+          />
+        )}
 
         <View style={styles.postFooter}>
           <View style={styles.reactionsRow}>
-            <View style={styles.reactionItem}>
-              <Icon name={item.my_reaction === 1 ? "heart" : "heart-outline"} size={14} color={item.my_reaction === 1 ? colors.error : colors.textSecondary} />
-              <Text style={[styles.reactionCount, { color: colors.textSecondary }]}>{item.likes_count || 0}</Text>
-            </View>
-            <View style={[styles.reactionItem, { marginLeft: 15 }]}>
-              <Icon name="chatbubble-outline" size={14} color={colors.textSecondary} />
-              <Text style={[styles.reactionCount, { color: colors.textSecondary }]}>{item.comments_count || 0}</Text>
-            </View>
+            <TouchableOpacity 
+              style={styles.reactionItem}
+              onPress={() => handleReactToPost(item.id)}
+            >
+              <Icon 
+                name={item.my_reaction ? "heart" : "heart-outline"} 
+                size={18} 
+                color={item.my_reaction ? (colors.error || '#e53935') : colors.textSecondary} 
+              />
+              <Text style={[styles.reactionCount, { color: colors.textSecondary }]}>
+                {item.reactions_count || 0}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={[styles.reactionItem, { marginLeft: 16 }]}
+              onPress={() => openComments(item)}
+            >
+              <Icon name="chatbubble-outline" size={17} color={colors.textSecondary} />
+              <Text style={[styles.reactionCount, { color: colors.textSecondary }]}>
+                {item.comments_count || 0}
+              </Text>
+            </TouchableOpacity>
           </View>
-          <Icon name="chevron-forward" size={14} color={colors.border} />
         </View>
-      </TouchableOpacity>
+      </View>
     );
   };
 
@@ -202,8 +336,8 @@ export default function ProfileScreen({ navigation }) {
           const userData = userRes.data;
           
           setUser(userData);
-          const postsRes = await newsApi.getUserNews(userData.id);
-          setPosts(postsRes.data);
+          const postsRes = await usersApi.getProfilePosts(userData.id);
+          setPosts(postsRes.data || []);
           
           if (userData.latest_app_version) {
             const hiddenId = await storage.getItem('hidden_update_id');
@@ -694,8 +828,8 @@ export default function ProfileScreen({ navigation }) {
 
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>Мои записи</Text>
-          <TouchableOpacity onPress={() => navigation.navigate('EditNews')}>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Публикации</Text>
+          <TouchableOpacity onPress={() => setCreatePostVisible(true)}>
             <Icon name="add-circle-outline" size={28} color={colors.primary} />
           </TouchableOpacity>
         </View>
@@ -703,9 +837,214 @@ export default function ProfileScreen({ navigation }) {
         {posts.length > 0 ? (
           posts.map((item) => renderPostItem(item))
         ) : (
-          <Text style={[styles.emptyText, { color: colors.textSecondary }]}>У вас пока нет записей</Text>
+          <Text style={[styles.emptyText, { color: colors.textSecondary }]}>У вас пока нет публикаций</Text>
         )}
       </View>
+
+      {/* Модальное окно создания публикации профиля */}
+      <Modal
+        visible={createPostVisible}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setCreatePostVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalCard, { backgroundColor: colors.surface }]}>
+            <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Новая публикация</Text>
+              <TouchableOpacity onPress={() => setCreatePostVisible(false)}>
+                <Icon name="close" size={24} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+
+            <TextInput
+              style={[
+                styles.postInput,
+                { backgroundColor: colors.background, color: colors.text, borderColor: colors.border },
+              ]}
+              placeholder="Что у вас нового?"
+              placeholderTextColor={colors.textSecondary}
+              multiline
+              value={newPostContent}
+              onChangeText={setNewPostContent}
+            />
+
+            <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Кто может видеть:</Text>
+            <View style={styles.privacySelector}>
+              <TouchableOpacity
+                style={[
+                  styles.privacyOption,
+                  newPostPrivacy === 'public' && { backgroundColor: colors.primary },
+                ]}
+                onPress={() => setNewPostPrivacy('public')}
+              >
+                <Icon
+                  name="globe-outline"
+                  size={16}
+                  color={newPostPrivacy === 'public' ? '#fff' : colors.text}
+                />
+                <Text
+                  style={[
+                    styles.privacyOptionText,
+                    { color: newPostPrivacy === 'public' ? '#fff' : colors.text },
+                  ]}
+                >
+                  Все
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.privacyOption,
+                  newPostPrivacy === 'friends' && { backgroundColor: colors.primary },
+                ]}
+                onPress={() => setNewPostPrivacy('friends')}
+              >
+                <Icon
+                  name="people-outline"
+                  size={16}
+                  color={newPostPrivacy === 'friends' ? '#fff' : colors.text}
+                />
+                <Text
+                  style={[
+                    styles.privacyOptionText,
+                    { color: newPostPrivacy === 'friends' ? '#fff' : colors.text },
+                  ]}
+                >
+                  Друзья
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.privacyOption,
+                  newPostPrivacy === 'private' && { backgroundColor: colors.primary },
+                ]}
+                onPress={() => setNewPostPrivacy('private')}
+              >
+                <Icon
+                  name="lock-closed-outline"
+                  size={16}
+                  color={newPostPrivacy === 'private' ? '#fff' : colors.text}
+                />
+                <Text
+                  style={[
+                    styles.privacyOptionText,
+                    { color: newPostPrivacy === 'private' ? '#fff' : colors.text },
+                  ]}
+                >
+                  Только я
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity
+              style={[styles.publishButton, { backgroundColor: colors.primary }]}
+              onPress={handleCreatePost}
+              disabled={creatingPost}
+            >
+              {creatingPost ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.publishButtonText}>Опубликовать</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Модальное окно комментариев к публикации */}
+      <Modal
+        visible={commentsVisible}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setCommentsVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalCard, { backgroundColor: colors.surface, maxHeight: '80%' }]}>
+            <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Комментарии</Text>
+              <TouchableOpacity onPress={() => setCommentsVisible(false)}>
+                <Icon name="close" size={24} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+
+            {loadingComments ? (
+              <ActivityIndicator size="large" color={colors.primary} style={{ margin: 30 }} />
+            ) : (
+              <ScrollView style={styles.commentsList}>
+                {postComments.length === 0 ? (
+                  <Text style={[styles.emptyCommentsText, { color: colors.textSecondary }]}>
+                    Пока нет комментариев
+                  </Text>
+                ) : (
+                  postComments.map((c) => {
+                    const cAuthorName = c.user
+                      ? `${c.user.first_name || ''} ${c.user.last_name || ''}`.trim() || 'Пользователь'
+                      : 'Пользователь';
+                    const canDelete =
+                      currentUser &&
+                      (currentUser.id === c.user_id ||
+                        currentUser.id === activePostForComments?.user_id ||
+                        ['admin', 'owner'].includes(currentUser.role));
+
+                    return (
+                      <View
+                        key={c.id}
+                        style={[styles.commentItem, { borderBottomColor: colors.border }]}
+                      >
+                        <Image
+                          source={{
+                            uri: getFullUrl(c.user?.avatar_url || c.avatar_url) || 'https://via.placeholder.com/32',
+                          }}
+                          style={styles.commentAvatar}
+                        />
+                        <View style={{ flex: 1 }}>
+                          <View style={styles.commentHeaderRow}>
+                            <Text style={[styles.commentAuthorName, { color: colors.text }]}>
+                              {cAuthorName}
+                            </Text>
+                            {canDelete && (
+                              <TouchableOpacity onPress={() => handleDeleteComment(c.id)}>
+                                <Icon name="trash-outline" size={14} color={colors.error || '#e53935'} />
+                              </TouchableOpacity>
+                            )}
+                          </View>
+                          <Text style={[styles.commentText, { color: colors.text }]}>{c.comment}</Text>
+                        </View>
+                      </View>
+                    );
+                  })
+                )}
+              </ScrollView>
+            )}
+
+            <View style={[styles.commentInputRow, { borderTopColor: colors.border }]}>
+              <TextInput
+                style={[
+                  styles.commentInput,
+                  { backgroundColor: colors.background, color: colors.text, borderColor: colors.border },
+                ]}
+                placeholder="Написать комментарий..."
+                placeholderTextColor={colors.textSecondary}
+                value={newCommentText}
+                onChangeText={setNewCommentText}
+              />
+              <TouchableOpacity
+                style={[styles.sendCommentBtn, { backgroundColor: colors.primary }]}
+                onPress={handleAddComment}
+                disabled={submittingComment}
+              >
+                {submittingComment ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Icon name="send" size={16} color="#fff" />
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
@@ -920,4 +1259,138 @@ const styles = StyleSheet.create({
   pendingBadge: { backgroundColor: 'rgba(255, 165, 0, 0.2)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
   pendingText: { color: '#FFA500', fontSize: 10, fontWeight: 'bold' },
   emptyText: { textAlign: 'center', marginTop: 10, fontStyle: 'italic' },
+  modalCard: {
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+    paddingBottom: 30,
+  },
+  postInput: {
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 12,
+    fontSize: 15,
+    minHeight: 100,
+    textAlignVertical: 'top',
+    marginBottom: 12,
+  },
+  inputLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  privacySelector: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 20,
+  },
+  privacyOption: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    marginHorizontal: 3,
+  },
+  privacyOptionText: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginLeft: 4,
+  },
+  publishButton: {
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  publishButtonText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: 'bold',
+  },
+  postMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 2,
+  },
+  privacyBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginLeft: 8,
+  },
+  privacyText: {
+    fontSize: 10,
+    marginLeft: 3,
+  },
+  postContentText: {
+    fontSize: 14,
+    lineHeight: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  postMedia: {
+    width: '100%',
+    height: 200,
+    marginVertical: 4,
+  },
+  commentsList: {
+    paddingHorizontal: 16,
+    maxHeight: 300,
+  },
+  emptyCommentsText: {
+    textAlign: 'center',
+    marginVertical: 20,
+    fontSize: 13,
+  },
+  commentItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  commentAvatar: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    marginRight: 8,
+  },
+  commentHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  commentAuthorName: {
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  commentText: {
+    fontSize: 13,
+    marginTop: 2,
+  },
+  commentInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  commentInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    fontSize: 13,
+    marginRight: 8,
+  },
+  sendCommentBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 });
