@@ -11,3 +11,4 @@ mobile/.env
 *.db
 
 firebase-service-account.json
+google-services.json
