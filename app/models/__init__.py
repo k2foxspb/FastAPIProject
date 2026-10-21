@@ -7,7 +7,7 @@ from .users import (
 )
 from .chat import ChatMessage, FileUploadSession
 from .structure import Workshop, Section, Position
-from .announcements import Announcement, AnnouncementRecipient
+from .announcements import Announcement, AnnouncementRecipient, AnnouncementComment
 from .timesheet import TimesheetEntry, Product, ProductionEntry, ProductionEntryItem, ProductionAuditLog
 from .statements import Statement, StatementApproval, StatementTemplate, StatementTemplateRecipient
 
@@ -19,7 +19,7 @@ __all__ = ["News", "NewsImage", "NewsReaction", "NewsComment", "NewsCommentReact
            'ProfilePost', 'ProfilePostComment', 'ProfilePostReaction',
            "ChatMessage", "FileUploadSession",
            "Workshop", "Section", "Position",
-           "Announcement", "AnnouncementRecipient",
+           "Announcement", "AnnouncementRecipient", "AnnouncementComment",
            "TimesheetEntry", "Product", "ProductionEntry", "ProductionEntryItem", "ProductionAuditLog",
            "Statement", "StatementApproval", "StatementTemplate", "StatementTemplateRecipient",
            ]

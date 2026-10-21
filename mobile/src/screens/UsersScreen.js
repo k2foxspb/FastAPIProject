@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useLayoutEffect, useMemo } from 'react';
 import { View, Text, FlatList, TextInput, StyleSheet, TouchableOpacity, Image, Platform, RefreshControl } from 'react-native';
 import notifee from '@notifee/react-native';
 import { useFocusEffect } from '@react-navigation/native';
+import { Ionicons as Icon } from '@expo/vector-icons';
 import { usersApi } from '../api';
 import { useTheme } from '../context/ThemeContext';
 import { useNotifications } from '../context/NotificationContext';
@@ -21,6 +22,19 @@ export default function UsersScreen({ navigation }) {
   const [currentUserId, setCurrentUserId] = useState(currentUser?.id);
   const [activeTab, setActiveTab] = useState('all'); // 'all', 'friends'
   const [refreshing, setRefreshing] = useState(false);
+
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerRight: () => (
+        <TouchableOpacity
+          style={{ marginRight: 12 }}
+          onPress={() => navigation.navigate('UserStructure', { view: 'workshops', title: 'Цеха и участки' })}
+        >
+          <Icon name="business-outline" size={24} color={colors.primary} />
+        </TouchableOpacity>
+      ),
+    });
+  }, [navigation, colors]);
 
   // Применяем WebSocket статусы к локальному списку пользователей
   useEffect(() => {
@@ -150,6 +164,13 @@ export default function UsersScreen({ navigation }) {
     }
   };
 
+  const normalizedSearch = search.trim().toLowerCase();
+  const filteredFriends = useMemo(() => (
+    normalizedSearch ? friends.filter(f => formatName(f).toLowerCase().includes(normalizedSearch)) : friends
+  ), [friends, normalizedSearch]);
+  const filteredRequests = useMemo(() => (
+    normalizedSearch ? requests.filter(r => formatName(r).toLowerCase().includes(normalizedSearch)) : requests
+  ), [requests, normalizedSearch]);
 
   const renderUserItem = ({ item, isRequest = false }) => {
     const getFriendshipText = () => {
@@ -221,20 +242,18 @@ export default function UsersScreen({ navigation }) {
         </TouchableOpacity>
       </View>
 
-      {activeTab === 'all' && (
-        <TextInput
-          style={[styles.searchInput, { 
-            backgroundColor: colors.surface, 
-            color: colors.text, 
-            borderColor: colors.border,
-            borderWidth: 1 
-          }]}
-          placeholder="Поиск пользователей..."
-          placeholderTextColor={colors.textSecondary}
-          value={search}
-          onChangeText={setSearch}
-        />
-      )}
+      <TextInput
+        style={[styles.searchInput, { 
+          backgroundColor: colors.surface, 
+          color: colors.text, 
+          borderColor: colors.border,
+          borderWidth: 1 
+        }]}
+        placeholder="Поиск пользователей..."
+        placeholderTextColor={colors.textSecondary}
+        value={search}
+        onChangeText={setSearch}
+      />
 
       {activeTab === 'all' ? (
         <FlatList
@@ -246,11 +265,11 @@ export default function UsersScreen({ navigation }) {
         />
       ) : (
         <View style={{ flex: 1 }}>
-          {requests.length > 0 && (
+          {filteredRequests.length > 0 && (
             <View>
               <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>ЗАЯВКИ В ДРУЗЬЯ</Text>
               <FlatList
-                data={requests}
+                data={filteredRequests}
                 keyExtractor={(item) => `req-${item.id}`}
                 renderItem={({ item }) => renderUserItem({ item, isRequest: true })}
                 scrollEnabled={false}
@@ -259,7 +278,7 @@ export default function UsersScreen({ navigation }) {
           )}
           <Text style={[styles.sectionTitle, { color: colors.textSecondary, marginTop: 10 }]}>МОИ ДРУЗЬЯ</Text>
           <FlatList
-            data={friends}
+            data={filteredFriends}
             keyExtractor={(item) => `friend-${item.id}`}
             renderItem={({ item }) => renderUserItem({ item })}
             ListEmptyComponent={<Text style={[styles.emptyText, { color: colors.textSecondary }]}>У вас пока нет друзей</Text>}

@@ -13,6 +13,7 @@ import EditProfileScreen from '../screens/EditProfileScreen';
 import UsersScreen from '../screens/UsersScreen';
 import UserProfileScreen from '../screens/UserProfileScreen';
 import UserHierarchyScreen from '../screens/UserHierarchyScreen';
+import UserStructureScreen from '../screens/UserStructureScreen';
 import ActingAssignmentsScreen from '../screens/ActingAssignmentsScreen';
 import UserMediaScreen from '../screens/UserMediaScreen';
 import ChatListScreen from '../screens/ChatListScreen';
@@ -23,6 +24,7 @@ import GroupInfoScreen from '../screens/chat/GroupInfoScreen';
 import AddGroupMembersScreen from '../screens/chat/AddGroupMembersScreen';
 import FeedScreen from '../screens/FeedScreen';
 import AnnouncementsScreen from '../screens/AnnouncementsScreen';
+import AnnouncementDetailScreen from '../screens/AnnouncementDetailScreen';
 import CreateAnnouncementScreen from '../screens/CreateAnnouncementScreen';
 import CreatePostScreen from '../screens/CreatePostScreen';
 import TabelScreen from '../screens/TabelScreen';
@@ -145,6 +147,7 @@ function ProfileStack() {
       <Stack.Screen name="ProfileMain" component={ProfileScreen} options={{ title: 'Профиль' }} />
       <Stack.Screen name="CreatePost" component={CreatePostScreen} options={{ title: 'Новая публикация' }} />
       <Stack.Screen name="Announcements" component={AnnouncementsScreen} options={{ title: 'Объявления' }} />
+      <Stack.Screen name="AnnouncementDetail" component={AnnouncementDetailScreen} options={{ title: 'Объявление' }} />
       <Stack.Screen name="CreateAlbum" component={CreateAlbumScreen} options={{ title: 'Новый альбом' }} />
       <Stack.Screen name="AlbumDetail" component={AlbumDetailScreen} options={{ title: 'Альбом' }} />
       <Stack.Screen name="UserMedia" component={UserMediaScreen} options={{ title: 'Медиафайлы' }} />
@@ -233,6 +236,11 @@ function UsersStack() {
       <Stack.Screen name="CreatePost" component={CreatePostScreen} options={{ title: 'Новая публикация' }} />
       <Stack.Screen name="UserProfile" component={UserProfileScreen} options={{ title: 'Профиль пользователя' }} />
       <Stack.Screen name="UserHierarchy" component={UserHierarchyScreen} options={{ title: 'Сотрудники' }} />
+      <Stack.Screen
+        name="UserStructure"
+        component={UserStructureScreen}
+        options={({ route }) => ({ title: route.params?.title || 'Цеха и участки' })}
+      />
       <Stack.Screen name="ActingAssignments" component={ActingAssignmentsScreen} options={{ title: 'Исполняющие обязанности' }} />
       <Stack.Screen name="UserMedia" component={UserMediaScreen} options={{ title: 'Медиафайлы' }} />
       <Stack.Screen 
@@ -262,6 +270,7 @@ function FeedStack() {
       <Stack.Screen name="FeedMain" component={FeedScreen} options={{ title: 'Новости' }} />
       <Stack.Screen name="CreatePost" component={CreatePostScreen} options={{ title: 'Новая публикация' }} />
       <Stack.Screen name="Announcements" component={AnnouncementsScreen} options={{ title: 'Объявления' }} />
+      <Stack.Screen name="AnnouncementDetail" component={AnnouncementDetailScreen} options={{ title: 'Объявление' }} />
       <Stack.Screen name="NewsDetail" component={NewsDetailScreen} options={{ title: 'Новость' }} />
       <Stack.Screen name="EditNews" component={EditNewsScreen} options={{ title: 'Редактировать новость' }} />
       <Stack.Screen name="CreateAnnouncement" component={CreateAnnouncementScreen} options={{ title: 'Новое объявление' }} />

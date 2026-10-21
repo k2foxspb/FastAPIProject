@@ -169,16 +169,6 @@ export default function FeedScreen({ navigation }) {
         </TouchableOpacity>
 
         <View style={styles.headerRightActions}>
-          {isAdminOrOwner && (
-            <TouchableOpacity
-              style={[styles.actionBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
-              onPress={() => navigation.navigate('AdminModeration')}
-            >
-              <Icon name="shield-checkmark-outline" size={16} color={colors.primary} />
-              <Text style={[styles.actionBtnText, { color: colors.primary }]}>Модерация</Text>
-            </TouchableOpacity>
-          )}
-
           <TouchableOpacity
             style={[styles.proposeBtn, { backgroundColor: colors.primary }]}
             onPress={() => navigation.navigate('EditNews')}

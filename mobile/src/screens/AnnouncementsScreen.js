@@ -11,19 +11,15 @@ import {
   ScrollView,
   ActivityIndicator,
   Alert,
-  Dimensions,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons as Icon } from '@expo/vector-icons';
-import RenderHTML from 'react-native-render-html';
 import { announcementsApi } from '../api';
 import { getFullUrl } from '../utils/formatters';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
 import { useNotifications } from '../context/NotificationContext';
 import { getRoleLabel } from '../constants/roles';
-
-const { width } = Dimensions.get('window');
 
 const stripHtml = (html) => {
   if (!html) return '';
@@ -39,7 +35,6 @@ export default function AnnouncementsScreen({ navigation }) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [filter, setFilter] = useState('all'); // 'all' | 'unread'
-  const [expandedId, setExpandedId] = useState(null);
 
   // Состояние аудита прочтения
   const [auditVisible, setAuditVisible] = useState(false);
@@ -76,19 +71,13 @@ export default function AnnouncementsScreen({ navigation }) {
     setRefreshing(false);
   };
 
-  const handleCardPress = async (item) => {
-    const isExpanding = expandedId !== item.id;
-    setExpandedId(isExpanding ? item.id : null);
+  const handleCardPress = (item) => {
+    navigation.navigate('AnnouncementDetail', { announcementId: item.id, announcementItem: item });
 
-    if (isExpanding && !item.is_read) {
-      try {
-        await announcementsApi.markAsRead(item.id);
-        setAnnouncements((prev) =>
-          prev.map((a) => (a.id === item.id ? { ...a, is_read: true } : a))
-        );
-      } catch (err) {
-        console.log('[AnnouncementsScreen] mark read error:', err);
-      }
+    if (!item.is_read) {
+      setAnnouncements((prev) =>
+        prev.map((a) => (a.id === item.id ? { ...a, is_read: true } : a))
+      );
     }
   };
 
@@ -138,7 +127,6 @@ export default function AnnouncementsScreen({ navigation }) {
   };
 
   const renderItem = ({ item }) => {
-    const isExpanded = expandedId === item.id;
     const authorName = item.author
       ? `${item.author.first_name || ''} ${item.author.last_name || ''}`.trim() || 'Пользователь'
       : 'Пользователь';
@@ -182,24 +170,12 @@ export default function AnnouncementsScreen({ navigation }) {
 
         <Text style={[styles.title, { color: colors.text }]}>{item.title}</Text>
 
-        {isExpanded ? (
-          <RenderHTML
-            contentWidth={width - 50}
-            source={{ html: item.content || '' }}
-            tagsStyles={{
-              body: { color: colors.text, fontSize: 15, lineHeight: 22 },
-              p: { marginBottom: 8 },
-              img: { borderRadius: 8, marginVertical: 8, maxWidth: '100%' },
-            }}
-          />
-        ) : (
-          <Text
-            style={[styles.content, { color: colors.textSecondary }]}
-            numberOfLines={3}
-          >
-            {stripHtml(item.content)}
-          </Text>
-        )}
+        <Text
+          style={[styles.content, { color: colors.textSecondary }]}
+          numberOfLines={3}
+        >
+          {stripHtml(item.content)}
+        </Text>
 
         <View style={styles.cardFooter}>
           <Text style={[styles.date, { color: colors.textSecondary }]}>
@@ -212,6 +188,13 @@ export default function AnnouncementsScreen({ navigation }) {
           </Text>
 
           <View style={styles.footerActions}>
+            <View style={styles.commentsBadge}>
+              <Icon name="chatbubble-outline" size={14} color={colors.textSecondary} />
+              <Text style={[styles.commentsBadgeText, { color: colors.textSecondary }]}>
+                {item.comments_count || 0}
+              </Text>
+            </View>
+
             {isAuthorOrAdmin && (
               <>
                 <TouchableOpacity
@@ -234,7 +217,7 @@ export default function AnnouncementsScreen({ navigation }) {
             )}
 
             <Icon
-              name={isExpanded ? 'chevron-up' : 'chevron-down'}
+              name="chevron-forward"
               size={18}
               color={colors.textSecondary}
               style={{ marginLeft: 8 }}
@@ -488,6 +471,8 @@ const styles = StyleSheet.create({
   },
   auditButtonText: { fontSize: 11, fontWeight: '600', marginLeft: 4 },
   deleteButton: { padding: 4 },
+  commentsBadge: { flexDirection: 'row', alignItems: 'center', marginRight: 8 },
+  commentsBadgeText: { fontSize: 12, marginLeft: 4 },
   emptyContainer: { alignItems: 'center', justifyContent: 'center', marginTop: 60 },
   emptyText: { marginTop: 12, fontSize: 15 },
   modalOverlay: {

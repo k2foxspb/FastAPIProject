@@ -41,6 +41,9 @@ class Announcement(Base):
     recipients: Mapped[list["AnnouncementRecipient"]] = relationship(
         "AnnouncementRecipient", back_populates="announcement", cascade="all, delete-orphan"
     )
+    comments: Mapped[list["AnnouncementComment"]] = relationship(
+        "AnnouncementComment", back_populates="announcement", cascade="all, delete-orphan"
+    )
 
 
 class AnnouncementRecipient(Base):
@@ -58,4 +61,18 @@ class AnnouncementRecipient(Base):
     delivered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     announcement: Mapped["Announcement"] = relationship("Announcement", back_populates="recipients")
+    user: Mapped["User"] = relationship("User")
+
+
+class AnnouncementComment(Base):
+    """Комментарий к объявлению."""
+    __tablename__ = "announcement_comments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    announcement_id: Mapped[int] = mapped_column(ForeignKey("announcements.id", ondelete="CASCADE"), nullable=False)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    comment: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    announcement: Mapped["Announcement"] = relationship("Announcement", back_populates="comments")
     user: Mapped["User"] = relationship("User")

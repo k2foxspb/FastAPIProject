@@ -24,11 +24,14 @@ from app.models.structure import Workshop as WorkshopModel, Section as SectionMo
 from app.models.announcements import (
     Announcement as AnnouncementModel,
     AnnouncementRecipient as AnnouncementRecipientModel,
+    AnnouncementComment as AnnouncementCommentModel,
 )
 from app.schemas.announcements import (
     AnnouncementCreate,
     Announcement as AnnouncementSchema,
     AnnouncementRecipientAudit,
+    AnnouncementCommentCreate,
+    AnnouncementComment as AnnouncementCommentSchema,
 )
 
 router = APIRouter(prefix="/announcements", tags=["announcements"])
@@ -302,9 +305,15 @@ async def list_announcements(
         .correlate(AnnouncementModel)
         .scalar_subquery()
     )
+    comments_count_sub = (
+        select(func.count(AnnouncementCommentModel.id))
+        .where(AnnouncementCommentModel.announcement_id == AnnouncementModel.id)
+        .correlate(AnnouncementModel)
+        .scalar_subquery()
+    )
 
     query = (
-        select(AnnouncementModel, recipients_count_sub, my_is_read_sub, my_read_at_sub)
+        select(AnnouncementModel, recipients_count_sub, my_is_read_sub, my_read_at_sub, comments_count_sub)
         .options(
             selectinload(AnnouncementModel.author),
             selectinload(AnnouncementModel.workshop),
@@ -338,8 +347,180 @@ async def list_announcements(
             # Если автор сам смотрит созданное объявление
             item.is_read = True
             item.read_at = None
+        item.comments_count = row[4] or 0
         announcements.append(item)
     return announcements
+
+
+async def _get_announcement_or_404(db: AsyncSession, announcement_id: int, current_user: UserModel) -> AnnouncementModel:
+    """Загружает объявление, доступное автору или получателю, иначе 404."""
+    result = await db.execute(
+        select(AnnouncementModel)
+        .options(
+            selectinload(AnnouncementModel.author),
+            selectinload(AnnouncementModel.workshop),
+            selectinload(AnnouncementModel.section),
+        )
+        .outerjoin(
+            AnnouncementRecipientModel,
+            (AnnouncementRecipientModel.announcement_id == AnnouncementModel.id)
+            & (AnnouncementRecipientModel.user_id == current_user.id),
+        )
+        .where(
+            AnnouncementModel.id == announcement_id,
+            or_(
+                AnnouncementModel.author_id == current_user.id,
+                AnnouncementRecipientModel.user_id == current_user.id,
+            ),
+        )
+    )
+    announcement = result.unique().scalar_one_or_none()
+    if not announcement:
+        raise HTTPException(status_code=404, detail="Объявление не найдено")
+    return announcement
+
+
+@router.get("/{announcement_id}/", response_model=AnnouncementSchema)
+async def get_announcement_detail(
+    announcement_id: int,
+    current_user: UserModel = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Возвращает подробную информацию об объявлении (открытие объявления как новости)."""
+    announcement = await _get_announcement_or_404(db, announcement_id, current_user)
+
+    recipient_res = await db.execute(
+        select(AnnouncementRecipientModel).where(
+            AnnouncementRecipientModel.announcement_id == announcement_id,
+            AnnouncementRecipientModel.user_id == current_user.id,
+        )
+    )
+    recipient = recipient_res.scalar_one_or_none()
+
+    recipients_count = await db.scalar(
+        select(func.count(AnnouncementRecipientModel.id)).where(
+            AnnouncementRecipientModel.announcement_id == announcement_id
+        )
+    )
+    comments_count = await db.scalar(
+        select(func.count(AnnouncementCommentModel.id)).where(
+            AnnouncementCommentModel.announcement_id == announcement_id
+        )
+    )
+
+    item = AnnouncementSchema.model_validate(announcement)
+    item.recipients_count = recipients_count or 0
+    item.comments_count = comments_count or 0
+    if recipient is not None:
+        item.is_read = recipient.is_read
+        item.read_at = recipient.read_at
+    else:
+        item.is_read = True
+        item.read_at = None
+    return item
+
+
+@router.get("/{announcement_id}/comments", response_model=list[AnnouncementCommentSchema])
+async def get_announcement_comments(
+    announcement_id: int,
+    current_user: UserModel = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Возвращает список комментариев к объявлению."""
+    await _get_announcement_or_404(db, announcement_id, current_user)
+
+    result = await db.execute(
+        select(AnnouncementCommentModel)
+        .options(selectinload(AnnouncementCommentModel.user))
+        .where(AnnouncementCommentModel.announcement_id == announcement_id)
+        .order_by(AnnouncementCommentModel.created_at.asc())
+    )
+    comments = result.scalars().all()
+
+    response = []
+    for c in comments:
+        comment_dict = AnnouncementCommentSchema.model_validate(c).model_dump()
+        comment_dict["first_name"] = c.user.first_name
+        comment_dict["last_name"] = c.user.last_name
+        comment_dict["avatar_url"] = c.user.avatar_url
+        response.append(comment_dict)
+    return response
+
+
+@router.post("/{announcement_id}/comments", response_model=AnnouncementCommentSchema, status_code=status.HTTP_201_CREATED)
+async def add_announcement_comment(
+    announcement_id: int,
+    comment_data: AnnouncementCommentCreate,
+    current_user: UserModel = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Добавляет комментарий к объявлению."""
+    announcement = await _get_announcement_or_404(db, announcement_id, current_user)
+
+    new_comment = AnnouncementCommentModel(
+        announcement_id=announcement_id,
+        user_id=current_user.id,
+        comment=comment_data.comment,
+    )
+    db.add(new_comment)
+    await db.commit()
+    await db.refresh(new_comment)
+
+    if announcement.author_id != current_user.id:
+        sender_name = f"{current_user.first_name} {current_user.last_name}".strip() or current_user.email or current_user.phone_number
+        msg = {
+            "type": "announcement_comment",
+            "announcement_id": announcement_id,
+            "comment_id": new_comment.id,
+            "sender_id": current_user.id,
+            "sender_name": sender_name,
+            "message": f"прокомментировал ваше объявление \"{announcement.title}\": {new_comment.comment[:50]}...",
+        }
+        dispatch_notification(
+            announcement.author,
+            group="announcements",
+            title="Новый комментарий",
+            body=f"{sender_name} {msg['message']}",
+            data=msg,
+            sender_id=current_user.id,
+            ws_manager=notification_manager,
+            ws_message=msg,
+        )
+
+    result = await db.execute(
+        select(AnnouncementCommentModel)
+        .options(selectinload(AnnouncementCommentModel.user))
+        .where(AnnouncementCommentModel.id == new_comment.id)
+    )
+    comment_obj = result.scalar_one()
+
+    response = AnnouncementCommentSchema.model_validate(comment_obj).model_dump()
+    response["first_name"] = comment_obj.user.first_name
+    response["last_name"] = comment_obj.user.last_name
+    response["avatar_url"] = comment_obj.user.avatar_url
+    return response
+
+
+@router.delete("/comments/{comment_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_announcement_comment(
+    comment_id: int,
+    current_user: UserModel = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Удаляет свой комментарий к объявлению или любой комментарий если ты admin/owner."""
+    result = await db.execute(
+        select(AnnouncementCommentModel).where(AnnouncementCommentModel.id == comment_id)
+    )
+    comment = result.scalar_one_or_none()
+    if not comment:
+        raise HTTPException(status_code=404, detail="Comment not found")
+
+    if comment.user_id != current_user.id and current_user.role not in (ROLE_OWNER, "admin"):
+        raise HTTPException(status_code=403, detail="Not enough permissions")
+
+    await db.delete(comment)
+    await db.commit()
+    return None
 
 
 @router.post("/{announcement_id}/read")

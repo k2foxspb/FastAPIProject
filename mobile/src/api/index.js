@@ -111,7 +111,7 @@ export const usersApi = {
   getMe: (appVersion = null) => api.get('/users/me', { params: { app_version: appVersion } }),
   refreshAccessToken: (refreshToken) => authClient.post('/users/refresh-token-access', { refresh_token: refreshToken }),
   // Пользователи
-  getUsers: (search) => api.get('/users/', { params: { search } }),
+  getUsers: (search, workshopId, sectionId) => api.get('/users/', { params: { search, workshop_id: workshopId, section_id: sectionId } }),
   getUser: (id) => api.get(`/users/${id}`),
 
   // Альбомы
@@ -227,10 +227,14 @@ export const announcementsApi = {
   // Объявления по иерархии - автор может сузить группу получателей через
   // target_workshop_id/target_section_id (см. app/api/routers/announcements.py)
   getAnnouncements: () => api.get('/announcements/'),
+  getAnnouncementDetail: (announcementId) => api.get(`/announcements/${announcementId}/`),
   createAnnouncement: (data) => api.post('/announcements/', data),
   markAsRead: (announcementId) => api.post(`/announcements/${announcementId}/read`),
   getRecipients: (announcementId) => api.get(`/announcements/${announcementId}/recipients`),
   deleteAnnouncement: (announcementId) => api.delete(`/announcements/${announcementId}`),
+  getAnnouncementComments: (announcementId) => api.get(`/announcements/${announcementId}/comments`),
+  addAnnouncementComment: (announcementId, comment) => api.post(`/announcements/${announcementId}/comments`, { comment }),
+  deleteAnnouncementComment: (commentId) => api.delete(`/announcements/comments/${commentId}`),
 };
 
 export const newsApi = {

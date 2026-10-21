@@ -53,6 +53,22 @@ class AnnouncementRecipientAudit(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class AnnouncementCommentCreate(BaseModel):
+    comment: str = Field(min_length=1)
+
+
+class AnnouncementComment(BaseModel):
+    id: int
+    announcement_id: int
+    user_id: int
+    comment: str
+    created_at: datetime
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    avatar_url: Optional[str] = None
+    model_config = ConfigDict(from_attributes=True)
+
+
 class Announcement(BaseModel):
     id: int
     author_id: Optional[int] = None
@@ -75,6 +91,7 @@ class Announcement(BaseModel):
     read_at: Optional[datetime] = None
     workshop_name: Optional[str] = None
     section_name: Optional[str] = None
+    comments_count: int = 0
     model_config = ConfigDict(from_attributes=True)
 
     @classmethod
