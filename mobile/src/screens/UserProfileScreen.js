@@ -487,32 +487,39 @@ export default function UserProfileScreen({ route, navigation }) {
             <Icon name="chatbubble-ellipses-outline" size={18} color="#fff" />
             <Text style={[styles.actionBtnText, { color: '#fff' }]}>Написать</Text>
           </TouchableOpacity>
-
-          {isProductionRole(user.role) && (
-            <TouchableOpacity 
-              style={[styles.actionBtn, { borderColor: colors.primary, borderWidth: 1 }]}
-              onPress={() => navigation.navigate('UserHierarchy', { userId: user.id, userName: formatName(user) })}
-            >
-              <Icon name="git-network-outline" size={18} color={colors.primary} />
-              <Text style={[styles.actionBtnText, { color: colors.primary }]}>Сотрудники</Text>
-            </TouchableOpacity>
-          )}
-
-          {canManageUserClient(currentUser, user) && (
-            <TouchableOpacity 
-              style={[styles.actionBtn, { borderColor: colors.primary, borderWidth: 1 }]}
-              onPress={assignRole}
-              disabled={assigningRole}
-            >
-              {assigningRole ? (
-                <ActivityIndicator size="small" color={colors.primary} />
-              ) : (
-                <Icon name="ribbon-outline" size={18} color={colors.primary} />
-              )}
-              <Text style={[styles.actionBtnText, { color: colors.primary }]}>Назначить должность</Text>
-            </TouchableOpacity>
-          )}
         </View>
+
+        {(isProductionRole(user.role) || canManageUserClient(currentUser, user)) && (
+          <View style={[styles.managementBlock, { borderColor: colors.border, backgroundColor: colors.background }]}>
+            <Text style={[styles.managementTitle, { color: colors.textSecondary }]}>Управление сотрудником</Text>
+            <View style={styles.actionsGrid}>
+              {isProductionRole(user.role) && (
+                <TouchableOpacity 
+                  style={[styles.actionBtn, { borderColor: colors.primary, borderWidth: 1 }]}
+                  onPress={() => navigation.navigate('UserHierarchy', { userId: user.id, userName: formatName(user) })}
+                >
+                  <Icon name="git-network-outline" size={18} color={colors.primary} />
+                  <Text style={[styles.actionBtnText, { color: colors.primary }]}>Сотрудники</Text>
+                </TouchableOpacity>
+              )}
+
+              {canManageUserClient(currentUser, user) && (
+                <TouchableOpacity 
+                  style={[styles.actionBtn, { borderColor: colors.primary, borderWidth: 1 }]}
+                  onPress={assignRole}
+                  disabled={assigningRole}
+                >
+                  {assigningRole ? (
+                    <ActivityIndicator size="small" color={colors.primary} />
+                  ) : (
+                    <Icon name="ribbon-outline" size={18} color={colors.primary} />
+                  )}
+                  <Text style={[styles.actionBtnText, { color: colors.primary }]}>Назначить должность</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+        )}
       </View>
 
       <Modal visible={!!pickerState} transparent animationType="fade" onRequestClose={() => resolvePicker(null)}>
@@ -755,6 +762,21 @@ const styles = StyleSheet.create({
     margin: 5,
   },
   actionBtnText: { marginLeft: 8, fontWeight: '600', fontSize: 13 },
+  managementBlock: {
+    width: '100%',
+    marginTop: 15,
+    paddingTop: 12,
+    paddingHorizontal: 10,
+    borderTopWidth: 1,
+    borderRadius: 12,
+  },
+  managementTitle: {
+    fontSize: 11,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
   section: { padding: 20 },
   sectionTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 15 },
   album: { marginBottom: 20 },

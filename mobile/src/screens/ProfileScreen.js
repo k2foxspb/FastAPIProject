@@ -726,6 +726,32 @@ export default function ProfileScreen({ navigation }) {
 
                 <View style={[styles.menuDivider, { backgroundColor: colors.border }]} />
 
+                <Text style={[styles.menuSectionTitle, { color: colors.textSecondary, marginTop: 5 }]}>Моя активность</Text>
+
+                <TouchableOpacity 
+                  style={styles.menuItem} 
+                  onPress={() => {
+                    setSettingsVisible(false);
+                    navigation.navigate('MyLikes');
+                  }}
+                >
+                  <Icon name="heart-outline" size={22} color={colors.error} />
+                  <Text style={[styles.menuItemText, { color: colors.text }]}>Понравилось</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity 
+                  style={styles.menuItem} 
+                  onPress={() => {
+                    setSettingsVisible(false);
+                    navigation.navigate('MyReviews');
+                  }}
+                >
+                  <Icon name="star-outline" size={22} color="#FFD700" />
+                  <Text style={[styles.menuItemText, { color: colors.text }]}>Мои отзывы</Text>
+                </TouchableOpacity>
+
+                <View style={[styles.menuDivider, { backgroundColor: colors.border }]} />
+
                 <TouchableOpacity 
                   style={styles.menuItem} 
                   onPress={handleSyncNotifications}
@@ -782,26 +808,6 @@ export default function ProfileScreen({ navigation }) {
           </View>
         </TouchableWithoutFeedback>
       </Modal>
-
-      <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: colors.text, marginBottom: 15 }]}>Моя активность</Text>
-        <View style={styles.activityRow}>
-          <TouchableOpacity 
-            style={[styles.activityButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
-            onPress={() => navigation.navigate('MyLikes')}
-          >
-            <Icon name="heart" size={24} color={colors.error} />
-            <Text style={[styles.activityButtonText, { color: colors.text }]}>Понравилось</Text>
-          </TouchableOpacity>
-          <TouchableOpacity 
-            style={[styles.activityButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
-            onPress={() => navigation.navigate('MyReviews')}
-          >
-            <Icon name="star" size={24} color="#FFD700" />
-            <Text style={[styles.activityButtonText, { color: colors.text }]}>Мои отзывы</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
 
       <View style={styles.section}>
         <TouchableOpacity 

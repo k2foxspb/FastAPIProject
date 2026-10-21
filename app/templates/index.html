@@ -4,9 +4,9 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-    <title>Fokin — Магазин, чат и новости в одном приложении</title>
-    <meta name="description" content="Fokin — современная платформа для покупок, общения и обмена новостями. Скачайте приложение для Android и будьте всегда на связи.">
-    <meta name="keywords" content="Fokin, магазин, чат, новости, покупки, Android, APK, общение">
+    <title>Fokin System — Автоматизация системы управления</title>
+    <meta name="description" content="Fokin System — платформа автоматизации системы управления. Политика конфиденциальности и пользовательское соглашение.">
+    <meta name="keywords" content="Fokin, система управления, автоматизация, политика конфиденциальности, пользовательское соглашение">
     <meta name="author" content="Fokin Team">
     <meta name="robots" content="index, follow">
     <link rel="canonical" href="https://fokin.fun/">
@@ -19,25 +19,16 @@
 
     <!-- Open Graph -->
     <meta property="og:type" content="website">
-    <meta property="og:title" content="Fokin — Магазин, чат и новости в одном приложении">
-    <meta property="og:description" content="Fokin — современная платформа для покупок, общения и обмена новостями. Всё самое важное в одном приложении.">
+    <meta property="og:title" content="Fokin System — Автоматизация системы управления">
+    <meta property="og:description" content="Политика конфиденциальности и пользовательское соглашение сервиса Fokin.">
     <meta property="og:url" content="https://fokin.fun/">
-    <meta property="og:site_name" content="Fokin">
+    <meta property="og:site_name" content="Fokin System">
     <meta property="og:locale" content="ru_RU">
     <meta property="og:image" content="https://fokin.fun/logo.png">
-    <meta property="og:image:width" content="512">
-    <meta property="og:image:height" content="512">
-    <meta property="og:image:alt" content="Fokin логотип">
-
-    <!-- Twitter Card -->
-    <meta name="twitter:card" content="summary">
-    <meta name="twitter:title" content="Fokin — Магазин, чат и новости в одном приложении">
-    <meta name="twitter:description" content="Fokin — современная платформа для покупок, общения и обмена новостями.">
-    <meta name="twitter:image" content="https://fokin.fun/logo.png">
 
     <!-- PWA manifest -->
     <link rel="manifest" href="/manifest.json">
-    <meta name="theme-color" content="#2196F3">
+    <meta name="theme-color" content="#0ea5e9">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -59,47 +50,21 @@
       "sameAs": []
     }
     </script>
-    <!-- JSON-LD: SoftwareApplication -->
-    <script type="application/ld+json">
-    {
-      "@context": "https://schema.org",
-      "@type": "SoftwareApplication",
-      "name": "Fokin",
-      "operatingSystem": "ANDROID",
-      "applicationCategory": "ShoppingApplication",
-      "description": "Fokin — современная платформа для покупок, общения и обмена новостями. Скачайте приложение для Android и будьте всегда на связи.",
-      "offers": {
-        "@type": "Offer",
-        "price": "0",
-        "priceCurrency": "RUB"
-      },
-      "aggregateRating": {
-        "@type": "AggregateRating",
-        "ratingValue": "5",
-        "ratingCount": "100"
-      },
-      "publisher": {
-        "@type": "Organization",
-        "name": "Fokin Team",
-        "logo": "https://fokin.fun/logo.png"
-      },
-      "downloadUrl": "https://fokin.fun/",
-      "installUrl": "https://fokin.fun/"
-    }
-    </script>
+
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
     <style>
         :root {
-            --bg-color: #0f172a;
-            --surface-color: rgba(30, 41, 59, 0.7);
-            --accent-color: #6366f1;
-            --accent-hover: #4f46e5;
-            --text-primary: #f8fafc;
-            --text-secondary: #94a3b8;
-            --border-color: rgba(255, 255, 255, 0.1);
-            --success-color: #10b981;
+            --bg-color: #060b14;
+            --panel-color: rgba(15, 23, 42, 0.75);
+            --panel-border: rgba(56, 189, 248, 0.18);
+            --accent-color: #22d3ee;
+            --accent-secondary: #38bdf8;
+            --ok-color: #34d399;
+            --text-primary: #e2e8f0;
+            --text-secondary: #7c8aa5;
+            --mono-font: 'JetBrains Mono', 'Courier New', monospace;
         }
 
         * {
@@ -111,9 +76,11 @@
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             margin: 0;
             background-color: var(--bg-color);
-            background-image: 
-                radial-gradient(circle at 0% 0%, rgba(99, 102, 241, 0.15) 0%, transparent 50%),
-                radial-gradient(circle at 100% 100%, rgba(79, 70, 229, 0.1) 0%, transparent 50%);
+            background-image:
+                linear-gradient(rgba(56, 189, 248, 0.05) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(56, 189, 248, 0.05) 1px, transparent 1px),
+                radial-gradient(circle at 50% 0%, rgba(34, 211, 238, 0.12) 0%, transparent 55%);
+            background-size: 42px 42px, 42px 42px, 100% 100%;
             color: var(--text-primary);
             display: flex;
             flex-direction: column;
@@ -123,439 +90,335 @@
             padding: 20px;
         }
 
+        .topbar {
+            width: 100%;
+            max-width: 980px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 22px;
+            margin-top: 10px;
+            background: var(--panel-color);
+            backdrop-filter: blur(10px);
+            border: 1px solid var(--panel-border);
+            border-radius: 16px;
+            font-family: var(--mono-font);
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        .topbar .brand {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: var(--text-primary);
+            font-weight: 600;
+        }
+
+        .topbar .brand img {
+            width: 26px;
+            height: 26px;
+            border-radius: 7px;
+        }
+
+        .status-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 5px 12px;
+            border-radius: 100px;
+            border: 1px solid rgba(52, 211, 153, 0.3);
+            background: rgba(52, 211, 153, 0.08);
+            color: var(--ok-color);
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--ok-color);
+            box-shadow: 0 0 8px var(--ok-color);
+            animation: pulse 1.8s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.35; }
+        }
+
         .hero {
-            max-width: 800px;
+            max-width: 980px;
             width: 100%;
             text-align: center;
-            padding: 60px 20px 40px;
+            padding: 56px 20px 30px;
             animation: fadeIn 0.8s ease-out;
         }
 
         @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(20px); }
+            from { opacity: 0; transform: translateY(16px); }
             to { opacity: 1; transform: translateY(0); }
         }
 
-        .logo-container {
-            margin-bottom: 24px;
-            position: relative;
-            display: inline-block;
-        }
-
-        .logo {
-            width: 140px;
-            height: 140px;
-            object-fit: contain;
-            border-radius: 32px;
-            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
-            border: 2px solid var(--border-color);
-            background: #1e293b;
-        }
-
-        .logo-glow {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: 160px;
-            height: 160px;
-            background: var(--accent-color);
-            filter: blur(40px);
-            opacity: 0.2;
-            z-index: -1;
-            border-radius: 50%;
+        .eyebrow {
+            font-family: var(--mono-font);
+            letter-spacing: 0.18em;
+            text-transform: uppercase;
+            font-size: 12px;
+            color: var(--accent-color);
+            margin-bottom: 18px;
         }
 
         h1 {
-            font-size: clamp(32px, 8vw, 48px);
+            font-size: clamp(30px, 6vw, 44px);
             font-weight: 800;
             margin: 0 0 16px;
-            letter-spacing: -0.04em;
-            background: linear-gradient(135deg, #fff 0%, #94a3b8 100%);
+            letter-spacing: -0.03em;
+            background: linear-gradient(135deg, #fff 0%, #7c8aa5 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
         }
 
         .tagline {
-            font-size: clamp(18px, 4vw, 20px);
+            font-size: clamp(16px, 3vw, 18px);
             color: var(--text-secondary);
-            margin-bottom: 48px;
-            max-width: 600px;
+            margin-bottom: 20px;
+            max-width: 620px;
             margin-left: auto;
             margin-right: auto;
         }
 
-        .download-card {
-            background: var(--surface-color);
-            backdrop-filter: blur(12px);
-            border: 1px solid var(--border-color);
-            border-radius: 32px;
-            padding: 40px;
-            width: 100%;
-            max-width: 440px;
-            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
-            margin-bottom: 60px;
-        }
-
-        .version-badge {
-            display: inline-flex;
-            align-items: center;
-            padding: 6px 16px;
-            background: rgba(99, 102, 241, 0.1);
-            border: 1px solid rgba(99, 102, 241, 0.2);
-            border-radius: 100px;
-            color: var(--accent-color);
-            font-weight: 600;
-            font-size: 14px;
-            margin-bottom: 24px;
-        }
-
-        .download-btn {
-            background-color: var(--accent-color);
-            color: white;
-            padding: 18px 32px;
-            border-radius: 20px;
-            text-decoration: none;
-            font-weight: 700;
-            font-size: 18px;
+        .metrics-row {
             display: flex;
-            align-items: center;
+            flex-wrap: wrap;
             justify-content: center;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            width: 100%;
-            box-sizing: border-box;
-            box-shadow: 0 10px 25px -5px rgba(99, 102, 241, 0.4);
+            gap: 14px;
+            margin: 36px 0 48px;
+            font-family: var(--mono-font);
         }
 
-        .download-btn:hover {
-            background-color: var(--accent-hover);
-            transform: translateY(-4px) scale(1.02);
-            box-shadow: 0 20px 30px -10px rgba(99, 102, 241, 0.5);
-        }
-
-        .download-btn:active {
-            transform: translateY(0) scale(0.98);
-        }
-
-        .features-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-            gap: 24px;
-            max-width: 1000px;
-            width: 100%;
-            padding: 0 20px 80px;
-        }
-
-        .feature-card {
-            background: rgba(255, 255, 255, 0.03);
-            border: 1px solid var(--border-color);
-            border-radius: 24px;
-            padding: 32px;
-            text-align: left;
-            transition: all 0.3s ease;
-        }
-
-        .feature-card:hover {
-            background: rgba(255, 255, 255, 0.05);
-            border-color: rgba(255, 255, 255, 0.2);
-            transform: translateY(-5px);
-        }
-
-        .feature-icon {
-            width: 48px;
-            height: 48px;
-            background: rgba(99, 102, 241, 0.1);
+        .metric {
+            background: var(--panel-color);
+            border: 1px solid var(--panel-border);
             border-radius: 14px;
+            padding: 14px 22px;
+            min-width: 140px;
+        }
+
+        .metric .value {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--accent-color);
+        }
+
+        .metric .label {
+            font-size: 11px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            margin-top: 4px;
+        }
+
+        .docs-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 22px;
+            max-width: 980px;
+            width: 100%;
+            padding: 0 0 60px;
+        }
+
+        .doc-card {
+            position: relative;
+            text-align: left;
+            text-decoration: none;
+            color: inherit;
+            background: var(--panel-color);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--panel-border);
+            border-radius: 20px;
+            padding: 30px;
+            overflow: hidden;
+            transition: all 0.25s ease;
+        }
+
+        .doc-card::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(135deg, rgba(34, 211, 238, 0.08), transparent 60%);
+            opacity: 0;
+            transition: opacity 0.25s ease;
+        }
+
+        .doc-card:hover {
+            border-color: rgba(56, 189, 248, 0.45);
+            transform: translateY(-4px);
+            box-shadow: 0 20px 40px -18px rgba(34, 211, 238, 0.35);
+        }
+
+        .doc-card:hover::before {
+            opacity: 1;
+        }
+
+        .doc-index {
+            font-family: var(--mono-font);
+            font-size: 12px;
+            color: var(--accent-color);
+            letter-spacing: 0.1em;
+            margin-bottom: 14px;
+        }
+
+        .doc-icon {
+            width: 46px;
+            height: 46px;
+            border-radius: 12px;
+            background: rgba(34, 211, 238, 0.1);
+            border: 1px solid rgba(34, 211, 238, 0.25);
             display: flex;
             align-items: center;
             justify-content: center;
             margin-bottom: 20px;
             color: var(--accent-color);
-            font-size: 24px;
         }
 
-        .feature-title {
+        .doc-title {
             font-weight: 700;
-            font-size: 18px;
-            margin-bottom: 8px;
+            font-size: 19px;
+            margin-bottom: 10px;
             color: #fff;
         }
 
-        .feature-desc {
+        .doc-desc {
             color: var(--text-secondary);
-            font-size: 15px;
+            font-size: 14px;
             line-height: 1.6;
+            margin-bottom: 20px;
         }
 
-        .loading-spinner {
-            width: 24px;
-            height: 24px;
-            border: 3px solid rgba(255, 255, 255, 0.3);
-            border-radius: 50%;
-            border-top-color: #fff;
-            animation: spin 0.8s linear infinite;
-            margin-right: 12px;
-        }
-
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-
-        .how-it-works {
-            width: 100%;
-            max-width: 1000px;
-            padding: 60px 20px;
-            animation: fadeIn 1s ease-out;
-        }
-        .steps-container {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 40px;
-        }
-        .step {
-            text-align: center;
-        }
-        .step-num {
-            width: 50px;
-            height: 50px;
-            background: var(--accent-color);
-            color: #fff;
-            border-radius: 25px;
-            display: flex;
+        .doc-link {
+            display: inline-flex;
             align-items: center;
-            justify-content: center;
-            font-weight: 800;
-            font-size: 24px;
-            margin: 0 auto 20px;
-            box-shadow: 0 10px 20px rgba(99, 102, 241, 0.3);
+            gap: 8px;
+            font-family: var(--mono-font);
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--accent-secondary);
         }
-        .step h3 { margin-bottom: 10px; font-size: 20px; }
-        .step p { color: var(--text-secondary); line-height: 1.6; }
 
-        .phone-mockup {
-            margin: 80px 0;
-            perspective: 1000px;
-            display: flex;
-            justify-content: center;
+        .doc-card:hover .doc-link {
+            color: var(--accent-color);
         }
-        .phone-frame {
-            width: 280px;
-            height: 580px;
-            background: #1e293b;
-            border: 8px solid #334155;
-            border-radius: 40px;
-            padding: 12px;
-            box-shadow: 0 50px 100px -20px rgba(0,0,0,0.5);
-            transform: rotateY(-15deg) rotateX(10deg);
-            transition: all 0.6s cubic-bezier(0.23, 1, 0.32, 1);
-        }
-        .phone-frame:hover {
-            transform: rotateY(0) rotateX(0) scale(1.02);
-        }
-        .phone-screen {
-            background: var(--bg-color);
-            width: 100%;
-            height: 100%;
-            border-radius: 24px;
-            overflow: hidden;
-            display: flex;
-            flex-direction: column;
-            border: 1px solid rgba(255,255,255,0.05);
-        }
-        .mock-header { height: 60px; background: rgba(255,255,255,0.05); padding: 15px 10px; }
-        .mock-status-bar { width: 40px; height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; margin: 0 auto 10px; }
-        .mock-nav { width: 100%; height: 20px; background: rgba(255,255,255,0.05); border-radius: 10px; }
-        .mock-content { flex: 1; padding: 20px; display: flex; flex-direction: column; }
-        .mock-message { height: 16px; border-radius: 8px; margin-bottom: 12px; width: 70%; }
-        .mock-message.left { background: rgba(99, 102, 241, 0.2); align-self: flex-start; }
-        .mock-message.right { background: rgba(255, 255, 255, 0.1); align-self: flex-end; width: 60%; }
-        .mock-card { height: 80px; background: linear-gradient(90deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.05) 100%); border-radius: 15px; margin-bottom: 20px; }
-        .mock-tab-bar { height: 65px; background: rgba(255,255,255,0.05); display: flex; justify-content: space-around; align-items: center; border-top: 1px solid rgba(255,255,255,0.05); }
-        .mock-tab { width: 28px; height: 28px; background: rgba(255,255,255,0.07); border-radius: 8px; }
-
-        .hidden { display: none; }
 
         footer {
             margin-top: auto;
-            padding: 40px 20px;
+            padding: 36px 20px 24px;
             color: var(--text-secondary);
-            font-size: 14px;
+            font-size: 13px;
+            font-family: var(--mono-font);
             text-align: center;
-            border-top: 1px solid var(--border-color);
+            border-top: 1px solid var(--panel-border);
             width: 100%;
+            max-width: 980px;
+        }
+
+        footer a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            margin: 0 10px;
+            transition: color 0.2s;
+        }
+
+        footer a:hover {
+            color: var(--accent-color);
         }
 
         @media (max-width: 640px) {
-            .hero { padding-top: 40px; }
-            .download-card { padding: 30px 20px; border-radius: 24px; }
-            .features-grid { grid-template-columns: 1fr; }
+            .hero { padding-top: 36px; }
+            .topbar { flex-wrap: wrap; gap: 10px; }
+            .metrics-row { gap: 10px; }
         }
     </style>
     <meta name="google-site-verification" content="29HuyK0yV3eZ1XaA4VNvb3JqYKFLdkrytJH3DNJUScw">
 </head>
 <body>
+    <div class="topbar">
+        <div class="brand">
+            <img src="/logo.png" alt="Fokin" onerror="this.src='https://via.placeholder.com/26?text=F'">
+            Fokin System
+        </div>
+        <div class="status-pill">
+            <span class="status-dot"></span>
+            Система активна
+        </div>
+    </div>
+
     <div class="hero">
-        <div class="logo-container">
-            <div class="logo-glow"></div>
-            <img src="/logo.png" alt="Logo" class="logo" onerror="this.src='https://via.placeholder.com/140?text=FS'">
-        </div>
-        
-        <h1>Fokin</h1>
-        <p class="tagline">Ваше пространство для общения, покупок и новостей. Всё самое важное в одном приложении.</p>
-        <div style="margin-bottom: 24px; font-size: 14px;">
-            <a href="https://fokin.fun/privacy-policy" style="color: var(--text-secondary); text-decoration: underline; margin: 0 10px;">Privacy Policy / Политика конфиденциальности</a>
-        </div>
+        <div class="eyebrow">Автоматизация системы управления</div>
+        <h1>Юридическая информация сервиса</h1>
+        <p class="tagline">Ниже представлены основные документы, регламентирующие работу системы: политика обработки данных и пользовательское соглашение.</p>
 
-        <div class="download-card" id="appStatus">
-            <div id="loadingInfo" style="display: flex; align-items: center; justify-content: center;">
-                <div class="loading-spinner"></div>
-                <span style="color: var(--text-secondary); font-weight: 500;">Поиск последней версии...</span>
+        <div class="metrics-row">
+            <div class="metric">
+                <div class="value">2</div>
+                <div class="label">Документа</div>
             </div>
+            <div class="metric">
+                <div class="value">100%</div>
+                <div class="label">Прозрачность</div>
+            </div>
+            <div class="metric">
+                <div class="value">24/7</div>
+                <div class="label">Поддержка</div>
+            </div>
+        </div>
 
-            <div id="appBanner" class="hidden">
-                <div class="version-badge">
-                    Версия <span id="latestVer" style="margin-left: 4px;">...</span>
-                </div>
-                <a id="downloadBtn" class="download-btn" href="#" download>
-                    <svg style="margin-right: 12px;" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v4"></path>
-                        <polyline points="7 10 12 15 17 10"></polyline>
-                        <line x1="12" y1="15" x2="12" y2="3"></line>
+        <div class="docs-grid">
+            <a href="/privacy-policy" class="doc-card">
+                <div class="doc-index">DOC / 01</div>
+                <div class="doc-icon">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6l8-4z"></path>
                     </svg>
-                    Скачать для Android
-                </a>
-            </div>
-            
-            <div id="noApp" class="hidden">
-                <div style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.2); padding: 16px; border-radius: 16px; color: #f87171;">
-                    Приложение временно недоступно для загрузки. Пожалуйста, зайдите позже.
                 </div>
-            </div>
+                <div class="doc-title">Политика конфиденциальности</div>
+                <div class="doc-desc">Правила сбора, обработки и защиты данных пользователей в рамках работы системы управления.</div>
+                <span class="doc-link">
+                    Открыть документ
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="5" y1="12" x2="19" y2="12"></line>
+                        <polyline points="12 5 19 12 12 19"></polyline>
+                    </svg>
+                </span>
+            </a>
 
-            <p style="font-size: 13px; margin-top: 24px; color: var(--text-secondary); border-top: 1px solid var(--border-color); padding-top: 20px;">
-                Используя Fokin, вы соглашаетесь с
-                <a href="https://fokin.fun/privacy-policy" style="color: var(--accent-color); text-decoration: none; font-weight: 500;">Политикой конфиденциальности</a> и 
-                <a href="https://fokin.fun/terms" style="color: var(--accent-color); text-decoration: none; font-weight: 500;">Правилами использования</a>.
-            </p>
-        </div>
-
-        <div class="features-grid">
-            <div class="feature-card">
-                <div class="feature-icon">🛍️</div>
-                <div class="feature-title">Умный магазин</div>
-                <div class="feature-desc">Покупайте товары легко и быстро. Удобный интерфейс и безопасная оплата.</div>
-            </div>
-            <div class="feature-card">
-                <div class="feature-icon">💬</div>
-                <div class="feature-title">Живое общение</div>
-                <div class="feature-desc">Общайтесь с друзьями в чате, делитесь новостями и впечатлениями в реальном времени.</div>
-            </div>
-            <div class="feature-card">
-                <div class="feature-icon">🔔</div>
-                <div class="feature-title">Уведомления</div>
-                <div class="feature-desc">Будьте в курсе всех акций и сообщений. Мгновенные пуш-уведомления на ваш телефон.</div>
-            </div>
-            <div class="feature-card">
-                <div class="feature-icon">📸</div>
-                <div class="feature-title">Фото и альбомы</div>
-                <div class="feature-desc">Создавайте личные альбомы, делитесь моментами и получайте реакции от друзей.</div>
-            </div>
-        </div>
-
-        <section class="how-it-works">
-            <h2 style="font-size: 32px; margin-bottom: 40px; text-align: center;">Как это работает</h2>
-            <div class="steps-container">
-                <div class="step">
-                    <div class="step-num">1</div>
-                    <h3>Скачайте APK</h3>
-                    <p>Нажмите кнопку загрузки выше, чтобы получить установочный файл.</p>
+            <a href="/terms" class="doc-card">
+                <div class="doc-index">DOC / 02</div>
+                <div class="doc-icon">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M9 12l2 2 4-4"></path>
+                        <path d="M21 12c0 4.97-4.03 9-9 9s-9-4.03-9-9 4.03-9 9-9 9 4.03 9 9z"></path>
+                    </svg>
                 </div>
-                <div class="step">
-                    <div class="step-num">2</div>
-                    <h3>Установите</h3>
-                    <p>Разрешите установку из неизвестных источников в настройках Android.</p>
-                </div>
-                <div class="step">
-                    <div class="step-num">3</div>
-                    <h3>Пользуйтесь</h3>
-                    <p>Войдите по номеру телефона и начните покупки или общение!</p>
-                </div>
-                <div class="step">
-                    <div class="step-num">4</div>
-                    <h3>Приглашайте друзей</h3>
-                    <p>Вместе покупать и общаться гораздо интереснее!</p>
-                </div>
-            </div>
-        </section>
-
-        <div class="phone-mockup">
-            <div class="phone-frame">
-                <div class="phone-screen">
-                    <div class="mock-header">
-                        <div class="mock-status-bar"></div>
-                        <div class="mock-nav"></div>
-                    </div>
-                    <div class="mock-content">
-                        <div class="mock-message left"></div>
-                        <div class="mock-message right"></div>
-                        <div class="mock-message left" style="width: 50%;"></div>
-                        <div class="mock-card" style="margin-top: 20px;"></div>
-                        <div class="mock-card"></div>
-                    </div>
-                    <div class="mock-tab-bar">
-                        <div class="mock-tab"></div>
-                        <div class="mock-tab"></div>
-                        <div class="mock-tab"></div>
-                        <div class="mock-tab"></div>
-                    </div>
-                </div>
-            </div>
+                <div class="doc-title">Пользовательское соглашение</div>
+                <div class="doc-desc">Условия и регламент использования системы управления, права и обязанности сторон.</div>
+                <span class="doc-link">
+                    Открыть документ
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="5" y1="12" x2="19" y2="12"></line>
+                        <polyline points="12 5 19 12 12 19"></polyline>
+                    </svg>
+                </span>
+            </a>
         </div>
     </div>
 
     <footer>
-        <nav style="margin-bottom: 24px;">
-            <a href="https://fokin.fun/privacy-policy" style="color: var(--text-secondary); text-decoration: none; margin: 0 12px; transition: color 0.2s;">Privacy Policy / Политика конфиденциальности</a>
-            <a href="https://fokin.fun/terms" style="color: var(--text-secondary); text-decoration: none; margin: 0 12px; transition: color 0.2s;">Terms / Правила использования</a>
-            <a href="mailto:k2foxspb@mail.ru" style="color: var(--text-secondary); text-decoration: none; margin: 0 12px; transition: color 0.2s;">Поддержка</a>
+        <nav style="margin-bottom: 16px;">
+            <a href="/privacy-policy">Политика конфиденциальности</a>
+            <a href="/terms">Пользовательское соглашение</a>
+            <a href="mailto:k2foxspb@mail.ru">Поддержка</a>
         </nav>
-        <p>&copy; 2026 Fokin Team. Сделано с любовью для пользователей.</p>
+        <p>&copy; 2026 Fokin System. Автоматизация системы управления.</p>
     </footer>
-
-    <script>
-        async function loadLatest() {
-            const banner = document.getElementById('appBanner');
-            const loader = document.getElementById('loadingInfo');
-            const noApp = document.getElementById('noApp');
-            const downloadBtn = document.getElementById('downloadBtn');
-            const versionText = document.getElementById('latestVer');
-
-            try {
-                // Имитация небольшой задержки для плавности
-                await new Promise(r => setTimeout(r, 600));
-                
-                const res = await fetch('/news/app-version/latest');
-                if (!res.ok) throw new Error('Not found');
-                
-                const data = await res.json();
-                
-                if (data && data.file_path) {
-                    downloadBtn.href = data.file_path;
-                    versionText.textContent = data.version || 'v1.0.10';
-                    
-                    loader.style.display = 'none';
-                    banner.classList.remove('hidden');
-                } else {
-                    throw new Error('No file path');
-                }
-            } catch(e) {
-                console.error('Failed to load version:', e);
-                loader.style.display = 'none';
-                noApp.classList.remove('hidden');
-            }
-        }
-        
-        loadLatest();
-    </script>
 </body>
 </html>
