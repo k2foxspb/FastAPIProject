@@ -196,11 +196,15 @@ async def get_firebase_config():
 @router.get("/", response_model=list[UserSchema], include_in_schema=False)
 async def get_users(
     search: str | None = None,
+    workshop_id: int | None = None,
+    section_id: int | None = None,
     db: AsyncSession = Depends(get_async_db),
     current_user: UserModel | None = Depends(get_current_user_optional)
 ):
     """
     Возвращает список всех активных пользователей.
+    Параметры workshop_id/section_id позволяют отфильтровать пользователей
+    по их принадлежности к цеху/участку (используется экраном "Цеха и участки").
     """
     query = select(UserModel).where(UserModel.is_active == True).options(
         selectinload(UserModel.photos).selectinload(UserPhotoModel.reactions).selectinload(UserPhotoReactionModel.user),
@@ -214,6 +218,10 @@ async def get_users(
             UserModel.first_name.ilike(f"%{search}%"),
             UserModel.last_name.ilike(f"%{search}%")
         ))
+    if section_id is not None:
+        query = query.where(UserModel.section_id == section_id)
+    elif workshop_id is not None:
+        query = query.where(UserModel.workshop_id == workshop_id)
     
     result = await db.execute(query)
     users = result.scalars().all()
