@@ -187,37 +187,6 @@
             margin-right: auto;
         }
 
-        .metrics-row {
-            display: flex;
-            flex-wrap: wrap;
-            justify-content: center;
-            gap: 14px;
-            margin: 36px 0 48px;
-            font-family: var(--mono-font);
-        }
-
-        .metric {
-            background: var(--panel-color);
-            border: 1px solid var(--panel-border);
-            border-radius: 14px;
-            padding: 14px 22px;
-            min-width: 140px;
-        }
-
-        .metric .value {
-            font-size: 20px;
-            font-weight: 700;
-            color: var(--accent-color);
-        }
-
-        .metric .label {
-            font-size: 11px;
-            color: var(--text-secondary);
-            text-transform: uppercase;
-            letter-spacing: 0.08em;
-            margin-top: 4px;
-        }
-
         .docs-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
@@ -332,10 +301,101 @@
             color: var(--accent-color);
         }
 
+        .download-panel {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            gap: 18px;
+            max-width: 980px;
+            width: 100%;
+            margin: 0 0 40px;
+            background: var(--panel-color);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--panel-border);
+            border-radius: 20px;
+            padding: 24px 30px;
+            text-align: left;
+        }
+
+        .download-panel .download-info {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .download-panel .download-icon {
+            width: 46px;
+            height: 46px;
+            border-radius: 12px;
+            background: rgba(34, 211, 238, 0.1);
+            border: 1px solid rgba(34, 211, 238, 0.25);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--accent-color);
+            flex-shrink: 0;
+        }
+
+        .download-panel .download-title {
+            font-weight: 700;
+            font-size: 17px;
+            color: #fff;
+            margin-bottom: 4px;
+        }
+
+        .download-panel .download-version {
+            font-family: var(--mono-font);
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        .download-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            background-color: var(--accent-color);
+            color: #04141c;
+            padding: 13px 24px;
+            border-radius: 14px;
+            text-decoration: none;
+            font-weight: 700;
+            font-size: 14px;
+            white-space: nowrap;
+            transition: all 0.25s ease;
+            box-shadow: 0 10px 25px -8px rgba(34, 211, 238, 0.5);
+        }
+
+        .download-btn:hover {
+            background-color: var(--accent-secondary);
+            transform: translateY(-2px);
+        }
+
+        .download-btn.is-loading,
+        .download-btn.is-disabled {
+            opacity: 0.6;
+            pointer-events: none;
+        }
+
+        .spinner {
+            width: 14px;
+            height: 14px;
+            border: 2px solid rgba(4, 20, 28, 0.3);
+            border-radius: 50%;
+            border-top-color: #04141c;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
         @media (max-width: 640px) {
             .hero { padding-top: 36px; }
             .topbar { flex-wrap: wrap; gap: 10px; }
-            .metrics-row { gap: 10px; }
+            .download-panel { flex-direction: column; align-items: stretch; text-align: center; }
+            .download-panel .download-info { justify-content: center; }
+            .download-btn { justify-content: center; }
         }
     </style>
     <meta name="google-site-verification" content="29HuyK0yV3eZ1XaA4VNvb3JqYKFLdkrytJH3DNJUScw">
@@ -354,22 +414,26 @@
 
     <div class="hero">
         <div class="eyebrow">Автоматизация системы управления</div>
-        <h1>Юридическая информация сервиса</h1>
-        <p class="tagline">Ниже представлены основные документы, регламентирующие работу системы: политика обработки данных и пользовательское соглашение.</p>
+        <h1>Fokin System</h1>
 
-        <div class="metrics-row">
-            <div class="metric">
-                <div class="value">2</div>
-                <div class="label">Документа</div>
+        <div class="download-panel">
+            <div class="download-info">
+                <div class="download-icon">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 3v12"></path>
+                        <path d="M7 10l5 5 5-5"></path>
+                        <path d="M5 21h14"></path>
+                    </svg>
+                </div>
+                <div>
+                    <div class="download-title">Приложение Fokin System</div>
+                    <div class="download-version" id="app-version-label">Проверка последней версии...</div>
+                </div>
             </div>
-            <div class="metric">
-                <div class="value">100%</div>
-                <div class="label">Прозрачность</div>
-            </div>
-            <div class="metric">
-                <div class="value">24/7</div>
-                <div class="label">Поддержка</div>
-            </div>
+            <a href="#" id="download-btn" class="download-btn is-disabled">
+                <span class="spinner"></span>
+                Загрузка
+            </a>
         </div>
 
         <div class="docs-grid">
@@ -420,5 +484,36 @@
         </nav>
         <p>&copy; 2026 Fokin System. Автоматизация системы управления.</p>
     </footer>
+
+    <script>
+        (function () {
+            var btn = document.getElementById('download-btn');
+            var label = document.getElementById('app-version-label');
+
+            fetch('/news/app-version/latest')
+                .then(function (response) {
+                    if (!response.ok) {
+                        throw new Error('No version available');
+                    }
+                    return response.json();
+                })
+                .then(function (data) {
+                    btn.href = data.file_path;
+                    btn.setAttribute('download', '');
+                    btn.classList.remove('is-disabled', 'is-loading');
+                    btn.innerHTML =
+                        '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">' +
+                        '<path d="M12 3v12"></path><path d="M7 10l5 5 5-5"></path><path d="M5 21h14"></path>' +
+                        '</svg> Скачать последнюю версию';
+                    label.textContent = 'Версия ' + data.version;
+                })
+                .catch(function () {
+                    btn.classList.remove('is-loading');
+                    btn.classList.add('is-disabled');
+                    btn.textContent = 'Версия недоступна';
+                    label.textContent = 'Версия временно недоступна';
+                });
+        })();
+    </script>
 </body>
 </html>
