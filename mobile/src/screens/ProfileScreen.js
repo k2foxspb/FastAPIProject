@@ -752,18 +752,9 @@ export default function ProfileScreen({ navigation }) {
 
                 <View style={[styles.menuDivider, { backgroundColor: colors.border }]} />
 
-                <TouchableOpacity 
-                  style={styles.menuItem} 
-                  onPress={handleSyncNotifications}
-                  disabled={syncing}
-                >
-                  <Icon name="sync-outline" size={22} color={colors.primary} />
-                  <Text style={[styles.menuItemText, { color: colors.primary }]}>
-                    {syncing ? 'Синхронизация...' : 'Синхронизировать уведомления'}
-                  </Text>
-                </TouchableOpacity>
 
-                <View style={[styles.menuDivider, { backgroundColor: colors.border }]} />
+
+
                 
                 <Text style={[styles.menuSectionTitle, { color: colors.textSecondary, marginTop: 5 }]}>О приложении</Text>
                 
