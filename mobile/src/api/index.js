@@ -375,6 +375,13 @@ export const documentsApi = {
   updateDocument: (documentId, data) => api.patch(`/documents/${documentId}`, data),
   deleteDocument: (documentId) => api.delete(`/documents/${documentId}`),
 
+  // Фотографии/сканы документа
+  uploadDocumentImages: (documentId, formData) => api.post(`/documents/${documentId}/images`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 120000,
+  }),
+  deleteDocumentImage: (documentId, imageId) => api.delete(`/documents/${documentId}/images/${imageId}`),
+
   // Согласование подписантами
   setApprovers: (documentId, approverIds) => api.post(`/documents/${documentId}/approvers`, { approver_ids: approverIds }),
   submitForApproval: (documentId) => api.post(`/documents/${documentId}/submit-for-approval`),

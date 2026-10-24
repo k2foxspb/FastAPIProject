@@ -64,6 +64,15 @@ class DocumentUpdate(BaseModel):
     confirmation_button_text: Optional[str] = Field(default=None, min_length=1, max_length=100)
 
 
+class DocumentImage(BaseModel):
+    id: int
+    document_id: int
+    image_url: str
+    thumbnail_url: Optional[str] = None
+    created_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+
 class DocumentApproval(BaseModel):
     id: int
     document_id: int
@@ -104,6 +113,8 @@ class Document(BaseModel):
     approved_count: int = 0
     assignees_count: int = 0
     confirmed_count: int = 0
+    # Фотографии/сканы, прикреплённые к документу
+    images: List[DocumentImage] = Field(default_factory=list)
     # Статус согласования текущего пользователя (если он - подписант этого документа)
     my_approval_status: Optional[str] = None
     # Статус ознакомления текущего пользователя (если документ назначен ему)
@@ -116,6 +127,9 @@ class Document(BaseModel):
         category = getattr(obj, "category", None)
         if category is not None:
             item.category_title = getattr(category, "title", None)
+        images = obj.__dict__.get("images") if hasattr(obj, "__dict__") else None
+        if images is not None:
+            item.images = [DocumentImage.model_validate(img) for img in images]
         return item
 
 

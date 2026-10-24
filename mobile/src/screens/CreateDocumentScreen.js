@@ -1,15 +1,17 @@
 import React, { useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, ActivityIndicator,
-  Alert, Platform, Modal, FlatList,
+  Alert, Platform, Modal, FlatList, Image,
 } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons as Icon } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { documentsApi, orgApi } from '../api';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
 import { getRoleLabel } from '../constants/roles';
+import { getFullUrl } from '../utils/formatters';
 
 export default function CreateDocumentScreen({ navigation, route }) {
   const { theme } = useTheme();
@@ -27,9 +29,14 @@ export default function CreateDocumentScreen({ navigation, route }) {
   const [confirmationButtonText, setConfirmationButtonText] = useState('Ознакомлен');
   const [approverIds, setApproverIds] = useState([]);
   const [status, setStatus] = useState('draft');
+  // Фото/сканы, уже загруженные на сервер (при редактировании)
+  const [existingImages, setExistingImages] = useState([]);
+  // Фото/сканы, выбранные из галереи, но ещё не загруженные
+  const [newImages, setNewImages] = useState([]);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [uploadingImages, setUploadingImages] = useState(false);
   const [approversModalVisible, setApproversModalVisible] = useState(false);
 
   const loadData = useCallback(async () => {
@@ -52,6 +59,7 @@ export default function CreateDocumentScreen({ navigation, route }) {
         setContent(doc.content || '');
         setConfirmationButtonText(doc.confirmation_button_text || 'Ознакомлен');
         setStatus(doc.status);
+        setExistingImages(doc.images || []);
       }
     } catch (err) {
       Alert.alert('Ошибка', 'Не удалось загрузить данные');
@@ -64,6 +72,71 @@ export default function CreateDocumentScreen({ navigation, route }) {
 
   const toggleApprover = (userId) => {
     setApproverIds((prev) => (prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId]));
+  };
+
+  const canEditImages = !isEditing || status === 'draft' || status === 'rejected';
+
+  const pickImages = async () => {
+    const { status: permStatus } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (permStatus !== 'granted') {
+      Alert.alert('Нет доступа', 'Разрешите доступ к галерее, чтобы прикрепить фото');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsMultipleSelection: true,
+      quality: 0.8,
+    });
+    if (!result.canceled && result.assets) {
+      setNewImages((prev) => [...prev, ...result.assets]);
+    }
+  };
+
+  const removeNewImage = (index) => {
+    setNewImages((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const removeExistingImage = (imageId) => {
+    Alert.alert('Удалить фото?', 'Фотография будет удалена из документа', [
+      { text: 'Отмена', style: 'cancel' },
+      {
+        text: 'Удалить',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await documentsApi.deleteDocumentImage(documentId, imageId);
+            setExistingImages((prev) => prev.filter((img) => img.id !== imageId));
+          } catch (err) {
+            Alert.alert('Ошибка', 'Не удалось удалить фотографию');
+          }
+        },
+      },
+    ]);
+  };
+
+  const uploadNewImages = async (targetDocumentId) => {
+    if (newImages.length === 0) return;
+    setUploadingImages(true);
+    try {
+      const formData = new FormData();
+      newImages.forEach((img, index) => {
+        const uri = img.uri;
+        const uriParts = uri.split('.');
+        const fileType = uriParts[uriParts.length - 1];
+        const fileName = uri.split('/').pop() || `document_photo_${Date.now()}_${index}.${fileType || 'jpg'}`;
+        formData.append('images', {
+          uri,
+          name: fileName,
+          type: `image/${fileType || 'jpeg'}`,
+        });
+      });
+      await documentsApi.uploadDocumentImages(targetDocumentId, formData);
+      setNewImages([]);
+    } catch (err) {
+      Alert.alert('Ошибка', 'Документ сохранён, но не удалось загрузить часть фотографий');
+    } finally {
+      setUploadingImages(false);
+    }
   };
 
   const validate = () => {
@@ -105,6 +178,7 @@ export default function CreateDocumentScreen({ navigation, route }) {
       if (isEditing && approverIds.length > 0) {
         await documentsApi.setApprovers(documentId, approverIds);
       }
+      await uploadNewImages(savedId);
       Alert.alert('Готово', 'Документ сохранён', [
         { text: 'OK', onPress: () => navigation.replace('DocumentManage', { documentId: savedId }) },
       ]);
@@ -181,6 +255,37 @@ export default function CreateDocumentScreen({ navigation, route }) {
           placeholderTextColor={colors.textSecondary}
           multiline
         />
+
+        <Text style={[styles.label, { color: colors.text }]}>Фотографии / сканы документа</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.imageRow}>
+          {existingImages.map((img) => (
+            <View key={`existing-${img.id}`} style={styles.imageWrapper}>
+              <Image source={{ uri: getFullUrl(img.thumbnail_url || img.image_url) }} style={styles.imageThumb} />
+              {canEditImages && (
+                <TouchableOpacity style={styles.imageRemoveBtn} onPress={() => removeExistingImage(img.id)}>
+                  <Icon name="close-circle" size={20} color="#e74c3c" />
+                </TouchableOpacity>
+              )}
+            </View>
+          ))}
+          {newImages.map((img, index) => (
+            <View key={`new-${index}`} style={styles.imageWrapper}>
+              <Image source={{ uri: img.uri }} style={styles.imageThumb} />
+              <TouchableOpacity style={styles.imageRemoveBtn} onPress={() => removeNewImage(index)}>
+                <Icon name="close-circle" size={20} color="#e74c3c" />
+              </TouchableOpacity>
+            </View>
+          ))}
+          {canEditImages && (
+            <TouchableOpacity
+              style={[styles.addImageBtn, { borderColor: colors.border, backgroundColor: colors.surface }]}
+              onPress={pickImages}
+            >
+              <Icon name="camera-outline" size={24} color={colors.primary} />
+              <Text style={[styles.addImageBtnText, { color: colors.primary }]}>Добавить</Text>
+            </TouchableOpacity>
+          )}
+        </ScrollView>
 
         <Text style={[styles.label, { color: colors.text }]}>Текст кнопки подтверждения</Text>
         <TextInput

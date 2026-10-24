@@ -101,6 +101,10 @@ class Document(Base):
         "DocumentAssignment", back_populates="document", cascade="all, delete-orphan",
         order_by="DocumentAssignment.id.asc()",
     )
+    images: Mapped[list["DocumentImage"]] = relationship(
+        "DocumentImage", back_populates="document", cascade="all, delete-orphan",
+        order_by="DocumentImage.id.asc()",
+    )
 
 
 class DocumentApproval(Base):
@@ -164,3 +168,20 @@ class DocumentAssignment(Base):
     document: Mapped["Document"] = relationship("Document", back_populates="assignments")
     assigned_to: Mapped["User"] = relationship("User", foreign_keys=[assigned_to_user_id])
     assigned_by: Mapped["User"] = relationship("User", foreign_keys=[assigned_by_user_id])
+
+
+class DocumentImage(Base):
+    """
+    Фотография/скан, прикреплённые к документу (например, фото бумажного
+    документа или скан подписанного листа). Документ может иметь несколько
+    изображений в дополнение к file_url/content.
+    """
+    __tablename__ = "document_images"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    document_id: Mapped[int] = mapped_column(ForeignKey("documents.id", ondelete="CASCADE"), nullable=False)
+    image_url: Mapped[str] = mapped_column(String(500), nullable=False)
+    thumbnail_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    document: Mapped["Document"] = relationship("Document", back_populates="images")

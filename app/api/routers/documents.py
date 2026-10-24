@@ -1,6 +1,10 @@
+import io
+import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+from PIL import Image
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
@@ -10,6 +14,7 @@ from app.core.auth import get_current_user
 from app.core.roles import ROLE_OWNER, ROLE_ADMIN
 from app.core.notifications import dispatch_notification
 from app.api.routers.notifications import manager as notification_manager
+from app.utils import storage
 from app.models.users import User as UserModel
 from app.models.structure import Workshop as WorkshopModel, Section as SectionModel
 from app.models.documents import (
@@ -17,6 +22,7 @@ from app.models.documents import (
     Document as DocumentModel,
     DocumentApproval as DocumentApprovalModel,
     DocumentAssignment as DocumentAssignmentModel,
+    DocumentImage as DocumentImageModel,
     DOCUMENT_STATUS_DRAFT,
     DOCUMENT_STATUS_PENDING_APPROVAL,
     DOCUMENT_STATUS_APPROVED,
@@ -38,6 +44,7 @@ from app.schemas.documents import (
     DocumentCreate,
     DocumentUpdate,
     Document as DocumentSchema,
+    DocumentImage as DocumentImageSchema,
     DocumentApproversSet,
     DocumentApproveRequest,
     DocumentRejectRequest,
@@ -48,6 +55,13 @@ from app.schemas.documents import (
     DocumentReport,
     DocumentReportItem,
 )
+
+# Допустимые типы изображений для фото/сканов документа (как у новостей).
+DOCUMENT_IMAGE_ALLOWED_TYPES = {"image/jpeg", "image/png", "image/webp"}
+# Ограничение на размер одного файла фото/скана (10 МБ).
+DOCUMENT_IMAGE_MAX_SIZE = 10 * 1024 * 1024
+# Максимум фотографий на один документ.
+DOCUMENT_IMAGE_MAX_COUNT = 20
 
 # Руководители (аналогично объявлениям) - могут создавать категории,
 # документы, назначать подписантов и получателей. Рядовой сотрудник
@@ -179,6 +193,7 @@ async def _load_document(db: AsyncSession, document_id: int) -> DocumentModel:
         .options(
             selectinload(DocumentModel.category),
             selectinload(DocumentModel.author),
+            selectinload(DocumentModel.images),
         )
         .where(DocumentModel.id == document_id)
     )
@@ -321,7 +336,11 @@ async def list_documents(
 
     query = (
         select(DocumentModel)
-        .options(selectinload(DocumentModel.category), selectinload(DocumentModel.author))
+        .options(
+            selectinload(DocumentModel.category),
+            selectinload(DocumentModel.author),
+            selectinload(DocumentModel.images),
+        )
         .order_by(DocumentModel.created_at.desc())
     )
     if current_user.role not in (ROLE_OWNER, ROLE_ADMIN):
@@ -345,7 +364,11 @@ async def get_approval_inbox(
             (DocumentApprovalModel.document_id == DocumentModel.id)
             & (DocumentApprovalModel.document_version == DocumentModel.version),
         )
-        .options(selectinload(DocumentModel.category), selectinload(DocumentModel.author))
+        .options(
+            selectinload(DocumentModel.category),
+            selectinload(DocumentModel.author),
+            selectinload(DocumentModel.images),
+        )
         .where(
             DocumentApprovalModel.approver_user_id == current_user.id,
             DocumentApprovalModel.status == DOCUMENT_APPROVAL_STATUS_PENDING,
@@ -423,7 +446,155 @@ async def delete_document(
         except Exception:
             pass
 
+    for image in document.images:
+        try:
+            storage.delete("documents", image.image_url)
+            if image.thumbnail_url and image.thumbnail_url != image.image_url:
+                storage.delete("documents", image.thumbnail_url)
+        except Exception:
+            pass
+
     await db.delete(document)
+    await db.commit()
+    return None
+
+
+# --------------------------------------------------------------------------
+# Фотографии/сканы документа
+# --------------------------------------------------------------------------
+async def _save_document_image(file: UploadFile) -> tuple[str, str]:
+    """Сохраняет одно фото/скан документа и генерирует превью (по аналогии с новостями)."""
+    if file.content_type not in DOCUMENT_IMAGE_ALLOWED_TYPES:
+        raise HTTPException(status_code=400, detail="Допустимы только изображения JPG, PNG или WebP")
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail=f"Файл {file.filename} пуст")
+    if len(content) > DOCUMENT_IMAGE_MAX_SIZE:
+        raise HTTPException(status_code=400, detail=f"Изображение {file.filename} слишком большое (>10МБ)")
+
+    extension = Path(file.filename or "").suffix.lower() or ".jpg"
+    base_name = str(uuid.uuid4())
+
+    original_url, _ = storage.save_file(
+        category="documents",
+        filename_hint=f"{base_name}{extension}",
+        fileobj=io.BytesIO(content),
+        content_type=file.content_type or "image/jpeg",
+        private=False,
+    )
+
+    thumb_url = original_url
+    try:
+        with Image.open(io.BytesIO(content)) as img:
+            img.thumbnail((400, 400))
+            thumb_buffer = io.BytesIO()
+            if extension in (".jpg", ".jpeg"):
+                fmt = "JPEG"
+            elif extension == ".png":
+                fmt = "PNG"
+            elif extension == ".webp":
+                fmt = "WEBP"
+            else:
+                fmt = img.format or "PNG"
+            try:
+                img.save(thumb_buffer, format=fmt)
+                thumb_buffer.seek(0)
+                thumb_url, _ = storage.save_file(
+                    category="documents",
+                    filename_hint=f"{base_name}_thumb{extension}",
+                    fileobj=thumb_buffer,
+                    content_type=file.content_type or "image/jpeg",
+                    private=False,
+                )
+            except Exception:
+                thumb_url = original_url
+    except Exception:
+        thumb_url = original_url
+
+    return original_url, thumb_url
+
+
+@router.post("/{document_id}/images", response_model=list[DocumentImageSchema], status_code=status.HTTP_201_CREATED)
+async def upload_document_images(
+    document_id: int,
+    images: list[UploadFile] = File(...),
+    current_user: UserModel = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Загружает одну или несколько фотографий/сканов документа (например, сканы
+    бумажного документа). Доступно автору документа и администрации, пока
+    документ остаётся черновиком или отклонённым (как и прочее редактирование).
+    """
+    document = await _load_document(db, document_id)
+    if document.created_by_user_id != current_user.id and current_user.role not in (ROLE_OWNER, ROLE_ADMIN):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Добавлять фото может только автор документа")
+    if document.status not in (DOCUMENT_STATUS_DRAFT, DOCUMENT_STATUS_REJECTED):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Добавлять фото можно только к черновику или отклонённому документу",
+        )
+
+    files = [img for img in (images or []) if getattr(img, "filename", None)]
+    if not files:
+        raise HTTPException(status_code=400, detail="Не переданы файлы изображений")
+    if len(document.images) + len(files) > DOCUMENT_IMAGE_MAX_COUNT:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Превышен лимит фотографий на документ ({DOCUMENT_IMAGE_MAX_COUNT})",
+        )
+
+    new_images: list[DocumentImageModel] = []
+    for file in files:
+        image_url, thumbnail_url = await _save_document_image(file)
+        db_image = DocumentImageModel(
+            document_id=document.id,
+            image_url=image_url,
+            thumbnail_url=thumbnail_url,
+        )
+        db.add(db_image)
+        new_images.append(db_image)
+
+    await db.commit()
+    for img in new_images:
+        await db.refresh(img)
+    return new_images
+
+
+@router.delete("/{document_id}/images/{image_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_document_image(
+    document_id: int,
+    image_id: int,
+    current_user: UserModel = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Удаляет одно фото/скан документа."""
+    document = await _load_document(db, document_id)
+    if document.created_by_user_id != current_user.id and current_user.role not in (ROLE_OWNER, ROLE_ADMIN):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Удалять фото может только автор документа")
+    if document.status not in (DOCUMENT_STATUS_DRAFT, DOCUMENT_STATUS_REJECTED):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Удалять фото можно только у черновика или отклонённого документа",
+        )
+
+    image = await db.scalar(
+        select(DocumentImageModel).where(
+            DocumentImageModel.id == image_id,
+            DocumentImageModel.document_id == document.id,
+        )
+    )
+    if not image:
+        raise HTTPException(status_code=404, detail="Изображение не найдено")
+
+    try:
+        storage.delete("documents", image.image_url)
+        if image.thumbnail_url and image.thumbnail_url != image.image_url:
+            storage.delete("documents", image.thumbnail_url)
+    except Exception:
+        pass
+
+    await db.delete(image)
     await db.commit()
     return None
 
