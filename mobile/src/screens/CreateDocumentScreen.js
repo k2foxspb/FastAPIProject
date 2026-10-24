@@ -316,9 +316,9 @@ export default function CreateDocumentScreen({ navigation, route }) {
         <TouchableOpacity
           style={[styles.submitBtn, { backgroundColor: colors.primary }]}
           onPress={handleSaveDraft}
-          disabled={saving}
+          disabled={saving || uploadingImages}
         >
-          {saving ? <ActivityIndicator color="#fff" /> : (
+          {(saving || uploadingImages) ? <ActivityIndicator color="#fff" /> : (
             <Text style={styles.submitBtnText}>{isEditing ? 'Сохранить изменения' : 'Сохранить черновик'}</Text>
           )}
         </TouchableOpacity>
@@ -382,6 +382,15 @@ const styles = StyleSheet.create({
   chipText: { fontSize: 13, fontWeight: '600' },
   pickerBtn: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 10, padding: 12 },
   pickerBtnText: { marginLeft: 8, fontSize: 14 },
+  imageRow: { marginBottom: 5 },
+  imageWrapper: { marginRight: 10, position: 'relative' },
+  imageThumb: { width: 90, height: 90, borderRadius: 10 },
+  imageRemoveBtn: { position: 'absolute', top: -6, right: -6, backgroundColor: '#fff', borderRadius: 10 },
+  addImageBtn: {
+    width: 90, height: 90, borderRadius: 10, borderWidth: 1, borderStyle: 'dashed',
+    justifyContent: 'center', alignItems: 'center',
+  },
+  addImageBtnText: { fontSize: 12, marginTop: 4, fontWeight: '600' },
   footer: { padding: 15, borderTopWidth: 1 },
   submitBtn: { padding: 14, borderRadius: 10, alignItems: 'center' },
   submitBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 14 },

@@ -1,12 +1,13 @@
 import React, { useState, useCallback } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert, Linking,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert, Linking, Image,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons as Icon } from '@expo/vector-icons';
 import { documentsApi } from '../api';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
+import { getFullUrl } from '../utils/formatters';
 
 const STATUS_INFO = {
   draft: { label: 'Черновик', color: '#9e9e9e' },
@@ -112,6 +113,19 @@ export default function DocumentManageScreen({ navigation, route }) {
         <Text style={[styles.contentText, { color: colors.text }]}>{document.content}</Text>
       )}
 
+      {document.images?.length > 0 && (
+        <>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Фотографии / сканы</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.imageRow}>
+            {document.images.map((img) => (
+              <TouchableOpacity key={img.id} onPress={() => Linking.openURL(getFullUrl(img.image_url))}>
+                <Image source={{ uri: getFullUrl(img.thumbnail_url || img.image_url) }} style={styles.imageThumb} />
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </>
+      )}
+
       {document.rejected_at && document.status === 'rejected' && (
         <View style={[styles.infoBox, { backgroundColor: '#e5393520', borderColor: '#e53935' }]}>
           <Icon name="close-circle-outline" size={18} color="#e53935" />
@@ -214,6 +228,9 @@ const styles = StyleSheet.create({
   description: { fontSize: 15, marginTop: 12, lineHeight: 21 },
   link: { fontSize: 14, marginTop: 12, fontWeight: '600' },
   contentText: { fontSize: 14, marginTop: 12, lineHeight: 20 },
+  sectionTitle: { fontSize: 14, fontWeight: '600', marginTop: 16, marginBottom: 8 },
+  imageRow: { marginBottom: 5 },
+  imageThumb: { width: 110, height: 110, borderRadius: 10, marginRight: 10 },
   infoBox: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 10, padding: 12, marginTop: 16 },
   infoText: { fontSize: 13, marginLeft: 8, flex: 1 },
   actionsSection: { marginTop: 24 },

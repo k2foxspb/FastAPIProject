@@ -1,12 +1,13 @@
 import React, { useState, useCallback } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert, Linking,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert, Linking, Image,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons as Icon } from '@expo/vector-icons';
 import { documentsApi } from '../api';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
+import { getFullUrl } from '../utils/formatters';
 
 export default function DocumentViewScreen({ route }) {
   const { theme } = useTheme();
@@ -77,6 +78,18 @@ export default function DocumentViewScreen({ route }) {
         {!!document.content && (
           <Text style={[styles.contentText, { color: colors.text }]}>{document.content}</Text>
         )}
+        {document.images?.length > 0 && (
+          <>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Фотографии / сканы</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.imageRow}>
+              {document.images.map((img) => (
+                <TouchableOpacity key={img.id} onPress={() => Linking.openURL(getFullUrl(img.image_url))}>
+                  <Image source={{ uri: getFullUrl(img.thumbnail_url || img.image_url) }} style={styles.imageThumb} />
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </>
+        )}
       </ScrollView>
 
       <View style={[styles.footer, { borderTopColor: colors.border, backgroundColor: colors.surface }]}>
@@ -112,6 +125,9 @@ const styles = StyleSheet.create({
   fileBtn: { flexDirection: 'row', alignItems: 'center', marginTop: 14 },
   link: { fontSize: 14, marginLeft: 8, fontWeight: '600' },
   contentText: { fontSize: 14, marginTop: 14, lineHeight: 20 },
+  sectionTitle: { fontSize: 14, fontWeight: '600', marginTop: 16, marginBottom: 8 },
+  imageRow: { marginBottom: 5 },
+  imageThumb: { width: 110, height: 110, borderRadius: 10, marginRight: 10 },
   footer: { padding: 15, borderTopWidth: 1 },
   submitBtn: { padding: 14, borderRadius: 10, alignItems: 'center' },
   submitBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 14 },

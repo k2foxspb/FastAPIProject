@@ -1,12 +1,13 @@
 import React, { useState, useCallback } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert, Linking, TextInput, Modal,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert, Linking, TextInput, Modal, Image,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons as Icon } from '@expo/vector-icons';
 import { documentsApi } from '../api';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
+import { getFullUrl } from '../utils/formatters';
 
 export default function DocumentApprovalScreen({ navigation, route }) {
   const { theme } = useTheme();
@@ -99,6 +100,19 @@ export default function DocumentApprovalScreen({ navigation, route }) {
           <Text style={[styles.contentText, { color: colors.text }]}>{document.content}</Text>
         )}
 
+        {document.images?.length > 0 && (
+          <>
+            <Text style={[styles.label, { color: colors.text }]}>Фотографии / сканы</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.imageRow}>
+              {document.images.map((img) => (
+                <TouchableOpacity key={img.id} onPress={() => Linking.openURL(getFullUrl(img.image_url))}>
+                  <Image source={{ uri: getFullUrl(img.thumbnail_url || img.image_url) }} style={styles.imageThumb} />
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </>
+        )}
+
         {!alreadyDecided && (
           <>
             <Text style={[styles.label, { color: colors.text }]}>Комментарий при согласовании (необязательно)</Text>
@@ -181,6 +195,8 @@ const styles = StyleSheet.create({
   description: { fontSize: 15, marginTop: 12, lineHeight: 21 },
   link: { fontSize: 14, marginTop: 12, fontWeight: '600' },
   contentText: { fontSize: 14, marginTop: 12, lineHeight: 20 },
+  imageRow: { marginBottom: 5 },
+  imageThumb: { width: 110, height: 110, borderRadius: 10, marginRight: 10 },
   label: { fontSize: 14, fontWeight: '600', marginTop: 18, marginBottom: 8 },
   input: { borderWidth: 1, borderRadius: 10, padding: 12, fontSize: 14 },
   textArea: { minHeight: 90, textAlignVertical: 'top' },
