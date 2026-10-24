@@ -1,11 +1,35 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
+import { APP_LINK_PATTERN, navigateToAppSection } from '../../../constants/appSections';
+
+// Разбивает текст ответа ассистента на обычные фрагменты и ссылки на разделы
+// приложения вида [Текст](app://key), чтобы отрисовать ссылки кликабельными.
+function parseMessageContent(content) {
+  const parts = [];
+  let lastIndex = 0;
+  let match;
+  APP_LINK_PATTERN.lastIndex = 0;
+  while ((match = APP_LINK_PATTERN.exec(content)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push({ type: 'text', value: content.slice(lastIndex, match.index) });
+    }
+    parts.push({ type: 'link', label: match[1], key: match[2] });
+    lastIndex = match.index + match[0].length;
+  }
+  if (lastIndex < content.length) {
+    parts.push({ type: 'text', value: content.slice(lastIndex) });
+  }
+  return parts;
+}
 
 // Один пузырь сообщения в чате с ИИ: справа - сообщения пользователя,
 // слева - ответы ассистента. Поддерживает выделение по долгому нажатию (для пересылки).
-export default function MessageBubble({ message, colors, isSelected, onPress, onLongPress }) {
+// Ответы ассистента могут содержать ссылки на разделы приложения - они
+// показываются как кликабельный текст, переходящий на нужный экран.
+export default function MessageBubble({ message, colors, isSelected, onPress, onLongPress, navigation }) {
   const isUser = message.role === 'user';
+  const parts = isUser ? null : parseMessageContent(message.content);
 
   return (
     <TouchableOpacity
@@ -28,9 +52,25 @@ export default function MessageBubble({ message, colors, isSelected, onPress, on
           isSelected && { borderWidth: 1, borderColor: colors.primary },
         ]}
       >
-        <Text style={[styles.text, { color: isUser ? '#fff' : colors.text }]}>
-          {message.content}
-        </Text>
+        {isUser ? (
+          <Text style={[styles.text, { color: '#fff' }]}>{message.content}</Text>
+        ) : (
+          <Text style={[styles.text, { color: colors.text }]}>
+            {parts.map((part, idx) =>
+              part.type === 'link' ? (
+                <Text
+                  key={idx}
+                  style={[styles.link, { color: colors.primary }]}
+                  onPress={() => navigateToAppSection(navigation, part.key)}
+                >
+                  {part.label}
+                </Text>
+              ) : (
+                <Text key={idx}>{part.value}</Text>
+              )
+            )}
+          </Text>
+        )}
       </View>
     </TouchableOpacity>
   );
@@ -68,5 +108,9 @@ const styles = StyleSheet.create({
   text: {
     fontSize: 15,
     lineHeight: 20,
+  },
+  link: {
+    textDecorationLine: 'underline',
+    fontWeight: '600',
   },
 });

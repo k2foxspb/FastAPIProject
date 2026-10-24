@@ -224,6 +224,7 @@ export default function AiChatScreen({ navigation }) {
       isSelected={selectedIds.includes(item.id)}
       onPress={() => handlePressMessage(item.id)}
       onLongPress={() => handleLongPressMessage(item.id)}
+      navigation={navigation}
     />
   );
 
