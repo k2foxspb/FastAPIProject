@@ -124,6 +124,10 @@ def create_application() -> FastAPI:
     async def get_rules(request: Request):
         return templates.TemplateResponse("terms_of_use.html", {"request": request})
 
+    @app.get("/user-guide")
+    async def get_user_guide(request: Request):
+        return templates.TemplateResponse("user_guide.html", {"request": request})
+
     return app
 
 
