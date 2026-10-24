@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Руководство пользователя — Fokin System</title>
-    <meta name="description" content="Подробное руководство пользователя приложения Fokin System: документы, согласование, ознакомление, табель, уведомления.">
+    <meta name="description" content="Краткая презентация-руководство по приложению Fokin System: документы, согласование, ознакомление, табель, уведомления.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
@@ -17,12 +17,17 @@
             --accent-secondary: #38bdf8;
             --ok-color: #34d399;
             --warn-color: #fbbf24;
+            --bad-color: #f87171;
             --text-primary: #e2e8f0;
             --text-secondary: #7c8aa5;
             --mono-font: 'JetBrains Mono', 'Courier New', monospace;
         }
 
-        * { box-sizing: border-box; }
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+        html, body {
+            height: 100%;
+        }
 
         body {
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -30,7 +35,7 @@
             background-image:
                 linear-gradient(rgba(56, 189, 248, 0.05) 1px, transparent 1px),
                 linear-gradient(90deg, rgba(56, 189, 248, 0.05) 1px, transparent 1px),
-                radial-gradient(circle at 0% 0%, rgba(34, 211, 238, 0.1) 0%, transparent 50%);
+                radial-gradient(circle at 50% 0%, rgba(34, 211, 238, 0.12) 0%, transparent 55%);
             background-size: 42px 42px, 42px 42px, 100% 100%;
             color: var(--text-primary);
             line-height: 1.6;
@@ -43,12 +48,12 @@
 
         .topbar {
             width: 100%;
-            max-width: 1160px;
+            max-width: 980px;
             display: flex;
             align-items: center;
             justify-content: space-between;
             padding: 12px 20px;
-            margin-bottom: 28px;
+            margin-bottom: 20px;
             background: var(--panel-color);
             backdrop-filter: blur(10px);
             border: 1px solid var(--panel-border);
@@ -58,911 +63,641 @@
             color: var(--text-secondary);
         }
 
-        .doc-tag {
-            color: var(--accent-color);
-            letter-spacing: 0.1em;
-        }
-
-        .layout {
-            max-width: 1160px;
-            width: 100%;
-            display: flex;
-            align-items: flex-start;
-            gap: 24px;
-        }
-
-        .sidebar {
-            position: sticky;
-            top: 20px;
-            flex: 0 0 280px;
-            background: var(--panel-color);
-            backdrop-filter: blur(12px);
-            border: 1px solid var(--panel-border);
-            border-radius: 20px;
-            padding: 24px 20px;
-            max-height: calc(100vh - 40px);
-            overflow-y: auto;
-        }
-
-        .sidebar-title {
-            font-family: var(--mono-font);
-            font-size: 11px;
-            letter-spacing: 0.12em;
-            text-transform: uppercase;
-            color: var(--accent-color);
-            margin-bottom: 14px;
-        }
-
-        .sidebar nav ul {
-            list-style: none;
-            margin: 0;
-            padding: 0;
-        }
-
-        .sidebar nav li a {
-            display: block;
-            padding: 8px 10px;
-            border-radius: 10px;
+        .topbar a.back-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
             color: var(--text-secondary);
             text-decoration: none;
-            font-size: 14px;
-            transition: all 0.2s ease;
+            transition: color 0.2s;
         }
 
-        .sidebar nav li a:hover {
-            background: rgba(34, 211, 238, 0.08);
-            color: var(--text-primary);
+        .topbar a.back-link:hover { color: var(--accent-color); }
+
+        .doc-tag { color: var(--accent-color); letter-spacing: 0.1em; }
+
+        .deck {
+            width: 100%;
+            max-width: 980px;
         }
 
-        .container {
-            flex: 1 1 auto;
-            min-width: 0;
-            background: var(--panel-color);
-            backdrop-filter: blur(12px);
-            border: 1px solid var(--panel-border);
-            border-radius: 24px;
-            padding: 44px;
-            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        .deck-header {
+            text-align: center;
+            margin-bottom: 18px;
         }
 
-        h1 {
-            font-size: 32px;
+        .deck-header h1 {
+            font-size: 28px;
             font-weight: 800;
-            margin: 0 0 12px;
+            margin: 0 0 8px;
             letter-spacing: -0.02em;
             background: linear-gradient(135deg, #fff 0%, #7c8aa5 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
         }
 
-        .lead {
+        .deck-header p {
             color: var(--text-secondary);
-            font-size: 16px;
-            margin-bottom: 36px;
+            font-size: 14px;
+            margin: 0;
         }
 
-        h2 {
-            font-size: 22px;
-            font-weight: 700;
-            margin: 48px 0 18px;
-            color: #fff;
-            padding-top: 8px;
-            border-top: 1px solid var(--panel-border);
+        .progress-bar {
+            width: 100%;
+            height: 4px;
+            background: rgba(255, 255, 255, 0.06);
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 16px 0 10px;
         }
 
-        h2:first-of-type {
-            margin-top: 0;
-            border-top: none;
-            padding-top: 0;
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--accent-secondary), var(--accent-color));
+            width: 5%;
+            transition: width 0.25s ease;
         }
 
-        h2 .num {
-            font-family: var(--mono-font);
-            color: var(--accent-color);
-            opacity: 0.8;
-            margin-right: 8px;
-        }
-
-        h3 {
-            font-size: 17px;
-            font-weight: 700;
-            margin: 28px 0 14px;
-            color: var(--accent-secondary);
-            font-family: var(--mono-font);
-        }
-
-        h4 {
-            font-size: 15px;
-            font-weight: 700;
-            margin: 20px 0 8px;
-            color: var(--text-primary);
-        }
-
-        p, li {
-            color: var(--text-secondary);
-            font-size: 15px;
-            margin-bottom: 10px;
-        }
-
-        ul, ol {
-            padding-left: 20px;
+        .dots {
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 6px;
             margin-bottom: 18px;
         }
 
-        strong {
-            color: var(--text-primary);
+        .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.15);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            border: none;
+            padding: 0;
         }
 
-        .back-link {
-            display: inline-flex;
-            align-items: center;
-            color: var(--text-secondary);
-            text-decoration: none;
-            margin-bottom: 32px;
-            font-weight: 500;
-            font-family: var(--mono-font);
-            font-size: 13px;
-            transition: color 0.2s;
+        .dot.active {
+            background: var(--accent-color);
+            width: 22px;
+            border-radius: 5px;
         }
 
-        .back-link:hover {
-            color: var(--accent-color);
+        .slide-viewport {
+            position: relative;
+            min-height: 480px;
         }
 
-        .date {
-            font-size: 13px;
-            font-family: var(--mono-font);
-            color: var(--text-secondary);
-            opacity: 0.7;
-            margin-bottom: 20px;
-        }
-
-        .table-wrap {
-            overflow-x: auto;
-            margin-bottom: 20px;
-            border-radius: 14px;
+        .slide {
+            display: none;
+            background: var(--panel-color);
+            backdrop-filter: blur(12px);
             border: 1px solid var(--panel-border);
+            border-radius: 24px;
+            padding: 40px 44px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            min-height: 480px;
+            animation: fadeIn 0.35s ease;
         }
 
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 14px;
+        .slide.active { display: block; }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(6px); }
+            to { opacity: 1; transform: translateY(0); }
         }
 
-        th, td {
-            text-align: left;
-            padding: 12px 16px;
-            border-bottom: 1px solid var(--panel-border);
-            color: var(--text-secondary);
-        }
-
-        th {
-            color: var(--accent-color);
+        .slide-kicker {
             font-family: var(--mono-font);
             font-size: 12px;
-            letter-spacing: 0.04em;
+            letter-spacing: 0.1em;
             text-transform: uppercase;
-            background: rgba(34, 211, 238, 0.05);
+            color: var(--accent-color);
+            margin-bottom: 10px;
         }
 
-        tr:last-child td {
-            border-bottom: none;
+        .slide h2 {
+            font-size: 26px;
+            font-weight: 800;
+            margin: 0 0 18px;
+            color: #fff;
         }
+
+        .slide-icon {
+            width: 56px;
+            height: 56px;
+            border-radius: 16px;
+            background: rgba(34, 211, 238, 0.1);
+            border: 1px solid var(--panel-border);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 18px;
+        }
+
+        .slide-icon svg { width: 28px; height: 28px; stroke: var(--accent-color); }
+
+        .slide-body {
+            display: grid;
+            grid-template-columns: 1.1fr 0.9fr;
+            gap: 32px;
+        }
+
+        .slide-body.single { grid-template-columns: 1fr; }
+
+        .slide p, .slide li { color: var(--text-secondary); font-size: 15px; margin-bottom: 8px; }
+        .slide ul, .slide ol { padding-left: 20px; margin: 0 0 14px; }
+        .slide strong { color: var(--text-primary); }
+
+        .illustration {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(255, 255, 255, 0.015);
+            border: 1px solid var(--panel-border);
+            border-radius: 18px;
+            padding: 20px;
+        }
+
+        .illustration svg { width: 100%; height: auto; max-height: 220px; }
+
+        .badge-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 16px; }
+
+        .badge {
+            font-family: var(--mono-font);
+            font-size: 12px;
+            padding: 5px 10px;
+            border-radius: 8px;
+            border: 1px solid var(--panel-border);
+            color: var(--text-secondary);
+        }
+
+        .badge.ok { color: var(--ok-color); border-color: rgba(52, 211, 153, 0.35); background: rgba(52, 211, 153, 0.08); }
+        .badge.warn { color: var(--warn-color); border-color: rgba(251, 191, 36, 0.35); background: rgba(251, 191, 36, 0.08); }
+        .badge.bad { color: var(--bad-color); border-color: rgba(248, 113, 113, 0.35); background: rgba(248, 113, 113, 0.08); }
+
+        .status-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+
+        .mini-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            margin-bottom: 14px;
+        }
+
+        .mini-card {
+            border: 1px solid var(--panel-border);
+            border-radius: 12px;
+            padding: 12px 14px;
+            background: rgba(255, 255, 255, 0.015);
+        }
+
+        .mini-card .mc-title { color: #fff; font-weight: 700; font-size: 13px; margin-bottom: 4px; }
+        .mini-card .mc-text { color: var(--text-secondary); font-size: 13px; margin: 0; }
 
         .callout {
             display: flex;
-            gap: 12px;
+            gap: 10px;
             align-items: flex-start;
             border-radius: 14px;
             border: 1px solid var(--panel-border);
             background: rgba(34, 211, 238, 0.05);
-            padding: 14px 18px;
-            margin: 16px 0 24px;
-            font-size: 14px;
+            padding: 12px 16px;
+            margin: 14px 0 6px;
+            font-size: 13px;
         }
 
         .callout strong {
             font-family: var(--mono-font);
-            font-size: 12px;
+            font-size: 11px;
             letter-spacing: 0.06em;
             text-transform: uppercase;
         }
 
-        .callout.important {
-            border-color: rgba(251, 191, 36, 0.35);
-            background: rgba(251, 191, 36, 0.07);
+        .callout.important { border-color: rgba(251, 191, 36, 0.35); background: rgba(251, 191, 36, 0.07); }
+        .callout.important strong { color: var(--warn-color); }
+        .callout.note { border-color: rgba(56, 189, 248, 0.35); background: rgba(56, 189, 248, 0.07); }
+        .callout.note strong { color: var(--accent-secondary); }
+
+        .faq-item { border-bottom: 1px solid var(--panel-border); padding: 10px 0; }
+        .faq-item:last-child { border-bottom: none; }
+        .faq-q { color: #fff; font-weight: 700; margin-bottom: 4px; font-size: 14px; }
+        .faq-a { font-size: 13px; margin: 0; }
+
+        .controls {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-top: 18px;
         }
 
-        .callout.important strong {
-            color: var(--warn-color);
-        }
-
-        .callout.note {
-            border-color: rgba(56, 189, 248, 0.35);
-            background: rgba(56, 189, 248, 0.07);
-        }
-
-        .callout.note strong {
-            color: var(--accent-secondary);
-        }
-
-        hr {
-            border: none;
-            border-top: 1px solid var(--panel-border);
-            margin: 36px 0;
-        }
-
-        .scenario {
+        .nav-btn {
+            font-family: var(--mono-font);
+            font-size: 13px;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 18px;
+            border-radius: 12px;
             border: 1px solid var(--panel-border);
-            border-radius: 16px;
-            padding: 18px 22px;
-            margin-bottom: 18px;
-            background: rgba(255, 255, 255, 0.015);
+            background: rgba(255, 255, 255, 0.02);
+            color: var(--text-primary);
+            cursor: pointer;
+            transition: all 0.2s ease;
         }
 
-        .faq-item {
-            border-bottom: 1px solid var(--panel-border);
-            padding: 16px 0;
+        .nav-btn:hover:not(:disabled) {
+            border-color: var(--accent-color);
+            color: var(--accent-color);
         }
 
-        .faq-item:last-child {
-            border-bottom: none;
+        .nav-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+        .nav-btn.primary {
+            background: linear-gradient(135deg, rgba(34, 211, 238, 0.18), rgba(56, 189, 248, 0.1));
+            border-color: var(--accent-color);
+            color: var(--accent-color);
         }
 
-        .faq-question {
-            color: #fff;
-            font-weight: 700;
-            margin-bottom: 8px;
+        .slide-counter {
+            font-family: var(--mono-font);
+            font-size: 12px;
+            color: var(--text-secondary);
         }
 
-        @media (max-width: 920px) {
-            .layout { flex-direction: column; }
-            .sidebar { position: static; max-height: none; width: 100%; flex: none; }
-            .container { padding: 28px; }
+        @media (max-width: 760px) {
+            .slide-body { grid-template-columns: 1fr; }
+            .slide { padding: 28px 22px; }
+            .mini-grid { grid-template-columns: 1fr; }
         }
     </style>
 </head>
 <body>
     <div class="topbar">
-        <span>FOKIN SYSTEM</span>
-        <span class="doc-tag">DOC / 03 · РУКОВОДСТВО ПОЛЬЗОВАТЕЛЯ</span>
+        <a href="/" class="back-link">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="19" y1="12" x2="5" y2="12"></line>
+                <polyline points="12 19 5 12 12 5"></polyline>
+            </svg>
+            На главную
+        </a>
+        <span class="doc-tag">DOC / 03 · ПРЕЗЕНТАЦИЯ-ГАЙД</span>
     </div>
 
-    <div class="layout">
-        <aside class="sidebar">
-            <div class="sidebar-title">Содержание</div>
-            <nav>
-                <ul>
-                    <li><a href="#section-1">1. Памятка для быстрого старта</a></li>
-                    <li><a href="#section-2">2. Инструкция для руководителя</a></li>
-                    <li><a href="#section-3">3. Инструкция для подписанта</a></li>
-                    <li><a href="#section-4">4. Инструкция для сотрудника</a></li>
-                    <li><a href="#section-5">5. Инструкция для администратора</a></li>
-                    <li><a href="#section-6">6. Ведение табеля</a></li>
-                    <li><a href="#section-7">7. Уведомления</a></li>
-                    <li><a href="#section-8">8. Типовые сценарии</a></li>
-                    <li><a href="#section-9">9. Частые вопросы</a></li>
-                    <li><a href="#section-10">10. Помощник-поиск (ИИ)</a></li>
-                </ul>
-            </nav>
-        </aside>
-
-        <div class="container">
-            <a href="/" class="back-link">
-                <svg style="margin-right: 8px;" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <line x1="19" y1="12" x2="5" y2="12"></line>
-                    <polyline points="12 19 5 12 12 5"></polyline>
-                </svg>
-                На главную
-            </a>
-
-            <h1>Руководство пользователя приложения</h1>
-            <p class="date">Дата обновления: 24 октября 2026 г.</p>
-
-            <p class="lead">Это руководство написано простым языком и предназначено для всех сотрудников компании, которые пользуются мобильным приложением. Здесь нет технических терминов — только пошаговые инструкции по работе с документами, табелем, уведомлениями и другими разделами. Руководство разбито на части по ролям: найдите свою роль и читайте соответствующий раздел. Если вы выполняете несколько ролей (например, руководитель и одновременно подписант), прочитайте все подходящие вам разделы.</p>
-
-            <hr>
-
-            <h2 id="section-1"><span class="num">01</span>Краткая памятка для быстрого старта</h2>
-
-            <div class="table-wrap">
-                <table>
-                    <tr><th>Что нужно сделать</th><th>Куда идти</th></tr>
-                    <tr><td>Создать и отправить документ</td><td>Раздел «Документы» → «Создать документ»</td></tr>
-                    <tr><td>Согласовать документ как подписант</td><td>Раздел «Мне на подпись»</td></tr>
-                    <tr><td>Подтвердить, что ознакомились с документом</td><td>Раздел «Мои документы»</td></tr>
-                    <tr><td>Посмотреть, кто ознакомился с документом</td><td>Откройте документ → «Отчёт по ознакомлению»</td></tr>
-                    <tr><td>Отправить повторное напоминание</td><td>Отчёт по ознакомлению → фильтр «Не ознакомились» → «Отправить повторное уведомление»</td></tr>
-                    <tr><td>Заполнить табель</td><td>Раздел «Табель»</td></tr>
-                    <tr><td>Посмотреть уведомления</td><td>Значок колокольчика / раздел «Уведомления»</td></tr>
-                    <tr><td>Получить помощь в поиске нужного раздела</td><td>Чат с ИИ-ассистентом</td></tr>
-                </table>
-            </div>
-
-            <div class="callout important">
-                <div><strong>Важно.</strong> Если какого-то пункта меню нет на вашем экране — скорее всего, у вашей роли нет прав на это действие. Обратитесь к администратору или своему руководителю.</div>
-            </div>
-
-            <hr>
-
-            <h2 id="section-2"><span class="num">02</span>Инструкция для руководителя</h2>
-            <p>Руководитель — это пользователь, который может создавать документы, назначать подписантов и отправлять документы сотрудникам на ознакомление (например, начальник цеха, начальник отдела, мастер).</p>
-
-            <h3>2.1. Раздел «Документы»</h3>
-
-            <h4>Как открыть раздел документов</h4>
-            <ol>
-                <li>Откройте нижнее меню приложения.</li>
-                <li>Перейдите в раздел «Документы» (он находится в профиле или в отдельной вкладке, в зависимости от настроек меню).</li>
-            </ol>
-
-            <h4>Как создать категорию или папку документов</h4>
-            <ol>
-                <li>В разделе «Документы» нажмите кнопку «Создать категорию» (обычно обозначена значком «+»).</li>
-                <li>Введите название категории (например, «Приказы», «Инструкции по охране труда»).</li>
-                <li>Сохраните категорию.</li>
-            </ol>
-
-            <h4>Как отредактировать категорию</h4>
-            <ol>
-                <li>Найдите нужную категорию в списке.</li>
-                <li>Нажмите на неё и выберите «Редактировать» (или значок карандаша).</li>
-                <li>Измените название и сохраните изменения.</li>
-            </ol>
-
-            <h4>Как удалить категорию</h4>
-            <ol>
-                <li>Откройте категорию, которую нужно удалить.</li>
-                <li>Выберите действие «Удалить».</li>
-                <li>Подтвердите удаление.</li>
-            </ol>
-
-            <div class="callout important">
-                <div><strong>Важно.</strong> Если в категории есть документы, их удаление может быть ограничено — система предупредит вас об этом.</div>
-            </div>
-
-            <h4>Как создать документ</h4>
-            <ol>
-                <li>Откройте нужную категорию или нажмите «Создать документ» в общем списке.</li>
-                <li>Заполните форму документа (см. ниже).</li>
-                <li>Сохраните документ как черновик или сразу отправьте его дальше.</li>
-            </ol>
-
-            <h4>Как заполнить название документа</h4>
-            <ul><li>В поле «Название» укажите короткое и понятное название, по которому сотрудники сразу поймут, о чём документ (например, «Инструктаж по пожарной безопасности»).</li></ul>
-
-            <h4>Как выбрать категорию</h4>
-            <ul><li>В выпадающем списке «Категория» выберите подходящую папку. Если нужной категории нет — создайте её заранее (см. выше).</li></ul>
-
-            <h4>Как добавить описание</h4>
-            <ul><li>В поле «Описание» кратко опишите суть документа — зачем он нужен и что должен сделать сотрудник.</li></ul>
-
-            <h4>Как прикрепить файл или заполнить текст документа</h4>
-            <ul>
-                <li>Нажмите «Прикрепить файл», чтобы загрузить фото, скан или файл документа.</li>
-                <li>Либо используйте поле «Текст документа», если документ достаточно показать прямо в приложении без отдельного файла.</li>
-                <li>Можно использовать оба варианта одновременно.</li>
-            </ul>
-
-            <h4>Как указать текст кнопки подтверждения</h4>
-            <ol>
-                <li>В поле «Текст кнопки подтверждения» введите формулировку, с которой сотрудник подтвердит ознакомление.</li>
-                <li>Примеры: «Ознакомлен», «Проинструктирован», «Подтверждаю», «Прочитал».</li>
-                <li>Если оставить поле пустым, будет использована стандартная надпись «Ознакомлен».</li>
-            </ol>
-
-            <div class="callout note">
-                <div><strong>Примечание.</strong> Текст кнопки можно подбирать под тип документа: для инструктажей — «Проинструктирован», для приказов — «Ознакомлен», для согласий — «Подтверждаю».</div>
-            </div>
-
-            <h4>Как выбрать подписантов для согласования документа</h4>
-            <ol>
-                <li>В разделе «Подписанты» нажмите «Добавить подписанта».</li>
-                <li>Выберите одного или нескольких сотрудников, которые должны согласовать документ перед отправкой.</li>
-                <li>Если согласование не требуется — просто не добавляйте подписантов.</li>
-            </ol>
-
-            <h4>Как сохранить документ как черновик</h4>
-            <ul><li>Нажмите кнопку «Сохранить черновик». Документ не будет виден сотрудникам и подписантам, пока вы не отправите его дальше.</li></ul>
-
-            <h4>Как отправить документ на согласование</h4>
-            <ol>
-                <li>Проверьте, что добавлены подписанты.</li>
-                <li>Нажмите кнопку «Отправить на согласование».</li>
-                <li>Документ перейдёт в статус «На согласовании», и подписанты получат уведомление.</li>
-            </ol>
-
-            <h4>Как понять текущий статус документа</h4>
-            <div class="table-wrap">
-                <table>
-                    <tr><th>Статус</th><th>Что означает</th></tr>
-                    <tr><td>Черновик</td><td>Документ создан, но ещё не отправлен никуда</td></tr>
-                    <tr><td>На согласовании</td><td>Документ ждёт решения подписантов</td></tr>
-                    <tr><td>Согласован</td><td>Все подписанты одобрили документ, можно отправлять на ознакомление</td></tr>
-                    <tr><td>Отклонён</td><td>Хотя бы один подписант отклонил документ, нужны правки</td></tr>
-                    <tr><td>Отправлен на ознакомление</td><td>Документ разослан сотрудникам, идёт сбор подтверждений</td></tr>
-                    <tr><td>Архивный</td><td>Документ больше не активен, хранится для истории</td></tr>
-                </table>
-            </div>
-
-            <h3>2.2. Согласование документа</h3>
-
-            <h4>Как посмотреть, кто должен согласовать документ</h4>
-            <ul><li>Откройте документ → вкладка/блок «Согласование». Там отображается полный список назначенных подписантов.</li></ul>
-
-            <h4>Как узнать, кто уже согласовал / кто ещё не согласовал</h4>
-            <ul><li>В том же блоке «Согласование» напротив каждого подписанта показан его статус: «Согласовал», «Отклонил» или «Ожидает решения».</li></ul>
-
-            <h4>Как посмотреть комментарии подписантов</h4>
-            <ul><li>Если подписант оставил комментарий (например, при отклонении), он отображается рядом с его именем в блоке согласования.</li></ul>
-
-            <h4>Что делать, если документ отклонён</h4>
-            <ol>
-                <li>Откройте документ и посмотрите комментарий подписанта, который его отклонил.</li>
-                <li>Внесите нужные правки в документ (текст, файл, описание).</li>
-                <li>Отправьте документ на повторное согласование.</li>
-            </ol>
-
-            <h4>Как отредактировать отклонённый документ</h4>
-            <ol>
-                <li>Откройте отклонённый документ.</li>
-                <li>Нажмите «Редактировать».</li>
-                <li>Внесите изменения и сохраните.</li>
-            </ol>
-
-            <h4>Как повторно отправить документ на согласование</h4>
-            <ul><li>После правок нажмите «Отправить на согласование повторно». Все подписанты снова получат документ на рассмотрение.</li></ul>
-
-            <h4>Как отправить напоминание подписантам, которые ещё не согласовали документ</h4>
-            <ul><li>В блоке «Согласование» рядом с подписантами в статусе «Ожидает решения» нажмите «Напомнить» (или аналогичную кнопку).</li></ul>
-
-            <h3>2.3. Отправка документа на ознакомление</h3>
-
-            <h4>Когда документ можно отправить на ознакомление</h4>
-            <ul>
-                <li>Если согласование не требовалось — сразу после создания документа.</li>
-                <li>Если согласование требовалось — только после того, как документ получил статус «Согласован».</li>
-            </ul>
-
-            <h4>Что делать, если документ ещё не согласован</h4>
-            <ul><li>Дождитесь решения всех подписантов. Отправить документ на ознакомление раньше нельзя — кнопка отправки будет недоступна или появится предупреждение.</li></ul>
-
-            <h4>Как выбрать получателей</h4>
-            <ol>
-                <li>Откройте согласованный документ (или документ без согласования).</li>
-                <li>Нажмите «Отправить на ознакомление» → «Выбрать получателей».</li>
-                <li>Выберите один из вариантов: весь цех, отдел, отдельные сотрудники.</li>
-            </ol>
-
-            <h4>Как проверить выбранных получателей перед отправкой</h4>
-            <ul><li>Перед отправкой приложение покажет итоговый список сотрудников, которым будет отправлен документ. Проверьте его внимательно.</li></ul>
-
-            <h4>Как отправить документ</h4>
-            <ul><li>Нажмите кнопку «Отправить». Документ перейдёт в статус «Отправлен на ознакомление».</li></ul>
-
-            <h4>Что увидят сотрудники после отправки документа</h4>
-            <ul><li>Сотрудники получат уведомление о новом документе, а сам документ появится в их разделе «Мои документы» со статусом «Ожидает ознакомления».</li></ul>
-
-            <h3>2.4. Отчёт по ознакомлению</h3>
-
-            <h4>Как открыть отчёт по документу</h4>
-            <ul><li>Откройте нужный документ и перейдите в блок/вкладку «Отчёт по ознакомлению».</li></ul>
-
-            <h4>Как посмотреть общий прогресс ознакомления</h4>
-            <ul><li>В верхней части отчёта отображается общее количество получателей и сколько из них уже ознакомились (например, «7 из 12»).</li></ul>
-
-            <h4>Как увидеть список сотрудников, которым отправлен документ</h4>
-            <ul><li>Список всех получателей отображается в самом отчёте.</li></ul>
-
-            <h4>Как узнать, кто ознакомился / кто не ознакомился</h4>
-            <ul><li>Рядом с каждым сотрудником указан его статус: «Ознакомлен» или «Ожидает ознакомления».</li></ul>
-
-            <h4>Как посмотреть дату и время ознакомления</h4>
-            <ul><li>Для сотрудников со статусом «Ознакомлен» рядом отображается дата и время подтверждения.</li></ul>
-
-            <h4>Как использовать фильтры</h4>
-            <ul>
-                <li>«Все» — показать всех получателей;</li>
-                <li>«Ознакомились» — только тех, кто подтвердил;</li>
-                <li>«Не ознакомились» — только тех, кто ещё не подтвердил;</li>
-                <li>«По отделу» / «По цеху» — отфильтровать по подразделению.</li>
-            </ul>
-
-            <h4>Как отправить повторное уведомление тем, кто не ознакомился</h4>
-            <ol>
-                <li>Включите фильтр «Не ознакомились».</li>
-                <li>Нажмите «Отправить повторное уведомление».</li>
-                <li>Уведомление придёт только тем сотрудникам, которые ещё не подтвердили ознакомление.</li>
-            </ol>
-
-            <h3>2.5. Уведомления для руководителя</h3>
-            <p>Руководитель получает уведомления:</p>
-            <ul>
-                <li>о решении подписанта (согласовал/отклонил документ);</li>
-                <li>об отклонении документа — с указанием, кто отклонил и почему;</li>
-                <li>о завершении согласования (когда все подписанты одобрили документ);</li>
-                <li>о необходимости выполнить действие (например, документ готов к отправке на ознакомление).</li>
-            </ul>
-
-            <h4>Как понять, что нужно выполнить действие</h4>
-            <ul><li>Такие уведомления обычно содержат понятный призыв к действию (например, «Документ согласован, отправьте его сотрудникам»). Нажмите на уведомление, чтобы сразу перейти к документу.</li></ul>
-
-            <hr>
-
-            <h2 id="section-3"><span class="num">03</span>Инструкция для подписанта</h2>
-            <p>Подписант — это сотрудник, назначенный руководителем для согласования конкретного документа.</p>
-
-            <h4>Как открыть список документов на согласование</h4>
-            <ol>
-                <li>Перейдите в раздел «Мне на подпись» (или «Документы на согласование»).</li>
-                <li>Вы увидите список всех документов, которые ожидают вашего решения.</li>
-            </ol>
-
-            <h4>Как понять, какие документы ожидают решения</h4>
-            <ul><li>В списке отображаются только те документы, по которым вы ещё не приняли решение. Как только вы согласуете или отклоните документ, он пропадёт из этого списка (если не потребуется повторное согласование).</li></ul>
-
-            <h4>Как открыть документ</h4>
-            <ul><li>Нажмите на документ в списке, чтобы открыть его полностью.</li></ul>
-
-            <h4>Как посмотреть название, описание, категорию, файл или текст документа</h4>
-            <ul><li>Вся эта информация показана на экране документа: сверху — название и категория, ниже — описание, далее — прикреплённый файл или текст.</li></ul>
-
-            <h4>Как посмотреть автора документа</h4>
-            <ul><li>Автор документа (кто его создал) указан в верхней части экрана документа.</li></ul>
-
-            <h4>Как согласовать документ</h4>
-            <ol>
-                <li>Внимательно изучите содержимое документа.</li>
-                <li>Если замечаний нет, нажмите кнопку «Согласовать».</li>
-            </ol>
-
-            <h4>Как отклонить документ</h4>
-            <ol>
-                <li>Нажмите кнопку «Отклонить».</li>
-                <li>Укажите причину отклонения в поле комментария.</li>
-                <li>Подтвердите отклонение.</li>
-            </ol>
-
-            <h4>Когда нужно оставить комментарий</h4>
-            <ul>
-                <li>При согласовании комментарий обычно необязателен (но его можно оставить, если есть пожелания).</li>
-                <li>При отклонении комментарий обязателен.</li>
-            </ul>
-
-            <h4>Почему при отклонении комментарий обязателен</h4>
-            <ul><li>Автор документа должен понимать, что именно нужно исправить. Без комментария он не сможет внести правильные правки.</li></ul>
-
-            <h4>Что происходит после согласования</h4>
-            <ul><li>Ваше решение фиксируется. Если все подписанты согласовали документ, он переходит в статус «Согласован», и автор документа может отправлять его на ознакомление.</li></ul>
-
-            <h4>Что происходит после отклонения</h4>
-            <ul><li>Документ получает статус «Отклонён». Автор увидит ваш комментарий, внесёт правки и сможет отправить документ на повторное согласование.</li></ul>
-
-            <h4>Можно ли изменить решение после согласования или отклонения</h4>
-            <ul><li>Как правило, уже принятое решение изменить нельзя. Если вы ошиблись, обратитесь к автору документа — он может отправить документ на новое согласование после правок.</li></ul>
-
-            <h4>Как действовать, если пришло повторное согласование после правок</h4>
-            <ul><li>Это новый документ (или новая версия документа) для рассмотрения. Внимательно ознакомьтесь с изменениями и повторно примите решение — согласовать или отклонить.</li></ul>
-
-            <hr>
-
-            <h2 id="section-4"><span class="num">04</span>Инструкция для сотрудника</h2>
-            <p>Этот раздел — для всех сотрудников, которым документы назначены на ознакомление.</p>
-
-            <h4>Как открыть личную папку документов</h4>
-            <ul><li>Перейдите в раздел «Мои документы» (или «Документы для ознакомления»).</li></ul>
-
-            <h4>Как увидеть список назначенных документов</h4>
-            <ul><li>Все документы, которые вам отправили на ознакомление, отображаются в этом разделе списком.</li></ul>
-
-            <h4>Как понять статус документа</h4>
-            <div class="table-wrap">
-                <table>
-                    <tr><th>Статус</th><th>Что означает</th></tr>
-                    <tr><td>Ожидает ознакомления</td><td>Вы ещё не подтвердили, что ознакомились с документом</td></tr>
-                    <tr><td>Ознакомлен</td><td>Вы уже подтвердили ознакомление</td></tr>
-                </table>
-            </div>
-
-            <h4>Как открыть документ</h4>
-            <ul><li>Нажмите на документ в списке.</li></ul>
-
-            <h4>Как прочитать текст документа или открыть прикреплённый файл</h4>
-            <ul><li>Текст документа отображается прямо на экране. Если приложен файл — нажмите на него, чтобы открыть или скачать.</li></ul>
-
-            <h4>Как нажать кнопку подтверждения</h4>
-            <ul><li>В конце экрана документа находится кнопка подтверждения. Нажмите на неё после того, как ознакомились с содержимым.</li></ul>
-
-            <h4>Почему текст кнопки может отличаться</h4>
-            <ul><li>Руководитель сам указывает текст кнопки при создании документа — например, «Ознакомлен», «Проинструктирован», «Подтверждаю» или другое название. Суть одна: нажатие означает, что вы прочитали и поняли документ.</li></ul>
-
-            <h4>Что происходит после нажатия кнопки</h4>
-            <ul><li>Статус документа меняется на «Ознакомлен», фиксируются дата и время подтверждения, а руководитель видит это в своём отчёте.</li></ul>
-
-            <h4>Где посмотреть дату ознакомления</h4>
-            <ul><li>Дата и время отображаются рядом со статусом «Ознакомлен» на экране документа.</li></ul>
-
-            <h4>Что делать, если документ уже был подтверждён</h4>
-            <ul><li>Повторно подтверждать не нужно — документ останется в статусе «Ознакомлен», и вы можете просто посмотреть его содержимое в любое время.</li></ul>
-
-            <h4>Что делать, если пришло повторное уведомление</h4>
-            <ul><li>Если вы ещё не ознакомились с документом, откройте его и подтвердите ознакомление. Если вы уже подтвердили ранее, повторное уведомление можно просто закрыть — ваш статус не изменится.</li></ul>
-
-            <hr>
-
-            <h2 id="section-5"><span class="num">05</span>Инструкция для администратора</h2>
-            <p>Этот раздел — для пользователей с ролью администратора.</p>
-
-            <h4>Как управлять категориями документов</h4>
-            <ul><li>Администратор может создавать, редактировать и удалять любые категории документов, независимо от того, кто их создал.</li></ul>
-
-            <h4>Как просматривать все документы</h4>
-            <ul><li>В административном разделе доступен просмотр всех документов в системе, включая черновики других руководителей (если это предусмотрено настройками доступа).</li></ul>
-
-            <h4>Как помогать пользователям при ошибках</h4>
-            <ul><li>Если пользователь сообщает о проблеме (например, не видит документ или не может его согласовать), администратор может открыть документ, проверить список получателей/подписантов и статус, чтобы понять причину.</li></ul>
-
-            <h4>Как проверять права доступа</h4>
-            <ul><li>Администратор может посмотреть роль пользователя и его подразделение (цех, отдел), чтобы убедиться, что доступ к разделу настроен верно.</li></ul>
-
-            <h4>Как управлять пользователями, отделами и цехами</h4>
-            <ul><li>В разделе «Пользователи» администратор может добавлять, редактировать сотрудников, назначать им роли, а также управлять структурой подразделений (цехов, отделов), если эта функция доступна в приложении.</li></ul>
-
-            <h4>Как просматривать отчёты по документам</h4>
-            <ul><li>Если это разрешено, администратор может открывать отчёт по ознакомлению для любого документа, а не только для документов, которые он создал сам.</li></ul>
-
-            <h4>Как контролировать корректность назначений</h4>
-            <ul><li>Периодически проверяйте, что документы отправлены правильным получателям, а подписанты назначены корректно. Это особенно важно для документов по охране труда и инструктажей.</li></ul>
-
-            <hr>
-
-            <h2 id="section-6"><span class="num">06</span>Инструкция по ведению табеля</h2>
-
-            <h4>Где находится раздел табеля</h4>
-            <ul><li>Откройте раздел «Табель» в нижнем меню приложения.</li></ul>
-
-            <h4>Кто имеет право вести табель</h4>
-            <ul><li>Табель ведут руководители и ответственные сотрудники (например, мастера, начальники участков), которым предоставлен доступ к своим подчинённым.</li></ul>
-
-            <h4>Как выбрать период</h4>
-            <ul><li>В верхней части раздела «Табель» выберите нужный месяц (или другой период), используя стрелки или календарь.</li></ul>
-
-            <h4>Как выбрать подразделение, отдел или цех</h4>
-            <ul><li>Если вы отвечаете за несколько подразделений, выберите нужное в выпадающем списке в верхней части экрана.</li></ul>
-
-            <h4>Как найти сотрудника в табеле</h4>
-            <ul><li>Используйте строку поиска или список сотрудников — он обычно отсортирован по фамилии или по участку.</li></ul>
-
-            <h4>Как заполнить рабочие дни</h4>
-            <ol>
-                <li>Найдите нужного сотрудника и нужный день в таблице.</li>
-                <li>Укажите количество отработанных часов.</li>
-            </ol>
-
-            <h4>Как отметить выходной, отсутствие, отпуск, больничный или командировку</h4>
-            <ul><li>Вместо количества часов за день можно указать текстовую отметку. В приложении есть готовые варианты («Больничный лист», «Отпуск», «Отгул», «Выходной»), либо можно ввести свой текст (например, «Командировка»).</li></ul>
-
-            <h4>Как указать переработку или дополнительные часы</h4>
-            <ul><li>Если такая функция предусмотрена, укажите фактическое количество отработанных часов за день, включая переработку, в том же поле часов.</li></ul>
-
-            <h4>Как сохранить табель</h4>
-            <ul><li>Изменения по каждому дню сохраняются автоматически после ввода значения (поле теряет фокус) или по нажатию отдельной кнопки сохранения, если она предусмотрена экраном.</li></ul>
-
-            <h4>Как проверить заполненные данные</h4>
-            <ul><li>Просмотрите таблицу по строкам (сотрудники) и столбцам (дни), чтобы убедиться, что все рабочие дни заполнены, а отметки (отпуск/больничный/выходной) расставлены верно.</li></ul>
-
-            <h4>Как отредактировать уже заполненный табель</h4>
-            <ul><li>Нажмите на нужную ячейку (день сотрудника) и измените значение. Редактирование может потребовать повторного согласования, если табель уже был отправлен.</li></ul>
-
-            <h4>Как отправить табель на согласование</h4>
-            <ul><li>Если в приложении предусмотрено согласование, после заполнения нажмите «Отправить на согласование». Табель будет направлен вышестоящему руководителю (или нескольким руководителям).</li></ul>
-
-            <h4>Как понять статус табеля</h4>
-            <div class="table-wrap">
-                <table>
-                    <tr><th>Статус</th><th>Что означает</th></tr>
-                    <tr><td>Черновик</td><td>Данные ещё заполняются, не отправлены на согласование</td></tr>
-                    <tr><td>Заполнен</td><td>Все необходимые данные внесены</td></tr>
-                    <tr><td>На согласовании</td><td>Табель отправлен руководителю и ждёт решения</td></tr>
-                    <tr><td>Согласован</td><td>Табель одобрен</td></tr>
-                    <tr><td>Отклонён</td><td>Табель отклонён, требуются исправления</td></tr>
-                </table>
-            </div>
-
-            <h4>Как исправить табель после отклонения</h4>
-            <ol>
-                <li>Посмотрите комментарий руководителя, который отклонил табель.</li>
-                <li>Внесите необходимые исправления.</li>
-                <li>Отправьте табель на повторное согласование.</li>
-            </ol>
-
-            <h4>Как выгрузить или распечатать табель</h4>
-            <ul><li>Если эта функция предусмотрена в приложении, воспользуйтесь кнопкой «Выгрузить» или «Печать» на экране табеля.</li></ul>
-
-            <hr>
-
-            <h2 id="section-7"><span class="num">07</span>Инструкция по уведомлениям</h2>
-
-            <h4>Где пользователь видит уведомления</h4>
-            <ul><li>Уведомления отображаются в разделе «Уведомления» (значок колокольчика), а также могут приходить как всплывающие push-уведомления на телефон.</li></ul>
-
-            <h4>Какие бывают уведомления</h4>
-            <div class="table-wrap">
-                <table>
-                    <tr><th>Уведомление</th><th>Когда приходит</th></tr>
-                    <tr><td>Новый документ</td><td>Вам отправили документ на ознакомление</td></tr>
-                    <tr><td>Документ на согласование</td><td>Вас назначили подписантом документа</td></tr>
-                    <tr><td>Повторное напоминание</td><td>Руководитель напомнил вам об ознакомлении или согласовании</td></tr>
-                    <tr><td>Отклонение документа</td><td>Подписант отклонил документ, который вы создали</td></tr>
-                    <tr><td>Завершение согласования</td><td>Все подписанты одобрили документ</td></tr>
-                </table>
-            </div>
-
-            <h4>Как перейти из уведомления к нужному экрану</h4>
-            <ul><li>Нажмите на уведомление — приложение автоматически откроет соответствующий документ или раздел.</li></ul>
-
-            <h4>Что делать, если уведомление пришло повторно</h4>
-            <ul><li>Если действие уже выполнено (документ согласован/ознакомление подтверждено), повторное уведомление можно просто закрыть. Если действие ещё не выполнено — используйте уведомление, чтобы перейти к документу и завершить его.</li></ul>
-
-            <hr>
-
-            <h2 id="section-8"><span class="num">08</span>Типовые сценарии</h2>
-
-            <div class="scenario">
-                <h3>Сценарий 1. Руководитель создаёт документ и отправляет его на ознакомление без согласования</h3>
-                <ol>
-                    <li>Откройте раздел «Документы».</li>
-                    <li>Нажмите «Создать документ».</li>
-                    <li>Заполните название, категорию и описание.</li>
-                    <li>Прикрепите файл или добавьте текст документа.</li>
-                    <li>Укажите текст кнопки подтверждения.</li>
-                    <li>Не выбирайте подписантов, если согласование не требуется.</li>
-                    <li>Выберите получателей.</li>
-                    <li>Отправьте документ.</li>
-                    <li>Откройте отчёт и отслеживайте ознакомление.</li>
-                </ol>
-            </div>
-
-            <div class="scenario">
-                <h3>Сценарий 2. Руководитель создаёт документ с согласованием</h3>
-                <ol>
-                    <li>Откройте раздел «Документы».</li>
-                    <li>Нажмите «Создать документ».</li>
-                    <li>Заполните данные документа.</li>
-                    <li>Выберите подписантов.</li>
-                    <li>Нажмите «Отправить на согласование».</li>
-                    <li>Дождитесь согласования всеми подписантами.</li>
-                    <li>После согласования выберите получателей.</li>
-                    <li>Отправьте документ на ознакомление.</li>
-                    <li>Контролируйте статус ознакомления в отчёте.</li>
-                </ol>
-            </div>
-
-            <div class="scenario">
-                <h3>Сценарий 3. Подписант согласует документ</h3>
-                <ol>
-                    <li>Откройте раздел «Мне на подпись».</li>
-                    <li>Выберите документ.</li>
-                    <li>Ознакомьтесь с содержимым.</li>
-                    <li>Нажмите «Согласовать», если замечаний нет.</li>
-                    <li>Если есть замечания, нажмите «Отклонить» и укажите комментарий.</li>
-                </ol>
-            </div>
-
-            <div class="scenario">
-                <h3>Сценарий 4. Сотрудник подтверждает ознакомление</h3>
-                <ol>
-                    <li>Откройте раздел «Мои документы».</li>
-                    <li>Выберите документ со статусом «Ожидает ознакомления».</li>
-                    <li>Ознакомьтесь с документом.</li>
-                    <li>Нажмите кнопку подтверждения.</li>
-                    <li>Убедитесь, что статус изменился на «Ознакомлен».</li>
-                </ol>
-            </div>
-
-            <div class="scenario">
-                <h3>Сценарий 5. Руководитель отправляет повторное уведомление</h3>
-                <ol>
-                    <li>Откройте документ.</li>
-                    <li>Перейдите в отчёт по ознакомлению.</li>
-                    <li>Отфильтруйте сотрудников со статусом «Не ознакомились».</li>
-                    <li>Нажмите «Отправить повторное уведомление».</li>
-                    <li>Убедитесь, что напоминание отправлено только тем, кто ещё не ознакомился.</li>
-                </ol>
-            </div>
-
-            <div class="scenario">
-                <h3>Сценарий 6. Ответственный ведёт табель</h3>
-                <ol>
-                    <li>Откройте раздел «Табель».</li>
-                    <li>Выберите период.</li>
-                    <li>Выберите подразделение или отдел.</li>
-                    <li>Заполните данные по сотрудникам.</li>
-                    <li>Проверьте корректность отметок.</li>
-                    <li>Сохраните табель.</li>
-                    <li>При необходимости отправьте табель на согласование.</li>
-                </ol>
-            </div>
-
-            <hr>
-
-            <h2 id="section-9"><span class="num">09</span>Частые вопросы</h2>
-
-            <div class="faq-item">
-                <div class="faq-question">Почему я не могу отправить документ на ознакомление?</div>
-                <p>Скорее всего, документ ещё не прошёл согласование у всех подписантов. Дождитесь статуса «Согласован» — после этого кнопка отправки станет доступна.</p>
-            </div>
-
-            <div class="faq-item">
-                <div class="faq-question">Почему документ находится в статусе «На согласовании»?</div>
-                <p>Это означает, что хотя бы один из назначенных подписантов ещё не принял решение. Посмотрите в блоке согласования, кто именно не ответил, и при необходимости отправьте ему напоминание.</p>
-            </div>
-
-            <div class="faq-item">
-                <div class="faq-question">Что делать, если подписант отклонил документ?</div>
-                <p>Посмотрите комментарий подписанта, внесите необходимые правки в документ и отправьте его на повторное согласование.</p>
-            </div>
-
-            <div class="faq-item">
-                <div class="faq-question">Можно ли изменить документ после отправки?</div>
-                <p>Документ, отправленный на ознакомление, обычно редактировать нельзя — слишком сильно изменился бы его смысл для тех, кто уже с ним ознакомился. Если нужно внести изменения, создайте новую версию документа или новый документ.</p>
-            </div>
-
-            <div class="faq-item">
-                <div class="faq-question">Почему сотрудник не видит документ?</div>
-                <p>Проверьте, что сотрудник действительно включён в список получателей (весь цех, отдел или конкретный человек). Если документ ещё не отправлен (находится в черновике или на согласовании), сотрудники его не увидят.</p>
-            </div>
-
-            <div class="faq-item">
-                <div class="faq-question">Что делать, если сотрудник не нажал кнопку ознакомления?</div>
-                <p>Откройте отчёт по ознакомлению, отфильтруйте сотрудников со статусом «Не ознакомились» и отправьте им повторное уведомление.</p>
-            </div>
-
-            <div class="faq-item">
-                <div class="faq-question">Как отправить повторное уведомление?</div>
-                <p>Откройте документ → «Отчёт по ознакомлению» → фильтр «Не ознакомились» → кнопка «Отправить повторное уведомление».</p>
-            </div>
-
-            <div class="faq-item">
-                <div class="faq-question">Почему кнопка подтверждения называется по-разному?</div>
-                <p>Текст кнопки задаёт руководитель при создании документа — он может выбрать формулировку, подходящую под тип документа («Ознакомлен», «Проинструктирован», «Подтверждаю» и т.д.).</p>
-            </div>
-
-            <div class="faq-item">
-                <div class="faq-question">Где посмотреть дату ознакомления?</div>
-                <p>Дата и время ознакомления отображаются в отчёте по документу рядом с именем сотрудника, а также на экране самого документа у сотрудника, который его подтвердил.</p>
-            </div>
-
-            <div class="faq-item">
-                <div class="faq-question">Кто видит отчёт по документу?</div>
-                <p>Отчёт видит автор документа (руководитель), а также администратор, если у него есть доступ к просмотру всех документов.</p>
-            </div>
-
-            <div class="faq-item">
-                <div class="faq-question">Как исправить ошибку в табеле?</div>
-                <p>Откройте нужный день сотрудника в табеле и измените значение. Если табель уже отправлен на согласование и отклонён, посмотрите комментарий и внесите исправления, затем отправьте табель повторно.</p>
-            </div>
-
-            <div class="faq-item">
-                <div class="faq-question">Можно ли изменить табель после сохранения?</div>
-                <p>Да, пока табель не согласован окончательно, данные можно редактировать. После согласования изменения могут потребовать повторной отправки на согласование.</p>
-            </div>
-
-            <hr>
-
-            <h2 id="section-10"><span class="num">10</span>Помощник-поиск (ИИ-ассистент)</h2>
-            <p>Если вы не можете найти нужный раздел приложения, воспользуйтесь встроенным ИИ-ассистентом (чат-помощником):</p>
-            <ol>
-                <li>Откройте чат с ассистентом.</li>
-                <li>Опишите словами, что вы хотите найти (например, «где посмотреть отчёт по документу» или «где заполнить табель»).</li>
-                <li>Ассистент ответит на русском языке и, если найдёт подходящий раздел, добавит в ответ ссылку — нажмите на неё, чтобы сразу перейти в нужный раздел приложения.</li>
-            </ol>
-
-            <div class="callout note">
-                <div><strong>Примечание.</strong> Ассистент помогает ориентироваться в приложении и отвечает на общие вопросы по работе с его разделами. Для вопросов о конкретных документах или ваших персональных данных обращайтесь к своему руководителю или администратору.</div>
-            </div>
+    <div class="deck">
+        <div class="deck-header">
+            <h1>Как пользоваться приложением</h1>
+            <p>Короткая презентация по шагам — для руководителей, подписантов, сотрудников и администраторов</p>
         </div>
+
+        <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+
+        <div class="slide-viewport">
+
+            <!-- 1. Обложка / о чём презентация -->
+            <section class="slide active" data-title="О презентации">
+                <div class="slide-kicker">00 · Начало</div>
+                <div class="slide-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
+                </div>
+                <h2>Что внутри этой презентации</h2>
+                <div class="slide-body">
+                    <div>
+                        <p>Это короткая инструкция без технических терминов. Пролистайте слайды по порядку или сразу перейдите к своей роли по точкам внизу страницы.</p>
+                        <ul>
+                            <li><strong>Документы</strong> — создание, согласование, отправка на ознакомление</li>
+                            <li><strong>Роли</strong> — руководитель, подписант, сотрудник, администратор</li>
+                            <li><strong>Табель</strong> — заполнение и согласование</li>
+                            <li><strong>Уведомления</strong> и <strong>частые вопросы</strong></li>
+                        </ul>
+                        <div class="callout note"><div><strong>Подсказка.</strong> Используйте кнопки «Назад» / «Далее» внизу или стрелки ← → на клавиатуре.</div></div>
+                    </div>
+                    <div class="illustration">
+                        <svg viewBox="0 0 220 180" xmlns="http://www.w3.org/2000/svg">
+                            <rect x="20" y="20" width="80" height="100" rx="10" fill="none" stroke="#38bdf8" stroke-width="2"/>
+                            <line x1="35" y1="45" x2="85" y2="45" stroke="#38bdf8" stroke-width="2"/>
+                            <line x1="35" y1="60" x2="85" y2="60" stroke="#38bdf8" stroke-width="2" opacity="0.6"/>
+                            <line x1="35" y1="75" x2="70" y2="75" stroke="#38bdf8" stroke-width="2" opacity="0.6"/>
+                            <circle cx="150" cy="60" r="34" fill="none" stroke="#22d3ee" stroke-width="2"/>
+                            <path d="M138 60l8 8 16-16" fill="none" stroke="#34d399" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+                            <rect x="110" y="120" width="90" height="40" rx="10" fill="none" stroke="#fbbf24" stroke-width="2"/>
+                            <path d="M120 140h70" stroke="#fbbf24" stroke-width="2" opacity="0.7"/>
+                        </svg>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 2. Памятка быстрого старта -->
+            <section class="slide" data-title="Быстрый старт">
+                <div class="slide-kicker">01 · Памятка</div>
+                <div class="slide-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path></svg>
+                </div>
+                <h2>Быстрый старт: что куда идти</h2>
+                <div class="mini-grid">
+                    <div class="mini-card"><div class="mc-title">Создать документ</div><p class="mc-text">«Документы» → «Создать документ»</p></div>
+                    <div class="mini-card"><div class="mc-title">Согласовать документ</div><p class="mc-text">Раздел «Мне на подпись»</p></div>
+                    <div class="mini-card"><div class="mc-title">Подтвердить ознакомление</div><p class="mc-text">Раздел «Мои документы»</p></div>
+                    <div class="mini-card"><div class="mc-title">Посмотреть прогресс</div><p class="mc-text">Документ → «Отчёт по ознакомлению»</p></div>
+                    <div class="mini-card"><div class="mc-title">Напомнить сотрудникам</div><p class="mc-text">Отчёт → фильтр «Не ознакомились» → «Напомнить»</p></div>
+                    <div class="mini-card"><div class="mc-title">Заполнить табель</div><p class="mc-text">Раздел «Табель»</p></div>
+                    <div class="mini-card"><div class="mc-title">Посмотреть уведомления</div><p class="mc-text">Значок колокольчика</p></div>
+                    <div class="mini-card"><div class="mc-title">Найти нужный раздел</div><p class="mc-text">Чат с ИИ-помощником</p></div>
+                </div>
+                <div class="callout important"><div><strong>Важно.</strong> Не видите пункт меню — значит, у вашей роли нет на это прав. Обратитесь к руководителю или администратору.</div></div>
+            </section>
+
+            <!-- 3. Руководитель: создание документа -->
+            <section class="slide" data-title="Руководитель · Документ">
+                <div class="slide-kicker">02 · Руководитель</div>
+                <div class="slide-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"></rect><path d="M8 2v4M16 2v4M4 10h16"></path></svg>
+                </div>
+                <h2>Руководитель создаёт документ</h2>
+                <div class="slide-body">
+                    <ol>
+                        <li>Откройте раздел <strong>«Документы»</strong>, выберите или создайте категорию.</li>
+                        <li>Нажмите <strong>«Создать документ»</strong>.</li>
+                        <li>Заполните название, категорию, описание.</li>
+                        <li>Прикрепите файл или впишите текст документа.</li>
+                        <li>Укажите текст кнопки: «Ознакомлен», «Проинструктирован», «Подтверждаю»…</li>
+                        <li>При необходимости выберите подписантов для согласования.</li>
+                        <li>Сохраните как черновик или отправьте дальше.</li>
+                    </ol>
+                    <div class="illustration">
+                        <svg viewBox="0 0 220 180">
+                            <rect x="30" y="15" width="100" height="130" rx="10" fill="none" stroke="#38bdf8" stroke-width="2"/>
+                            <line x1="45" y1="40" x2="115" y2="40" stroke="#38bdf8" stroke-width="2"/>
+                            <line x1="45" y1="55" x2="115" y2="55" stroke="#38bdf8" stroke-width="2" opacity="0.6"/>
+                            <line x1="45" y1="70" x2="90" y2="70" stroke="#38bdf8" stroke-width="2" opacity="0.6"/>
+                            <rect x="45" y="100" width="70" height="26" rx="8" fill="none" stroke="#22d3ee" stroke-width="2"/>
+                            <text x="80" y="117" fill="#22d3ee" font-size="10" text-anchor="middle" font-family="monospace">Ознакомлен</text>
+                            <path d="M150 50l20 20-20 20" fill="none" stroke="#7c8aa5" stroke-width="2" stroke-linecap="round"/>
+                        </svg>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 4. Статусы документа -->
+            <section class="slide" data-title="Статусы документа">
+                <div class="slide-kicker">02 · Руководитель</div>
+                <div class="slide-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 3"></path></svg>
+                </div>
+                <h2>Статусы документа</h2>
+                <div class="status-chips">
+                    <span class="badge">Черновик</span>
+                    <span class="badge warn">На согласовании</span>
+                    <span class="badge ok">Согласован</span>
+                    <span class="badge bad">Отклонён</span>
+                    <span class="badge">Отправлен на ознакомление</span>
+                    <span class="badge">Архивный</span>
+                </div>
+                <ul>
+                    <li><strong>Черновик</strong> — создан, но никуда не отправлен.</li>
+                    <li><strong>На согласовании</strong> — ждёт решения подписантов.</li>
+                    <li><strong>Согласован</strong> — все подписанты одобрили, можно отправлять на ознакомление.</li>
+                    <li><strong>Отклонён</strong> — нужны правки, затем повторная отправка на согласование.</li>
+                    <li><strong>Отправлен на ознакомление</strong> — сотрудники читают и подтверждают.</li>
+                    <li><strong>Архивный</strong> — документ больше не активен.</li>
+                </ul>
+            </section>
+
+            <!-- 5. Отправка на ознакомление и отчёт -->
+            <section class="slide" data-title="Ознакомление и отчёт">
+                <div class="slide-kicker">02 · Руководитель</div>
+                <div class="slide-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-6l-2 3h-4l-2-3H2"></path><path d="M5.45 5.11L2 12v6a2 2 0 002 2h16a2 2 0 002-2v-6l-3.45-6.89A2 2 0 0016.76 4H7.24a2 2 0 00-1.79 1.11z"></path></svg>
+                </div>
+                <h2>Отправка на ознакомление и отчёт</h2>
+                <div class="slide-body">
+                    <div>
+                        <p><strong>Отправка:</strong> выберите получателей — весь цех, отдел или отдельных сотрудников — и нажмите «Отправить».</p>
+                        <p><strong>Отчёт по ознакомлению</strong> показывает:</p>
+                        <ul>
+                            <li>общий прогресс (сколько человек ознакомилось);</li>
+                            <li>кто ознакомился и когда;</li>
+                            <li>кто ещё не ознакомился;</li>
+                            <li>фильтры: все / ознакомились / не ознакомились / по отделу / по цеху.</li>
+                        </ul>
+                        <div class="callout note"><div><strong>Повтор.</strong> Кнопка «Отправить повторное уведомление» напоминает только тем, кто ещё не ознакомился.</div></div>
+                    </div>
+                    <div class="illustration">
+                        <svg viewBox="0 0 220 180">
+                            <rect x="20" y="20" width="180" height="20" rx="10" fill="none" stroke="#38bdf8" stroke-width="2"/>
+                            <rect x="20" y="20" width="120" height="20" rx="10" fill="#22d3ee" opacity="0.3"/>
+                            <text x="110" y="34" fill="#e2e8f0" font-size="10" text-anchor="middle" font-family="monospace">67%</text>
+                            <circle cx="40" cy="80" r="8" fill="none" stroke="#34d399" stroke-width="2"/>
+                            <path d="M36 80l3 3 6-6" fill="none" stroke="#34d399" stroke-width="2"/>
+                            <circle cx="70" cy="80" r="8" fill="none" stroke="#34d399" stroke-width="2"/>
+                            <path d="M66 80l3 3 6-6" fill="none" stroke="#34d399" stroke-width="2"/>
+                            <circle cx="100" cy="80" r="8" fill="none" stroke="#fbbf24" stroke-width="2"/>
+                            <text x="100" y="83" fill="#fbbf24" font-size="10" text-anchor="middle">?</text>
+                            <circle cx="130" cy="80" r="8" fill="none" stroke="#fbbf24" stroke-width="2"/>
+                            <text x="130" y="83" fill="#fbbf24" font-size="10" text-anchor="middle">?</text>
+                            <rect x="30" y="120" width="160" height="26" rx="8" fill="none" stroke="#22d3ee" stroke-width="2"/>
+                            <text x="110" y="137" fill="#22d3ee" font-size="10" text-anchor="middle" font-family="monospace">Повторное уведомление</text>
+                        </svg>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 6. Подписант -->
+            <section class="slide" data-title="Подписант">
+                <div class="slide-kicker">03 · Подписант</div>
+                <div class="slide-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z"></path></svg>
+                </div>
+                <h2>Подписант согласует документ</h2>
+                <div class="slide-body">
+                    <ol>
+                        <li>Откройте раздел <strong>«Мне на подпись»</strong>.</li>
+                        <li>Выберите документ, ожидающий решения.</li>
+                        <li>Изучите название, описание, файл или текст, автора.</li>
+                        <li>Нажмите <strong>«Согласовать»</strong>, если замечаний нет.</li>
+                        <li>Или нажмите <strong>«Отклонить»</strong> и обязательно укажите комментарий.</li>
+                    </ol>
+                    <div class="callout important"><div><strong>Важно.</strong> При отклонении комментарий обязателен — руководитель должен понять, что исправить.</div></div>
+                    <div class="callout note"><div><strong>Примечание.</strong> Изменить решение после согласования или отклонения нельзя — только новая версия документа проходит повторное согласование.</div></div>
+                </div>
+            </section>
+
+            <!-- 7. Сотрудник -->
+            <section class="slide" data-title="Сотрудник">
+                <div class="slide-kicker">04 · Сотрудник</div>
+                <div class="slide-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"></circle><path d="M4 21v-1a8 8 0 0116 0v1"></path></svg>
+                </div>
+                <h2>Сотрудник подтверждает ознакомление</h2>
+                <div class="slide-body">
+                    <ol>
+                        <li>Откройте раздел <strong>«Мои документы»</strong>.</li>
+                        <li>Выберите документ со статусом «Ожидает ознакомления».</li>
+                        <li>Прочитайте текст или откройте прикреплённый файл.</li>
+                        <li>Нажмите кнопку подтверждения (текст может отличаться: «Ознакомлен», «Проинструктирован» и т.д.).</li>
+                        <li>Статус изменится на <strong>«Ознакомлен»</strong>, дата сохранится автоматически.</li>
+                    </ol>
+                    <div class="callout note"><div><strong>Если пришло повторно:</strong> значит, это напоминание о документе, который вы ещё не подтвердили, или новая версия документа.</div></div>
+                </div>
+            </section>
+
+            <!-- 8. Администратор -->
+            <section class="slide" data-title="Администратор">
+                <div class="slide-kicker">05 · Администратор</div>
+                <div class="slide-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6l8-4z"></path></svg>
+                </div>
+                <h2>Возможности администратора</h2>
+                <ul>
+                    <li>Управляет категориями документов (создание, редактирование, удаление).</li>
+                    <li>Видит все документы в системе, независимо от автора.</li>
+                    <li>Помогает пользователям решать ошибки и вопросы доступа.</li>
+                    <li>Проверяет права доступа у сотрудников.</li>
+                    <li>Управляет пользователями, отделами и цехами.</li>
+                    <li>Просматривает отчёты по документам.</li>
+                    <li>Контролирует корректность назначений (кто кому подчиняется, кто куда отправляет документы).</li>
+                </ul>
+            </section>
+
+            <!-- 9. Табель -->
+            <section class="slide" data-title="Табель">
+                <div class="slide-kicker">06 · Табель</div>
+                <div class="slide-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+                </div>
+                <h2>Ведение табеля — коротко</h2>
+                <div class="slide-body">
+                    <ol>
+                        <li>Откройте раздел <strong>«Табель»</strong> (доступен ответственным за учёт времени).</li>
+                        <li>Выберите период и подразделение/отдел/цех.</li>
+                        <li>Найдите сотрудника и заполните дни: рабочий, выходной, отпуск, больничный, командировка, переработка.</li>
+                        <li>Сохраните табель и проверьте данные.</li>
+                        <li>При необходимости отправьте на согласование.</li>
+                    </ol>
+                    <div class="status-chips">
+                        <span class="badge">Черновик</span>
+                        <span class="badge">Заполнен</span>
+                        <span class="badge warn">На согласовании</span>
+                        <span class="badge ok">Согласован</span>
+                        <span class="badge bad">Отклонён</span>
+                    </div>
+                    <div class="callout important"><div><strong>После отклонения</strong> — исправьте отмеченные дни и отправьте табель повторно.</div></div>
+                </div>
+            </section>
+
+            <!-- 10. Уведомления -->
+            <section class="slide" data-title="Уведомления">
+                <div class="slide-kicker">07 · Уведомления</div>
+                <div class="slide-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 00-12 0c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 01-3.46 0"></path></svg>
+                </div>
+                <h2>Уведомления</h2>
+                <div class="slide-body">
+                    <div>
+                        <p>Все уведомления видны по значку колокольчика. Основные типы:</p>
+                        <ul>
+                            <li>новый документ на ознакомление;</li>
+                            <li>документ отправлен на согласование;</li>
+                            <li>документ согласован или отклонён;</li>
+                            <li>повторное напоминание;</li>
+                            <li>завершение согласования всеми подписантами.</li>
+                        </ul>
+                    </div>
+                    <div class="illustration">
+                        <svg viewBox="0 0 220 180">
+                            <circle cx="110" cy="70" r="40" fill="none" stroke="#38bdf8" stroke-width="2"/>
+                            <path d="M110 50v20l14 8" stroke="#22d3ee" stroke-width="3" stroke-linecap="round"/>
+                            <circle cx="140" cy="45" r="9" fill="#f87171"/>
+                            <text x="140" y="49" fill="#060b14" font-size="10" text-anchor="middle" font-weight="bold">1</text>
+                        </svg>
+                    </div>
+                </div>
+                <div class="callout note"><div><strong>Переход.</strong> Нажмите на уведомление — приложение откроет нужный документ или экран само.</div></div>
+            </section>
+
+            <!-- 11. Частые вопросы -->
+            <section class="slide" data-title="Частые вопросы">
+                <div class="slide-kicker">08 · FAQ</div>
+                <div class="slide-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 015.83 1c0 2-3 2-3 4"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+                </div>
+                <h2>Частые вопросы</h2>
+                <div class="faq-item"><div class="faq-q">Почему нельзя отправить документ на ознакомление?</div><p class="faq-a">Скорее всего, документ ещё не согласован подписантами.</p></div>
+                <div class="faq-item"><div class="faq-q">Что делать, если подписант отклонил документ?</div><p class="faq-a">Исправьте документ по комментарию и отправьте его на согласование заново.</p></div>
+                <div class="faq-item"><div class="faq-q">Сотрудник не видит документ — почему?</div><p class="faq-a">Проверьте, что сотрудник выбран в получателях при отправке.</p></div>
+                <div class="faq-item"><div class="faq-q">Как исправить ошибку в табеле?</div><p class="faq-a">Откройте табель и отредактируйте нужный день, пока он не согласован.</p></div>
+            </section>
+
+            <!-- 12. Финал -->
+            <section class="slide" data-title="Итог">
+                <div class="slide-kicker">09 · Итог</div>
+                <div class="slide-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"></path></svg>
+                </div>
+                <h2>Готово — теперь вы знаете основное</h2>
+                <div class="slide-body single">
+                    <div>
+                        <p>Если остались вопросы по конкретному разделу — спросите ИИ-помощника в чате, он подскажет и даст ссылку на нужный экран.</p>
+                        <p>Полная текстовая версия руководства со всеми деталями доступна по ссылке ниже.</p>
+                        <div class="badge-row">
+                            <a href="/" style="text-decoration:none;"><span class="badge ok">На главную</span></a>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+        </div>
+
+        <div class="controls">
+            <button class="nav-btn" id="prevBtn" onclick="goTo(current - 1)">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+                Назад
+            </button>
+            <span class="slide-counter" id="slideCounter">1 / 12</span>
+            <button class="nav-btn primary" id="nextBtn" onclick="goTo(current + 1)">
+                Далее
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+            </button>
+        </div>
+
+        <div class="dots" id="dots"></div>
     </div>
+
+    <script>
+        const slides = Array.from(document.querySelectorAll('.slide'));
+        const dotsWrap = document.getElementById('dots');
+        const total = slides.length;
+        let current = 0;
+
+        slides.forEach((s, i) => {
+            const dot = document.createElement('button');
+            dot.className = 'dot' + (i === 0 ? ' active' : '');
+            dot.title = s.dataset.title || ('Слайд ' + (i + 1));
+            dot.onclick = () => goTo(i);
+            dotsWrap.appendChild(dot);
+        });
+
+        function goTo(index) {
+            if (index < 0 || index >= total) return;
+            slides[current].classList.remove('active');
+            dotsWrap.children[current].classList.remove('active');
+            current = index;
+            slides[current].classList.add('active');
+            dotsWrap.children[current].classList.add('active');
+            document.getElementById('slideCounter').textContent = (current + 1) + ' / ' + total;
+            document.getElementById('progressFill').style.width = (((current + 1) / total) * 100) + '%';
+            document.getElementById('prevBtn').disabled = current === 0;
+            document.getElementById('nextBtn').disabled = current === total - 1;
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowRight') goTo(current + 1);
+            if (e.key === 'ArrowLeft') goTo(current - 1);
+        });
+
+        goTo(0);
+    </script>
 </body>
 </html>
