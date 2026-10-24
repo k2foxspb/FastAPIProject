@@ -10,6 +10,7 @@ from .structure import Workshop, Section, Position
 from .announcements import Announcement, AnnouncementRecipient, AnnouncementComment
 from .timesheet import TimesheetEntry, Product, ProductionEntry, ProductionEntryItem, ProductionAuditLog
 from .statements import Statement, StatementApproval, StatementTemplate, StatementTemplateRecipient
+from .documents import DocumentCategory, Document, DocumentApproval, DocumentAssignment
 
 
 __all__ = ["News", "NewsImage", "NewsReaction", "NewsComment", "NewsCommentReaction",
@@ -22,4 +23,5 @@ __all__ = ["News", "NewsImage", "NewsReaction", "NewsComment", "NewsCommentReact
            "Announcement", "AnnouncementRecipient", "AnnouncementComment",
            "TimesheetEntry", "Product", "ProductionEntry", "ProductionEntryItem", "ProductionAuditLog",
            "Statement", "StatementApproval", "StatementTemplate", "StatementTemplateRecipient",
+           "DocumentCategory", "Document", "DocumentApproval", "DocumentAssignment",
            ]

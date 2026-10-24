@@ -15,6 +15,7 @@ from app.api.routers import (
     statements,
     ai,
     acting,
+    documents,
 )
 
 # Основной роутер для API v1
@@ -32,6 +33,9 @@ public_routers = [
     (statements.router, ["statements"]),
     (ai.router, ["ai"]),
     (acting.router, ["acting"]),
+    (documents.category_router, ["documents"]),
+    (documents.router, ["documents"]),
+    (documents.my_router, ["documents"]),
 ]
 
 for router, tags in public_routers:

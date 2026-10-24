@@ -361,6 +361,37 @@ export const statementsApi = {
   deleteTemplate: (templateId) => api.delete(`/statements/templates/${templateId}`),
 };
 
+export const documentsApi = {
+  // Категории документов (папки)
+  getCategories: () => api.get('/document-categories/'),
+  createCategory: (data) => api.post('/document-categories/', data),
+  updateCategory: (categoryId, data) => api.patch(`/document-categories/${categoryId}`, data),
+  deleteCategory: (categoryId) => api.delete(`/document-categories/${categoryId}`),
+
+  // Документы
+  getDocuments: () => api.get('/documents/'),
+  createDocument: (data) => api.post('/documents/', data),
+  getDocument: (documentId) => api.get(`/documents/${documentId}`),
+  updateDocument: (documentId, data) => api.patch(`/documents/${documentId}`, data),
+  deleteDocument: (documentId) => api.delete(`/documents/${documentId}`),
+
+  // Согласование подписантами
+  setApprovers: (documentId, approverIds) => api.post(`/documents/${documentId}/approvers`, { approver_ids: approverIds }),
+  submitForApproval: (documentId) => api.post(`/documents/${documentId}/submit-for-approval`),
+  getApprovalInbox: () => api.get('/documents/approval/inbox'),
+  approveDocument: (documentId, comment) => api.post(`/documents/${documentId}/approve`, { comment }),
+  rejectDocument: (documentId, comment) => api.post(`/documents/${documentId}/reject`, { comment }),
+  getApprovalReport: (documentId) => api.get(`/documents/${documentId}/approval-report`),
+  remindApprovers: (documentId) => api.post(`/documents/${documentId}/approval-remind`),
+
+  // Назначение на ознакомление и личная папка
+  assignDocument: (documentId, data) => api.post(`/documents/${documentId}/assign`, data),
+  getMyDocuments: () => api.get('/my/documents'),
+  confirmDocument: (documentId) => api.post(`/documents/${documentId}/confirm`),
+  getReport: (documentId, params) => api.get(`/documents/${documentId}/report`, { params }),
+  remindDocument: (documentId) => api.post(`/documents/${documentId}/remind`),
+};
+
 // ---------------------------------------------------------------------------
 // Обновление access-токена
 // ---------------------------------------------------------------------------

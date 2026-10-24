@@ -643,6 +643,39 @@ export default function ProfileScreen({ navigation }) {
                   <Text style={[styles.menuItemText, { color: colors.text }]}>Редактировать профиль</Text>
                 </TouchableOpacity>
 
+                <TouchableOpacity
+                  style={[styles.menuItem, { borderBottomWidth: 1, borderBottomColor: colors.border }]}
+                  onPress={() => {
+                    setSettingsVisible(false);
+                    navigation.navigate('DocumentCategories');
+                  }}
+                >
+                  <Icon name="folder-outline" size={22} color={colors.primary} />
+                  <Text style={[styles.menuItemText, { color: colors.text }]}>Документы</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.menuItem, { borderBottomWidth: 1, borderBottomColor: colors.border }]}
+                  onPress={() => {
+                    setSettingsVisible(false);
+                    navigation.navigate('MyDocuments');
+                  }}
+                >
+                  <Icon name="document-text-outline" size={22} color={colors.primary} />
+                  <Text style={[styles.menuItemText, { color: colors.text }]}>Мои документы на ознакомление</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.menuItem, { borderBottomWidth: 1, borderBottomColor: colors.border }]}
+                  onPress={() => {
+                    setSettingsVisible(false);
+                    navigation.navigate('ApprovalInbox');
+                  }}
+                >
+                  <Icon name="checkmark-done-outline" size={22} color={colors.primary} />
+                  <Text style={[styles.menuItemText, { color: colors.text }]}>Документы на согласование</Text>
+                </TouchableOpacity>
+
                 <View style={styles.menuSection}>
                   <Text style={[styles.menuSectionTitle, { color: colors.textSecondary }]}>Тема оформления</Text>
                   <View style={styles.themeToggleRow}>

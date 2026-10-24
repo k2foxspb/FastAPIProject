@@ -56,6 +56,17 @@ import AdminChatDetailScreen from '../screens/AdminChatDetailScreen';
 import AdminAppUploadScreen from '../screens/AdminAppUploadScreen';
 import AdminLogsScreen from '../screens/AdminLogsScreen';
 import AiChatScreen from '../screens/aiChat/AiChatScreen';
+import DocumentCategoriesScreen from '../screens/DocumentCategoriesScreen';
+import DocumentsListScreen from '../screens/DocumentsListScreen';
+import CreateDocumentScreen from '../screens/CreateDocumentScreen';
+import DocumentManageScreen from '../screens/DocumentManageScreen';
+import AssignDocumentScreen from '../screens/AssignDocumentScreen';
+import MyDocumentsScreen from '../screens/MyDocumentsScreen';
+import DocumentViewScreen from '../screens/DocumentViewScreen';
+import DocumentReportScreen from '../screens/DocumentReportScreen';
+import ApprovalInboxScreen from '../screens/ApprovalInboxScreen';
+import DocumentApprovalScreen from '../screens/DocumentApprovalScreen';
+import DocumentApprovalReportScreen from '../screens/DocumentApprovalReportScreen';
 
 
 const Tab = createBottomTabNavigator();
@@ -181,6 +192,17 @@ function ProfileStack() {
       <Stack.Screen name="UserProfile" component={UserProfileScreen} options={{ title: 'Профиль пользователя' }} />
       <Stack.Screen name="UserHierarchy" component={UserHierarchyScreen} options={{ title: 'Сотрудники' }} />
       <Stack.Screen name="ActingAssignments" component={ActingAssignmentsScreen} options={{ title: 'Исполняющие обязанности' }} />
+      <Stack.Screen name="DocumentCategories" component={DocumentCategoriesScreen} options={{ title: 'Документы' }} />
+      <Stack.Screen name="DocumentsList" component={DocumentsListScreen} options={({ route }) => ({ title: route.params?.categoryTitle || 'Документы' })} />
+      <Stack.Screen name="CreateDocument" component={CreateDocumentScreen} options={{ title: 'Документ' }} />
+      <Stack.Screen name="DocumentManage" component={DocumentManageScreen} options={{ title: 'Документ' }} />
+      <Stack.Screen name="AssignDocument" component={AssignDocumentScreen} options={{ title: 'Получатели' }} />
+      <Stack.Screen name="MyDocuments" component={MyDocumentsScreen} options={{ title: 'Мои документы' }} />
+      <Stack.Screen name="DocumentView" component={DocumentViewScreen} options={{ title: 'Документ' }} />
+      <Stack.Screen name="DocumentReport" component={DocumentReportScreen} options={{ title: 'Отчёт по ознакомлению' }} />
+      <Stack.Screen name="ApprovalInbox" component={ApprovalInboxScreen} options={{ title: 'На согласование' }} />
+      <Stack.Screen name="DocumentApproval" component={DocumentApprovalScreen} options={{ title: 'Согласование' }} />
+      <Stack.Screen name="DocumentApprovalReport" component={DocumentApprovalReportScreen} options={{ title: 'Отчёт по согласованию' }} />
       <Stack.Screen name="WebView" component={WebViewScreen} />
       <Stack.Screen 
         name="Login" 

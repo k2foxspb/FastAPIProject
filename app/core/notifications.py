@@ -25,6 +25,8 @@ NOTIFICATION_GROUPS: dict[str, str] = {
     "timesheet": "Табель и продукция",
     "acting": "Назначения и.о.",
     "friends": "Заявки в друзья",
+    "documents": "Документы на ознакомление",
+    "document_approval": "Согласование документов",
 }
 
 DEFAULT_QUIET_HOURS_START = "22:00"
