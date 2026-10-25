@@ -48,6 +48,7 @@ async def sitemap_xml():
         ("/privacy-policy", "0.5", "monthly"),
         ("/terms", "0.5", "monthly"),
         ("/user-guide", "0.6", "monthly"),
+        ("/tech-docs", "0.4", "monthly"),
     ]
 
     today = datetime.utcnow().strftime("%Y-%m-%d")

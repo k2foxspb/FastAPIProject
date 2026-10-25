@@ -128,6 +128,10 @@ def create_application() -> FastAPI:
     async def get_user_guide(request: Request):
         return templates.TemplateResponse("user_guide.html", {"request": request})
 
+    @app.get("/tech-docs")
+    async def get_tech_docs(request: Request):
+        return templates.TemplateResponse("tech_docs.html", {"request": request})
+
     return app
 
 
