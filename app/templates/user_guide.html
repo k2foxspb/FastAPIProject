@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Руководство пользователя — Fokin System</title>
-    <meta name="description" content="Руководство пользователя Fokin System: вход, поиск друзей, публикации, объявления, чаты, колокольчик уведомлений, настройки, FAQ и решение проблем.">
+    <meta name="description" content="Кратко: как найти знакомых, отправить заявку в друзья, написать сообщение и настроить уведомления в Fokin System.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
@@ -51,7 +51,6 @@
         h2 .num { opacity: 0.6; margin-right: 6px; }
         p, li { color: var(--text-secondary); font-size: 16px; margin: 0 0 12px; }
         ul, ol { padding-left: 20px; margin: 0 0 20px; }
-        .steps { padding-left: 0; }
         .back-link {
             display: inline-flex; align-items: center; color: var(--text-secondary); text-decoration: none;
             margin-bottom: 24px; font-weight: 500; font-family: var(--mono-font); font-size: 13px; transition: color 0.2s;
@@ -88,16 +87,11 @@
             <p class="sidebar-title">Разделы</p>
             <nav aria-label="Разделы">
                 <ul class="toc">
-                    <li><a href="#intro"><span class="num">01</span>О приложении</a></li>
-                    <li><a href="#login"><span class="num">02</span>Вход</a></li>
-                    <li><a href="#friends"><span class="num">03</span>Друзья</a></li>
-                    <li><a href="#posts"><span class="num">04</span>Публикации</a></li>
-                    <li><a href="#announcements"><span class="num">05</span>Объявления и новости</a></li>
-                    <li><a href="#chats"><span class="num">06</span>Чаты</a></li>
-                    <li><a href="#bell"><span class="num">07</span>Колокольчик</a></li>
-                    <li><a href="#settings"><span class="num">08</span>Настройки уведомлений</a></li>
-                    <li><a href="#faq"><span class="num">09</span>FAQ</a></li>
-                    <li><a href="#troubleshooting"><span class="num">10</span>Решение проблем</a></li>
+                    <li><a href="#start"><span class="num">01</span>Старт</a></li>
+                    <li><a href="#dating"><span class="num">02</span>Знакомства</a></li>
+                    <li><a href="#chats"><span class="num">03</span>Сообщения</a></li>
+                    <li><a href="#notifications"><span class="num">04</span>Уведомления</a></li>
+                    <li><a href="#faq"><span class="num">05</span>FAQ</a></li>
                 </ul>
             </nav>
         </aside>
@@ -114,211 +108,60 @@
             <h1>Руководство пользователя</h1>
             <p class="date">Дата обновления: 31 октября 2026 г.</p>
 
-            <section class="doc-section reveal" id="intro">
-                <h2><span class="num">01</span>О приложении</h2>
-                <p class="lead">Fokin System — приложение для общения: добавляйте друзей, делитесь публикациями, читайте объявления и новости, переписывайтесь в личных и групповых чатах, смотрите фото и альбомы, а также пользуйтесь ИИ-чатом.</p>
-                <div class="card-grid">
-                    <div class="card"><h3>Друзья</h3><p>Поиск людей и заявки в друзья.</p></div>
-                    <div class="card"><h3>Публикации</h3><p>Посты, лайки и комментарии.</p></div>
-                    <div class="card"><h3>Объявления</h3><p>Важные сообщения от администрации и новости.</p></div>
-                    <div class="card"><h3>Чаты</h3><p>Личные и групповые переписки, вложения.</p></div>
-                    <div class="card"><h3>Колокольчик</h3><p>Все события в одном списке.</p></div>
-                    <div class="card"><h3>ИИ-чат</h3><p>Помощник для вопросов и идей.</p></div>
-                </div>
-            </section>
-
-            <section class="doc-section reveal" id="login">
-                <h2><span class="num">02</span>Вход</h2>
+            <section class="doc-section reveal" id="start">
+                <h2><span class="num">01</span>Старт</h2>
                 <ol class="steps">
-                    <li>Установите приложение на телефон и откройте его.</li>
-                    <li>Зарегистрируйтесь или войдите, используя свои учётные данные.</li>
-                    <li>Разрешите приложению показывать уведомления — без этого push-сообщения не придут.</li>
-                    <li>Заполните профиль: имя и аватарку. Аватарка показывается друзьям и в уведомлениях.</li>
+                    <li>Установите приложение и войдите по номеру телефона (SMS-код).</li>
+                    <li>Заполните профиль: имя и фото — их видят другие пользователи.</li>
+                    <li>Разрешите уведомления — без них сообщения и заявки не придут.</li>
                 </ol>
-                <div class="tabs" data-tabs>
-                    <div class="tablist" aria-label="Платформа">
-                        <button type="button" class="tab-btn" aria-selected="true">Android</button>
-                        <button type="button" class="tab-btn" aria-selected="false">iOS</button>
-                    </div>
-                    <div class="tabpanel">
-                        <p>На Android 13 и новее система спросит разрешение на уведомления при первом запуске. Если вы отказали, включите их в «Настройки телефона → Приложения → Fokin → Уведомления».</p>
-                    </div>
-                    <div class="tabpanel" hidden>
-                        <p>На iOS разрешите уведомления в диалоге при первом запуске. Позже это можно изменить в «Настройки → Уведомления → Fokin».</p>
-                    </div>
-                </div>
-                <div class="note warn"><span class="note-title">Безопасность</span><p>Никому не сообщайте свой пароль. Сотрудники поддержки никогда не запрашивают его.</p></div>
+                <div class="note warn"><span class="note-title">Безопасность</span><p>Никому не передавайте код из SMS. Поддержка его не запрашивает.</p></div>
             </section>
 
-            <section class="doc-section reveal" id="friends">
-                <h2><span class="num">03</span>Друзья</h2>
-                <h3>Поиск и заявка</h3>
+            <section class="doc-section reveal" id="dating">
+                <h2><span class="num">02</span>Знакомства</h2>
                 <ol class="steps">
-                    <li>Откройте раздел поиска людей и введите имя.</li>
-                    <li>Откройте профиль найденного пользователя и отправьте заявку в друзья.</li>
-                    <li>Когда пользователь примет заявку, вы получите уведомление, и он появится в списке друзей.</li>
+                    <li>Найдите людей через поиск по имени и откройте профиль.</li>
+                    <li>Отправьте заявку в друзья — так вы сможете писать друг другу и видеть публикации.</li>
+                    <li>Когда заявку примут, человек появится в списке друзей.</li>
+                    <li>Публикуйте посты и реагируйте на публикации друзей: лайки и комментарии — повод начать разговор.</li>
                 </ol>
-                <h3>Входящие заявки</h3>
-                <p>Новая заявка приходит как push и появляется в колокольчике. Откройте её, чтобы принять или отклонить.</p>
-                <div class="note"><span class="note-title">Совет</span><p>Посты друзей отображаются в вашей ленте, а о новых публикациях вы можете получать уведомления (см. раздел «Настройки уведомлений»).</p></div>
-            </section>
-
-            <section class="doc-section reveal" id="posts">
-                <h2><span class="num">04</span>Публикации</h2>
-                <ul>
-                    <li><strong>Создание.</strong> Нажмите кнопку создания публикации, введите текст и при желании добавьте фото.</li>
-                    <li><strong>Лайки и комментарии.</strong> Реагируйте на посты друзей. Автор получает уведомление, при нескольких лайках они объединяются в одну запись («N пользователей оценили…»).</li>
-                    <li><strong>Модерация.</strong> Публикация может проходить проверку, о её результате придёт уведомление.</li>
-                    <li><strong>Фото и альбомы.</strong> Фотографии можно собирать в альбомы, комментировать и ставить им реакции.</li>
-                </ul>
-            </section>
-
-            <section class="doc-section reveal" id="announcements">
-                <h2><span class="num">05</span>Объявления и новости</h2>
-                <p><strong>Объявления</strong> — важные сообщения от администрации. Их нельзя отключить в настройках: они приходят всегда. <strong>Новости</strong> — публикации редакции с реакциями и комментариями; уведомления о них можно отключить.</p>
-                <div class="table-wrap">
-                    <table>
-                        <thead><tr><th scope="col">Тип</th><th scope="col">Можно отключить</th><th scope="col">Реакции и комментарии</th></tr></thead>
-                        <tbody>
-                            <tr><td>Объявления</td><td>Нет</td><td>Нет</td></tr>
-                            <tr><td>Новости</td><td>Да</td><td>Да</td></tr>
-                        </tbody>
-                    </table>
-                </div>
+                <div class="note"><span class="note-title">Совет</span><p>Заполненный профиль и свежие публикации повышают шанс, что заявку примут.</p></div>
             </section>
 
             <section class="doc-section reveal" id="chats">
-                <h2><span class="num">06</span>Чаты</h2>
-                <div class="tabs" data-tabs>
-                    <div class="tablist" aria-label="Тип чата">
-                        <button type="button" class="tab-btn" aria-selected="true">Личные</button>
-                        <button type="button" class="tab-btn" aria-selected="false">Групповые</button>
-                        <button type="button" class="tab-btn" aria-selected="false">ИИ-чат</button>
-                    </div>
-                    <div class="tabpanel">
-                        <ul>
-                            <li>Откройте диалог с другом и напишите сообщение. Можно прикреплять файлы и фото.</li>
-                            <li>Рядом с диалогом показывается число непрочитанных сообщений. Этот счётчик <strong>не связан</strong> со счётчиком колокольчика.</li>
-                            <li>Новые сообщения приходят как уведомление с именем и аватаркой отправителя; сообщения из одного диалога заменяют друг друга.</li>
-                        </ul>
-                    </div>
-                    <div class="tabpanel" hidden>
-                        <ul>
-                            <li>Создайте группу, выберите участников и название.</li>
-                            <li>Участники видят общую переписку; уведомления групповых чатов настраиваются отдельно от личных.</li>
-                        </ul>
-                    </div>
-                    <div class="tabpanel" hidden>
-                        <ul>
-                            <li>Задайте вопрос ИИ-помощнику в отдельном чате.</li>
-                            <li>Ответы формируются автоматически и могут содержать неточности — проверяйте важную информацию.</li>
-                        </ul>
-                    </div>
-                </div>
-            </section>
-
-            <section class="doc-section reveal" id="bell">
-                <h2><span class="num">07</span>Колокольчик</h2>
-                <p>Колокольчик собирает события: лайки и комментарии, заявки в друзья, посты друзей, реакции на новости и фото, объявления. Число на значке — количество непрочитанных уведомлений.</p>
+                <h2><span class="num">03</span>Сообщения</h2>
                 <ul>
-                    <li>Однотипные события (например, несколько лайков) объединяются в одну запись со счётчиком.</li>
-                    <li>Нажмите на запись, чтобы перейти к событию и отметить её прочитанной.</li>
-                    <li>Кнопка «Прочитать все» сбрасывает счётчик целиком.</li>
-                    <li>Счётчик колокольчика и счётчик сообщений считаются раздельно.</li>
+                    <li><strong>Личные чаты.</strong> Откройте диалог с другом и напишите сообщение. Можно отправлять фото и файлы.</li>
+                    <li><strong>Групповые чаты.</strong> Создайте группу, добавьте участников и общайтесь вместе.</li>
+                    <li><strong>Счётчик.</strong> Число на вкладке «Сообщения» — это только непрочитанные сообщения.</li>
                 </ul>
             </section>
 
-            <section class="doc-section reveal" id="settings">
-                <h2><span class="num">08</span>Настройки уведомлений</h2>
-                <p>В настройках приложения можно включать и отключать группы уведомлений:</p>
-                <div class="table-wrap">
-                    <table>
-                        <thead><tr><th scope="col">Группа</th><th scope="col">Что входит</th><th scope="col">Отключаемая</th></tr></thead>
-                        <tbody>
-                            <tr><td>Объявления</td><td>Объявления и системные сообщения</td><td>Нет</td></tr>
-                            <tr><td>Новости</td><td>Реакции и комментарии к новостям</td><td>Да</td></tr>
-                            <tr><td>Личные сообщения</td><td>Сообщения в личных чатах</td><td>Да</td></tr>
-                            <tr><td>Групповые чаты</td><td>Сообщения в группах</td><td>Да</td></tr>
-                            <tr><td>Заявки в друзья</td><td>Новые и принятые заявки</td><td>Да</td></tr>
-                            <tr><td>Новые посты друзей</td><td>Публикации, лайки, комментарии</td><td>Да</td></tr>
-                            <tr><td>Фото и альбомы</td><td>Реакции и комментарии к фото и альбомам</td><td>Да</td></tr>
-                        </tbody>
-                    </table>
-                </div>
-                <h3>Тихие часы</h3>
-                <p>Включите тихие часы и выберите время (по умолчанию с 22:00 до 07:00). В этот период уведомления по-прежнему приходят, но без звука и вибрации.</p>
-                <div class="note"><span class="note-title">Важно</span><p>Отключение группы убирает только push. Записи в колокольчике сохраняются.</p></div>
+            <section class="doc-section reveal" id="notifications">
+                <h2><span class="num">04</span>Уведомления</h2>
+                <ul>
+                    <li><strong>Колокольчик</strong> — заявки в друзья, лайки, комментарии, посты друзей, объявления.</li>
+                    <li><strong>Сообщения</strong> — новые сообщения в чатах.</li>
+                    <li>Нажмите на уведомление, чтобы перейти к событию. «Прочитать все» сбрасывает счётчик колокольчика.</li>
+                    <li>В настройках можно отключить группы уведомлений и включить тихие часы (по умолчанию 22:00–07:00). Объявления отключить нельзя.</li>
+                </ul>
             </section>
 
             <section class="doc-section reveal" id="faq">
-                <h2><span class="num">09</span>FAQ</h2>
-                <div class="toolbar">
-                    <button type="button" class="icon-btn" data-faq-all="open">Развернуть все</button>
-                    <button type="button" class="icon-btn" data-faq-all="close">Свернуть все</button>
-                </div>
+                <h2><span class="num">05</span>FAQ</h2>
                 <details class="faq">
-                    <summary>Почему я не получаю push-уведомления?</summary>
-                    <div class="faq-body"><p>Проверьте разрешение на уведомления в настройках телефона, включена ли нужная группа в настройках приложения и не включён ли режим «Не беспокоить». Подробнее — в разделе «Решение проблем».</p></div>
+                    <summary>Не приходят уведомления</summary>
+                    <div class="faq-body"><p>Проверьте разрешение на уведомления в настройках телефона, группу в настройках приложения и режим «Не беспокоить». Убедитесь, что есть интернет.</p></div>
                 </details>
                 <details class="faq">
-                    <summary>Уведомление пришло без звука. Это ошибка?</summary>
-                    <div class="faq-body"><p>Нет, вероятно, действуют тихие часы. Они отключаются в настройках уведомлений.</p></div>
+                    <summary>Почему нет звука?</summary>
+                    <div class="faq-body"><p>Скорее всего, включены тихие часы. Их можно отключить в настройках уведомлений.</p></div>
                 </details>
                 <details class="faq">
-                    <summary>Почему число на колокольчике не совпадает с числом сообщений?</summary>
-                    <div class="faq-body"><p>Это два независимых счётчика: колокольчик считает уведомления о событиях, а сообщения — непрочитанные письма в чатах.</p></div>
+                    <summary>Как удалить аккаунт?</summary>
+                    <div class="faq-body"><p>Напишите в поддержку: <a href="mailto:k2foxspb@mail.ru">k2foxspb@mail.ru</a>. Подробнее — в <a href="/privacy-policy">Политике конфиденциальности</a>.</p></div>
                 </details>
-                <details class="faq">
-                    <summary>Можно ли отключить объявления?</summary>
-                    <div class="faq-body"><p>Нет. Объявления и системные сообщения важны для всех пользователей и приходят всегда.</p></div>
-                </details>
-                <details class="faq">
-                    <summary>Как найти друга?</summary>
-                    <div class="faq-body"><p>Используйте поиск людей по имени и отправьте заявку в друзья из его профиля.</p></div>
-                </details>
-                <details class="faq">
-                    <summary>Как удалить аккаунт или данные?</summary>
-                    <div class="faq-body"><p>Напишите в поддержку: <a href="mailto:k2foxspb@mail.ru">k2foxspb@mail.ru</a>. Подробности — в <a href="/privacy-policy">Политике конфиденциальности</a>.</p></div>
-                </details>
-            </section>
-
-            <section class="doc-section reveal" id="troubleshooting">
-                <h2><span class="num">10</span>Решение проблем</h2>
-                <h3>Не приходят уведомления</h3>
-                <div class="tabs" data-tabs>
-                    <div class="tablist" aria-label="Платформа">
-                        <button type="button" class="tab-btn" aria-selected="true">Android</button>
-                        <button type="button" class="tab-btn" aria-selected="false">iOS</button>
-                    </div>
-                    <div class="tabpanel">
-                        <ol class="steps">
-                            <li>Откройте «Настройки → Приложения → Fokin → Уведомления» и убедитесь, что они включены.</li>
-                            <li>Отключите экономию заряда для приложения, иначе система может ограничивать фоновую работу.</li>
-                            <li>Проверьте режим «Не беспокоить» и наличие интернета.</li>
-                        </ol>
-                    </div>
-                    <div class="tabpanel" hidden>
-                        <ol class="steps">
-                            <li>Откройте «Настройки → Уведомления → Fokin» и включите уведомления.</li>
-                            <li>Проверьте режим «Фокусирование» и фоновое обновление приложения.</li>
-                            <li>Убедитесь, что интернет-соединение работает.</li>
-                        </ol>
-                    </div>
-                </div>
-                <h3>Другие ситуации</h3>
-                <div class="table-wrap">
-                    <table>
-                        <thead><tr><th scope="col">Проблема</th><th scope="col">Что сделать</th></tr></thead>
-                        <tbody>
-                            <tr><td>Не удаётся войти</td><td>Проверьте введённые данные и подключение к интернету; при необходимости обратитесь в поддержку.</td></tr>
-                            <tr><td>Сообщение не отправляется</td><td>Проверьте соединение и повторите отправку. Крупные файлы загружаются дольше.</td></tr>
-                            <tr><td>Нет аватарки в уведомлении</td><td>Убедитесь, что у отправителя загружена аватарка; на показ влияет также скорость сети.</td></tr>
-                            <tr><td>Счётчик не уменьшается</td><td>Откройте колокольчик и нажмите «Прочитать все», либо откройте нужный диалог.</td></tr>
-                            <tr><td>Приложение работает некорректно</td><td>Обновите приложение до последней версии и перезапустите его.</td></tr>
-                        </tbody>
-                    </table>
-                </div>
-                <div class="note"><span class="note-title">Поддержка</span><p>Если проблема сохраняется, напишите на <a href="mailto:k2foxspb@mail.ru">k2foxspb@mail.ru</a>, указав модель телефона и версию приложения.</p></div>
             </section>
         </main>
     </div>

@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Техническая документация — Fokin System</title>
-    <meta name="description" content="Техническая документация Fokin System: архитектура backend, push-уведомления (FCM, Notifee), мобильное приложение, технологический стек и инфраструктура Docker.">
+    <meta name="description" content="Кратко об архитектуре Fokin System: backend на FastAPI, мобильное приложение на React Native, push-уведомления и инфраструктура.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
@@ -89,13 +89,12 @@
             <nav aria-label="Разделы">
                 <ul class="toc">
                     <li><a href="#overview"><span class="num">01</span>Обзор</a></li>
-                    <li><a href="#backend"><span class="num">02</span>Backend и роутеры</a></li>
-                    <li><a href="#push"><span class="num">03</span>Push-уведомления</a></li>
+                    <li><a href="#backend"><span class="num">02</span>Backend</a></li>
+                    <li><a href="#push"><span class="num">03</span>Push и счётчики</a></li>
                     <li><a href="#flow"><span class="num">04</span>Схема потока</a></li>
                     <li><a href="#mobile"><span class="num">05</span>Мобильное приложение</a></li>
-                    <li><a href="#stack"><span class="num">06</span>Стек и версии</a></li>
+                    <li><a href="#stack"><span class="num">06</span>Стек</a></li>
                     <li><a href="#infra"><span class="num">07</span>Инфраструктура</a></li>
-                    <li><a href="#security"><span class="num">08</span>Безопасность</a></li>
                 </ul>
             </nav>
         </aside>
@@ -114,94 +113,38 @@
 
             <section class="doc-section reveal" id="overview">
                 <h2><span class="num">01</span>Обзор</h2>
-                <p class="lead">Fokin System — мобильное приложение для общения: друзья, публикации, объявления, новости, личные и групповые чаты, фото и альбомы, ИИ-чат и колокольчик уведомлений. Серверная часть — асинхронный FastAPI-backend, клиент — React Native (Expo).</p>
-                <div class="card-grid">
-                    <div class="card"><h3>Backend</h3><p>FastAPI, SQLAlchemy 2 (async), PostgreSQL, Redis, Celery.</p></div>
-                    <div class="card"><h3>Мобильный клиент</h3><p>React Native 0.81 и Expo SDK 54 для Android и iOS.</p></div>
-                    <div class="card"><h3>Уведомления</h3><p>WebSocket в реальном времени и push через Firebase Cloud Messaging.</p></div>
-                    <div class="card"><h3>Веб</h3><p>Jinja2-страницы: главная, документация, политика, соглашение.</p></div>
-                </div>
+                <p class="lead">Fokin System — приложение для знакомств и общения: друзья, публикации, объявления, чаты и колокольчик уведомлений. Backend на FastAPI, клиент на React Native (Expo).</p>
             </section>
 
             <section class="doc-section reveal" id="backend">
-                <h2><span class="num">02</span>Backend и роутеры</h2>
-                <p>Приложение создаётся фабрикой <code>create_application()</code> в <code>app/main.py</code>. Роутеры API собираются в <code>app/api/routers/</code>, веб-страницы и статика отдаются самим приложением.</p>
-                <div class="table-wrap">
-                    <table>
-                        <thead><tr><th scope="col">Модуль</th><th scope="col">Назначение</th></tr></thead>
-                        <tbody>
-                            <tr><td>users</td><td>Регистрация, вход, профиль, поиск пользователей, друзья и заявки в друзья, настройки уведомлений.</td></tr>
-                            <tr><td>feed</td><td>Публикации (посты) и лента друзей.</td></tr>
-                            <tr><td>news</td><td>Новости и объявления, реакции, комментарии, альбомы и фото.</td></tr>
-                            <tr><td>chat</td><td>Личные сообщения, диалоги, вложения, WebSocket.</td></tr>
-                            <tr><td>group_chat</td><td>Групповые чаты и их участники.</td></tr>
-                            <tr><td>notification_center</td><td>Колокольчик: список уведомлений, счётчик непрочитанных, «прочитано».</td></tr>
-                            <tr><td>notifications</td><td>WebSocket-менеджер и регистрация FCM-токена устройства.</td></tr>
-                            <tr><td>ai</td><td>ИИ-чат (запросы к модели через настраиваемый адрес сервиса).</td></tr>
-                            <tr><td>admin</td><td>Административные операции и модерация.</td></tr>
-                            <tr><td>tasks</td><td>Запуск и статус фоновых задач Celery.</td></tr>
-                            <tr><td>health, seo, testing</td><td>Проверка состояния, SEO-файлы, служебные тестовые маршруты.</td></tr>
-                        </tbody>
-                    </table>
-                </div>
-                <h3>Веб-маршруты</h3>
-                <div class="table-wrap">
-                    <table>
-                        <thead><tr><th scope="col">Путь</th><th scope="col">Шаблон</th></tr></thead>
-                        <tbody>
-                            <tr><td>/</td><td>index.html</td></tr>
-                            <tr><td>/login</td><td>login.html</td></tr>
-                            <tr><td>/user-guide</td><td>user_guide.html</td></tr>
-                            <tr><td>/tech-docs</td><td>tech_docs.html</td></tr>
-                            <tr><td>/privacy-policy</td><td>privacy_policy.html</td></tr>
-                            <tr><td>/terms</td><td>terms_of_use.html</td></tr>
-                            <tr><td>/static/*</td><td>Общие CSS и JS из <code>app/static</code></td></tr>
-                            <tr><td>/media/*</td><td>Файлы через слой хранения <code>app.utils.storage</code></td></tr>
-                        </tbody>
-                    </table>
-                </div>
+                <h2><span class="num">02</span>Backend</h2>
+                <ul>
+                    <li><code>app/api/routers/</code>: <code>users</code> (профиль, поиск, друзья), <code>feed</code> и <code>news</code> (публикации, новости, объявления), <code>chat</code> и <code>group_chat</code> (сообщения), <code>notification_center</code> (колокольчик), <code>notifications</code> (WebSocket), <code>ai</code>, <code>admin</code>, <code>tasks</code>.</li>
+                    <li>Веб-страницы и статика отдаются из <code>app/main.py</code>. Медиа — через <code>/media/*</code>.</li>
+                </ul>
             </section>
 
             <section class="doc-section reveal" id="push">
-                <h2><span class="num">03</span>Push-уведомления</h2>
-                <p>Каждое событие (лайк, комментарий, заявка в друзья, объявление и т.д.) создаёт запись в таблице уведомлений через единую функцию <code>create_or_group_notification()</code> (<code>app/core/notification_service.py</code>). Однотипные события об одном объекте группируются по <code>group_key</code> — счётчик записи растёт, а не создаётся новая строка.</p>
-                <h3>Правила доставки</h3>
+                <h2><span class="num">03</span>Push и счётчики</h2>
                 <ul>
-                    <li><strong>Настройки по группам.</strong> Группы: объявления, новости, личные сообщения, групповые чаты, заявки в друзья, новые посты друзей, фото и альбомы. Пользователь может отключить любую, кроме объявлений и системных сообщений.</li>
-                    <li><strong>Тихие часы.</strong> По умолчанию 22:00–07:00, интервал может переходить через полночь. В это время push доставляется без звука и вибрации (канал <code>silent</code>).</li>
-                    <li><strong>Data-only для Android.</strong> Сервер отправляет только поле <code>data</code> без блока <code>notification</code> с высоким приоритетом. Иначе Android показал бы системное уведомление, а клиент — второе, своё.</li>
-                    <li><strong>iOS.</strong> Через APNs уходит alert вместе с data, включены <code>mutable-content</code> и <code>content-available</code>.</li>
-                    <li><strong>Аватарка отправителя.</strong> Передаётся в <code>sender_avatar</code>; Notifee рисует её в уведомлении на Android, для iOS она передаётся через FCM options.</li>
-                    <li><strong>Тег уведомления.</strong> <code>notif_tag</code> формируется из типа события (новость, заявка в друзья, чат или отправитель), поэтому новое сообщение заменяет предыдущее из того же диалога.</li>
-                    <li><strong>Невалидные токены.</strong> Если Firebase сообщает, что токен недействителен, он автоматически сбрасывается у пользователей в базе данных.</li>
+                    <li>Все события колокольчика создаются через <code>create_or_group_notification()</code>; однотипные события группируются по <code>group_key</code>.</li>
+                    <li>Android получает только <code>data</code>-сообщение с высоким приоритетом, его показывает Notifee с аватаркой отправителя. iOS — APNs.</li>
+                    <li>Поле <code>data.type</code> задаёт маршрут: <code>new_message</code>, <code>new_group_message</code> → счётчик сообщений; <code>friend_request</code>, <code>friend_accepted</code>, <code>announcement</code>, <code>new_post</code> и неизвестные типы → колокольчик.</li>
+                    <li>Счётчики независимы: колокольчик — <code>/notifications/unread-count</code>, сообщения — <code>unread_count</code> диалогов.</li>
+                    <li>Тихие часы отправляют push без звука (канал <code>silent</code>). Отключаемые группы задаются в настройках пользователя; объявления отключить нельзя.</li>
                 </ul>
-                <h3>Раздельные счётчики</h3>
-                <p>Колокольчик и сообщения считаются независимо: непрочитанные уведомления — через <code>/notifications</code> (<code>unread_count</code> и <code>/notifications/unread-count</code>), непрочитанные сообщения — через поле <code>unread_count</code> в списке диалогов чата. Прочтение одного не влияет на другое.</p>
-                <h3>Пример data-payload</h3>
-                <div class="code-block"><pre><code>{
-  "type": "new_message",
-  "notification_group": "chat",
-  "notif_title": "Имя отправителя",
-  "notif_body": "Текст сообщения",
-  "sender_id": "42",
-  "sender_avatar": "/media/avatars/...",
-  "android_channel_id": "messages",
-  "notif_tag": "sender_42",
-  "silent": "false"
-}</code></pre></div>
-                <p>Все значения в <code>data</code> — строки (требование Firebase Admin SDK). Значения выше приведены для иллюстрации.</p>
             </section>
 
             <section class="doc-section reveal" id="flow">
-                <h2><span class="num">04</span>Схема потока уведомлений</h2>
-                <p>Нажмите на узел схемы, чтобы увидеть описание этапа. Навигация с клавиатуры: <kbd>Tab</kbd> и <kbd>Enter</kbd>.</p>
+                <h2><span class="num">04</span>Схема потока</h2>
+                <p>Нажмите на узел, чтобы увидеть описание этапа.</p>
                 <div class="flow" data-flow>
                     <div class="flow-nodes" role="group" aria-label="Узлы схемы доставки уведомлений">
-                        <button type="button" class="flow-node" data-info="info-event">Событие<small>API-роутер</small></button>
+                        <button type="button" class="flow-node" data-info="info-event">Событие<small>роутер</small></button>
                         <span class="flow-arrow" aria-hidden="true">→</span>
                         <button type="button" class="flow-node" data-info="info-service">Сервис<small>notification_service</small></button>
                         <span class="flow-arrow" aria-hidden="true">→</span>
-                        <button type="button" class="flow-node" data-info="info-db">База данных<small>PostgreSQL</small></button>
+                        <button type="button" class="flow-node" data-info="info-db">База данных<small>колокольчик</small></button>
                         <span class="flow-arrow" aria-hidden="true">→</span>
                         <button type="button" class="flow-node" data-info="info-dispatch">Диспетчер<small>настройки, тихие часы</small></button>
                         <span class="flow-arrow" aria-hidden="true">→</span>
@@ -213,80 +156,38 @@
                     </div>
                     <div class="flow-detail" aria-live="polite"></div>
                     <div hidden>
-                        <div id="info-event"><h4>Событие</h4><p>Роутер (users, feed, news, chat…) фиксирует действие: лайк, комментарий, заявку в друзья, новое объявление.</p><p>Роутер вызывает сервис уведомлений, а не работает с моделью напрямую.</p></div>
-                        <div id="info-service"><h4>Сервис уведомлений</h4><p><code>create_or_group_notification()</code> создаёт запись либо увеличивает счётчик существующей непрочитанной записи с тем же <code>group_key</code>.</p><p>Тип события сопоставляется с группой настроек.</p></div>
-                        <div id="info-db"><h4>База данных</h4><p>Запись сохраняется до доставки: колокольчик показывает историю даже если push не дошёл. Список и счётчик отдаёт <code>notification_center</code>.</p></div>
-                        <div id="info-dispatch"><h4>Диспетчер</h4><p><code>dispatch_notification()</code> проверяет, не отключена ли группа, нет ли у пользователя токена и не наступили ли тихие часы.</p><p>Объявления и системные сообщения отправляются всегда. Отправка идёт фоновой задачей и не блокирует запрос.</p></div>
-                        <div id="info-ws"><h4>WebSocket</h4><p>Если приложение открыто, сообщение типа <code>notification</code> уходит по WebSocket сразу, и колокольчик обновляется без опроса.</p></div>
-                        <div id="info-fcm"><h4>FCM / APNs</h4><p>Firebase Admin SDK отправляет сообщение в Firebase Cloud Messaging.</p><div class="flow-branches"><div class="card"><h4>Android</h4><p>Data-only, приоритет high, TTL 24 часа.</p></div><div class="card"><h4>iOS</h4><p>Alert + data через APNs, звук отключается в тихие часы.</p></div></div></div>
-                        <div id="info-client"><h4>Клиент</h4><p>Background handler на <code>@react-native-firebase/messaging</code> принимает data-сообщение, а <code>@notifee/react-native</code> показывает единственное уведомление с аватаркой отправителя в нужном канале (<code>messages</code> или <code>silent</code>).</p></div>
+                        <div id="info-event"><h4>Событие</h4><p>Роутер фиксирует действие: лайк, заявку в друзья, объявление, сообщение.</p></div>
+                        <div id="info-service"><h4>Сервис</h4><p><code>create_or_group_notification()</code> создаёт запись или обновляет непрочитанную с тем же <code>group_key</code>.</p></div>
+                        <div id="info-db"><h4>База данных</h4><p>Запись сохраняется до доставки, поэтому колокольчик показывает историю даже без push.</p></div>
+                        <div id="info-dispatch"><h4>Диспетчер</h4><p><code>dispatch_notification()</code> проверяет группу, токен устройства и тихие часы.</p></div>
+                        <div id="info-ws"><h4>WebSocket</h4><p>Если приложение открыто, событие приходит сразу, без опроса.</p></div>
+                        <div id="info-fcm"><h4>FCM / APNs</h4><p>Firebase Admin SDK отправляет сообщение: Android — data-only, iOS — alert + data.</p></div>
+                        <div id="info-client"><h4>Клиент</h4><p>Фоновый обработчик получает data-сообщение, Notifee показывает одно уведомление в нужном канале.</p></div>
                     </div>
                 </div>
             </section>
 
             <section class="doc-section reveal" id="mobile">
                 <h2><span class="num">05</span>Мобильное приложение</h2>
-                <p>Приложение собрано на Expo SDK 54 и React Native 0.81 с React 19.1. Навигация — React Navigation 7 (native-stack и bottom-tabs). Для сетевых запросов используется axios, для локального хранилища — AsyncStorage.</p>
-                <div class="tabs" data-tabs>
-                    <div class="tablist" aria-label="Платформа">
-                        <button type="button" class="tab-btn" aria-selected="true">Android</button>
-                        <button type="button" class="tab-btn" aria-selected="false">iOS</button>
-                    </div>
-                    <div class="tabpanel">
-                        <ul>
-                            <li>Push приходит как data-only сообщение и обрабатывается в фоне, уведомление строит Notifee.</li>
-                            <li>Каналы уведомлений: <code>messages</code> (звук) и <code>silent</code> (без звука для тихих часов).</li>
-                            <li>В уведомлении показывается аватарка отправителя, повторные сообщения заменяют друг друга по <code>notif_tag</code>.</li>
-                        </ul>
-                    </div>
-                    <div class="tabpanel" hidden>
-                        <ul>
-                            <li>Уведомление формирует APNs: alert, звук (кроме тихих часов), <code>thread-id</code> для группировки по диалогу.</li>
-                            <li>Включены <code>mutable-content</code> и <code>content-available</code>, чтобы клиент мог дополнить уведомление.</li>
-                            <li>Для действий используется категория <code>message_actions</code> у новых сообщений.</li>
-                        </ul>
-                    </div>
-                </div>
-                <p>Для проверки подлинности приложения используется Firebase App Check, для входа — Firebase Auth.</p>
+                <ul>
+                    <li>Expo SDK 54, React Native 0.81, React Navigation 7.</li>
+                    <li>Push: <code>@react-native-firebase/messaging</code> и <code>@notifee/react-native</code>. Каналы: <code>messages</code> и <code>silent</code>.</li>
+                    <li>Переход по тапу — единая функция <code>navigateByPushData</code> по <code>data.type</code>.</li>
+                </ul>
             </section>
 
             <section class="doc-section reveal" id="stack">
-                <h2><span class="num">06</span>Стек и версии</h2>
-                <h3>Backend (requirements.txt)</h3>
+                <h2><span class="num">06</span>Стек</h2>
                 <div class="table-wrap">
                     <table>
                         <thead><tr><th scope="col">Компонент</th><th scope="col">Версия</th></tr></thead>
                         <tbody>
-                            <tr><td>FastAPI</td><td>0.120.4</td></tr>
-                            <tr><td>Starlette</td><td>0.49.1</td></tr>
-                            <tr><td>Uvicorn / Gunicorn</td><td>0.38.0 / 23.0.0</td></tr>
-                            <tr><td>SQLAlchemy (async)</td><td>2.0.44</td></tr>
-                            <tr><td>Alembic</td><td>1.17.1</td></tr>
-                            <tr><td>asyncpg</td><td>0.31.0</td></tr>
-                            <tr><td>Pydantic</td><td>2.12.3</td></tr>
-                            <tr><td>Celery / Flower</td><td>5.6.2 / 2.0.1</td></tr>
-                            <tr><td>redis-py</td><td>7.1.1</td></tr>
+                            <tr><td>FastAPI / Starlette</td><td>0.120.4 / 0.49.1</td></tr>
+                            <tr><td>SQLAlchemy (async) / Alembic</td><td>2.0.44 / 1.17.1</td></tr>
+                            <tr><td>Celery / Redis-py</td><td>5.6.2 / 7.1.1</td></tr>
                             <tr><td>firebase-admin</td><td>6.6.0</td></tr>
-                            <tr><td>websockets</td><td>16.0</td></tr>
-                            <tr><td>Jinja2</td><td>3.1.6</td></tr>
-                            <tr><td>Pillow / ffmpeg-python</td><td>12.1.1 / 0.2.0</td></tr>
-                            <tr><td>loguru</td><td>0.7.3</td></tr>
-                        </tbody>
-                    </table>
-                </div>
-                <h3>Мобильное приложение (mobile/package.json)</h3>
-                <div class="table-wrap">
-                    <table>
-                        <thead><tr><th scope="col">Компонент</th><th scope="col">Версия</th></tr></thead>
-                        <tbody>
-                            <tr><td>React Native</td><td>0.81.5</td></tr>
-                            <tr><td>React</td><td>19.1.0</td></tr>
-                            <tr><td>Expo SDK</td><td>~54.0</td></tr>
-                            <tr><td>@react-native-firebase/* (app, auth, app-check, messaging)</td><td>23.8.8</td></tr>
+                            <tr><td>React Native / Expo SDK</td><td>0.81.5 / ~54.0</td></tr>
                             <tr><td>@notifee/react-native</td><td>^9.1.8</td></tr>
-                            <tr><td>React Navigation (native, native-stack, bottom-tabs)</td><td>^7</td></tr>
-                            <tr><td>react-native-reanimated</td><td>~4.1</td></tr>
-                            <tr><td>axios</td><td>1.20.0</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -294,36 +195,10 @@
 
             <section class="doc-section reveal" id="infra">
                 <h2><span class="num">07</span>Инфраструктура</h2>
-                <p>Продакшн описан в <code>docker-compose.prod.yml</code>. Образ приложения основан на <code>tiangolo/uvicorn-gunicorn:python3.11-slim</code>.</p>
-                <div class="table-wrap">
-                    <table>
-                        <thead><tr><th scope="col">Сервис</th><th scope="col">Роль</th></tr></thead>
-                        <tbody>
-                            <tr><td>web</td><td>Gunicorn с приложением FastAPI. При старте выполняются <code>alembic upgrade head</code> и <code>python -m app.init_db</code>. Healthcheck — <code>/health</code>.</td></tr>
-                            <tr><td>celery_worker</td><td>Фоновые задачи.</td></tr>
-                            <tr><td>db</td><td>PostgreSQL 15.8 с постоянным томом.</td></tr>
-                            <tr><td>redis</td><td>Redis 7.4 — брокер и кэш.</td></tr>
-                            <tr><td>nginx</td><td>Обратный прокси и TLS.</td></tr>
-                            <tr><td>certbot</td><td>Автоматическое продление сертификатов Let's Encrypt.</td></tr>
-                        </tbody>
-                    </table>
-                </div>
-                <h3>Локальный запуск</h3>
-                <div class="code-block"><pre><code>docker compose up --build</code></pre></div>
-                <div class="code-block"><pre><code>alembic upgrade head</code></pre></div>
-                <p>Параметры подключения (БД, Redis, Firebase, адрес ИИ-сервиса) задаются через переменные окружения и в документации не приводятся.</p>
-            </section>
-
-            <section class="doc-section reveal" id="security">
-                <h2><span class="num">08</span>Безопасность</h2>
                 <ul>
-                    <li>Доступ к API — по токену аутентификации, права разграничены ролями.</li>
-                    <li>Трафик защищён HTTPS/TLS на уровне nginx.</li>
-                    <li>Учётные данные сервисов (в том числе Firebase) хранятся вне репозитория и подключаются через окружение.</li>
-                    <li>Недействительные push-токены автоматически удаляются.</li>
-                    <li>Файлы отдаются через слой хранения, который проверяет существование и тип.</li>
+                    <li><code>docker-compose.prod.yml</code>: web (Gunicorn + FastAPI), celery_worker, PostgreSQL 15, Redis 7, nginx, certbot.</li>
+                    <li>Секреты и адреса сервисов задаются переменными окружения и в документации не приводятся.</li>
                 </ul>
-                <div class="note"><span class="note-title">Поддержка</span><p>Вопросы по работе системы: <a href="mailto:k2foxspb@mail.ru">k2foxspb@mail.ru</a>.</p></div>
             </section>
         </main>
     </div>
