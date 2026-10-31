@@ -4,8 +4,6 @@ import { getShadow } from '../utils/shadowStyles';
 import { Ionicons as Icon } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
-import { usersApi } from '../api';
-import { canAccessOrgAdmin, canManageWorkshops, canManageSections, canManagePositions, loadPositions } from '../constants/roles';
 
 import { useNotifications } from '../context/NotificationContext';
 
@@ -25,23 +23,10 @@ export default function AdminScreen({ navigation }) {
     }
   }, [currentUser, loadingUser]);
 
-  // Подгружаем актуальный список должностей из БД (не захардкожен - см.
-  // GET /org/positions), чтобы метки ролей и проверки доступа были свежими.
-  useEffect(() => {
-    if (currentUser) {
-      loadPositions();
-    }
-  }, [currentUser]);
-
-  // Пункты производственной иерархии (цеха/участки/сотрудники) видны в зависимости от роли
-  // пользователя в иерархии (см. app/core/roles.py) - это и есть "открытие по ролям".
+  // Пункты админ-панели: Чаты пользователей и загрузка приложения доступны только владельцу
+  // (см. app/core/roles.py) - администратор их не видит.
   const adminMenu = [
-    { title: 'Цеха и участки', icon: 'business-outline', screen: 'AdminWorkshops', visible: canManageWorkshops(role) || canManageSections(role) },
-    { title: 'Должности', icon: 'ribbon-outline', screen: 'AdminPositions', visible: canManagePositions(role) },
-    { title: 'Сотрудники', icon: 'people-circle-outline', screen: 'AdminEmployees', visible: canAccessOrgAdmin(role) },
-    { title: 'Продукция', icon: 'cube-outline', screen: 'AdminProducts', visible: canAccessOrgAdmin(role) },
-    { title: 'Шаблоны заявлений', icon: 'document-text-outline', screen: 'AdminStatementTemplates', visible: canAccessOrgAdmin(role) },
-    { title: 'Пользователи', icon: 'people-outline', screen: 'AdminUsers', ownerOnly: true },
+    { title: 'Пользователи', icon: 'people-outline', screen: 'AdminUsers' },
     { title: 'Модерация', icon: 'shield-outline', screen: 'AdminModeration' },
     { title: 'Новости', icon: 'newspaper-outline', screen: 'AdminNews' },
     { title: 'Чаты пользователей', icon: 'chatbubbles-outline', screen: 'AdminChats', ownerOnly: true },

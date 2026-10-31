@@ -4,7 +4,7 @@ import NetInfo from '@react-native-community/netinfo';
 import Constants from 'expo-constants';
 import { useAudioPlayer } from 'expo-audio';
 import { API_BASE_URL } from '../constants';
-import { usersApi, chatApi, setAuthToken } from '../api';
+import { usersApi, chatApi, notificationsApi, setAuthToken } from '../api';
 import { storage } from '../utils/storage';
 import { setNotificationAudioMode } from '../utils/audioSettings';
 import { isWithinQuietHours } from '../utils/quietHours';
@@ -110,6 +110,7 @@ export const NotificationProvider = ({ children }) => {
   const [notifications, setNotifications] = useState([]);
   const [unreadTotal, setUnreadTotal] = useState(0);
   const [friendRequestsCount, setFriendRequestsCount] = useState(0);
+  const [unreadNotificationsCount, setUnreadNotificationsCount] = useState(0);
   const [isConnected, setIsConnected] = useState(false);
   const [isChatConnected, setIsChatConnected] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
@@ -544,6 +545,22 @@ export const NotificationProvider = ({ children }) => {
     }
   }, []);
 
+  // Счётчик непрочитанных для колокольчика уведомлений (GET /notifications/unread-count),
+  // обновляется при маунте FeedScreen и по WS-событию type==="notification" - не связан
+  // с friend_requests_count/user_status, которые идут отдельными механизмами.
+  const refreshUnreadCount = useCallback(async () => {
+    try {
+      const token = await storage.getAccessToken();
+      if (!token) return;
+      const res = await notificationsApi.getUnreadCount();
+      if (typeof res.data?.count === 'number') {
+        setUnreadNotificationsCount(res.data.count);
+      }
+    } catch (err) {
+      console.log('[NotificationContext] Failed to fetch unread notifications count:', err.message);
+    }
+  }, []);
+
   const playNotificationSound = useCallback(async () => {
     try {
       if (await isWithinQuietHours()) {
@@ -702,6 +719,15 @@ export const NotificationProvider = ({ children }) => {
           if (appState.current === 'active') {
              console.log('[NotificationContext] Vibrating for new_post');
              Vibration.vibrate(200);
+          }
+        }
+
+        // Событие колокольчика уведомлений (GET /notifications и т.д.) - приходит с объектом
+        // уведомления в payload.data - обновляем счётчик непрочитанных сразу же, не ждущись следующего открытия ленты.
+        if (payload.type === 'notification') {
+          setUnreadNotificationsCount(prev => prev + 1);
+          if (appState.current === 'active') {
+            Vibration.vibrate(150);
           }
         }
 
@@ -955,6 +981,8 @@ export const NotificationProvider = ({ children }) => {
     dialogs, 
     unreadTotal, 
     friendRequestsCount,
+    unreadNotificationsCount,
+    refreshUnreadCount,
     fetchDialogs, 
     fetchFriendRequestsCount,
     isConnected, 
@@ -992,6 +1020,8 @@ export const NotificationProvider = ({ children }) => {
     dialogs, 
     unreadTotal, 
     friendRequestsCount,
+    unreadNotificationsCount,
+    refreshUnreadCount,
     fetchDialogs, 
     fetchFriendRequestsCount,
     isConnected, 

@@ -4,14 +4,14 @@ import { View, Text, StyleSheet, Image, FlatList, ScrollView, TouchableOpacity, 
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useFocusEffect } from '@react-navigation/native';
 import RenderHTML from 'react-native-render-html';
-import { usersApi, adminApi, newsApi, orgApi } from '../api';
+import { usersApi, adminApi, newsApi } from '../api';
 import { API_BASE_URL } from '../constants';
 import { Ionicons as Icon } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import { useNotifications } from '../context/NotificationContext';
 import { theme as themeConstants } from '../constants/theme';
 import { formatStatus, formatName, getAvatarUrl, stripHtml } from '../utils/formatters';
-import { isProductionRole, canManageUserClient, getRoleScope, getRoleLabel, getRoleIcon } from '../constants/roles';
+import { getRoleLabel, getRoleIcon, isAdminOrOwner } from '../constants/roles';
 
 export default function UserProfileScreen({ route, navigation }) {
   const { theme } = useTheme();
@@ -23,8 +23,6 @@ export default function UserProfileScreen({ route, navigation }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
-  const [pickerState, setPickerState] = useState(null);
-  const [assigningRole, setAssigningRole] = useState(false);
 
   // Комментарии к публикации
   const [commentsVisible, setCommentsVisible] = useState(false);
@@ -33,22 +31,6 @@ export default function UserProfileScreen({ route, navigation }) {
   const [loadingComments, setLoadingComments] = useState(false);
   const [newCommentText, setNewCommentText] = useState('');
   const [submittingComment, setSubmittingComment] = useState(false);
-
-  // Показывает модальное окно выбора варианта (роль/цех/участок) и
-  // возвращает промис с выбранным значением (или null при отмене).
-  const showChoice = (title, options, message) => new Promise((resolve) => {
-    if (!options.length) {
-      resolve(null);
-      return;
-    }
-    setPickerState({ title, message, options, resolve });
-  });
-
-  const resolvePicker = (value) => {
-    const resolve = pickerState?.resolve;
-    setPickerState(null);
-    if (resolve) resolve(value);
-  };
 
   // Применяем WebSocket статус к текущему пользователю
   useEffect(() => {
@@ -113,100 +95,6 @@ export default function UserProfileScreen({ route, navigation }) {
     if (user.friendship_status === 'requested_by_them') return 'Принять заявку';
     if (user.friendship_status === 'accepted') return 'Удалить из друзей';
     return 'Добавить в друзья';
-  };
-
-  // Назначение должности прямо в профиле подчинённого: доступно, только
-  // если текущий пользователь может управлять этим пользователем по
-  // иерархии (см. can_manage_user в app/core/roles.py). Если у подчинённого
-  // ещё нет должности - запрашиваем цех/участок по области ответственности
-  // новой роли, как при создании сотрудника; если должность уже есть -
-  // просто меняем роль (назначение остаётся прежним).
-  const assignRole = async () => {
-    let roles;
-    try {
-      const rolesRes = await orgApi.getAssignableRoles();
-      roles = rolesRes.data;
-    } catch (err) {
-      Alert.alert('Ошибка', 'Не удалось получить список доступных должностей');
-      return;
-    }
-    if (!roles || roles.length === 0) {
-      Alert.alert('Недоступно', 'У вас нет прав назначать должности');
-      return;
-    }
-
-    const role = await showChoice(
-      'Назначить должность',
-      roles.map(r => ({ label: r.label, value: r.value })),
-      `Текущая должность: ${getRoleLabel(user.role)}`
-    );
-    if (!role) return;
-
-    try {
-      if (isProductionRole(user.role)) {
-        await orgApi.updateEmployeeRole(user.id, role);
-      } else {
-        let workshopId = null;
-        let sectionId = null;
-
-        if (getRoleScope(role) === 'workshop') {
-          const wsRes = await orgApi.getWorkshops();
-          const workshops = wsRes.data;
-          if (workshops.length === 0) {
-            Alert.alert('Нет цехов', 'Сначала создайте цех в разделе "Цеха и участки"');
-            return;
-          }
-          workshopId = await showChoice('Выберите цех', workshops.map(w => ({ label: w.name, value: w.id })));
-          if (!workshopId) return;
-        } else if (getRoleScope(role) === 'section') {
-          if (getRoleScope(currentUser.role) === 'global') {
-            const wsRes = await orgApi.getWorkshops();
-            const workshops = wsRes.data;
-            if (workshops.length === 0) {
-              Alert.alert('Нет цехов', 'Сначала создайте цех и участок в разделе "Цеха и участки"');
-              return;
-            }
-            workshopId = await showChoice('Выберите цех', workshops.map(w => ({ label: w.name, value: w.id })));
-            if (!workshopId) return;
-
-            const secRes = await orgApi.getSections(workshopId);
-            const sections = secRes.data;
-            if (sections.length === 0) {
-              Alert.alert('Нет участков', 'В этом цехе ещё нет участков');
-              return;
-            }
-            sectionId = await showChoice('Выберите участок', sections.map(s => ({ label: s.name, value: s.id })));
-            if (!sectionId) return;
-          } else if (getRoleScope(currentUser.role) === 'workshop') {
-            const secRes = await orgApi.getSections();
-            const sections = secRes.data;
-            if (sections.length === 0) {
-              Alert.alert('Нет участков', 'Сначала создайте участок в разделе "Цеха и участки"');
-              return;
-            }
-            sectionId = await showChoice('Выберите участок', sections.map(s => ({ label: s.name, value: s.id })));
-            if (!sectionId) return;
-            workshopId = currentUser.workshop_id;
-          } else {
-            sectionId = currentUser.section_id;
-            workshopId = currentUser.workshop_id;
-          }
-        }
-
-        setAssigningRole(true);
-        await orgApi.assignEmployee({
-          user_id: user.id,
-          role,
-          workshop_id: workshopId,
-          section_id: sectionId,
-        });
-      }
-      await fetchUser();
-    } catch (err) {
-      Alert.alert('Ошибка', err.response?.data?.detail || 'Не удалось назначить должность');
-    } finally {
-      setAssigningRole(false);
-    }
   };
 
   const openAvatarAlbum = () => {
@@ -437,7 +325,7 @@ export default function UserProfileScreen({ route, navigation }) {
           {user.status === 'online' && (
             <View style={[styles.onlineBadge, { backgroundColor: '#4CAF50', borderColor: colors.background }]} />
           )}
-          {isProductionRole(user.role) && (
+          {isAdminOrOwner(user.role) && (
             <View style={[styles.roleBadge, { backgroundColor: colors.primary, borderColor: colors.background }]}>
               <Icon name={getRoleIcon(user.role)} size={12} color="#fff" />
             </View>
@@ -446,24 +334,12 @@ export default function UserProfileScreen({ route, navigation }) {
         <Text style={[styles.name, { color: colors.text }]}>{formatName(user)}</Text>
         <Text style={[styles.statusText, { color: colors.textSecondary }]}>{formatStatus(user.status, user.last_seen)}</Text>
 
-        {isProductionRole(user.role) && (
+        {isAdminOrOwner(user.role) && (
           <View style={styles.statsContainer}>
             <View style={styles.statItem}>
               <Text style={[styles.statValue, { color: colors.text }]}>{getRoleLabel(user.role)}</Text>
-              <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Должность</Text>
+              <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Роль</Text>
             </View>
-            {user.workshop_name && (
-              <View style={styles.statItem}>
-                <Text style={[styles.statValue, { color: colors.text }]}>{user.workshop_name}</Text>
-                <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Цех</Text>
-              </View>
-            )}
-            {getRoleScope(user.role) === 'section' && user.section_name && (
-              <View style={styles.statItem}>
-                <Text style={[styles.statValue, { color: colors.text }]}>{user.section_name}</Text>
-                <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Участок</Text>
-              </View>
-            )}
           </View>
         )}
 
@@ -489,71 +365,7 @@ export default function UserProfileScreen({ route, navigation }) {
           </TouchableOpacity>
         </View>
 
-        {(isProductionRole(user.role) || canManageUserClient(currentUser, user)) && (
-          <View style={[styles.managementBlock, { borderColor: colors.border, backgroundColor: colors.background }]}>
-            <Text style={[styles.managementTitle, { color: colors.textSecondary }]}>Управление сотрудником</Text>
-            <View style={styles.actionsGrid}>
-              {isProductionRole(user.role) && (
-                <TouchableOpacity 
-                  style={[styles.actionBtn, { borderColor: colors.primary, borderWidth: 1 }]}
-                  onPress={() => navigation.navigate('UserHierarchy', { userId: user.id, userName: formatName(user) })}
-                >
-                  <Icon name="git-network-outline" size={18} color={colors.primary} />
-                  <Text style={[styles.actionBtnText, { color: colors.primary }]}>Сотрудники</Text>
-                </TouchableOpacity>
-              )}
-
-              {canManageUserClient(currentUser, user) && (
-                <TouchableOpacity 
-                  style={[styles.actionBtn, { borderColor: colors.primary, borderWidth: 1 }]}
-                  onPress={assignRole}
-                  disabled={assigningRole}
-                >
-                  {assigningRole ? (
-                    <ActivityIndicator size="small" color={colors.primary} />
-                  ) : (
-                    <Icon name="ribbon-outline" size={18} color={colors.primary} />
-                  )}
-                  <Text style={[styles.actionBtnText, { color: colors.primary }]}>Назначить должность</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-          </View>
-        )}
       </View>
-
-      <Modal visible={!!pickerState} transparent animationType="fade" onRequestClose={() => resolvePicker(null)}>
-        <TouchableWithoutFeedback onPress={() => resolvePicker(null)}>
-          <View style={styles.modalOverlay}>
-            <TouchableWithoutFeedback>
-              <View style={[styles.pickerContent, { backgroundColor: colors.surface }]}>
-                <View style={styles.pickerHeader}>
-                  <Text style={[styles.pickerTitle, { color: colors.text }]}>{pickerState?.title}</Text>
-                  <TouchableOpacity onPress={() => resolvePicker(null)}>
-                    <Icon name="close" size={24} color={colors.text} />
-                  </TouchableOpacity>
-                </View>
-                {!!pickerState?.message && (
-                  <Text style={[styles.pickerMessage, { color: colors.textSecondary }]}>{pickerState.message}</Text>
-                )}
-                <FlatList
-                  data={pickerState?.options || []}
-                  keyExtractor={(item, index) => `${item.value}-${index}`}
-                  style={styles.pickerList}
-                  renderItem={({ item }) => (
-                    <TouchableOpacity
-                      style={[styles.pickerRow, { borderColor: colors.border }]}
-                      onPress={() => resolvePicker(item.value)}
-                    >
-                      <Text style={{ color: colors.text, fontSize: 16, fontWeight: '500' }}>{item.label}</Text>
-                    </TouchableOpacity>
-                  )}
-                />
-              </View>
-            </TouchableWithoutFeedback>
-          </View>
-        </TouchableWithoutFeedback>
-      </Modal>
 
       <View style={styles.section}>
         <TouchableOpacity 

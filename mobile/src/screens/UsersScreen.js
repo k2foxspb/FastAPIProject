@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useLayoutEffect, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { View, Text, FlatList, TextInput, StyleSheet, TouchableOpacity, Image, Platform, RefreshControl } from 'react-native';
 import notifee from '@notifee/react-native';
 import { useFocusEffect } from '@react-navigation/native';
@@ -22,19 +22,6 @@ export default function UsersScreen({ navigation }) {
   const [currentUserId, setCurrentUserId] = useState(currentUser?.id);
   const [activeTab, setActiveTab] = useState('all'); // 'all', 'friends'
   const [refreshing, setRefreshing] = useState(false);
-
-  useLayoutEffect(() => {
-    navigation.setOptions({
-      headerRight: () => (
-        <TouchableOpacity
-          style={{ marginRight: 12 }}
-          onPress={() => navigation.navigate('UserStructure', { view: 'workshops', title: 'Цеха и участки' })}
-        >
-          <Icon name="business-outline" size={24} color={colors.primary} />
-        </TouchableOpacity>
-      ),
-    });
-  }, [navigation, colors]);
 
   // Применяем WebSocket статусы к локальному списку пользователей
   useEffect(() => {

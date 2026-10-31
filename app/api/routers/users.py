@@ -47,6 +47,7 @@ from app.core.auth import (
     create_refresh_token,
     get_current_user,
     get_current_user_optional,
+    get_current_admin,
     verify_refresh_token
 )
 from app.core.app_check import verify_recaptcha
@@ -196,15 +197,11 @@ async def get_firebase_config():
 @router.get("/", response_model=list[UserSchema], include_in_schema=False)
 async def get_users(
     search: str | None = None,
-    workshop_id: int | None = None,
-    section_id: int | None = None,
     db: AsyncSession = Depends(get_async_db),
     current_user: UserModel | None = Depends(get_current_user_optional)
 ):
     """
     Возвращает список всех активных пользователей.
-    Параметры workshop_id/section_id позволяют отфильтровать пользователей
-    по их принадлежности к цеху/участку (используется экраном "Цеха и участки").
     """
     query = select(UserModel).where(UserModel.is_active == True).options(
         selectinload(UserModel.photos).selectinload(UserPhotoModel.reactions).selectinload(UserPhotoReactionModel.user),
@@ -218,11 +215,7 @@ async def get_users(
             UserModel.first_name.ilike(f"%{search}%"),
             UserModel.last_name.ilike(f"%{search}%")
         ))
-    if section_id is not None:
-        query = query.where(UserModel.section_id == section_id)
-    elif workshop_id is not None:
-        query = query.where(UserModel.workshop_id == workshop_id)
-    
+
     result = await db.execute(query)
     users = result.scalars().all()
 
@@ -298,8 +291,6 @@ async def get_me(
         select(UserModel).where(UserModel.id == current_user.id).options(
             selectinload(UserModel.photos.and_(UserPhotoModel.privacy == 'public')),
             selectinload(UserModel.albums).selectinload(PhotoAlbumModel.photos),
-            selectinload(UserModel.workshop),
-            selectinload(UserModel.section)
         )
     )
     user = result.scalar_one_or_none()
@@ -401,8 +392,6 @@ async def update_me(
     phone_number: str | None = Form(None),
     first_name: str | None = Form(None),
     last_name: str | None = Form(None),
-    tab_number: str | None = Form(None),
-    work_schedule_hours: str | None = Form(None),
     avatar: UploadFile = File(None),
     current_user: UserModel = Depends(get_current_user),
     db: AsyncSession = Depends(get_async_db)
@@ -430,14 +419,7 @@ async def update_me(
         current_user.first_name = first_name
     if last_name is not None:
         current_user.last_name = last_name
-    if tab_number is not None:
-        current_user.tab_number = tab_number
-    if work_schedule_hours is not None:
-        try:
-            current_user.work_schedule_hours = Decimal(work_schedule_hours.replace(',', '.'))
-        except InvalidOperation:
-            raise HTTPException(status_code=400, detail="Некорректное значение графика работы")
-    
+
     if avatar:
         # Сохраняем аватарку (используем существующую функцию сохранения фото)
         image_url, preview_url = await save_user_photo(avatar)
@@ -498,9 +480,7 @@ async def create_user(
     password: str = Form(...),
     first_name: str = Form(...),
     last_name: str = Form(...),
-    role: str = Form("worker"),
-    tab_number: str | None = Form(None),
-    work_schedule_hours: str | None = Form("8"),
+    role: str = Form("user"),
     avatar: UploadFile = File(None)
 ):
     """
@@ -537,15 +517,6 @@ async def create_user(
         except Exception as e:
             print(f"Error saving registration avatar: {e}")
 
-    # Табельный номер и график работы указываются уже при регистрации
-    parsed_work_schedule_hours = Decimal("8")
-    if work_schedule_hours is not None and str(work_schedule_hours).strip() != "":
-        try:
-            parsed_work_schedule_hours = Decimal(str(work_schedule_hours).replace(',', '.'))
-        except InvalidOperation:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-                                detail="Некорректное значение графика работы")
-
     # Создание объекта пользователя
     db_user = UserModel(
         email=email,
@@ -554,8 +525,6 @@ async def create_user(
         first_name=first_name,
         last_name=last_name,
         role=role,
-        tab_number=tab_number,
-        work_schedule_hours=parsed_work_schedule_hours,
         is_active=True,
         avatar_url=avatar_url,
         avatar_preview_url=avatar_preview_url
@@ -970,7 +939,7 @@ async def verify_phone_code(
             first_name=first_name,
             last_name=last_name,
             is_active=True,
-            role="worker"
+            role="user"
         )
         db.add(user)
         await db.commit()
@@ -1064,7 +1033,7 @@ async def firebase_auth(
                 last_name=last_name,
                 is_active=True,
                 avatar_url=picture,
-                role="worker"
+                role="user"
             )
             db.add(user)
             await db.commit()
@@ -2365,8 +2334,6 @@ async def get_user_profile(
         select(UserModel).where(UserModel.id == user_id, UserModel.is_active == True).options(
             selectinload(UserModel.photos.and_(UserPhotoModel.privacy == 'public')),
             selectinload(UserModel.albums).selectinload(PhotoAlbumModel.photos),
-            selectinload(UserModel.workshop),
-            selectinload(UserModel.section)
         )
     )
     user = result.scalar_one_or_none()
@@ -2482,6 +2449,17 @@ async def send_friend_request(
             sender_avatar=current_user.avatar_url
         ))
 
+    from app.core.notification_service import create_or_group_notification
+    await create_or_group_notification(
+        db,
+        user_id=user_id,
+        notif_type="friend_request",
+        title="Новая заявка в друзья",
+        body=f"{msg['sender_name']} хочет добавить вас в друзья",
+        data={"object_type": "friendship", "object_id": new_friendship.id},
+        actor_id=current_user.id,
+    )
+
     return new_friendship
 
 @router.post("/friends/accept/{sender_id}", response_model=FriendshipSchema)
@@ -2531,6 +2509,17 @@ async def accept_friend_request(
             sender_id=current_user.id,
             sender_avatar=current_user.avatar_url
         ))
+
+    from app.core.notification_service import create_or_group_notification
+    await create_or_group_notification(
+        db,
+        user_id=sender_id,
+        notif_type="friend_accepted",
+        title="Заявка принята",
+        body=f"{msg['sender_name']} принял вашу заявку в друзья",
+        data={"object_type": "friendship", "object_id": friendship.id},
+        actor_id=current_user.id,
+    )
 
     return friendship
 
@@ -2829,6 +2818,42 @@ async def create_profile_post(
     resp.reactions_count = 0
     resp.comments_count = 0
     resp.my_reaction = None
+
+    # Уведомляем друзей о новом публичном/видимом только для друзей посте
+    # (не уведомляем о приватных "только я" постах).
+    if post_obj.privacy in ("public", "friends"):
+        res_friends = await db.execute(
+            select(FriendshipModel).where(
+                or_(
+                    FriendshipModel.user_id == current_user.id,
+                    FriendshipModel.friend_id == current_user.id,
+                ),
+                FriendshipModel.status == "accepted",
+            )
+        )
+        friendships = res_friends.scalars().all()
+        friend_ids = {
+            (f.friend_id if f.user_id == current_user.id else f.user_id) for f in friendships
+        }
+
+        author_name = f"{current_user.first_name or ''} {current_user.last_name or ''}".strip() or current_user.email or "Пользователь"
+        from app.core.notification_service import create_or_group_notification
+        from app.core.notifications import is_group_enabled
+        for friend_id in friend_ids:
+            friend_res = await db.execute(select(UserModel).where(UserModel.id == friend_id))
+            friend_user = friend_res.scalar_one_or_none()
+            if friend_user is None or not is_group_enabled(friend_user, "friend_posts"):
+                continue
+            await create_or_group_notification(
+                db,
+                user_id=friend_id,
+                notif_type="friend_post",
+                title="Новая публикация друга",
+                body=f"{author_name} опубликовал(а) новый пост",
+                data={"object_type": "profile_post", "object_id": post_obj.id},
+                actor_id=current_user.id,
+            )
+
     return resp
 
 
@@ -2920,25 +2945,131 @@ async def update_profile_post(
 
 
 @router.delete("/me/posts/{post_id}")
+@router.delete("/posts/{post_id}")
 async def delete_profile_post(
     post_id: int,
     current_user: UserModel = Depends(get_current_user),
     db: AsyncSession = Depends(get_async_db),
 ):
-    """Мягко удаляет публикацию текущего пользователя."""
+    """Мягко удаляет публикацию. Доступно автору поста или admin/owner."""
     res = await db.execute(
-        select(ProfilePostModel).where(
-            ProfilePostModel.id == post_id,
-            ProfilePostModel.user_id == current_user.id,
-        )
+        select(ProfilePostModel).where(ProfilePostModel.id == post_id)
     )
     post = res.scalar_one_or_none()
     if not post:
         raise HTTPException(status_code=404, detail="Публикация не найдена")
 
+    if post.user_id != current_user.id and current_user.role not in ("admin", "owner"):
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
+
     post.is_active = False
     await db.commit()
     return {"status": "ok"}
+
+
+@router.post("/posts/{post_id}/moderate", response_model=ProfilePostResponse)
+async def moderate_profile_post(
+    post_id: int,
+    current_user: UserModel = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Отмечает публикацию как проверенную модератором (moderation_status="approved").
+    Идемпотентно: если уже approved - ничего не меняет. Снятия отметки обратно нет.
+    """
+    res = await db.execute(
+        select(ProfilePostModel)
+        .options(
+            selectinload(ProfilePostModel.user),
+            selectinload(ProfilePostModel.reactions),
+            selectinload(ProfilePostModel.comments),
+        )
+        .where(ProfilePostModel.id == post_id)
+    )
+    post = res.scalar_one_or_none()
+    if not post:
+        raise HTTPException(status_code=404, detail="Публикация не найдена")
+
+    if post.moderation_status != "approved":
+        post.moderation_status = "approved"
+        await db.commit()
+        await db.refresh(post)
+
+        from app.core.notification_service import create_or_group_notification
+        await create_or_group_notification(
+            db,
+            user_id=post.user_id,
+            notif_type="post_moderated",
+            title="Публикация проверена",
+            body="Ваша публикация прошла модерацию",
+            data={"object_type": "profile_post", "object_id": post.id},
+            actor_id=current_user.id,
+        )
+
+    resp = ProfilePostResponse.model_validate(post)
+    resp.reactions_count = len(post.reactions)
+    resp.comments_count = len(post.comments)
+    return resp
+
+
+@router.post("/posts/{post_id}/hide", response_model=ProfilePostResponse)
+async def hide_profile_post(
+    post_id: int,
+    current_user: UserModel = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Скрывает публикацию из ленты (is_hidden=True). Доступно только admin/owner."""
+    res = await db.execute(
+        select(ProfilePostModel)
+        .options(
+            selectinload(ProfilePostModel.user),
+            selectinload(ProfilePostModel.reactions),
+            selectinload(ProfilePostModel.comments),
+        )
+        .where(ProfilePostModel.id == post_id)
+    )
+    post = res.scalar_one_or_none()
+    if not post:
+        raise HTTPException(status_code=404, detail="Публикация не найдена")
+
+    post.is_hidden = True
+    await db.commit()
+    await db.refresh(post)
+
+    resp = ProfilePostResponse.model_validate(post)
+    resp.reactions_count = len(post.reactions)
+    resp.comments_count = len(post.comments)
+    return resp
+
+
+@router.post("/posts/{post_id}/unhide", response_model=ProfilePostResponse)
+async def unhide_profile_post(
+    post_id: int,
+    current_user: UserModel = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Возвращает публикацию в ленту (is_hidden=False). Доступно только admin/owner."""
+    res = await db.execute(
+        select(ProfilePostModel)
+        .options(
+            selectinload(ProfilePostModel.user),
+            selectinload(ProfilePostModel.reactions),
+            selectinload(ProfilePostModel.comments),
+        )
+        .where(ProfilePostModel.id == post_id)
+    )
+    post = res.scalar_one_or_none()
+    if not post:
+        raise HTTPException(status_code=404, detail="Публикация не найдена")
+
+    post.is_hidden = False
+    await db.commit()
+    await db.refresh(post)
+
+    resp = ProfilePostResponse.model_validate(post)
+    resp.reactions_count = len(post.reactions)
+    resp.comments_count = len(post.comments)
+    return resp
 
 
 @router.post("/posts/{post_id}/react")
@@ -3002,6 +3133,18 @@ async def react_to_profile_post(
                 sender_id=current_user.id,
                 ws_manager=notification_manager,
                 ws_message={"type": "profile_post_reaction", "post_id": post.id},
+            )
+
+            from app.core.notification_service import create_or_group_notification
+            await create_or_group_notification(
+                db,
+                user_id=post.user_id,
+                notif_type="post_like",
+                title="Новая реакция",
+                body=f"{author_name} поставил(а) реакцию на вашу публикацию",
+                data={"object_type": "profile_post", "object_id": post.id},
+                actor_id=current_user.id,
+                group_key=f"post_like:profile_post:{post.id}",
             )
 
         return {"status": "ok", "action": "added", "reaction_type": r_type}
@@ -3082,6 +3225,18 @@ async def add_profile_post_comment(
             sender_id=current_user.id,
             ws_manager=notification_manager,
             ws_message={"type": "profile_post_comment", "post_id": post.id},
+        )
+
+        from app.core.notification_service import create_or_group_notification
+        await create_or_group_notification(
+            db,
+            user_id=post.user_id,
+            notif_type="post_comment",
+            title="Новый комментарий к публикации",
+            body=f"{author_name}: {data.comment[:50]}",
+            data={"object_type": "profile_post", "object_id": post.id},
+            actor_id=current_user.id,
+            group_key=f"post_comment:profile_post:{post.id}",
         )
 
     return ProfilePostCommentResponse.model_validate(loaded_comment)

@@ -3,19 +3,15 @@ from fastapi import APIRouter
 from app.api.routers import (
     users,
     notifications,
+    notification_center,
     chat,
     group_chat,
     tasks,
     admin,
     news,
     testing,
-    structure,
-    announcements,
-    timesheet,
-    statements,
     ai,
-    acting,
-    documents,
+    feed,
 )
 
 # Основной роутер для API v1
@@ -27,15 +23,9 @@ public_routers = [
     (tasks.router, ["tasks"]),
     (news.router, ["news"]),
     (admin.router, ["admin"]),
-    (structure.router, ["organization"]),
-    (announcements.router, ["announcements"]),
-    (timesheet.router, ["timesheet"]),
-    (statements.router, ["statements"]),
     (ai.router, ["ai"]),
-    (acting.router, ["acting"]),
-    (documents.category_router, ["documents"]),
-    (documents.router, ["documents"]),
-    (documents.my_router, ["documents"]),
+    (feed.router, ["feed"]),
+    (notification_center.router, ["notifications"]),
 ]
 
 for router, tags in public_routers:

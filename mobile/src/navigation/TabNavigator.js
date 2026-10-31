@@ -1,7 +1,6 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { View } from 'react-native';
 import { Ionicons as Icon } from '@expo/vector-icons';
 
 import ProfileScreen from '../screens/ProfileScreen';
@@ -12,9 +11,6 @@ import UploadPhotoScreen from '../screens/UploadPhotoScreen';
 import EditProfileScreen from '../screens/EditProfileScreen';
 import UsersScreen from '../screens/UsersScreen';
 import UserProfileScreen from '../screens/UserProfileScreen';
-import UserHierarchyScreen from '../screens/UserHierarchyScreen';
-import UserStructureScreen from '../screens/UserStructureScreen';
-import ActingAssignmentsScreen from '../screens/ActingAssignmentsScreen';
 import UserMediaScreen from '../screens/UserMediaScreen';
 import ChatListScreen from '../screens/ChatListScreen';
 import ChatScreen from '../screens/chat/ChatScreen';
@@ -23,21 +19,8 @@ import GroupChatScreen from '../screens/chat/GroupChatScreen';
 import GroupInfoScreen from '../screens/chat/GroupInfoScreen';
 import AddGroupMembersScreen from '../screens/chat/AddGroupMembersScreen';
 import FeedScreen from '../screens/FeedScreen';
-import AnnouncementsScreen from '../screens/AnnouncementsScreen';
-import AnnouncementDetailScreen from '../screens/AnnouncementDetailScreen';
-import CreateAnnouncementScreen from '../screens/CreateAnnouncementScreen';
 import CreatePostScreen from '../screens/CreatePostScreen';
-import TabelScreen from '../screens/TabelScreen';
-import TabelEmployeePickerScreen from '../screens/TabelEmployeePickerScreen';
-import TabelSubordinatesTableScreen from '../screens/TabelSubordinatesTableScreen';
-import ProductionEntryFormScreen from '../screens/ProductionEntryFormScreen';
-import ProductionApprovalListScreen from '../screens/ProductionApprovalListScreen';
-import ProductionEntryDetailScreen from '../screens/ProductionEntryDetailScreen';
-import TimesheetApprovalListScreen from '../screens/TimesheetApprovalListScreen';
-import StatementListScreen from '../screens/StatementListScreen';
-import StatementFormScreen from '../screens/StatementFormScreen';
-import AdminProductsScreen from '../screens/AdminProductsScreen';
-import AdminStatementTemplatesScreen from '../screens/AdminStatementTemplatesScreen';
+import NotificationsScreen from '../screens/NotificationsScreen';
 import NewsDetailScreen from '../screens/NewsDetailScreen';
 import MyLikesScreen from '../screens/MyLikesScreen';
 import MyReviewsScreen from '../screens/MyReviewsScreen';
@@ -45,10 +28,6 @@ import LoginScreen from '../screens/LoginScreen';
 import WebViewScreen from '../screens/WebViewScreen';
 import AdminScreen from '../screens/AdminScreen';
 import AdminUsersScreen from '../screens/AdminUsersScreen';
-import AdminWorkshopsScreen from '../screens/AdminWorkshopsScreen';
-import AdminPositionsScreen from '../screens/AdminPositionsScreen';
-import AdminSectionsScreen from '../screens/AdminSectionsScreen';
-import AdminEmployeesScreen from '../screens/AdminEmployeesScreen';
 import AdminModerationScreen from '../screens/AdminModerationScreen';
 import AdminNewsScreen from '../screens/AdminNewsScreen';
 import AdminChatsScreen from '../screens/AdminChatsScreen';
@@ -56,17 +35,7 @@ import AdminChatDetailScreen from '../screens/AdminChatDetailScreen';
 import AdminAppUploadScreen from '../screens/AdminAppUploadScreen';
 import AdminLogsScreen from '../screens/AdminLogsScreen';
 import AiChatScreen from '../screens/aiChat/AiChatScreen';
-import DocumentCategoriesScreen from '../screens/DocumentCategoriesScreen';
-import DocumentsListScreen from '../screens/DocumentsListScreen';
-import CreateDocumentScreen from '../screens/CreateDocumentScreen';
-import DocumentManageScreen from '../screens/DocumentManageScreen';
-import AssignDocumentScreen from '../screens/AssignDocumentScreen';
-import MyDocumentsScreen from '../screens/MyDocumentsScreen';
-import DocumentViewScreen from '../screens/DocumentViewScreen';
-import DocumentReportScreen from '../screens/DocumentReportScreen';
-import ApprovalInboxScreen from '../screens/ApprovalInboxScreen';
-import DocumentApprovalScreen from '../screens/DocumentApprovalScreen';
-import DocumentApprovalReportScreen from '../screens/DocumentApprovalReportScreen';
+import EditNewsScreen from '../screens/EditNewsScreen';
 
 
 const Tab = createBottomTabNavigator();
@@ -79,7 +48,6 @@ import { useTheme } from '../context/ThemeContext.js';
 import { theme as themeConstants } from '../constants/theme';
 
 import { getFocusedRouteNameFromRoute } from '@react-navigation/native';
-import EditNewsScreen from "../screens/EditNewsScreen";
 
 function ChatStack() {
   const { theme } = useTheme();
@@ -108,8 +76,6 @@ function ChatStack() {
         })} 
       />
       <Stack.Screen name="UserProfile" component={UserProfileScreen} options={{ title: 'Профиль пользователя' }} />
-      <Stack.Screen name="UserHierarchy" component={UserHierarchyScreen} options={{ title: 'Сотрудники' }} />
-      <Stack.Screen name="ActingAssignments" component={ActingAssignmentsScreen} options={{ title: 'Исполняющие обязанности' }} />
       <Stack.Screen name="UserMedia" component={UserMediaScreen} options={{ title: 'Медиафайлы' }} />
       <Stack.Screen 
         name="PhotoDetail" 
@@ -157,8 +123,6 @@ function ProfileStack() {
     >
       <Stack.Screen name="ProfileMain" component={ProfileScreen} options={{ title: 'Профиль' }} />
       <Stack.Screen name="CreatePost" component={CreatePostScreen} options={{ title: 'Новая публикация' }} />
-      <Stack.Screen name="Announcements" component={AnnouncementsScreen} options={{ title: 'Объявления' }} />
-      <Stack.Screen name="AnnouncementDetail" component={AnnouncementDetailScreen} options={{ title: 'Объявление' }} />
       <Stack.Screen name="CreateAlbum" component={CreateAlbumScreen} options={{ title: 'Новый альбом' }} />
       <Stack.Screen name="AlbumDetail" component={AlbumDetailScreen} options={{ title: 'Альбом' }} />
       <Stack.Screen name="UserMedia" component={UserMediaScreen} options={{ title: 'Медиафайлы' }} />
@@ -174,10 +138,6 @@ function ProfileStack() {
       <Stack.Screen name="EditProfile" component={EditProfileScreen} options={{ title: 'Редактировать профиль' }} />
       <Stack.Screen name="Admin" component={AdminScreen} options={{ title: 'Админка' }} />
       <Stack.Screen name="AdminUsers" component={AdminUsersScreen} options={{ title: 'Пользователи' }} />
-      <Stack.Screen name="AdminWorkshops" component={AdminWorkshopsScreen} options={{ title: 'Цеха' }} />
-      <Stack.Screen name="AdminPositions" component={AdminPositionsScreen} options={{ title: 'Должности' }} />
-      <Stack.Screen name="AdminSections" component={AdminSectionsScreen} options={{ title: 'Участки' }} />
-      <Stack.Screen name="AdminEmployees" component={AdminEmployeesScreen} options={{ title: 'Сотрудники' }} />
       <Stack.Screen name="AdminModeration" component={AdminModerationScreen} options={{ title: 'Модерация' }} />
       <Stack.Screen name="AdminNews" component={AdminNewsScreen} options={{ title: 'Новости' }} />
       <Stack.Screen name="AdminChats" component={AdminChatsScreen} options={{ title: 'Чаты пользователей' }} />
@@ -185,24 +145,9 @@ function ProfileStack() {
       <Stack.Screen name="EditNews" component={EditNewsScreen} options={{ title: 'Редактировать новость' }} />
       <Stack.Screen name="AdminAppUpload" component={AdminAppUploadScreen} options={{ title: 'Загрузить приложение' }} />
       <Stack.Screen name="AdminLogs" component={AdminLogsScreen} options={{ title: 'Логи системы' }} />
-      <Stack.Screen name="AdminProducts" component={AdminProductsScreen} options={{ title: 'Продукция' }} />
-      <Stack.Screen name="AdminStatementTemplates" component={AdminStatementTemplatesScreen} options={{ title: 'Шаблоны заявлений' }} />
       <Stack.Screen name="MyLikes" component={MyLikesScreen} options={{ title: 'Понравилось' }} />
       <Stack.Screen name="MyReviews" component={MyReviewsScreen} options={{ title: 'Мои отзывы' }} />
       <Stack.Screen name="UserProfile" component={UserProfileScreen} options={{ title: 'Профиль пользователя' }} />
-      <Stack.Screen name="UserHierarchy" component={UserHierarchyScreen} options={{ title: 'Сотрудники' }} />
-      <Stack.Screen name="ActingAssignments" component={ActingAssignmentsScreen} options={{ title: 'Исполняющие обязанности' }} />
-      <Stack.Screen name="DocumentCategories" component={DocumentCategoriesScreen} options={{ title: 'Документы' }} />
-      <Stack.Screen name="DocumentsList" component={DocumentsListScreen} options={({ route }) => ({ title: route.params?.categoryTitle || 'Документы' })} />
-      <Stack.Screen name="CreateDocument" component={CreateDocumentScreen} options={{ title: 'Документ' }} />
-      <Stack.Screen name="DocumentManage" component={DocumentManageScreen} options={{ title: 'Документ' }} />
-      <Stack.Screen name="AssignDocument" component={AssignDocumentScreen} options={{ title: 'Получатели' }} />
-      <Stack.Screen name="MyDocuments" component={MyDocumentsScreen} options={{ title: 'Мои документы' }} />
-      <Stack.Screen name="DocumentView" component={DocumentViewScreen} options={{ title: 'Документ' }} />
-      <Stack.Screen name="DocumentReport" component={DocumentReportScreen} options={{ title: 'Отчёт по ознакомлению' }} />
-      <Stack.Screen name="ApprovalInbox" component={ApprovalInboxScreen} options={{ title: 'На согласование' }} />
-      <Stack.Screen name="DocumentApproval" component={DocumentApprovalScreen} options={{ title: 'Согласование' }} />
-      <Stack.Screen name="DocumentApprovalReport" component={DocumentApprovalReportScreen} options={{ title: 'Отчёт по согласованию' }} />
       <Stack.Screen name="WebView" component={WebViewScreen} />
       <Stack.Screen 
         name="Login" 
@@ -213,31 +158,6 @@ function ProfileStack() {
           gestureEnabled: false,   // Отключаем жесты назад
         }} 
       />
-    </Stack.Navigator>
-  );
-}
-
-function TabelStack() {
-  const { theme } = useTheme();
-  const colors = themeConstants[theme];
-  return (
-    <Stack.Navigator
-      screenOptions={{
-        headerStyle: { backgroundColor: colors.background },
-        headerTintColor: colors.text,
-        contentStyle: { backgroundColor: colors.background },
-        animation: 'fade_from_bottom',
-      }}
-    >
-      <Stack.Screen name="TabelMain" component={TabelScreen} options={{ title: 'Табель' }} />
-      <Stack.Screen name="TabelEmployeePicker" component={TabelEmployeePickerScreen} options={{ title: 'Выбор сотрудника' }} />
-      <Stack.Screen name="TabelSubordinatesTable" component={TabelSubordinatesTableScreen} options={{ title: 'Таблица подчинённых' }} />
-      <Stack.Screen name="ProductionEntryForm" component={ProductionEntryFormScreen} options={{ title: 'Сданная продукция' }} />
-      <Stack.Screen name="ProductionApprovalList" component={ProductionApprovalListScreen} options={{ title: 'На согласовании' }} />
-      <Stack.Screen name="ProductionEntryDetail" component={ProductionEntryDetailScreen} options={{ title: 'Согласование' }} />
-      <Stack.Screen name="TimesheetApprovalList" component={TimesheetApprovalListScreen} options={{ title: 'Согласование часов' }} />
-      <Stack.Screen name="StatementList" component={StatementListScreen} options={{ title: 'Заявления' }} />
-      <Stack.Screen name="StatementForm" component={StatementFormScreen} options={{ title: 'Новое заявление' }} />
     </Stack.Navigator>
   );
 }
@@ -257,13 +177,6 @@ function UsersStack() {
       <Stack.Screen name="UsersMain" component={UsersScreen} options={{ title: 'Пользователи' }} />
       <Stack.Screen name="CreatePost" component={CreatePostScreen} options={{ title: 'Новая публикация' }} />
       <Stack.Screen name="UserProfile" component={UserProfileScreen} options={{ title: 'Профиль пользователя' }} />
-      <Stack.Screen name="UserHierarchy" component={UserHierarchyScreen} options={{ title: 'Сотрудники' }} />
-      <Stack.Screen
-        name="UserStructure"
-        component={UserStructureScreen}
-        options={({ route }) => ({ title: route.params?.title || 'Цеха и участки' })}
-      />
-      <Stack.Screen name="ActingAssignments" component={ActingAssignmentsScreen} options={{ title: 'Исполняющие обязанности' }} />
       <Stack.Screen name="UserMedia" component={UserMediaScreen} options={{ title: 'Медиафайлы' }} />
       <Stack.Screen 
         name="PhotoDetail" 
@@ -289,16 +202,12 @@ function FeedStack() {
         animation: 'fade_from_bottom',
       }}
     >
-      <Stack.Screen name="FeedMain" component={FeedScreen} options={{ title: 'Новости' }} />
+      <Stack.Screen name="FeedMain" component={FeedScreen} options={{ title: 'Лента' }} />
       <Stack.Screen name="CreatePost" component={CreatePostScreen} options={{ title: 'Новая публикация' }} />
-      <Stack.Screen name="Announcements" component={AnnouncementsScreen} options={{ title: 'Объявления' }} />
-      <Stack.Screen name="AnnouncementDetail" component={AnnouncementDetailScreen} options={{ title: 'Объявление' }} />
+      <Stack.Screen name="Notifications" component={NotificationsScreen} options={{ title: 'Уведомления', presentation: 'modal' }} />
       <Stack.Screen name="NewsDetail" component={NewsDetailScreen} options={{ title: 'Новость' }} />
       <Stack.Screen name="EditNews" component={EditNewsScreen} options={{ title: 'Редактировать новость' }} />
-      <Stack.Screen name="CreateAnnouncement" component={CreateAnnouncementScreen} options={{ title: 'Новое объявление' }} />
       <Stack.Screen name="UserProfile" component={UserProfileScreen} options={{ title: 'Профиль пользователя' }} />
-      <Stack.Screen name="UserHierarchy" component={UserHierarchyScreen} options={{ title: 'Сотрудники' }} />
-      <Stack.Screen name="ActingAssignments" component={ActingAssignmentsScreen} options={{ title: 'Исполняющие обязанности' }} />
       <Stack.Screen name="UserMedia" component={UserMediaScreen} options={{ title: 'Медиафайлы' }} />
     </Stack.Navigator>
   );
@@ -317,8 +226,6 @@ export default function TabNavigator() {
           let iconName;
           if (route.name === 'Feed') {
             iconName = focused ? 'newspaper' : 'newspaper-outline';
-          } else if (route.name === 'Tabel') {
-            iconName = focused ? 'document-text' : 'document-text-outline';
           } else if (route.name === 'Users') {
             iconName = focused ? 'people' : 'people-outline';
           } else if (route.name === 'Messages') {
@@ -349,14 +256,6 @@ export default function TabNavigator() {
           title: 'Лента',
           headerShown: false,
         }} 
-      />
-      <Tab.Screen
-        name="Tabel"
-        component={TabelStack}
-        options={{
-          title: 'Табель',
-          headerShown: false,
-        }}
       />
       <Tab.Screen 
         name="Users" 

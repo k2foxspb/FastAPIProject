@@ -3,9 +3,9 @@ import { View, Image, StyleSheet } from 'react-native';
 import { Ionicons as Icon } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
-import { isProductionRole, getRoleIcon } from '../constants/roles';
+import { isAdminOrOwner, getRoleIcon } from '../constants/roles';
 
-// Переиспользуемая аватарка со значком должности (для производственных ролей),
+// Переиспользуемая аватарка со значком роли (admin/owner),
 // чтобы не дублировать разметку бейджа на каждом экране со списком пользователей.
 export default function AvatarWithBadge({ uri, role, size = 40, style, imageStyle }) {
   const { theme } = useTheme();
@@ -19,7 +19,7 @@ export default function AvatarWithBadge({ uri, role, size = 40, style, imageStyl
         source={{ uri: uri || 'https://via.placeholder.com/150' }}
         style={[{ width: size, height: size, borderRadius: size / 2 }, imageStyle]}
       />
-      {isProductionRole(role) && (
+      {isAdminOrOwner(role) && (
         <View
           style={[
             styles.badge,

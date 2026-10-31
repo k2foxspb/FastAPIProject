@@ -14,7 +14,7 @@ import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
 import { storage } from '../utils/storage';
 import { formatName, getFullUrl } from '../utils/formatters';
-import { isProductionRole, getRoleLabel, getRoleIcon, getRoleScope } from '../constants/roles';
+import { getRoleLabel, getRoleIcon } from '../constants/roles';
 import { SkeletonItem, NewsSkeleton } from '../components/SkeletonLoader';
 import { requestAllAppPermissions } from '../utils/permissions';
 
@@ -445,7 +445,12 @@ export default function ProfileScreen({ navigation }) {
     );
   };
 
+  // Группы "announcements" (объявления) и "system" (системные уведомления) нельзя
+  // отключить ни на сервере, ни в UI - даже если бэкенд вдруг пришлёт их в available_groups.
+  const LOCKED_NOTIFICATION_GROUPS = ['announcements', 'system'];
+
   const toggleNotificationGroup = async (groupCode) => {
+    if (LOCKED_NOTIFICATION_GROUPS.includes(groupCode)) return;
     const isDisabled = notificationGroups.disabled.includes(groupCode);
     const newDisabled = isDisabled
       ? notificationGroups.disabled.filter(g => g !== groupCode)
@@ -560,44 +565,9 @@ export default function ProfileScreen({ navigation }) {
             <Text style={[styles.statValue, { color: colors.text, fontSize: 14 }]}>
               {getRoleLabel(user.role)}
             </Text>
-            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Должность</Text>
+            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Роль</Text>
           </View>
-          {user.workshop_name && (
-            <View style={styles.statItem}>
-              <Text style={[styles.statValue, { color: colors.text, fontSize: 14 }]}>
-                {user.workshop_name}
-              </Text>
-              <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Цех</Text>
-            </View>
-          )}
-          {getRoleScope(user.role) === 'section' && user.section_name && (
-            <View style={styles.statItem}>
-              <Text style={[styles.statValue, { color: colors.text, fontSize: 14 }]}>
-                {user.section_name}
-              </Text>
-              <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Участок</Text>
-            </View>
-          )}
         </View>
-
-        {isProductionRole(user.role) ? (
-          <View style={styles.productionActionsRow}>
-            <TouchableOpacity
-              style={[styles.hierarchyBtn, { borderColor: colors.primary, borderWidth: 1 }]}
-              onPress={() => navigation.navigate('UserHierarchy', { userId: user.id, userName: formatName(user) })}
-            >
-              <Icon name="git-network-outline" size={18} color={colors.primary} />
-              <Text style={[styles.hierarchyBtnText, { color: colors.primary }]}>Сотрудники</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.hierarchyBtn, { borderColor: colors.primary, borderWidth: 1 }]}
-              onPress={() => navigation.navigate('ActingAssignments')}
-            >
-              <Icon name="swap-horizontal-outline" size={18} color={colors.primary} />
-              <Text style={[styles.hierarchyBtnText, { color: colors.primary }]}>И.о.</Text>
-            </TouchableOpacity>
-          </View>
-        ) : null}
       </View>
 
       <Modal
@@ -641,39 +611,6 @@ export default function ProfileScreen({ navigation }) {
                 >
                   <Icon name="create-outline" size={22} color={colors.primary} />
                   <Text style={[styles.menuItemText, { color: colors.text }]}>Редактировать профиль</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[styles.menuItem, { borderBottomWidth: 1, borderBottomColor: colors.border }]}
-                  onPress={() => {
-                    setSettingsVisible(false);
-                    navigation.navigate('DocumentCategories');
-                  }}
-                >
-                  <Icon name="folder-outline" size={22} color={colors.primary} />
-                  <Text style={[styles.menuItemText, { color: colors.text }]}>Документы</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[styles.menuItem, { borderBottomWidth: 1, borderBottomColor: colors.border }]}
-                  onPress={() => {
-                    setSettingsVisible(false);
-                    navigation.navigate('MyDocuments');
-                  }}
-                >
-                  <Icon name="document-text-outline" size={22} color={colors.primary} />
-                  <Text style={[styles.menuItemText, { color: colors.text }]}>Мои документы на ознакомление</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[styles.menuItem, { borderBottomWidth: 1, borderBottomColor: colors.border }]}
-                  onPress={() => {
-                    setSettingsVisible(false);
-                    navigation.navigate('ApprovalInbox');
-                  }}
-                >
-                  <Icon name="checkmark-done-outline" size={22} color={colors.primary} />
-                  <Text style={[styles.menuItemText, { color: colors.text }]}>Документы на согласование</Text>
                 </TouchableOpacity>
 
                 <View style={styles.menuSection}>
@@ -740,19 +677,23 @@ export default function ProfileScreen({ navigation }) {
                 {Object.keys(notificationGroups.available).length > 0 && (
                   <View style={[styles.menuSection, { borderTopWidth: 1, borderTopColor: colors.border, marginTop: 5 }]}>
                     <Text style={[styles.menuSectionTitle, { color: colors.textSecondary }]}>Группы оповещений</Text>
-                    {Object.entries(notificationGroups.available).map(([code, label]) => (
-                      <View key={code} style={styles.quietHoursHeader}>
-                        <Text style={[styles.menuItemText, { color: colors.text, marginLeft: 0 }]}>{label}</Text>
-                        <Switch
-                          value={!notificationGroups.disabled.includes(code)}
-                          onValueChange={() => toggleNotificationGroup(code)}
-                          trackColor={{ false: colors.border, true: colors.primary + '80' }}
-                          thumbColor={!notificationGroups.disabled.includes(code) ? colors.primary : '#f4f3f4'}
-                        />
-                      </View>
-                    ))}
+                    {Object.entries(notificationGroups.available).map(([code, label]) => {
+                      const isLocked = LOCKED_NOTIFICATION_GROUPS.includes(code);
+                      return (
+                        <View key={code} style={styles.quietHoursHeader}>
+                          <Text style={[styles.menuItemText, { color: colors.text, marginLeft: 0 }]}>{label}</Text>
+                          <Switch
+                            value={isLocked ? true : !notificationGroups.disabled.includes(code)}
+                            onValueChange={() => toggleNotificationGroup(code)}
+                            disabled={isLocked}
+                            trackColor={{ false: colors.border, true: colors.primary + '80' }}
+                            thumbColor={(isLocked || !notificationGroups.disabled.includes(code)) ? colors.primary : '#f4f3f4'}
+                          />
+                        </View>
+                      );
+                    })}
                     <Text style={[styles.menuHint, { color: colors.textSecondary }]}>
-                      Отключённые группы не будут присылать push-уведомления.
+                      Отключённые группы не будут присылать push-уведомления. Объявления и системные уведомления отключить нельзя.
                     </Text>
                   </View>
                 )}

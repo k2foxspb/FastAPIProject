@@ -21,13 +21,13 @@ NOTIFICATION_GROUPS: dict[str, str] = {
     "news": "Новости",
     "chat": "Личные сообщения",
     "group_chat": "Групповые чаты",
-    "statements": "Заявления",
-    "timesheet": "Табель и продукция",
-    "acting": "Назначения и.о.",
     "friends": "Заявки в друзья",
-    "documents": "Документы на ознакомление",
-    "document_approval": "Согласование документов",
+    "friend_posts": "Новые посты друзей",
 }
+
+# Группы, которые всегда отправляются независимо от пользовательских настроек
+# (объявления и системные уведомления нельзя отключить).
+ALWAYS_ON_GROUPS: set[str] = {"announcements", "system"}
 
 DEFAULT_QUIET_HOURS_START = "22:00"
 DEFAULT_QUIET_HOURS_END = "07:00"
@@ -59,6 +59,8 @@ def get_notification_settings(user) -> dict:
 
 def is_group_enabled(user, group: str) -> bool:
     """Проверяет, не отключил ли пользователь уведомления указанной группы."""
+    if group in ALWAYS_ON_GROUPS:
+        return True
     settings = get_notification_settings(user)
     return group not in settings["disabled_groups"]
 
@@ -125,3 +127,31 @@ def dispatch_notification(
         sender_avatar=sender_avatar,
         silent=silent,
     ))
+
+
+def dispatch_system_notification(
+    user,
+    title: str,
+    body: str,
+    data: Optional[dict] = None,
+    sender_id: Optional[int] = None,
+    sender_avatar: Optional[str] = None,
+    ws_manager=None,
+    ws_message: Optional[dict] = None,
+) -> None:
+    """
+    Обёртка над dispatch_notification для неотключаемых уведомлений
+    (объявления, системные сообщения) - всегда отправляет push, независимо
+    от настроек пользователя.
+    """
+    dispatch_notification(
+        user,
+        group="announcements",
+        title=title,
+        body=body,
+        data=data,
+        sender_id=sender_id,
+        sender_avatar=sender_avatar,
+        ws_manager=ws_manager,
+        ws_message=ws_message,
+    )

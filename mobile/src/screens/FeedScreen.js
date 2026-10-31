@@ -1,10 +1,10 @@
 import React, { useState, useCallback, useRef } from 'react';
 import { getShadow } from '../utils/shadowStyles';
-import { View, Text, FlatList, StyleSheet, TouchableOpacity, RefreshControl, Image, Platform, ScrollView } from 'react-native';
+import { View, Text, FlatList, StyleSheet, TouchableOpacity, RefreshControl, Image, Platform, ScrollView, Alert } from 'react-native';
 import notifee from '@notifee/react-native';
 import FadeInImage from '../components/FadeInImage';
 import FadeInView from '../components/FadeInView';
-import { newsApi, announcementsApi } from '../api';
+import { newsApi, feedApi } from '../api';
 import { getFullUrl, stripHtml } from '../utils/formatters';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
@@ -12,18 +12,25 @@ import { NewsSkeleton } from '../components/SkeletonLoader';
 import { Ionicons as Icon } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useNotifications } from '../context/NotificationContext';
-import { isProductionRole, getRoleScope } from '../constants/roles';
+
+// Нормализует ответ старого /news/ в формат элемента ленты, чтобы рендер карточек
+// был единым, пока бэкенд может быть ещё не готов отдавать новый эндпоинт /feed.
+const newsToFeedItem = (item) => ({
+  ...item,
+  item_type: 'news',
+});
 
 export default function FeedScreen({ navigation }) {
   const { theme } = useTheme();
   const colors = themeConstants[theme];
-  const { currentUser, loadingUser } = useNotifications();
-  const [newsList, setNewsList] = useState([]);
-  const [unreadAnnouncementsCount, setUnreadAnnouncementsCount] = useState(0);
+  const { currentUser, loadingUser, unreadNotificationsCount, refreshUnreadCount } = useNotifications();
+  const [feedList, setFeedList] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const isLoadedRef = useRef(false);
   const loadingInProgressRef = useRef(false);
+
+  const isAdminOrOwner = currentUser?.role === 'admin' || currentUser?.role === 'owner';
 
   const loadData = useCallback(async (isRefresh = false) => {
     if (loadingUser) {
@@ -37,15 +44,20 @@ export default function FeedScreen({ navigation }) {
     loadingInProgressRef.current = true;
 
     try {
-      const [newsRes, announcementsRes] = await Promise.all([
-        newsApi.getNews().catch(() => ({ data: [] })),
-        announcementsApi.getAnnouncements().catch(() => ({ data: [] })),
-      ]);
-
-      setNewsList(newsRes.data || []);
-
-      const unreadCount = (announcementsRes.data || []).filter(a => !a.is_read).length;
-      setUnreadAnnouncementsCount(unreadCount);
+      // Пытаемся получить единую ленту (/feed). Если бэкенд ещё не готов (404),
+      // тихо откатываемся на старый способ получения только новостей, чтобы
+      // приложение не сломалось в процессе параллельной доработки backend.
+      try {
+        const res = await feedApi.getFeed(0, 30);
+        setFeedList(res.data || []);
+      } catch (feedErr) {
+        if (feedErr?.response?.status === 404) {
+          const newsRes = await newsApi.getNews().catch(() => ({ data: [] }));
+          setFeedList((newsRes.data || []).map(newsToFeedItem));
+        } else {
+          throw feedErr;
+        }
+      }
 
       isLoadedRef.current = true;
     } catch (err) {
@@ -62,7 +74,30 @@ export default function FeedScreen({ navigation }) {
       if (!isLoadedRef.current) {
         loadData();
       }
-      
+      refreshUnreadCount?.();
+
+      navigation.setOptions({
+        headerShown: true,
+        title: 'Лента',
+        headerRight: () => (
+          <TouchableOpacity
+            style={{ marginRight: 15 }}
+            onPress={() => navigation.navigate('Notifications')}
+          >
+            <View>
+              <Icon name="notifications-outline" size={24} color={colors.text} />
+              {unreadNotificationsCount > 0 && (
+                <View style={[styles.bellBadge, { backgroundColor: colors.error || '#e53935' }]}>
+                  <Text style={styles.bellBadgeText}>
+                    {unreadNotificationsCount > 99 ? '99+' : unreadNotificationsCount}
+                  </Text>
+                </View>
+              )}
+            </View>
+          </TouchableOpacity>
+        ),
+      });
+
       if (Platform.OS !== 'web') {
         notifee.cancelNotification('new_posts').catch(() => {});
       }
@@ -70,46 +105,118 @@ export default function FeedScreen({ navigation }) {
       return () => {
         isLoadedRef.current = false;
       };
-    }, [loadData])
+    }, [loadData, navigation, colors.text, unreadNotificationsCount, refreshUnreadCount])
   );
 
   const onRefresh = async () => {
     setRefreshing(true);
     await loadData(true);
+    await refreshUnreadCount?.();
     setRefreshing(false);
   };
 
-  const isAdminOrOwner = currentUser?.role === 'admin' || currentUser?.role === 'owner';
+  const getItemTypeBadge = (itemType) => {
+    if (itemType === 'announcement') return { label: 'Объявление', icon: 'megaphone' };
+    if (itemType === 'post') return { label: 'Пост', icon: 'person-circle-outline' };
+    return { label: 'Новость', icon: 'newspaper-outline' };
+  };
 
-  const renderNewsItem = ({ item }) => {
-    const newsThumbnail = item.images && item.images.length > 0 
-      ? item.images[0].thumbnail_url 
-      : item.image_url;
+  const getPrivacyBadge = (privacy) => {
+    if (privacy === 'friends') return { label: 'Для друзей', icon: 'people-outline' };
+    if (privacy === 'private') return { label: 'Только я', icon: 'lock-closed-outline' };
+    return null;
+  };
+
+  const handleModerate = (item) => {
+    Alert.alert('Отметить проверенным', 'Пометить публикацию как проверенную модератором? Это действие необратимо.', [
+      { text: 'Отмена', style: 'cancel' },
+      {
+        text: 'Отметить',
+        onPress: async () => {
+          try {
+            await feedApi.moderatePost(item.id);
+            setFeedList(prev => prev.map(p => p.id === item.id && p.item_type === item.item_type ? { ...p, moderation_status: 'approved' } : p));
+          } catch (err) {
+            Alert.alert('Ошибка', 'Не удалось выполнить модерацию');
+          }
+        },
+      },
+    ]);
+  };
+
+  const handleToggleHide = async (item) => {
+    try {
+      if (item.is_hidden) {
+        await feedApi.unhidePost(item.id);
+      } else {
+        await feedApi.hidePost(item.id);
+      }
+      setFeedList(prev => prev.map(p => p.id === item.id && p.item_type === item.item_type ? { ...p, is_hidden: !p.is_hidden } : p));
+    } catch (err) {
+      Alert.alert('Ошибка', 'Не удалось изменить видимость публикации');
+    }
+  };
+
+  const handleDeletePost = (item) => {
+    Alert.alert('Удаление публикации', 'Вы уверены, что хотите удалить эту публикацию?', [
+      { text: 'Отмена', style: 'cancel' },
+      {
+        text: 'Удалить',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await feedApi.deletePost(item.id);
+            setFeedList(prev => prev.filter(p => !(p.id === item.id && p.item_type === item.item_type)));
+          } catch (err) {
+            Alert.alert('Ошибка', 'Не удалось удалить публикацию');
+          }
+        },
+      },
+    ]);
+  };
+
+  const renderFeedItem = ({ item }) => {
+    const isNews = item.item_type === 'news';
+    const isAnnouncement = item.item_type === 'announcement';
+    const typeBadge = getItemTypeBadge(item.item_type);
+    const privacyBadge = getPrivacyBadge(item.privacy);
+    const thumbnail = item.images && item.images.length > 0 ? item.images[0].thumbnail_url : (item.image_url || item.media_url);
+    const authorName = item.author_first_name
+      ? `${item.author_first_name} ${item.author_last_name || ''}`
+      : (item.user_first_name ? `${item.user_first_name} ${item.user_last_name || ''}` : 'Пользователь');
 
     return (
-      <TouchableOpacity 
-        style={[styles.newsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
-        onPress={() => navigation.navigate('NewsDetail', { newsId: item.id, newsItem: item })}
+      <TouchableOpacity
+        style={[
+          styles.newsCard,
+          { backgroundColor: colors.surface, borderColor: colors.border },
+          isAnnouncement && { backgroundColor: colors.primary + '14', borderColor: colors.primary },
+        ]}
+        onPress={() => {
+          if (isNews) {
+            navigation.navigate('NewsDetail', { newsId: item.id, newsItem: item });
+          }
+        }}
+        activeOpacity={isNews ? 0.7 : 1}
       >
         <View style={styles.newsAuthorHeader}>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.authorInfo}
-            onPress={() => navigation.navigate('UserProfile', { userId: item.author_id })}
+            disabled={isNews}
+            onPress={() => navigation.navigate('UserProfile', { userId: item.author_id || item.user_id })}
           >
-            <Image 
-              source={{ uri: getFullUrl(item.author_avatar_url) || 'https://via.placeholder.com/40' }} 
-              style={styles.authorAvatar} 
+            <Image
+              source={{ uri: getFullUrl(item.author_avatar_url || item.user_avatar_url) || 'https://via.placeholder.com/40' }}
+              style={styles.authorAvatar}
             />
             <View>
-              <Text style={[styles.authorName, { color: colors.text }]}>
-                {item.author_first_name ? `${item.author_first_name} ${item.author_last_name || ''}` : 'Пользователь'}
-              </Text>
+              <Text style={[styles.authorName, { color: colors.text }]}>{authorName}</Text>
               <Text style={[styles.newsDate, { color: colors.textSecondary }]}>
                 {new Date(item.created_at).toLocaleDateString()}
               </Text>
             </View>
           </TouchableOpacity>
-          {isAdminOrOwner && (
+          {isAdminOrOwner && isNews && (
             <TouchableOpacity onPress={(e) => {
               e.stopPropagation();
               navigation.navigate('EditNews', { newsItem: item });
@@ -119,16 +226,49 @@ export default function FeedScreen({ navigation }) {
           )}
         </View>
 
+        <View style={styles.badgesRow}>
+          <View style={[styles.typeBadge, isAnnouncement && { backgroundColor: colors.primary }]}>
+            <Icon name={typeBadge.icon} size={11} color={isAnnouncement ? '#fff' : colors.primary} />
+            <Text style={[styles.typeBadgeText, { color: isAnnouncement ? '#fff' : colors.primary }]}>{typeBadge.label}</Text>
+          </View>
+          {privacyBadge && (
+            <View style={styles.typeBadge}>
+              <Icon name={privacyBadge.icon} size={11} color={colors.textSecondary} />
+              <Text style={[styles.typeBadgeText, { color: colors.textSecondary }]}>{privacyBadge.label}</Text>
+            </View>
+          )}
+          {item.moderation_status === 'pending' && (
+            <View style={[styles.typeBadge, { backgroundColor: 'rgba(255,165,0,0.15)' }]}>
+              <Icon name="time-outline" size={11} color="#FFA500" />
+              <Text style={[styles.typeBadgeText, { color: '#FFA500' }]}>Ещё не проверено</Text>
+            </View>
+          )}
+          {item.moderation_status === 'approved' && (
+            <View style={[styles.typeBadge, { backgroundColor: 'rgba(76,175,80,0.15)' }]}>
+              <Icon name="checkmark-circle-outline" size={11} color="#4CAF50" />
+              <Text style={[styles.typeBadgeText, { color: '#4CAF50' }]}>Проверено</Text>
+            </View>
+          )}
+          {item.is_hidden && (
+            <View style={[styles.typeBadge, { backgroundColor: 'rgba(229,57,53,0.12)' }]}>
+              <Icon name="eye-off-outline" size={11} color={colors.error || '#e53935'} />
+              <Text style={[styles.typeBadgeText, { color: colors.error || '#e53935' }]}>Скрыто</Text>
+            </View>
+          )}
+        </View>
+
         <View style={styles.newsContentRow}>
-          {newsThumbnail && (
-            <FadeInImage 
-              source={{ uri: getFullUrl(newsThumbnail) }} 
-              style={styles.newsThumbnail} 
+          {thumbnail && (
+            <FadeInImage
+              source={{ uri: getFullUrl(thumbnail) }}
+              style={styles.newsThumbnail}
             />
           )}
           <View style={styles.newsTextContainer}>
-            <Text style={[styles.newsTitle, { color: colors.text }]} numberOfLines={2}>{item.title}</Text>
-            <Text style={[styles.newsContentText, { color: colors.textSecondary }]} numberOfLines={2}>
+            {!!item.title && (
+              <Text style={[styles.newsTitle, { color: colors.text }]} numberOfLines={2}>{item.title}</Text>
+            )}
+            <Text style={[styles.newsContentText, { color: colors.textSecondary }]} numberOfLines={3}>
               {stripHtml(item.content)}
             </Text>
           </View>
@@ -137,15 +277,29 @@ export default function FeedScreen({ navigation }) {
         <View style={styles.newsFooter}>
           <View style={styles.reactionsRow}>
             <View style={styles.reactionItem}>
-              <Icon name={item.my_reaction === 1 ? "heart" : "heart-outline"} size={16} color={item.my_reaction === 1 ? colors.error : colors.textSecondary} />
-              <Text style={[styles.reactionCount, { color: colors.textSecondary }]}>{item.likes_count || 0}</Text>
+              <Icon name={(item.my_reaction === 1 || item.my_reaction) ? "heart" : "heart-outline"} size={16} color={(item.my_reaction === 1 || item.my_reaction) ? colors.error : colors.textSecondary} />
+              <Text style={[styles.reactionCount, { color: colors.textSecondary }]}>{item.likes_count || item.reactions_count || 0}</Text>
             </View>
             <View style={[styles.reactionItem, { marginLeft: 15 }]}>
               <Icon name="chatbubble-outline" size={16} color={colors.textSecondary} />
               <Text style={[styles.reactionCount, { color: colors.textSecondary }]}>{item.comments_count || 0}</Text>
             </View>
           </View>
-          <Icon name="chevron-forward" size={16} color={colors.border} />
+          {!isNews && isAdminOrOwner && (
+            <View style={styles.moderationRow}>
+              {item.moderation_status === 'pending' && (
+                <TouchableOpacity style={styles.moderationBtn} onPress={() => handleModerate(item)}>
+                  <Icon name="checkmark-done-outline" size={16} color="#4CAF50" />
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity style={styles.moderationBtn} onPress={() => handleToggleHide(item)}>
+                <Icon name={item.is_hidden ? 'eye-outline' : 'eye-off-outline'} size={16} color={colors.textSecondary} />
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.moderationBtn} onPress={() => handleDeletePost(item)}>
+                <Icon name="trash-outline" size={16} color={colors.error || '#e53935'} />
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
       </TouchableOpacity>
     );
@@ -153,30 +307,25 @@ export default function FeedScreen({ navigation }) {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      {/* Action Header: Announcements link, Propose News button, Moderation (if admin) */}
+      {/* Action Header: создание поста / объявления (только admin/owner) */}
       <View style={[styles.actionHeader, { borderBottomColor: colors.border }]}>
         <TouchableOpacity
-          style={[styles.announcementsButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
-          onPress={() => navigation.navigate('Announcements')}
+          style={[styles.proposeBtn, { backgroundColor: colors.primary }]}
+          onPress={() => navigation.navigate('CreatePost')}
         >
-          <Icon name="megaphone-outline" size={18} color={colors.primary} />
-          <Text style={[styles.announcementsButtonText, { color: colors.text }]}>Объявления</Text>
-          {unreadAnnouncementsCount > 0 && (
-            <View style={[styles.badge, { backgroundColor: colors.error || '#e53935' }]}>
-              <Text style={styles.badgeText}>{unreadAnnouncementsCount}</Text>
-            </View>
-          )}
+          <Icon name="add" size={16} color="#fff" />
+          <Text style={styles.proposeBtnText}>Новая публикация</Text>
         </TouchableOpacity>
 
-        <View style={styles.headerRightActions}>
+        {isAdminOrOwner && (
           <TouchableOpacity
-            style={[styles.proposeBtn, { backgroundColor: colors.primary }]}
-            onPress={() => navigation.navigate('EditNews')}
+            style={[styles.actionBtn, { borderColor: colors.primary }]}
+            onPress={() => navigation.navigate('CreatePost', { isAnnouncement: true })}
           >
-            <Icon name="add" size={16} color="#fff" />
-            <Text style={styles.proposeBtnText}>Предложить новость</Text>
+            <Icon name="megaphone-outline" size={16} color={colors.primary} />
+            <Text style={[styles.actionBtnText, { color: colors.primary }]}>Объявление</Text>
           </TouchableOpacity>
-        </View>
+        )}
       </View>
 
       {loading && !refreshing ? (
@@ -187,9 +336,9 @@ export default function FeedScreen({ navigation }) {
       ) : (
         <FadeInView visible={!loading} duration={250}>
           <FlatList
-            data={newsList}
-            keyExtractor={(item) => item.id.toString()}
-            renderItem={renderNewsItem}
+            data={feedList}
+            keyExtractor={(item, index) => `${item.item_type}-${item.id}-${index}`}
+            renderItem={renderFeedItem}
             contentContainerStyle={styles.listContent}
             refreshControl={
               <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[colors.primary]} />
@@ -198,7 +347,7 @@ export default function FeedScreen({ navigation }) {
               <View style={styles.emptyContainer}>
                 <Icon name="newspaper-outline" size={64} color={colors.border} />
                 <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
-                  Пока новостей нет
+                  Пока в ленте ничего нет
                 </Text>
               </View>
             }
@@ -219,31 +368,26 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderBottomWidth: 1,
   },
-  announcementsButton: {
+  bellBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -6,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    paddingHorizontal: 3,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bellBadgeText: { color: '#fff', fontSize: 9, fontWeight: 'bold' },
+  headerRightActions: { flexDirection: 'row', alignItems: 'center' },
+  actionBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 16,
     borderWidth: 1,
-  },
-  announcementsButtonText: { fontSize: 13, fontWeight: '600', marginLeft: 6 },
-  badge: {
-    marginLeft: 6,
-    paddingHorizontal: 6,
-    paddingVertical: 1,
-    borderRadius: 10,
-  },
-  badgeText: { color: '#fff', fontSize: 11, fontWeight: 'bold' },
-  headerRightActions: { flexDirection: 'row', alignItems: 'center' },
-  actionBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-    borderRadius: 16,
-    borderWidth: 1,
-    marginRight: 8,
   },
   actionBtnText: { fontSize: 12, fontWeight: '600', marginLeft: 4 },
   proposeBtn: {
@@ -260,6 +404,18 @@ const styles = StyleSheet.create({
   authorInfo: { flexDirection: 'row', alignItems: 'center' },
   authorAvatar: { width: 36, height: 36, borderRadius: 18, marginRight: 10 },
   authorName: { fontSize: 14, fontWeight: 'bold' },
+  badgesRow: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 12, gap: 6 },
+  typeBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.05)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+    marginRight: 6,
+    marginBottom: 6,
+  },
+  typeBadgeText: { fontSize: 10, fontWeight: '600', marginLeft: 4 },
   newsContentRow: { flexDirection: 'row', padding: 12 },
   newsThumbnail: { width: 80, height: 80, borderRadius: 8 },
   newsTextContainer: { flex: 1, paddingLeft: 12, justifyContent: 'center' },
@@ -270,6 +426,8 @@ const styles = StyleSheet.create({
   reactionsRow: { flexDirection: 'row', alignItems: 'center' },
   reactionItem: { flexDirection: 'row', alignItems: 'center' },
   reactionCount: { fontSize: 12, marginLeft: 4 },
+  moderationRow: { flexDirection: 'row', alignItems: 'center' },
+  moderationBtn: { marginLeft: 14 },
   emptyContainer: { 
     flex: 1, 
     justifyContent: 'center', 

@@ -14,9 +14,9 @@ from app.models.news import News as NewsModel
 from app.models.chat import ChatMessage as ChatMessageModel, FileUploadSession
 from app.schemas.users import User as UserSchema, AdminPermissionCreate, AdminPermission as AdminPermissionSchema, AppVersionResponse, AppLogRequest
 from app.schemas.chat import ChatMessageResponse, DialogResponse, UploadInitRequest, UploadSessionResponse, UploadStatusResponse
-from app.api.dependencies import get_async_db, refresh_positions_cache_dep
+from app.api.dependencies import get_async_db
 from app.core.auth import get_current_owner, get_current_admin, check_admin_permission
-from app.core.roles import get_production_roles
+from app.core.roles import can_change_role
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -54,8 +54,6 @@ async def get_user_profile_admin(
         select(UserModel).where(UserModel.id == user_id).options(
             selectinload(UserModel.photos),
             selectinload(UserModel.albums).selectinload(PhotoAlbumModel.photos),
-            selectinload(UserModel.workshop),
-            selectinload(UserModel.section)
         )
     )
     user = result.scalar_one_or_none()
@@ -70,30 +68,25 @@ async def update_user_role(
     role: str,
     owner: UserModel = Depends(get_current_owner),
     db: AsyncSession = Depends(get_async_db),
-    _positions_refreshed: None = Depends(refresh_positions_cache_dep),
 ):
-    """Изменяет роль пользователя. Только владелец может назначать админов или передавать владение."""
-    # "buyer" - роль обычного пользователя системы (не входит в производственную
-    # иерархию), поэтому добавляем её отдельно к списку допустимых значений.
-    allowed_roles = {"buyer", "admin", *get_production_roles()}
+    """
+    Изменяет роль пользователя. Доступно только владельцу.
+    Через этот эндпоинт можно назначить только роли "admin" или "user" -
+    роль "owner" через него менять нельзя (передача владения не реализована),
+    и менять роль пользователя, у которого уже role=="owner", запрещено.
+    """
+    allowed_roles = {"admin", "user"}
     if role not in allowed_roles:
         raise HTTPException(status_code=400, detail="Invalid role")
-    
+
     result = await db.execute(select(UserModel).where(UserModel.id == user_id))
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    if role == "owner":
-        # Проверяем, есть ли уже владелец (кроме целевого пользователя, если он уже владелец)
-        result_owner = await db.execute(select(UserModel).where(UserModel.role == "owner", UserModel.id != user_id))
-        if result_owner.scalar_one_or_none():
-            raise HTTPException(status_code=400, detail="Owner already exists. There can be only one owner.")
-    
-    if role == "owner" and user.id != owner.id:
-        # Передача владения: текущий владелец становится админом
-        owner.role = "admin"
-    
+    if not can_change_role(owner.role, user.role, role):
+        raise HTTPException(status_code=400, detail="Cannot change role of the owner")
+
     user.role = role
     await db.commit()
     return {"message": f"User {user.email} role updated to {role}"}

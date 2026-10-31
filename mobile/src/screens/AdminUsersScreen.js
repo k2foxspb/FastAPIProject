@@ -1,17 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert } from 'react-native';
 import api from '../api';
-import { adminApi } from '../api';
 import { Ionicons as Icon } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
-import { getRoleLabel, getRoleIcon, loadPositions } from '../constants/roles';
+import { getRoleLabel, getRoleIcon, canManageRoles } from '../constants/roles';
+import { useNotifications } from '../context/NotificationContext';
 
 export default function AdminUsersScreen({ navigation }) {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const { theme } = useTheme();
   const colors = themeConstants[theme];
+  const { currentUser } = useNotifications();
+  // Назначать/снимать роль "admin" может только владелец (см. app/core/roles.py) -
+  // администратор элементы управления ролями не видит вообще.
+  const canEditRoles = canManageRoles(currentUser?.role);
 
   const fetchUsers = async () => {
     try {
@@ -26,28 +30,20 @@ export default function AdminUsersScreen({ navigation }) {
 
   useEffect(() => {
     fetchUsers();
-    // Подгружаем актуальный список должностей, чтобы верно отображать названия
-    // ролей производственной иерархии у тех, кто также состоит в ней.
-    loadPositions();
   }, []);
 
-  // Этот экран управляет только базовой ролью аккаунта в системе (обычный
-  // пользователь или администратор). Производственная иерархия (владелец,
-  // начальники, мастера и т.д.) назначается отдельно, на экране "Сотрудники"
-  // (см. AdminEmployeesScreen.js), поэтому здесь эти роли не предлагаются.
+  // Ролей всего три: owner/admin/user. Роль "owner" назначить/снять нельзя -
+  // владелец может переключать только "admin" <-> "user".
   const USER_ROLE_OPTIONS = [
-    { value: 'buyer', label: 'Пользователь' },
+    { value: 'user', label: 'Пользователь' },
     { value: 'admin', label: 'Администратор' },
   ];
 
-  // Для производственной иерархии (владелец, начальники и т.д.) название
-  // роли берём из общего справочника должностей, чтобы не показывать сырой код.
-  const getUserRoleLabel = (role) => getRoleLabel(role);
-
   const changeRole = (userId, currentRole) => {
+    if (currentRole === 'owner') return;
     Alert.alert(
       'Сменить роль',
-      `Текущая роль: ${getUserRoleLabel(currentRole)}`,
+      `Текущая роль: ${getRoleLabel(currentRole)}`,
       USER_ROLE_OPTIONS.map(({ value, label }) => ({
         text: label,
         onPress: async () => {
@@ -72,15 +68,17 @@ export default function AdminUsersScreen({ navigation }) {
         <Icon name={getRoleIcon(item.role)} size={18} color={colors.primary} style={styles.roleIcon} />
         <View>
           <Text style={[styles.userEmail, { color: colors.text }]}>{item.email}</Text>
-          <Text style={[styles.userRole, { color: colors.primary }]}>{getUserRoleLabel(item.role)}</Text>
+          <Text style={[styles.userRole, { color: colors.primary }]}>{getRoleLabel(item.role)}</Text>
         </View>
       </View>
-      <TouchableOpacity 
-        style={[styles.roleButton, { backgroundColor: colors.primary }]}
-        onPress={() => changeRole(item.id, item.role)}
-      >
-        <Text style={styles.roleButtonText}>Роль</Text>
-      </TouchableOpacity>
+      {canEditRoles && item.role !== 'owner' && (
+        <TouchableOpacity 
+          style={[styles.roleButton, { backgroundColor: colors.primary }]}
+          onPress={() => changeRole(item.id, item.role)}
+        >
+          <Text style={styles.roleButtonText}>Роль</Text>
+        </TouchableOpacity>
+      )}
     </TouchableOpacity>
   );
 

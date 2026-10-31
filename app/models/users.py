@@ -1,12 +1,8 @@
 from datetime import datetime
-from sqlalchemy import Boolean, Integer, String, ForeignKey, DateTime, Numeric, JSON, func, UniqueConstraint
+from sqlalchemy import Boolean, Integer, String, ForeignKey, DateTime, JSON, func, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from typing import TYPE_CHECKING
 from app.database import Base
-
-if TYPE_CHECKING:
-    from app.models.structure import Workshop, Section
 
 class User(Base):
     __tablename__ = "users"
@@ -18,22 +14,10 @@ class User(Base):
     first_name: Mapped[str | None] = mapped_column(String, nullable=True)
     last_name: Mapped[str | None] = mapped_column(String, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    role: Mapped[str] = mapped_column(String, default="worker")
-    # Роли: "admin", "owner" и производственная иерархия
-    # ("owner", "shop_chief", "section_chief", "master",
-    # "assistant_master", "worker" — см. app.core.roles).
+    role: Mapped[str] = mapped_column(String, default="user")
+    # Роли: "owner", "admin", "user" - см. app.core.roles.
     status: Mapped[str] = mapped_column(String, default="offline", nullable=True)
     last_seen: Mapped[str] = mapped_column(String, nullable=True)
-
-    # Табельный номер сотрудника (указывается при регистрации/оформлении).
-    tab_number: Mapped[str | None] = mapped_column(String, nullable=True)
-    # График работы - сколько часов в день обычно работает сотрудник
-    # (например 8 или 7.2 при сокращённом дне).
-    work_schedule_hours: Mapped[float | None] = mapped_column(Numeric(4, 2), nullable=True, default=8)
-
-    # Привязка к производственной структуре (цех/участок)
-    workshop_id: Mapped[int | None] = mapped_column(ForeignKey("workshops.id", ondelete="SET NULL"), nullable=True)
-    section_id: Mapped[int | None] = mapped_column(ForeignKey("sections.id", ondelete="SET NULL"), nullable=True)
 
     avatar_url: Mapped[str | None] = mapped_column(String, nullable=True)
     avatar_preview_url: Mapped[str | None] = mapped_column(String, nullable=True)
@@ -56,8 +40,6 @@ class User(Base):
     album_comments: Mapped[list["PhotoAlbumComment"]] = relationship("PhotoAlbumComment", back_populates="user", cascade="all, delete-orphan")
     album_reactions: Mapped[list["PhotoAlbumReaction"]] = relationship("PhotoAlbumReaction", back_populates="user", cascade="all, delete-orphan")
     admin_permissions: Mapped[list["AdminPermission"]] = relationship("AdminPermission", back_populates="admin", cascade="all, delete-orphan")
-    workshop: Mapped["Workshop | None"] = relationship("Workshop", back_populates="employees", foreign_keys=[workshop_id])
-    section: Mapped["Section | None"] = relationship("Section", back_populates="employees", foreign_keys=[section_id])
 
     # Friends relationships
     sent_friend_requests: Mapped[list["Friendship"]] = relationship(
@@ -216,7 +198,19 @@ class PhotoAlbumCommentReaction(Base):
 
 
 class ProfilePost(Base):
-    """Личные публикации в профиле пользователя (без модерации, не попадают в новости/объявления)."""
+    """
+    Публикации в профиле пользователя. Попадают в общую ленту согласно
+    приватности (public/friends/private), см. app.api.routers.news (feed).
+
+    post_type:
+        "post"         - обычная публикация пользователя;
+        "announcement" - важное объявление администратора/владельца для всех
+                         (всегда privacy="public", уведомление шлётся всем).
+
+    moderation_status:
+        "pending"  - ещё не проверено модератором (значение по умолчанию);
+        "approved" - проверено модератором (отметку нельзя снять обратно).
+    """
     __tablename__ = "profile_posts"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -225,6 +219,9 @@ class ProfilePost(Base):
     media_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     media_type: Mapped[str | None] = mapped_column(String(50), nullable=True)  # "image", "video", etc.
     privacy: Mapped[str] = mapped_column(String(20), default="public", server_default="public", nullable=False)  # "public", "friends", "private"
+    post_type: Mapped[str] = mapped_column(String(20), default="post", server_default="post", nullable=False)  # "post", "announcement"
+    moderation_status: Mapped[str] = mapped_column(String(20), default="pending", server_default="pending", nullable=False)  # "pending", "approved"
+    is_hidden: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1", nullable=False)

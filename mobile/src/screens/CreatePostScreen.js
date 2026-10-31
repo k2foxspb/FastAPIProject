@@ -15,14 +15,17 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { RichEditor, RichToolbar, actions } from 'react-native-pell-rich-editor';
 import { Ionicons as Icon } from '@expo/vector-icons';
-import { usersApi, newsApi } from '../api';
+import { usersApi, newsApi, feedApi } from '../api';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
 
-export default function CreatePostScreen({ navigation }) {
+export default function CreatePostScreen({ navigation, route }) {
   const insets = useSafeAreaInsets();
   const { theme } = useTheme();
   const colors = themeConstants[theme];
+  // Если экран открыт с isAnnouncement=true (кнопка "Создать объявление" на ленте,
+  // доступна только admin/owner) - скрываем выбор приватности и вызываем createAnnouncement.
+  const isAnnouncement = !!route?.params?.isAnnouncement;
 
   const [content, setContent] = useState('');
   const [privacy, setPrivacy] = useState('public'); // 'public' | 'friends' | 'private'
@@ -116,19 +119,27 @@ export default function CreatePostScreen({ navigation }) {
         mediaType = 'image';
       }
 
-      await usersApi.createProfilePost({
-        content: trimmedContent,
-        media_url: mediaUrl,
-        media_type: mediaType,
-        privacy: privacy,
-      });
+      if (isAnnouncement) {
+        await feedApi.createAnnouncement({
+          content: trimmedContent,
+          media_url: mediaUrl,
+          media_type: mediaType,
+        });
+      } else {
+        await usersApi.createProfilePost({
+          content: trimmedContent,
+          media_url: mediaUrl,
+          media_type: mediaType,
+          privacy: privacy,
+        });
+      }
 
-      Alert.alert('Успех', 'Публикация создана', [
+      Alert.alert('Успех', isAnnouncement ? 'Объявление создано' : 'Публикация создана', [
         { text: 'OK', onPress: () => navigation.goBack() },
       ]);
     } catch (err) {
-      console.error('Create profile post error:', err);
-      Alert.alert('Ошибка', err.response?.data?.detail || 'Не удалось создать публикацию');
+      console.error('Create post error:', err);
+      Alert.alert('Ошибка', err.response?.data?.detail || (isAnnouncement ? 'Не удалось создать объявление' : 'Не удалось создать публикацию'));
     } finally {
       setLoading(false);
     }
@@ -165,9 +176,9 @@ export default function CreatePostScreen({ navigation }) {
             </TouchableOpacity>
           </ScrollView>
 
-          {/* Приватность */}
-          <Text style={[styles.label, { color: colors.text }]}>Кто может видеть</Text>
-          <View style={styles.privacyRow}>
+          {/* Приватность - для объявлений не показываем, они всегда публичны */}
+          {!isAnnouncement && <Text style={[styles.label, { color: colors.text }]}>Кто может видеть</Text>}
+          {!isAnnouncement && <View style={styles.privacyRow}>
             <TouchableOpacity
               style={[
                 styles.privacyChip,
@@ -206,10 +217,10 @@ export default function CreatePostScreen({ navigation }) {
                 Только я
               </Text>
             </TouchableOpacity>
-          </View>
+          </View>}
 
           {/* Текст публикации с редактором */}
-          <Text style={[styles.label, { color: colors.text }]}>Текст публикации</Text>
+          <Text style={[styles.label, { color: colors.text }]}>{isAnnouncement ? 'Текст объявления' : 'Текст публикации'}</Text>
           <View style={[styles.editorContainer, { borderColor: colors.border, backgroundColor: colors.card }]}>
             <RichToolbar
               editor={richText}
@@ -268,7 +279,7 @@ export default function CreatePostScreen({ navigation }) {
           {loading ? (
             <ActivityIndicator color="#fff" />
           ) : (
-            <Text style={styles.saveButtonText}>Опубликовать</Text>
+            <Text style={styles.saveButtonText}>{isAnnouncement ? 'Опубликовать объявление' : 'Опубликовать'}</Text>
           )}
         </TouchableOpacity>
       </View>

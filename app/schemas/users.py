@@ -9,19 +9,14 @@ class UserCreate(BaseModel):
     password: str = Field(min_length=8, description="Пароль (минимум 8 символов)")
     first_name: str | None = Field(default=None, description="Имя")
     last_name: str | None = Field(default=None, description="Фамилия")
-    role: str = Field(default="worker", pattern="^(worker|assistant_master|master|section_chief|shop_chief|admin|owner)$",
-                      description="Роль: производственная иерархия, 'admin' или 'owner'")
-    tab_number: str | None = Field(default=None, max_length=50, description="Табельный номер сотрудника")
-    work_schedule_hours: Decimal | None = Field(default=Decimal("8"), ge=0, le=24,
-                                                 description="График работы - часов в день (например 8 или 7.2)")
+    role: str = Field(default="user", pattern="^(owner|admin|user)$",
+                      description="Роль: 'owner', 'admin' или 'user'")
 
 
 class UserUpdate(BaseModel):
     email: EmailStr | None = None
     first_name: str | None = None
     last_name: str | None = None
-    tab_number: str | None = None
-    work_schedule_hours: Decimal | None = None
 
 class ReactorInfo(BaseModel):
     id: int
@@ -381,15 +376,9 @@ class User(BaseModel):
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     is_active: bool = True
-    role: str = "worker"
+    role: str = "user"
     status: Optional[str] = "offline"
     last_seen: Optional[str] = None
-    tab_number: Optional[str] = None
-    work_schedule_hours: Optional[Decimal] = None
-    workshop_id: Optional[int] = None
-    section_id: Optional[int] = None
-    workshop_name: Optional[str] = None
-    section_name: Optional[str] = None
     avatar_url: Optional[str] = None
     avatar_preview_url: Optional[str] = None
     fcm_token: Optional[str] = None
@@ -414,15 +403,9 @@ class User(BaseModel):
                     "first_name": obj.get("first_name"),
                     "last_name": obj.get("last_name"),
                     "is_active": obj.get("is_active", True),
-                    "role": obj.get("role", "worker"),
+                    "role": obj.get("role", "user"),
                     "status": obj.get("status", "offline"),
                     "last_seen": obj.get("last_seen"),
-                    "tab_number": obj.get("tab_number"),
-                    "work_schedule_hours": obj.get("work_schedule_hours"),
-                    "workshop_id": obj.get("workshop_id"),
-                    "section_id": obj.get("section_id"),
-                    "workshop_name": obj.get("workshop_name"),
-                    "section_name": obj.get("section_name"),
                     "avatar_url": obj.get("avatar_url"),
                     "avatar_preview_url": obj.get("avatar_preview_url"),
                     "fcm_token": obj.get("fcm_token"),
@@ -443,15 +426,9 @@ class User(BaseModel):
                 "first_name": getattr(obj, "first_name", None),
                 "last_name": getattr(obj, "last_name", None),
                 "is_active": bool(getattr(obj, "is_active", True)),
-                "role": str(getattr(obj, "role", "worker")),
+                "role": str(getattr(obj, "role", "user")),
                 "status": str(getattr(obj, "status", "offline")),
                 "last_seen": getattr(obj, "last_seen", None),
-                "tab_number": getattr(obj, "tab_number", None),
-                "work_schedule_hours": getattr(obj, "work_schedule_hours", None),
-                "workshop_id": getattr(obj, "workshop_id", None),
-                "section_id": getattr(obj, "section_id", None),
-                "workshop_name": None,
-                "section_name": None,
                 "avatar_url": getattr(obj, "avatar_url", None),
                 "avatar_preview_url": getattr(obj, "avatar_preview_url", None),
                 "fcm_token": getattr(obj, "fcm_token", None),
@@ -480,14 +457,6 @@ class User(BaseModel):
                 perms = obj_dict["admin_permissions"]
                 data["admin_permissions"] = [AdminPermission.model_validate(p) for p in perms]
 
-            # Название цеха/участка - подтягиваем только если связь была
-            # заранее загружена (selectinload), чтобы не триггерить ленивую
-            # подгрузку на асинхронной сессии.
-            if "workshop" in obj_dict and obj_dict["workshop"] is not None:
-                data["workshop_name"] = obj_dict["workshop"].name
-            if "section" in obj_dict and obj_dict["section"] is not None:
-                data["section_name"] = obj_dict["section"].name
-
             return cls(**data)
         except Exception as e:
             from loguru import logger
@@ -498,7 +467,7 @@ class User(BaseModel):
                 email=getattr(obj, "email", None),
                 first_name=getattr(obj, "first_name", "Error"),
                 last_name=getattr(obj, "last_name", "Validation"),
-                role=getattr(obj, "role", "worker"),
+                role=getattr(obj, "role", "user"),
                 avatar_url=getattr(obj, "avatar_url", None)
             )
 
@@ -614,6 +583,9 @@ class ProfilePostCreate(BaseModel):
     media_url: Optional[str] = None
     media_type: Optional[str] = None
     privacy: str = "public"  # "public", "friends", "private"
+    # post_type намеренно не принимается из тела запроса обычных пользователей -
+    # объявления ("announcement") создаются только через отдельный эндпоинт
+    # для admin/owner (см. app.api.routers.feed).
 
 
 class ProfilePostUpdate(BaseModel):
@@ -670,6 +642,9 @@ class ProfilePostResponse(BaseModel):
     media_url: Optional[str] = None
     media_type: Optional[str] = None
     privacy: str = "public"
+    post_type: str = "post"  # "post", "announcement"
+    moderation_status: str = "pending"  # "pending", "approved"
+    is_hidden: bool = False
     created_at: datetime
     updated_at: Optional[datetime] = None
     is_active: bool = True

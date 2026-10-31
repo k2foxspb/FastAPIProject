@@ -111,7 +111,7 @@ export const usersApi = {
   getMe: (appVersion = null) => api.get('/users/me', { params: { app_version: appVersion } }),
   refreshAccessToken: (refreshToken) => authClient.post('/users/refresh-token-access', { refresh_token: refreshToken }),
   // Пользователи
-  getUsers: (search, workshopId, sectionId) => api.get('/users/', { params: { search, workshop_id: workshopId, section_id: sectionId } }),
+  getUsers: (search) => api.get('/users/', { params: { search } }),
   getUser: (id) => api.get(`/users/${id}`),
 
   // Альбомы
@@ -190,51 +190,25 @@ export const usersApi = {
   deleteProfilePostComment: (commentId) => api.delete(`/users/posts/comments/${commentId}`),
 };
 
-export const orgApi = {
-  getAssignableRoles: () => api.get('/org/roles/assignable'),
-  // Должности (не захардкожены - хранятся в БД, см. GET /org/positions)
-  getPositions: () => api.get('/org/positions'),
-  createPosition: (data) => api.post('/org/positions', data),
-  updatePosition: (positionId, data) => api.patch(`/org/positions/${positionId}`, data),
-  reorderPositions: (positions) => api.patch('/org/positions/reorder', { positions }),
-  deletePosition: (positionId) => api.delete(`/org/positions/${positionId}`),
-  getWorkshops: (workshopId) => api.get('/org/workshops', { params: { workshop_id: workshopId } }),
-  createWorkshop: (data) => api.post('/org/workshops', data),
-  updateWorkshop: (workshopId, data) => api.patch(`/org/workshops/${workshopId}`, data),
-  deleteWorkshop: (workshopId) => api.delete(`/org/workshops/${workshopId}`),
-  getSections: (workshopId) => api.get('/org/sections', { params: { workshop_id: workshopId } }),
-  createSection: (data) => api.post('/org/sections', data),
-  updateSection: (sectionId, data) => api.patch(`/org/sections/${sectionId}`, data),
-  deleteSection: (sectionId) => api.delete(`/org/sections/${sectionId}`),
-  getEmployees: () => api.get('/org/employees'),
-  getEmployeeHierarchy: (userId) => api.get(`/org/employees/${userId}/hierarchy`),
-  createEmployee: (data) => api.post('/org/employees', data),
-  assignEmployee: (data) => api.post('/org/employees/assign', data),
-  updateEmployeeRole: (userId, role) => api.patch(`/org/employees/${userId}/role`, { role }),
-  updateEmployeeAssignment: (userId, data) => api.patch(`/org/employees/${userId}/assignment`, data),
-  deleteEmployee: (userId) => api.delete(`/org/employees/${userId}`),
-  moveWorker: (userId, sectionId) => api.post(`/org/employees/${userId}/move`, { section_id: sectionId }),
+// Единая лента - объединяет новости, публичные/дружеские публикации пользователей
+// и объявления (ProfilePost с post_type="announcement"), каждый элемент содержит item_type.
+export const feedApi = {
+  getFeed: (skip = 0, limit = 20) => api.get('/feed', { params: { skip, limit } }),
+  createPost: (data) => api.post('/users/me/posts', data),
+  createAnnouncement: (data) => api.post('/feed/announcements', data),
+  moderatePost: (postId) => api.post(`/posts/${postId}/moderate`),
+  hidePost: (postId) => api.post(`/posts/${postId}/hide`),
+  unhidePost: (postId) => api.post(`/posts/${postId}/unhide`),
+  deletePost: (postId) => api.delete(`/posts/${postId}`),
 };
 
-export const actingApi = {
-  // Назначение исполняющего обязанности (и.о.) на должность другого сотрудника
-  getAssignments: (includeInactive = false) => api.get('/acting/assignments', { params: { include_inactive: includeInactive } }),
-  createAssignment: (data) => api.post('/acting/assignments', data),
-  revokeAssignment: (assignmentId) => api.delete(`/acting/assignments/${assignmentId}`),
-};
-
-export const announcementsApi = {
-  // Объявления по иерархии - автор может сузить группу получателей через
-  // target_workshop_id/target_section_id (см. app/api/routers/announcements.py)
-  getAnnouncements: () => api.get('/announcements/'),
-  getAnnouncementDetail: (announcementId) => api.get(`/announcements/${announcementId}/`),
-  createAnnouncement: (data) => api.post('/announcements/', data),
-  markAsRead: (announcementId) => api.post(`/announcements/${announcementId}/read`),
-  getRecipients: (announcementId) => api.get(`/announcements/${announcementId}/recipients`),
-  deleteAnnouncement: (announcementId) => api.delete(`/announcements/${announcementId}`),
-  getAnnouncementComments: (announcementId) => api.get(`/announcements/${announcementId}/comments`),
-  addAnnouncementComment: (announcementId, comment) => api.post(`/announcements/${announcementId}/comments`, { comment }),
-  deleteAnnouncementComment: (commentId) => api.delete(`/announcements/comments/${commentId}`),
+export const notificationsApi = {
+  getNotifications: (skip = 0, limit = 20) => api.get('/notifications', { params: { skip, limit } }),
+  getUnreadCount: () => api.get('/notifications/unread-count'),
+  markRead: (id) => api.post(`/notifications/${id}/read`),
+  markAllRead: () => api.post('/notifications/read-all'),
+  getSettings: () => api.get('/notifications/settings'),
+  updateSettings: (data) => api.put('/notifications/settings', data),
 };
 
 export const newsApi = {
@@ -304,99 +278,6 @@ export const groupChatApi = {
   demoteAdmin: (groupId, userId) => api.delete(`/chat/groups/${groupId}/admins/${userId}`),
   leaveGroup: (groupId) => api.post(`/chat/groups/${groupId}/leave`),
   deleteGroup: (groupId) => api.delete(`/chat/groups/${groupId}`),
-};
-
-export const timesheetApi = {
-  // Табель рабочего времени
-  getTimesheet: (userId, year, month) => api.get(`/timesheet/${userId}`, { params: { year, month } }),
-  upsertTimesheetDay: (userId, data) => api.put(`/timesheet/${userId}`, data),
-  getExportUrl: (userId, year, month) => `${API_BASE_URL}/timesheet/${userId}/export?year=${year}&month=${month}`,
-
-  // Согласование изменений часов руководителем
-  getTimesheetSupervisors: (userId) => api.get(`/timesheet/${userId}/supervisors`),
-  getPendingTimesheetEntries: () => api.get('/timesheet/entries/pending'),
-  getTimesheetEntryDetail: (entryId) => api.get(`/timesheet/entry/${entryId}`),
-  approveTimesheetEntry: (entryId) => api.post(`/timesheet/entry/${entryId}/approve`),
-  rejectTimesheetEntry: (entryId, comment) => api.post(`/timesheet/entry/${entryId}/reject`, { comment }),
-
-  // Справочник продукции
-  getProducts: (includeInactive = false) => api.get('/timesheet/products/list', { params: { include_inactive: includeInactive } }),
-  createProduct: (data) => api.post('/timesheet/products', data),
-  updateProduct: (productId, data) => api.put(`/timesheet/products/${productId}`, data),
-  deleteProduct: (productId) => api.delete(`/timesheet/products/${productId}`),
-
-  // Сданная продукция по дням
-  getProductionMonth: (userId, year, month) => api.get(`/timesheet/production/${userId}`, { params: { year, month } }),
-  getProductionEntry: (entryId) => api.get(`/timesheet/production/entry/${entryId}`),
-  upsertProductionEntry: (data, submit = false) => api.post('/timesheet/production', data, { params: { submit } }),
-  submitProductionEntry: (entryId) => api.post(`/timesheet/production/entry/${entryId}/submit`),
-  approveProductionEntry: (entryId) => api.post(`/timesheet/production/entry/${entryId}/approve`),
-  rejectProductionEntry: (entryId, comment) => api.post(`/timesheet/production/entry/${entryId}/reject`, { comment }),
-  getPendingEntries: () => api.get('/timesheet/production/entries/pending'),
-
-  // Сводная таблица по подчинённым (часы по дням + статусы продукции)
-  getSubordinatesSummary: (year, month) => api.get('/timesheet/subordinates/summary', { params: { year, month } }),
-  getSubordinatesExportUrl: (year, month) => `${API_BASE_URL}/timesheet/subordinates/summary/export?year=${year}&month=${month}`,
-};
-
-export const statementsApi = {
-  // Свободные заявления с согласованием/уведомлением выбранных руководителей
-  getSupervisors: () => api.get('/statements/supervisors'),
-  createStatement: (data) => api.post('/statements', data),
-  updateStatement: (statementId, data) => api.put(`/statements/${statementId}`, data),
-  submitDraftStatement: (statementId) => api.post(`/statements/${statementId}/submit`),
-  resubmitStatement: (statementId, data) => api.post(`/statements/${statementId}/resubmit`, data),
-  cancelStatement: (statementId) => api.post(`/statements/${statementId}/cancel`),
-  getMyStatements: () => api.get('/statements/my'),
-  getPendingStatements: () => api.get('/statements/pending'),
-  getStatementDetail: (statementId) => api.get(`/statements/${statementId}`),
-  approveStatement: (statementId) => api.post(`/statements/${statementId}/approve`),
-  rejectStatement: (statementId, comment) => api.post(`/statements/${statementId}/reject`, { comment }),
-
-  // Шаблоны заявлений (настраиваются администратором)
-  getTemplates: (includeInactive = false) => api.get('/statements/templates', { params: { include_inactive: includeInactive } }),
-  getTemplateCandidates: () => api.get('/statements/templates/candidates'),
-  createTemplate: (data) => api.post('/statements/templates', data),
-  updateTemplate: (templateId, data) => api.put(`/statements/templates/${templateId}`, data),
-  deleteTemplate: (templateId) => api.delete(`/statements/templates/${templateId}`),
-};
-
-export const documentsApi = {
-  // Категории документов (папки)
-  getCategories: () => api.get('/document-categories/'),
-  createCategory: (data) => api.post('/document-categories/', data),
-  updateCategory: (categoryId, data) => api.patch(`/document-categories/${categoryId}`, data),
-  deleteCategory: (categoryId) => api.delete(`/document-categories/${categoryId}`),
-
-  // Документы
-  getDocuments: () => api.get('/documents/'),
-  createDocument: (data) => api.post('/documents/', data),
-  getDocument: (documentId) => api.get(`/documents/${documentId}`),
-  updateDocument: (documentId, data) => api.patch(`/documents/${documentId}`, data),
-  deleteDocument: (documentId) => api.delete(`/documents/${documentId}`),
-
-  // Фотографии/сканы документа
-  uploadDocumentImages: (documentId, formData) => api.post(`/documents/${documentId}/images`, formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-    timeout: 120000,
-  }),
-  deleteDocumentImage: (documentId, imageId) => api.delete(`/documents/${documentId}/images/${imageId}`),
-
-  // Согласование подписантами
-  setApprovers: (documentId, approverIds) => api.post(`/documents/${documentId}/approvers`, { approver_ids: approverIds }),
-  submitForApproval: (documentId) => api.post(`/documents/${documentId}/submit-for-approval`),
-  getApprovalInbox: () => api.get('/documents/approval/inbox'),
-  approveDocument: (documentId, comment) => api.post(`/documents/${documentId}/approve`, { comment }),
-  rejectDocument: (documentId, comment) => api.post(`/documents/${documentId}/reject`, { comment }),
-  getApprovalReport: (documentId) => api.get(`/documents/${documentId}/approval-report`),
-  remindApprovers: (documentId) => api.post(`/documents/${documentId}/approval-remind`),
-
-  // Назначение на ознакомление и личная папка
-  assignDocument: (documentId, data) => api.post(`/documents/${documentId}/assign`, data),
-  getMyDocuments: () => api.get('/my/documents'),
-  confirmDocument: (documentId) => api.post(`/documents/${documentId}/confirm`),
-  getReport: (documentId, params) => api.get(`/documents/${documentId}/report`, { params }),
-  remindDocument: (documentId) => api.post(`/documents/${documentId}/remind`),
 };
 
 // ---------------------------------------------------------------------------
