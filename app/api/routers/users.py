@@ -2377,6 +2377,14 @@ async def get_user_profile(
     
     # Если это не профиль текущего пользователя, фильтруем приватный контент
     user_schema = UserSchema.model_validate(user)
+    from app.api.routers.chat import manager as chat_manager
+    from app.api.routers.notifications import manager as notifications_manager
+    is_online = chat_manager.is_online(user.id) or notifications_manager.is_online(user.id)
+    if is_online:
+        user_schema.status = "online"
+    elif user_schema.status == "online":
+        user_schema.status = "offline"
+
     if user.id != current_user.id:
         friendship_status = await get_friendship_status(current_user.id, user.id, db)
         
