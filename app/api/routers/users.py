@@ -3146,16 +3146,6 @@ async def react_to_profile_post(
 
         if post.user_id != current_user.id and post.user:
             author_name = f"{current_user.first_name or ''} {current_user.last_name or ''}".strip() or current_user.email or "Пользователь"
-            dispatch_notification(
-                post.user,
-                group="news",
-                title="Новая реакция",
-                body=f"{author_name} поставил(а) реакцию на вашу публикацию",
-                data={"type": "profile_post_reaction", "post_id": post.id, "user_id": current_user.id},
-                sender_id=current_user.id,
-                ws_manager=notification_manager,
-                ws_message={"type": "profile_post_reaction", "post_id": post.id},
-            )
 
             from app.core.notification_service import create_or_group_notification
             await create_or_group_notification(
@@ -3238,16 +3228,6 @@ async def add_profile_post_comment(
 
     if post.user_id != current_user.id and post.user:
         author_name = f"{current_user.first_name or ''} {current_user.last_name or ''}".strip() or current_user.email or "Пользователь"
-        dispatch_notification(
-            post.user,
-            group="news",
-            title="Новый комментарий к публикации",
-            body=f"{author_name}: {data.comment[:50]}",
-            data={"type": "profile_post_comment", "post_id": post.id, "comment_id": comment.id},
-            sender_id=current_user.id,
-            ws_manager=notification_manager,
-            ws_message={"type": "profile_post_comment", "post_id": post.id},
-        )
 
         from app.core.notification_service import create_or_group_notification
         await create_or_group_notification(

@@ -37,7 +37,7 @@ services:
     # Запускаем миграции, инициализацию БД и сервер Gunicorn
     command: sh -c "alembic upgrade head && python -m app.init_db && gunicorn app.main:app --workers 2 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000"
     volumes:
-      - media_data:/home/fast/app/media
+      - ./media:/home/fast/app/media
       - ./firebase-service-account.json:/run/secrets/firebase-service-account.json:ro
     env_file:
       - .env
@@ -99,7 +99,7 @@ services:
     user: "0:0"
     command: celery -A app.core.celery_app worker --loglevel=info
     volumes:
-      - media_data:/home/fast/app/media
+      - ./media:/home/fast/app/media
     env_file:
       - .env
     # Переменные ниже задают значения по умолчанию, которых нет в .env
@@ -153,7 +153,7 @@ services:
     volumes:
       - /etc/letsencrypt:/etc/letsencrypt:ro
       - /var/www/certbot:/var/www/certbot:ro
-      - media_data:/home/fast/app/media:ro
+      - ./media:/home/fast/app/media:ro
     depends_on:
       web:
         condition: service_healthy
@@ -172,4 +172,3 @@ services:
 volumes:
   postgres_data:
   redis_data:
-  media_data:
