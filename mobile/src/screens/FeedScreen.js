@@ -82,14 +82,15 @@ export default function FeedScreen({ navigation }) {
         title: 'Лента',
         headerRight: () => (
           <TouchableOpacity
-            style={{ marginRight: 15 }}
+            style={{ marginRight: 18 }}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             onPress={() => navigation.navigate('Notifications')}
           >
-            <View>
+            <View style={styles.bellIconWrapper}>
               <Icon name="notifications-outline" size={24} color={colors.text} />
               {unreadNotificationsCount > 0 && (
                 <View style={[styles.bellBadge, { backgroundColor: colors.error || '#e53935' }]}>
-                  <Text style={styles.bellBadgeText}>
+                  <Text style={styles.bellBadgeText} numberOfLines={1}>
                     {unreadNotificationsCount > 99 ? '99+' : unreadNotificationsCount}
                   </Text>
                 </View>
@@ -381,18 +382,26 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderBottomWidth: 1,
   },
-  bellBadge: {
-    position: 'absolute',
-    top: -8,
-    right: -10,
-    minWidth: 20,
-    height: 20,
-    borderRadius: 10,
-    paddingHorizontal: 5,
+  bellIconWrapper: {
+    width: 34,
+    height: 34,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'visible',
   },
-  bellBadgeText: { color: '#fff', fontSize: 10, fontWeight: 'bold', includeFontPadding: false, textAlignVertical: 'center', textAlign: 'center' },
+  bellBadge: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    paddingHorizontal: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'visible',
+  },
+  bellBadgeText: { color: '#fff', fontSize: 9, fontWeight: 'bold', includeFontPadding: false, textAlignVertical: 'center', textAlign: 'center' },
   headerRightActions: { flexDirection: 'row', alignItems: 'center' },
   actionBtn: {
     flexDirection: 'row',
