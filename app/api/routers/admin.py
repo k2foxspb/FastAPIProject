@@ -9,7 +9,7 @@ from sqlalchemy import select, delete, desc
 from sqlalchemy.orm import selectinload
 from app.utils import storage
 
-from app.models.users import User as UserModel, AdminPermission as AdminPermissionModel, PhotoAlbum as PhotoAlbumModel, AppVersion as AppVersionModel
+from app.models.users import User as UserModel, AdminPermission as AdminPermissionModel, PhotoAlbum as PhotoAlbumModel, AppVersion as AppVersionModel, ProfilePost as ProfilePostModel
 from app.models.news import News as NewsModel
 from app.models.chat import ChatMessage as ChatMessageModel, FileUploadSession
 from app.schemas.users import User as UserSchema, AdminPermissionCreate, AdminPermission as AdminPermissionSchema, AppVersionResponse, AppLogRequest, BanUserRequest
@@ -461,14 +461,37 @@ async def get_pending_moderation(
     db: AsyncSession = Depends(get_async_db),
     admin: UserModel = Depends(get_current_admin)
 ):
-    """Возвращает список новостей, ожидающих модерации."""
+    """Возвращает список новостей и публикаций пользователей, ожидающих модерации."""
     news_res = await db.execute(
         select(NewsModel).options(selectinload(NewsModel.images)).where(NewsModel.moderation_status == "pending")
     )
     news = news_res.scalars().all()
-    
+
+    posts_res = await db.execute(
+        select(ProfilePostModel)
+        .options(selectinload(ProfilePostModel.user))
+        .where(
+            ProfilePostModel.moderation_status == "pending",
+            ProfilePostModel.post_type == "post",
+            ProfilePostModel.is_active == True,
+        )
+    )
+    posts = posts_res.scalars().all()
+
     return {
-        "news": news
+        "news": news,
+        "posts": [
+            {
+                "id": p.id,
+                "content": p.content,
+                "media_url": p.media_url,
+                "media_type": p.media_type,
+                "created_at": p.created_at,
+                "user_id": p.user_id,
+                "author_name": (f"{p.user.first_name or ''} {p.user.last_name or ''}".strip() or p.user.email) if p.user else None,
+            }
+            for p in posts
+        ],
     }
 
 @router.post("/moderation/approve/{model}/{id}")
@@ -479,15 +502,18 @@ async def approve_object(
     admin: UserModel = Depends(get_current_admin)
 ):
     """Одобряет объект."""
-    if model != "news":
+    if model == "news":
+        stmt = select(NewsModel).where(NewsModel.id == id)
+    elif model == "post":
+        stmt = select(ProfilePostModel).where(ProfilePostModel.id == id)
+    else:
         raise HTTPException(status_code=400, detail="Invalid model")
-    stmt = select(NewsModel).where(NewsModel.id == id)
-    
+
     res = await db.execute(stmt)
     obj = res.scalar_one_or_none()
     if not obj:
         raise HTTPException(status_code=404, detail="Object not found")
-    
+
     obj.moderation_status = "approved"
     await db.commit()
     return {"message": f"{model} {id} approved"}
@@ -500,15 +526,18 @@ async def reject_object(
     admin: UserModel = Depends(get_current_admin)
 ):
     """Отклоняет объект."""
-    if model != "news":
+    if model == "news":
+        stmt = select(NewsModel).where(NewsModel.id == id)
+    elif model == "post":
+        stmt = select(ProfilePostModel).where(ProfilePostModel.id == id)
+    else:
         raise HTTPException(status_code=400, detail="Invalid model")
-    stmt = select(NewsModel).where(NewsModel.id == id)
-    
+
     res = await db.execute(stmt)
     obj = res.scalar_one_or_none()
     if not obj:
         raise HTTPException(status_code=404, detail="Object not found")
-    
+
     obj.moderation_status = "rejected"
     if model == "news":
         obj.title = "Пост отклонен"
@@ -518,6 +547,10 @@ async def reject_object(
         # Удаляем связанные изображения из БД
         from app.models.news import NewsImage as NewsImageModel
         await db.execute(delete(NewsImageModel).where(NewsImageModel.news_id == id))
+    elif model == "post":
+        # Публикацию не удаляем безвозвратно - скрываем из ленты/профиля,
+        # чтобы автор мог видеть историю, но другие пользователи её не видели.
+        obj.is_hidden = True
     await db.commit()
     return {"message": f"{model} {id} rejected"}
 

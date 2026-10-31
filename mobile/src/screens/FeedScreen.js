@@ -118,7 +118,8 @@ export default function FeedScreen({ navigation }) {
 
   const getItemTypeBadge = (itemType) => {
     if (itemType === 'announcement') return { label: 'Объявление', icon: 'megaphone' };
-    if (itemType === 'post') return { label: 'Пост', icon: 'person-circle-outline' };
+    // Публикации (посты) пользователей больше не помечаются отдельным бейджем - он не нужен.
+    if (itemType === 'post') return null;
     return { label: 'Новость', icon: 'newspaper-outline' };
   };
 
@@ -208,6 +209,25 @@ export default function FeedScreen({ navigation }) {
         }}
         activeOpacity={0.7}
       >
+        {(item.moderation_status === 'pending' || item.moderation_status === 'approved' || item.is_hidden) && (
+          <View style={styles.statusBadgeContainer}>
+            {item.moderation_status === 'pending' && (
+              <View style={[styles.statusIconBadge, { backgroundColor: 'rgba(255,165,0,0.15)' }]}>
+                <Icon name="time-outline" size={13} color="#FFA500" />
+              </View>
+            )}
+            {item.moderation_status === 'approved' && (
+              <View style={[styles.statusIconBadge, { backgroundColor: 'rgba(76,175,80,0.15)' }]}>
+                <Icon name="checkmark-circle-outline" size={13} color="#4CAF50" />
+              </View>
+            )}
+            {item.is_hidden && (
+              <View style={[styles.statusIconBadge, { backgroundColor: 'rgba(229,57,53,0.12)' }]}>
+                <Icon name="eye-off-outline" size={13} color={colors.error || '#e53935'} />
+              </View>
+            )}
+          </View>
+        )}
         <View style={styles.newsAuthorHeader}>
           <TouchableOpacity
             style={styles.authorInfo}
@@ -236,32 +256,16 @@ export default function FeedScreen({ navigation }) {
         </View>
 
         <View style={styles.badgesRow}>
-          <View style={[styles.typeBadge, isAnnouncement && { backgroundColor: colors.primary }]}>
-            <Icon name={typeBadge.icon} size={11} color={isAnnouncement ? '#fff' : colors.primary} />
-            <Text style={[styles.typeBadgeText, { color: isAnnouncement ? '#fff' : colors.primary }]}>{typeBadge.label}</Text>
-          </View>
+          {typeBadge && (
+            <View style={[styles.typeBadge, isAnnouncement && { backgroundColor: colors.primary }]}>
+              <Icon name={typeBadge.icon} size={11} color={isAnnouncement ? '#fff' : colors.primary} />
+              <Text style={[styles.typeBadgeText, { color: isAnnouncement ? '#fff' : colors.primary }]}>{typeBadge.label}</Text>
+            </View>
+          )}
           {privacyBadge && (
             <View style={styles.typeBadge}>
               <Icon name={privacyBadge.icon} size={11} color={colors.textSecondary} />
               <Text style={[styles.typeBadgeText, { color: colors.textSecondary }]}>{privacyBadge.label}</Text>
-            </View>
-          )}
-          {item.moderation_status === 'pending' && (
-            <View style={[styles.typeBadge, { backgroundColor: 'rgba(255,165,0,0.15)' }]}>
-              <Icon name="time-outline" size={11} color="#FFA500" />
-              <Text style={[styles.typeBadgeText, { color: '#FFA500' }]}>Ещё не проверено</Text>
-            </View>
-          )}
-          {item.moderation_status === 'approved' && (
-            <View style={[styles.typeBadge, { backgroundColor: 'rgba(76,175,80,0.15)' }]}>
-              <Icon name="checkmark-circle-outline" size={11} color="#4CAF50" />
-              <Text style={[styles.typeBadgeText, { color: '#4CAF50' }]}>Проверено</Text>
-            </View>
-          )}
-          {item.is_hidden && (
-            <View style={[styles.typeBadge, { backgroundColor: 'rgba(229,57,53,0.12)' }]}>
-              <Icon name="eye-off-outline" size={11} color={colors.error || '#e53935'} />
-              <Text style={[styles.typeBadgeText, { color: colors.error || '#e53935' }]}>Скрыто</Text>
             </View>
           )}
         </View>
@@ -379,16 +383,16 @@ const styles = StyleSheet.create({
   },
   bellBadge: {
     position: 'absolute',
-    top: -6,
-    right: -8,
-    minWidth: 18,
-    height: 18,
-    borderRadius: 9,
-    paddingHorizontal: 4,
+    top: -8,
+    right: -10,
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    paddingHorizontal: 5,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  bellBadgeText: { color: '#fff', fontSize: 10, fontWeight: 'bold', lineHeight: 13, textAlign: 'center' },
+  bellBadgeText: { color: '#fff', fontSize: 10, fontWeight: 'bold', includeFontPadding: false, textAlignVertical: 'center', textAlign: 'center' },
   headerRightActions: { flexDirection: 'row', alignItems: 'center' },
   actionBtn: {
     flexDirection: 'row',
@@ -408,7 +412,8 @@ const styles = StyleSheet.create({
   },
   proposeBtnText: { color: '#fff', fontSize: 12, fontWeight: 'bold', marginLeft: 4 },
   listContent: { padding: 12 },
-  newsCard: { borderRadius: 12, marginBottom: 14, overflow: 'hidden', borderWidth: 1, ...getShadow('#000', { width: 0, height: 2 }, 0.1, 4, 4) },
+  newsCard: { borderRadius: 12, marginBottom: 14, overflow: 'hidden', borderWidth: 1, position: 'relative', ...getShadow('#000', { width: 0, height: 2 }, 0.1, 4, 4) },
+  statusBadgeContainer: { position: 'absolute', top: 8, right: 8, flexDirection: 'row', zIndex: 10, elevation: 10 },
   newsAuthorHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 12, borderBottomWidth: 0.5, borderBottomColor: 'rgba(0,0,0,0.05)' },
   authorInfo: { flexDirection: 'row', alignItems: 'center' },
   authorAvatar: { width: 36, height: 36, borderRadius: 18, marginRight: 10 },
@@ -425,6 +430,15 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   typeBadgeText: { fontSize: 10, fontWeight: '600', marginLeft: 4 },
+  statusIconBadge: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 6,
+    marginBottom: 6,
+  },
   newsContentRow: { flexDirection: 'row', padding: 12 },
   newsThumbnail: { width: 80, height: 80, borderRadius: 8 },
   newsTextContainer: { flex: 1, paddingLeft: 12, justifyContent: 'center' },

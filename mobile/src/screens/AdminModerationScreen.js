@@ -7,7 +7,7 @@ import { theme as themeConstants } from '../constants/theme';
 import { Ionicons as Icon } from '@expo/vector-icons';
 
 export default function AdminModerationScreen() {
-  const [pending, setPending] = useState({ news: [] });
+  const [pending, setPending] = useState({ news: [], posts: [] });
   const [loading, setLoading] = useState(true);
   const { theme } = useTheme();
   const colors = themeConstants[theme];
@@ -52,12 +52,14 @@ export default function AdminModerationScreen() {
     const now = new Date();
     const diffMinutes = Math.floor((now - createdAt) / 60000);
     const isUrgent = diffMinutes >= 5;
+    const isPost = type === 'post';
+    const title = isPost ? (item.content || 'Публикация без текста') : (item.name || item.title);
 
     return (
       <View style={[styles.card, { backgroundColor: colors.surface, borderColor: isUrgent ? colors.error : colors.border }]}>
         <View style={styles.cardHeader}>
-          <Text style={[styles.cardTitle, { color: colors.text }]} numberOfLines={1}>
-            {item.name || item.title}
+          <Text style={[styles.cardTitle, { color: colors.text }]} numberOfLines={isPost ? 2 : 1}>
+            {title}
           </Text>
           {isUrgent && (
             <View style={[styles.urgentBadge, { backgroundColor: colors.error }]}>
@@ -66,7 +68,7 @@ export default function AdminModerationScreen() {
           )}
         </View>
         <Text style={[styles.cardType, { color: colors.textSecondary }]}>
-          Новость • {createdAt.toLocaleTimeString()}
+          {isPost ? `Публикация${item.author_name ? ' • ' + item.author_name : ''}` : 'Новость'} • {createdAt.toLocaleTimeString()}
         </Text>
         <View style={styles.actions}>
           <TouchableOpacity 
@@ -89,7 +91,8 @@ export default function AdminModerationScreen() {
   };
 
   const allPending = [
-    ...(pending.news || []).map(n => ({ ...n, _type: 'news' }))
+    ...(pending.news || []).map(n => ({ ...n, _type: 'news' })),
+    ...(pending.posts || []).map(p => ({ ...p, _type: 'post' })),
   ].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
 
   return (
