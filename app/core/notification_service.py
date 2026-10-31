@@ -30,6 +30,14 @@ _NOTIF_TYPE_TO_GROUP = {
     "post_moderated": "friend_posts",
     "announcement": "announcements",
     "system": "announcements",
+    "news_reaction": "news",
+    "news_comment": "news",
+    "album_reaction": "photos_albums",
+    "album_comment": "photos_albums",
+    "album_comment_reaction": "photos_albums",
+    "photo_reaction": "photos_albums",
+    "photo_comment": "photos_albums",
+    "photo_comment_reaction": "photos_albums",
 }
 
 

@@ -1,10 +1,10 @@
-import React, { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, ActivityIndicator } from 'react-native';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, ActivityIndicator, Alert } from 'react-native';
 import { Ionicons as Icon } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
-import { notificationsApi } from '../api';
+import { notificationsApi, feedApi } from '../api';
 import { useNotifications } from '../context/NotificationContext';
 
 // Экран со списком уведомлений (GET /notifications) - открывается нажатием на
@@ -14,10 +14,14 @@ import { useNotifications } from '../context/NotificationContext';
 export default function NotificationsScreen({ navigation }) {
   const { theme } = useTheme();
   const colors = themeConstants[theme];
-  const { refreshUnreadCount } = useNotifications();
+  const { refreshUnreadCount, notifications } = useNotifications();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  // Уведомления в реальном времени: приходят через общий WS-канал (как сообщения в чате),
+  // контекст складывает в notifications[0] все новые события, в т.ч. type==="notification".
+  // Храним обработанные id, чтобы не вставлять одно и то же событие дважды при каждом ререндере.
+  const processedWsIdsRef = useRef(new Set());
 
   const fetchNotifications = useCallback(async () => {
     try {
@@ -38,6 +42,39 @@ export default function NotificationsScreen({ navigation }) {
       fetchNotifications();
     }, [fetchNotifications])
   );
+
+  // Живое появление уведомлений в списке, пока экран открыт - аналогично тому,
+  // как новое сообщение сразу появляется в чате, без необходимости закрывать
+  // и заново открывать экран.
+  useEffect(() => {
+    const latest = notifications[0];
+    if (!latest || latest.type !== 'notification' || !latest.data) return;
+
+    const wsItem = latest.data;
+    const dedupeKey = `${wsItem.id}-${wsItem.count}-${wsItem.title}-${wsItem.body}`;
+    if (processedWsIdsRef.current.has(dedupeKey)) return;
+    processedWsIdsRef.current.add(dedupeKey);
+
+    setItems(prev => {
+      const idx = prev.findIndex(n => n.id === wsItem.id);
+      const merged = {
+        id: wsItem.id,
+        notif_type: wsItem.notif_type,
+        title: wsItem.title,
+        body: wsItem.body,
+        count: wsItem.count,
+        is_read: wsItem.is_read,
+        data: wsItem.data,
+        created_at: idx !== -1 ? prev[idx].created_at : new Date().toISOString(),
+      };
+      if (idx !== -1) {
+        const next = [...prev];
+        next.splice(idx, 1);
+        return [merged, ...next];
+      }
+      return [merged, ...prev];
+    });
+  }, [notifications]);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -66,18 +103,35 @@ export default function NotificationsScreen({ navigation }) {
       }
     }
 
-    // Best-effort навигация к связанному объекту по data.object_type/object_id.
+    // Переход к связанному объекту по data.object_type/object_id. Реальные значения
+    // object_type, которые присылает бэкенд (см. app/api/routers/users.py, feed.py,
+    // news.py): "profile_post" (пост/объявление), "friendship" (заявка в друзья),
+    // "news", "album", "photo".
     const objectType = item.data?.object_type;
     const objectId = item.data?.object_id;
-    if (objectType === 'post' || objectType === 'announcement') {
-      navigation.goBack();
-    } else if (objectType === 'user' && objectId) {
-      navigation.navigate('UserProfile', { userId: objectId });
-    } else if (objectType === 'friend_request') {
-      navigation.navigate('Users');
-    } else {
-      // Тип объекта не распознан - просто закрываем модалку, уведомление уже помечено прочитанным.
-      navigation.goBack();
+
+    try {
+      if (objectType === 'profile_post' && objectId) {
+        const res = await feedApi.getPost(objectId);
+        navigation.navigate('PostDetail', { item: res.data });
+      } else if (objectType === 'news' && objectId) {
+        navigation.navigate('NewsDetail', { newsId: objectId });
+      } else if (objectType === 'album' && objectId) {
+        navigation.navigate('AlbumDetail', { albumId: objectId });
+      } else if (objectType === 'photo' && objectId) {
+        navigation.navigate('PhotoDetail', { photoId: objectId });
+      } else if (objectType === 'friendship') {
+        // Заявки в друзья показываются на вкладке "Друзья" экрана "Пользователи".
+        navigation.navigate('Users', { screen: 'UsersMain', params: { initialTab: 'friends' } });
+      } else if (objectType === 'user' && objectId) {
+        navigation.navigate('UserProfile', { userId: objectId });
+      } else {
+        // Тип объекта не распознан - просто закрываем модалку, уведомление уже помечено прочитанным.
+        navigation.goBack();
+      }
+    } catch (err) {
+      console.log('[NotificationsScreen] Failed to open related object:', err.message);
+      Alert.alert('Ошибка', 'Не удалось открыть связанный объект');
     }
   };
 

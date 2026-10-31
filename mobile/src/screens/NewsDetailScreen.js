@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, Image, ScrollView, Dimensions, ActivityIndicator, Alert, FlatList, TouchableOpacity, TextInput, Platform, RefreshControl } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -28,6 +28,17 @@ export default function NewsDetailScreen({ route, navigation }) {
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
   const [user, setUser] = useState(currentUser);
   const [refreshing, setRefreshing] = useState(false);
+
+  // Мемоизируем props для RenderHTML - без этого при каждом вводе текста комментария
+  // (обновление state newComment на каждое нажатие клавиши) создавались новые объекты
+  // source/tagsStyles, из-за чего TRenderEngineProvider считал пропсы изменившимися и
+  // затевал дорогой ререндер дерева HTML на каждое нажатие клавиши.
+  const htmlSource = useMemo(() => ({ html: news?.content }), [news?.content]);
+  const htmlTagsStyles = useMemo(() => ({
+    body: { color: colors.text, fontSize: 16, lineHeight: 24 },
+    p: { marginBottom: 10 },
+    img: { borderRadius: 8, marginVertical: 10 },
+  }), [colors.text]);
 
   useEffect(() => {
     loadNews();
@@ -337,12 +348,8 @@ export default function NewsDetailScreen({ route, navigation }) {
           <View style={[styles.divider, { backgroundColor: colors.border }]} />
           <RenderHTML
             contentWidth={width - 40}
-            source={{ html: news.content }}
-            tagsStyles={{
-              body: { color: colors.text, fontSize: 16, lineHeight: 24 },
-              p: { marginBottom: 10 },
-              img: { borderRadius: 8, marginVertical: 10 },
-            }}
+            source={htmlSource}
+            tagsStyles={htmlTagsStyles}
           />
 
           <View style={[styles.divider, { backgroundColor: colors.border, marginTop: 30 }]} />

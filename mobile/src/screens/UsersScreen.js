@@ -11,7 +11,7 @@ import { API_BASE_URL } from '../constants';
 import { formatStatus, formatName, getAvatarUrl } from '../utils/formatters';
 import AvatarWithBadge from '../components/AvatarWithBadge';
 
-export default function UsersScreen({ navigation }) {
+export default function UsersScreen({ navigation, route }) {
   const { theme } = useTheme();
   const colors = themeConstants[theme];
   const { fetchFriendRequestsCount, currentUser, loadingUser, userStatuses } = useNotifications();
@@ -20,8 +20,16 @@ export default function UsersScreen({ navigation }) {
   const [requests, setRequests] = useState([]);
   const [search, setSearch] = useState('');
   const [currentUserId, setCurrentUserId] = useState(currentUser?.id);
-  const [activeTab, setActiveTab] = useState('all'); // 'all', 'friends'
+  // Открытие сразу на вкладке "Друзья" (с заявками) - используется, например, при переходе
+  // из уведомления о заявке в друзья: navigation.navigate('Users', { screen: 'UsersMain', params: { initialTab: 'friends' } }).
+  const [activeTab, setActiveTab] = useState(route?.params?.initialTab === 'friends' ? 'friends' : 'all'); // 'all', 'friends'
   const [refreshing, setRefreshing] = useState(false);
+
+  useEffect(() => {
+    if (route?.params?.initialTab === 'friends') {
+      setActiveTab('friends');
+    }
+  }, [route?.params?.initialTab]);
 
   // Применяем WebSocket статусы к локальному списку пользователей
   useEffect(() => {

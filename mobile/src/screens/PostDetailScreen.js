@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -10,10 +10,9 @@ import {
   Alert,
   TextInput,
   Dimensions,
-  Platform,
 } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
-import { useHeaderHeight } from '@react-navigation/elements';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import RenderHTML from 'react-native-render-html';
 import { useFocusEffect } from '@react-navigation/native';
 import { usersApi } from '../api';
@@ -34,10 +33,7 @@ export default function PostDetailScreen({ route, navigation }) {
   const { theme } = useTheme();
   const colors = themeConstants[theme];
   const { currentUser } = useNotifications();
-  // Реальная высота нативного заголовка экрана (вместе с safe area) - без неё
-  // keyboardVerticalOffset с фиксированным числом не угадывает высоту заголовка на
-  // разных устройствах, из-за чего поле ввода комментария не прилипало к клавиатуре.
-  const headerHeight = useHeaderHeight();
+  const insets = useSafeAreaInsets();
   const initialItem = route.params?.item;
 
   const [post, setPost] = useState(initialItem);
@@ -47,6 +43,17 @@ export default function PostDetailScreen({ route, navigation }) {
   const [submittingComment, setSubmittingComment] = useState(false);
 
   const isAnnouncement = post?.item_type === 'announcement';
+
+  // Мемоизируем props для RenderHTML - без этого при каждом вводе текста комментария
+  // (обновление state на каждое нажатие клавиши) создавались новые объекты source/tagsStyles,
+  // из-за чего TRenderEngineProvider считал пропсы изменившимися и затевал дорогой ререндер
+  // дерева HTML на каждое нажатие клавиши.
+  const htmlSource = useMemo(() => ({ html: post?.content }), [post?.content]);
+  const htmlTagsStyles = useMemo(() => ({
+    body: { color: colors.text, fontSize: 15, lineHeight: 22 },
+    p: { marginBottom: 8 },
+    img: { borderRadius: 8, marginVertical: 8, maxWidth: '100%' },
+  }), [colors.text]);
 
   const loadComments = useCallback(async () => {
     if (!post?.id) return;
@@ -63,9 +70,8 @@ export default function PostDetailScreen({ route, navigation }) {
 
   useFocusEffect(
     useCallback(() => {
-      navigation.setOptions({ title: isAnnouncement ? 'Объявление' : 'Публикация' });
       loadComments();
-    }, [loadComments, navigation, isAnnouncement])
+    }, [loadComments])
   );
 
   const handleReact = async () => {
@@ -131,11 +137,24 @@ export default function PostDetailScreen({ route, navigation }) {
   const likesCount = post.likes_count ?? post.reactions_count ?? 0;
 
   return (
+    // Заголовок нативного стека скрыт (headerShown: false в TabNavigator) и рисуется здесь же,
+    // внутри KeyboardAvoidingView - по тому же паттерну, что и в ChatScreen - поэтому
+    // keyboardVerticalOffset={0} работает корректно на обеих платформах, и поле ввода
+    // комментария прилипает к клавиатуре.
     <KeyboardAvoidingView
       style={{ flex: 1, backgroundColor: colors.background }}
       behavior="padding"
-      keyboardVerticalOffset={Platform.OS === 'ios' ? headerHeight : 0}
+      keyboardVerticalOffset={0}
     >
+      <View style={[styles.header, { borderBottomColor: colors.border, paddingTop: insets.top, backgroundColor: colors.background }]}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerBackBtn}>
+          <Icon name="arrow-back" size={24} color={colors.text} />
+        </TouchableOpacity>
+        <Text style={[styles.headerTitle, { color: colors.text }]}>
+          {isAnnouncement ? 'Объявление' : 'Публикация'}
+        </Text>
+        <View style={styles.headerBackBtn} />
+      </View>
       <ScrollView style={[styles.container, { backgroundColor: colors.background }]}>
         <View style={styles.authorHeader}>
           <TouchableOpacity
@@ -160,12 +179,8 @@ export default function PostDetailScreen({ route, navigation }) {
             <View style={{ paddingHorizontal: 12 }}>
               <RenderHTML
                 contentWidth={Dimensions.get('window').width - 24}
-                source={{ html: post.content }}
-                tagsStyles={{
-                  body: { color: colors.text, fontSize: 15, lineHeight: 22 },
-                  p: { marginBottom: 8 },
-                  img: { borderRadius: 8, marginVertical: 8, maxWidth: '100%' },
-                }}
+                source={htmlSource}
+                tagsStyles={htmlTagsStyles}
               />
             </View>
           ) : (
@@ -277,6 +292,16 @@ export default function PostDetailScreen({ route, navigation }) {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 4,
+    paddingBottom: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  headerBackBtn: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center' },
+  headerTitle: { fontSize: 17, fontWeight: '600' },
   authorHeader: { padding: 12 },
   authorInfo: { flexDirection: 'row', alignItems: 'center' },
   authorAvatar: { width: 44, height: 44, borderRadius: 22, marginRight: 10 },

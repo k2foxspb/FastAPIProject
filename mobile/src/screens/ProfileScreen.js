@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useMemo } from 'react';
 import { getShadow } from '../utils/shadowStyles';
 import { View, Text, StyleSheet, Image, FlatList, ScrollView, TouchableOpacity, Modal, TouchableWithoutFeedback, Switch, Alert, Platform, Linking, RefreshControl, Dimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -16,6 +16,22 @@ import { formatName, getFullUrl, formatPostDateTime } from '../utils/formatters'
 import { getRoleLabel, getRoleIcon } from '../constants/roles';
 import { SkeletonItem, NewsSkeleton } from '../components/SkeletonLoader';
 import { requestAllAppPermissions } from '../utils/permissions';
+
+// Вынесенный мемоизированный компонент для HTML-контента публикации в списке - без него
+// при каждом перерисовывании экрана (например, обновлении состояния где-то ещё) RenderHTML
+// получал новые объекты source/tagsStyles для каждого поста и TRenderEngineProvider
+// затевал дорогой ререндер. useMemo внутри обычной функции рендера списка использовать
+// нельзя (нарушает правила хуков), поэтому вынесено в отдельный компонент.
+const PostHtmlContent = React.memo(function PostHtmlContent({ html, contentWidth, colors }) {
+  const source = useMemo(() => ({ html }), [html]);
+  const tagsStyles = useMemo(() => ({
+    body: { color: colors.text, fontSize: 15, lineHeight: 22 },
+    p: { marginBottom: 6 },
+    img: { borderRadius: 8, marginVertical: 6, maxWidth: '100%' },
+  }), [colors.text]);
+
+  return <RenderHTML contentWidth={contentWidth} source={source} tagsStyles={tagsStyles} />;
+});
 
 export default function ProfileScreen({ navigation }) {
   const [user, setUser] = useState(null);
@@ -226,14 +242,10 @@ export default function ProfileScreen({ navigation }) {
 
         {!!item.content && (
           item.content.includes('<') && item.content.includes('>') ? (
-            <RenderHTML
+            <PostHtmlContent
+              html={item.content}
               contentWidth={Dimensions.get('window').width - 60}
-              source={{ html: item.content }}
-              tagsStyles={{
-                body: { color: colors.text, fontSize: 15, lineHeight: 22 },
-                p: { marginBottom: 6 },
-                img: { borderRadius: 8, marginVertical: 6, maxWidth: '100%' },
-              }}
+              colors={colors}
             />
           ) : (
             <Text style={[styles.postContentText, { color: colors.text }]}>

@@ -1315,6 +1315,18 @@ async def react_to_album(
                 sender_avatar=current_user.avatar_url
             ))
 
+        from app.core.notification_service import create_or_group_notification
+        await create_or_group_notification(
+            db,
+            user_id=album_obj.user_id,
+            notif_type="album_reaction",
+            title="Новая реакция",
+            body=f"{msg['sender_name']} {msg['message']}",
+            data={"object_type": "album", "object_id": album_obj.id},
+            actor_id=current_user.id,
+            group_key=f"album_reaction:album:{album_obj.id}",
+        )
+
     return {"status": "ok"}
 
 
@@ -1520,6 +1532,18 @@ async def react_to_album_comment(
                 sender_id=current_user.id,
                 sender_avatar=current_user.avatar_url
             ))
+
+        from app.core.notification_service import create_or_group_notification
+        await create_or_group_notification(
+            db,
+            user_id=comment_obj.user_id,
+            notif_type="album_comment_reaction",
+            title="Реакция на ваш комментарий",
+            body=f"{msg['sender_name']} {msg['message']}",
+            data={"object_type": "album", "object_id": comment_obj.album_id},
+            actor_id=current_user.id,
+            group_key=f"album_comment_reaction:comment:{comment_id}",
+        )
 
     return {"status": "ok", "reaction_type": reaction_type}
 

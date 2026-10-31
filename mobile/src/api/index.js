@@ -194,6 +194,7 @@ export const usersApi = {
 // и объявления (ProfilePost с post_type="announcement"), каждый элемент содержит item_type.
 export const feedApi = {
   getFeed: (skip = 0, limit = 20) => api.get('/feed', { params: { skip, limit } }),
+  getPost: (postId) => api.get(`/feed/posts/${postId}`),
   createPost: (data) => api.post('/users/me/posts', data),
   createAnnouncement: (data) => api.post('/feed/announcements', data),
   moderatePost: (postId) => api.post(`/users/posts/${postId}/moderate`),

@@ -170,6 +170,43 @@ async def get_feed(
     return {"items": page, "total": total, "skip": skip, "limit": limit}
 
 
+@router.get("/posts/{post_id}")
+async def get_feed_post(
+    post_id: int,
+    current_user: UserModel | None = Depends(get_current_user_optional),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Возвращает одну публикацию профиля (пост или объявление) в том же
+    формате, что и элементы ленты (item_type/author/...) - используется для
+    перехода на публикацию из уведомления, где доступен только её id.
+    """
+    current_user_id = current_user.id if current_user else None
+
+    res = await db.execute(
+        select(ProfilePostModel)
+        .options(
+            selectinload(ProfilePostModel.user),
+            selectinload(ProfilePostModel.reactions),
+            selectinload(ProfilePostModel.comments),
+        )
+        .where(ProfilePostModel.id == post_id, ProfilePostModel.is_active == True)
+    )
+    post = res.scalar_one_or_none()
+    if not post:
+        raise HTTPException(status_code=404, detail="Публикация не найдена")
+
+    is_moderator = current_user is not None and current_user.role in ("admin", "owner")
+    if post.is_hidden and not is_moderator and post.user_id != current_user_id:
+        raise HTTPException(status_code=404, detail="Публикация не найдена")
+
+    friendship_status = await get_friendship_status(db, current_user_id, post.user_id) if current_user_id else None
+    if not can_view_content(post.user_id, current_user_id, post.privacy, friendship_status):
+        raise HTTPException(status_code=403, detail="Доступ запрещен настройками приватности")
+
+    return _post_to_feed_item(post, current_user_id)
+
+
 @router.post("/announcements", status_code=status.HTTP_201_CREATED)
 async def create_announcement(
     data: ProfilePostCreate,

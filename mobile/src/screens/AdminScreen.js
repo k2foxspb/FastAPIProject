@@ -28,7 +28,6 @@ export default function AdminScreen({ navigation }) {
   const adminMenu = [
     { title: 'Пользователи', icon: 'people-outline', screen: 'AdminUsers' },
     { title: 'Модерация', icon: 'shield-outline', screen: 'AdminModeration' },
-    { title: 'Новости', icon: 'newspaper-outline', screen: 'AdminNews' },
     { title: 'Чаты пользователей', icon: 'chatbubbles-outline', screen: 'AdminChats', ownerOnly: true },
     { title: 'Загрузить новую версию приложения', icon: 'cloud-upload-outline', screen: 'AdminAppUpload', ownerOnly: true },
     { title: 'Логи', icon: 'document-text-outline', screen: 'AdminLogs', ownerOnly: true },

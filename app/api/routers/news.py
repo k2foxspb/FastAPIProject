@@ -579,6 +579,18 @@ async def react_to_news(
                 sender_avatar=current_user.avatar_url
             ))
 
+        from app.core.notification_service import create_or_group_notification
+        await create_or_group_notification(
+            db,
+            user_id=news_obj.author_id,
+            notif_type="news_reaction",
+            title="Новая реакция",
+            body=f"{msg['sender_name']} {msg['message']}",
+            data={"object_type": "news", "object_id": news_id},
+            actor_id=current_user.id,
+            group_key=f"news_reaction:news:{news_id}",
+        )
+
     return {"status": "ok", "reaction_type": reaction_type}
 
 @router.get("/{news_id}/comments", response_model=list[NewsCommentSchema])
@@ -721,6 +733,18 @@ async def react_to_news_comment(
                 sender_avatar=current_user.avatar_url
             ))
 
+        from app.core.notification_service import create_or_group_notification
+        await create_or_group_notification(
+            db,
+            user_id=comment_obj.user_id,
+            notif_type="news_comment",
+            title="Реакция на ваш комментарий",
+            body=f"{msg['sender_name']} {msg['message']}",
+            data={"object_type": "news", "object_id": comment_obj.news_id},
+            actor_id=current_user.id,
+            group_key=f"news_comment_reaction:comment:{comment_id}",
+        )
+
     return {"status": "ok", "reaction_type": reaction_type}
 
 @router.post("/{news_id}/comments", response_model=NewsCommentSchema)
@@ -770,6 +794,17 @@ async def add_news_comment(
                 sender_id=current_user.id,
                 sender_avatar=current_user.avatar_url
             ))
+
+        from app.core.notification_service import create_or_group_notification
+        await create_or_group_notification(
+            db,
+            user_id=news_obj.author_id,
+            notif_type="news_comment",
+            title="Новый комментарий",
+            body=f"{msg['sender_name']} {msg['message']}",
+            data={"object_type": "news", "object_id": news_id},
+            actor_id=current_user.id,
+        )
 
     # Загружаем со связью пользователя для ответа
     result = await db.execute(

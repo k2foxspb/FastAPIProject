@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { getShadow } from '../utils/shadowStyles';
 import { View, Text, StyleSheet, Image, FlatList, ScrollView, TouchableOpacity, ActivityIndicator, RefreshControl, Dimensions } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
@@ -13,6 +13,21 @@ import { formatStatus, formatName, getAvatarUrl, stripHtml, getFullUrl } from '.
 import { getRoleLabel, getRoleIcon, isAdminOrOwner } from '../constants/roles';
 import FadeInImage from '../components/FadeInImage';
 import VideoPlayer from '../components/VideoPlayer';
+
+// Вынесенный мемоизированный компонент для HTML-контента публикации в списке - без него
+// при каждом перерисовывании экрана RenderHTML получал новые объекты source/tagsStyles
+// для каждого поста и TRenderEngineProvider затевал дорогой ререндер. useMemo внутри
+// обычной функции рендера списка использовать нельзя, поэтому вынесено в отдельный компонент.
+const PostHtmlContent = React.memo(function PostHtmlContent({ html, contentWidth, colors }) {
+  const source = useMemo(() => ({ html }), [html]);
+  const tagsStyles = useMemo(() => ({
+    body: { color: colors.text, fontSize: 14, lineHeight: 20 },
+    p: { marginBottom: 6 },
+    img: { borderRadius: 8, marginVertical: 6, maxWidth: '100%' },
+  }), [colors.text]);
+
+  return <RenderHTML contentWidth={contentWidth} source={source} tagsStyles={tagsStyles} />;
+});
 
 export default function UserProfileScreen({ route, navigation }) {
   const { theme } = useTheme();
@@ -214,14 +229,10 @@ export default function UserProfileScreen({ route, navigation }) {
 
         {!!item.content && (
           item.content.includes('<') && item.content.includes('>') ? (
-            <RenderHTML
+            <PostHtmlContent
+              html={item.content}
               contentWidth={Dimensions.get('window').width - 60}
-              source={{ html: item.content }}
-              tagsStyles={{
-                body: { color: colors.text, fontSize: 14, lineHeight: 20 },
-                p: { marginBottom: 6 },
-                img: { borderRadius: 8, marginVertical: 6, maxWidth: '100%' },
-              }}
+              colors={colors}
             />
           ) : (
             <Text style={{ fontSize: 14, lineHeight: 20, color: colors.text, paddingHorizontal: 12, paddingVertical: 8 }}>
