@@ -1454,6 +1454,17 @@ async def add_album_comment(
                 sender_avatar=current_user.avatar_url
             ))
 
+        from app.core.notification_service import create_or_group_notification
+        await create_or_group_notification(
+            db,
+            user_id=album.user_id,
+            notif_type="album_comment",
+            title="Новый комментарий к альбому",
+            body=f"{msg['sender_name']} {msg['message']}",
+            data={"object_type": "album", "object_id": album.id},
+            actor_id=current_user.id,
+        )
+
     res = PhotoAlbumCommentSchema.model_validate(new_comment).model_dump()
     res["first_name"] = current_user.first_name
     res["last_name"] = current_user.last_name
@@ -1985,6 +1996,18 @@ async def react_to_photo(
                 sender_avatar=current_user.avatar_url
             ))
 
+        from app.core.notification_service import create_or_group_notification
+        await create_or_group_notification(
+            db,
+            user_id=photo_obj.user_id,
+            notif_type="photo_reaction",
+            title="Новая реакция",
+            body=f"{msg['sender_name']} {msg['message']}",
+            data={"object_type": "photo", "object_id": photo_obj.id},
+            actor_id=current_user.id,
+            group_key=f"photo_reaction:photo:{photo_obj.id}",
+        )
+
     return {"status": "ok"}
 
 
@@ -2131,6 +2154,18 @@ async def react_to_photo_comment(
                 sender_avatar=current_user.avatar_url
             ))
 
+        from app.core.notification_service import create_or_group_notification
+        await create_or_group_notification(
+            db,
+            user_id=comment_obj.user_id,
+            notif_type="photo_comment_reaction",
+            title="Реакция на ваш комментарий",
+            body=f"{msg['sender_name']} {msg['message']}",
+            data={"object_type": "photo", "object_id": comment_obj.photo_id},
+            actor_id=current_user.id,
+            group_key=f"photo_comment_reaction:comment:{comment_id}",
+        )
+
     return {"status": "ok", "reaction_type": reaction_type}
 
 
@@ -2187,6 +2222,17 @@ async def add_photo_comment(
                 sender_id=current_user.id,
                 sender_avatar=current_user.avatar_url
             ))
+
+        from app.core.notification_service import create_or_group_notification
+        await create_or_group_notification(
+            db,
+            user_id=photo.user_id,
+            notif_type="photo_comment",
+            title="Новый комментарий к фото",
+            body=f"{msg['sender_name']} {msg['message']}",
+            data={"object_type": "photo", "object_id": photo_id},
+            actor_id=current_user.id,
+        )
 
     res = UserPhotoCommentSchema.model_validate(new_comment).model_dump()
     res["first_name"] = current_user.first_name
