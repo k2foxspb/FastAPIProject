@@ -5,7 +5,7 @@ import notifee from '@notifee/react-native';
 import FadeInImage from '../components/FadeInImage';
 import FadeInView from '../components/FadeInView';
 import { newsApi, feedApi } from '../api';
-import { getFullUrl, stripHtml } from '../utils/formatters';
+import { getFullUrl, stripHtml, formatPostDateTime } from '../utils/formatters';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
 import { NewsSkeleton } from '../components/SkeletonLoader';
@@ -49,7 +49,8 @@ export default function FeedScreen({ navigation }) {
       // приложение не сломалось в процессе параллельной доработки backend.
       try {
         const res = await feedApi.getFeed(0, 30);
-        setFeedList(res.data || []);
+        // Бэкенд /feed возвращает объект { items, total, skip, limit }, а не голый массив.
+        setFeedList(res.data?.items || []);
       } catch (feedErr) {
         if (feedErr?.response?.status === 404) {
           const newsRes = await newsApi.getNews().catch(() => ({ data: [] }));
@@ -181,9 +182,15 @@ export default function FeedScreen({ navigation }) {
     const typeBadge = getItemTypeBadge(item.item_type);
     const privacyBadge = getPrivacyBadge(item.privacy);
     const thumbnail = item.images && item.images.length > 0 ? item.images[0].thumbnail_url : (item.image_url || item.media_url);
-    const authorName = item.author_first_name
-      ? `${item.author_first_name} ${item.author_last_name || ''}`
-      : (item.user_first_name ? `${item.user_first_name} ${item.user_last_name || ''}` : 'Пользователь');
+    // /feed возвращает автора как вложенный объект item.author (id/first_name/last_name/avatar_url),
+    // а старый /news/ (фолбэк, пока бэкенд не готов) - плоскими полями author_first_name/...
+    const authorObj = item.author || {};
+    const authorName = (authorObj.first_name || authorObj.last_name)
+      ? `${authorObj.first_name || ''} ${authorObj.last_name || ''}`.trim()
+      : (item.author_first_name
+          ? `${item.author_first_name} ${item.author_last_name || ''}`.trim()
+          : (item.user_first_name ? `${item.user_first_name} ${item.user_last_name || ''}`.trim() : 'Пользователь'));
+    const authorAvatarUrl = authorObj.avatar_url || item.author_avatar_url || item.user_avatar_url;
 
     return (
       <TouchableOpacity
@@ -195,9 +202,11 @@ export default function FeedScreen({ navigation }) {
         onPress={() => {
           if (isNews) {
             navigation.navigate('NewsDetail', { newsId: item.id, newsItem: item });
+          } else {
+            navigation.navigate('PostDetail', { item });
           }
         }}
-        activeOpacity={isNews ? 0.7 : 1}
+        activeOpacity={0.7}
       >
         <View style={styles.newsAuthorHeader}>
           <TouchableOpacity
@@ -206,13 +215,13 @@ export default function FeedScreen({ navigation }) {
             onPress={() => navigation.navigate('UserProfile', { userId: item.author_id || item.user_id })}
           >
             <Image
-              source={{ uri: getFullUrl(item.author_avatar_url || item.user_avatar_url) || 'https://via.placeholder.com/40' }}
+              source={{ uri: getFullUrl(authorAvatarUrl) || 'https://via.placeholder.com/40' }}
               style={styles.authorAvatar}
             />
             <View>
               <Text style={[styles.authorName, { color: colors.text }]}>{authorName}</Text>
               <Text style={[styles.newsDate, { color: colors.textSecondary }]}>
-                {new Date(item.created_at).toLocaleDateString()}
+                {formatPostDateTime(item.created_at)}
               </Text>
             </View>
           </TouchableOpacity>

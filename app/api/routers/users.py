@@ -2900,8 +2900,13 @@ async def get_user_profile_posts(
     )
     posts = posts_res.scalars().all()
 
+    is_moderator = current_user.role in ("admin", "owner")
+
     result = []
     for p in posts:
+        # Скрытые публикации видят только их автор и администраторы/владелец
+        if p.is_hidden and p.user_id != current_user.id and not is_moderator:
+            continue
         if not can_view_content(p.user_id, current_user.id, p.privacy, friendship_status):
             continue
         p_resp = ProfilePostResponse.model_validate(p)

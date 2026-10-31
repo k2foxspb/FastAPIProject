@@ -51,41 +51,6 @@ export default function CreatePostScreen({ navigation, route }) {
     setImages(newImages);
   };
 
-  const handleInsertImage = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      quality: 0.8,
-    });
-
-    if (!result.canceled && result.assets && result.assets.length > 0) {
-      setLoading(true);
-      try {
-        const img = result.assets[0];
-        const formData = new FormData();
-        const uri = img.uri;
-        const uriParts = uri.split('.');
-        const fileType = uriParts[uriParts.length - 1];
-        const fileName = uri.split('/').pop();
-
-        formData.append('file', {
-          uri: uri,
-          name: fileName || `post_media_${Date.now()}.${fileType || 'jpg'}`,
-          type: `image/${fileType || 'jpeg'}`,
-        });
-
-        const response = await newsApi.uploadMedia(formData);
-        const imageUrl = response.data?.url || response.data?.location;
-        if (imageUrl) {
-          richText.current?.insertImage(imageUrl);
-        }
-      } catch (err) {
-        console.error('Insert image error:', err);
-        Alert.alert('Ошибка', 'Не удалось загрузить изображение');
-      } finally {
-        setLoading(false);
-      }
-    }
-  };
 
   const handleSave = async () => {
     const trimmedContent = content.trim();
@@ -230,11 +195,9 @@ export default function CreatePostScreen({ navigation, route }) {
                 actions.insertBulletsList,
                 actions.insertOrderedList,
                 actions.insertLink,
-                actions.insertImage,
                 actions.undo,
                 actions.redo,
               ]}
-              onPressAddImage={handleInsertImage}
               iconTint={colors.text}
               selectedIconTint={colors.primary}
               style={{

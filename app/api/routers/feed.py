@@ -128,10 +128,18 @@ async def get_feed(
         )
         .where(
             ProfilePostModel.is_active == True,
-            ProfilePostModel.is_hidden == False,
         )
     )
     posts = posts_res.scalars().all()
+
+    # Скрытые публикации видят только их автор и администраторы/владелец -
+    # остальным пользователям (включая анонимных) они не показываются.
+    is_moderator = current_user is not None and current_user.role in ("admin", "owner")
+
+    def _can_see_hidden(post: ProfilePostModel) -> bool:
+        if not post.is_hidden:
+            return True
+        return is_moderator or (current_user_id is not None and post.user_id == current_user_id)
 
     # Предзагружаем статусы дружбы одним запросом, чтобы не делать N+1
     friendship_cache: dict[int, str | None] = {}
@@ -147,6 +155,8 @@ async def get_feed(
 
     post_items = []
     for p in posts:
+        if not _can_see_hidden(p):
+            continue
         friendship_status = await _friendship(p.user_id)
         if can_view_content(p.user_id, current_user_id, p.privacy, friendship_status):
             post_items.append(_post_to_feed_item(p, current_user_id))

@@ -1,7 +1,6 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { getShadow } from '../utils/shadowStyles';
-import { View, Text, StyleSheet, Image, FlatList, ScrollView, TouchableOpacity, ActivityIndicator, Platform, RefreshControl, Alert, Modal, TouchableWithoutFeedback, TextInput, Dimensions } from 'react-native';
-import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
+import { View, Text, StyleSheet, Image, FlatList, ScrollView, TouchableOpacity, ActivityIndicator, RefreshControl, Dimensions } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import RenderHTML from 'react-native-render-html';
 import { usersApi, adminApi, newsApi } from '../api';
@@ -19,20 +18,13 @@ export default function UserProfileScreen({ route, navigation }) {
   const { theme } = useTheme();
   const colors = themeConstants[theme];
   const { userId, isAdminView } = route.params;
-  const { userStatuses, currentUser } = useNotifications();
+  const { userStatuses } = useNotifications();
   const [user, setUser] = useState(null);
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
 
-  // Комментарии к публикации
-  const [commentsVisible, setCommentsVisible] = useState(false);
-  const [activePostForComments, setActivePostForComments] = useState(null);
-  const [postComments, setPostComments] = useState([]);
-  const [loadingComments, setLoadingComments] = useState(false);
-  const [newCommentText, setNewCommentText] = useState('');
-  const [submittingComment, setSubmittingComment] = useState(false);
 
   // Применяем WebSocket статус к текущему пользователю
   useEffect(() => {
@@ -162,45 +154,18 @@ export default function UserProfileScreen({ route, navigation }) {
     }
   };
 
-  const openComments = async (post) => {
-    setActivePostForComments(post);
-    setCommentsVisible(true);
-    setLoadingComments(true);
-    try {
-      const res = await usersApi.getProfilePostComments(post.id);
-      setPostComments(res.data || []);
-    } catch (err) {
-      Alert.alert('Ошибка', 'Не удалось загрузить комментарии');
-    } finally {
-      setLoadingComments(false);
-    }
-  };
-
-  const handleAddComment = async () => {
-    if (!newCommentText.trim() || !activePostForComments) return;
-    setSubmittingComment(true);
-    try {
-      const res = await usersApi.addProfilePostComment(activePostForComments.id, newCommentText.trim());
-      setPostComments(prev => [...prev, res.data]);
-      setNewCommentText('');
-      setPosts(prev => prev.map(p => p.id === activePostForComments.id ? { ...p, comments_count: (p.comments_count || 0) + 1 } : p));
-    } catch (err) {
-      Alert.alert('Ошибка', 'Не удалось отправить комментарий');
-    } finally {
-      setSubmittingComment(false);
-    }
-  };
-
-  const handleDeleteComment = async (commentId) => {
-    try {
-      await usersApi.deleteProfilePostComment(commentId);
-      setPostComments(prev => prev.filter(c => c.id !== commentId));
-      if (activePostForComments) {
-        setPosts(prev => prev.map(p => p.id === activePostForComments.id ? { ...p, comments_count: Math.max(0, (p.comments_count || 1) - 1) } : p));
-      }
-    } catch (err) {
-      Alert.alert('Ошибка', 'Не удалось удалить комментарий');
-    }
+  // Открывает полноценный экран публикации (текст целиком, медиа, комментарии).
+  // Поля публикации профиля (post_type/user/user_id) приводятся к виду, который
+  // ожидает PostDetailScreen (item_type/author/author_id), как в ленте.
+  const openPost = (post) => {
+    navigation.navigate('PostDetail', {
+      item: {
+        ...post,
+        item_type: post.post_type === 'announcement' ? 'announcement' : 'post',
+        author: post.user,
+        author_id: post.user_id,
+      },
+    });
   };
 
   const getPrivacyBadge = (privacy) => {
@@ -221,7 +186,7 @@ export default function UserProfileScreen({ route, navigation }) {
       <TouchableOpacity 
         key={item.id}
         activeOpacity={0.9}
-        onPress={() => openComments(item)}
+        onPress={() => openPost(item)}
         style={[styles.postCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
       >
         <View style={styles.postAuthorHeader}>
@@ -301,7 +266,7 @@ export default function UserProfileScreen({ route, navigation }) {
 
             <TouchableOpacity 
               style={[styles.reactionItem, { marginLeft: 16 }]}
-              onPress={(e) => { e.stopPropagation(); openComments(item); }}
+              onPress={(e) => { e.stopPropagation(); openPost(item); }}
             >
               <Icon name="chatbubble-outline" size={17} color={colors.textSecondary} />
               <Text style={[styles.reactionCount, { color: colors.textSecondary }]}>
@@ -442,102 +407,6 @@ export default function UserProfileScreen({ route, navigation }) {
         )}
       </View>
 
-      {/* Модальное окно комментариев к публикации */}
-      <Modal
-        visible={commentsVisible}
-        transparent={true}
-        animationType="slide"
-        onRequestClose={() => setCommentsVisible(false)}
-      >
-        <KeyboardAvoidingView
-          behavior="padding"
-          style={styles.modalOverlay}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 40 : 0}
-        >
-          <View style={[styles.modalCard, { backgroundColor: colors.surface, maxHeight: '80%' }]}>
-            <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
-              <Text style={[styles.modalTitle, { color: colors.text }]}>Комментарии</Text>
-              <TouchableOpacity onPress={() => setCommentsVisible(false)}>
-                <Icon name="close" size={24} color={colors.text} />
-              </TouchableOpacity>
-            </View>
-
-            {loadingComments ? (
-              <ActivityIndicator size="large" color={colors.primary} style={{ margin: 30 }} />
-            ) : (
-              <ScrollView style={styles.commentsList}>
-                {postComments.length === 0 ? (
-                  <Text style={[styles.emptyCommentsText, { color: colors.textSecondary }]}>
-                    Пока нет комментариев
-                  </Text>
-                ) : (
-                  postComments.map((c) => {
-                    const cAuthorName = c.user
-                      ? `${c.user.first_name || ''} ${c.user.last_name || ''}`.trim() || 'Пользователь'
-                      : 'Пользователь';
-                    const canDelete =
-                      currentUser &&
-                      (currentUser.id === c.user_id ||
-                        currentUser.id === activePostForComments?.user_id ||
-                        ['admin', 'owner'].includes(currentUser.role));
-
-                    return (
-                      <View
-                        key={c.id}
-                        style={[styles.commentItem, { borderBottomColor: colors.border }]}
-                      >
-                        <Image
-                          source={{
-                            uri: getAvatarUrl(c.user?.avatar_url || c.avatar_url) || 'https://via.placeholder.com/32',
-                          }}
-                          style={styles.commentAvatar}
-                        />
-                        <View style={{ flex: 1 }}>
-                          <View style={styles.commentHeaderRow}>
-                            <Text style={[styles.commentAuthorName, { color: colors.text }]}>
-                              {cAuthorName}
-                            </Text>
-                            {canDelete && (
-                              <TouchableOpacity onPress={() => handleDeleteComment(c.id)}>
-                                <Icon name="trash-outline" size={14} color={colors.error || '#e53935'} />
-                              </TouchableOpacity>
-                            )}
-                          </View>
-                          <Text style={[styles.commentText, { color: colors.text }]}>{c.comment}</Text>
-                        </View>
-                      </View>
-                    );
-                  })
-                )}
-              </ScrollView>
-            )}
-
-            <View style={[styles.commentInputRow, { borderTopColor: colors.border }]}>
-              <TextInput
-                style={[
-                  styles.commentInput,
-                  { backgroundColor: colors.background, color: colors.text, borderColor: colors.border },
-                ]}
-                placeholder="Написать комментарий..."
-                placeholderTextColor={colors.textSecondary}
-                value={newCommentText}
-                onChangeText={setNewCommentText}
-              />
-              <TouchableOpacity
-                style={[styles.sendCommentBtn, { backgroundColor: colors.primary }]}
-                onPress={handleAddComment}
-                disabled={submittingComment}
-              >
-                {submittingComment ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <Icon name="send" size={16} color="#fff" />
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
     </ScrollView>
   );
 }

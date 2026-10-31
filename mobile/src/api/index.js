@@ -196,10 +196,10 @@ export const feedApi = {
   getFeed: (skip = 0, limit = 20) => api.get('/feed', { params: { skip, limit } }),
   createPost: (data) => api.post('/users/me/posts', data),
   createAnnouncement: (data) => api.post('/feed/announcements', data),
-  moderatePost: (postId) => api.post(`/posts/${postId}/moderate`),
-  hidePost: (postId) => api.post(`/posts/${postId}/hide`),
-  unhidePost: (postId) => api.post(`/posts/${postId}/unhide`),
-  deletePost: (postId) => api.delete(`/posts/${postId}`),
+  moderatePost: (postId) => api.post(`/users/posts/${postId}/moderate`),
+  hidePost: (postId) => api.post(`/users/posts/${postId}/hide`),
+  unhidePost: (postId) => api.post(`/users/posts/${postId}/unhide`),
+  deletePost: (postId) => api.delete(`/users/me/posts/${postId}`),
 };
 
 export const notificationsApi = {

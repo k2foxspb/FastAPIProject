@@ -45,6 +45,14 @@ export const formatMessageTime = (timeStr) => {
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 };
 
+// Дата и время публикации (поста/объявления/новости) в коротком читаемом виде,
+// например "31.10.2026, 18:34" - используется в ленте и на экранах публикаций.
+export const formatPostDateTime = (timeStr) => {
+  const date = parseISODate(timeStr);
+  if (!date) return '';
+  return `${date.toLocaleDateString()}, ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+};
+
 export const formatStatus = (status, lastSeen) => {
   // Приводим статус к нижнему регистру для надежности
   const s = (status || '').toLowerCase();

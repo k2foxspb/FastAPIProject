@@ -22,6 +22,7 @@ import FeedScreen from '../screens/FeedScreen';
 import CreatePostScreen from '../screens/CreatePostScreen';
 import NotificationsScreen from '../screens/NotificationsScreen';
 import NewsDetailScreen from '../screens/NewsDetailScreen';
+import PostDetailScreen from '../screens/PostDetailScreen';
 import MyLikesScreen from '../screens/MyLikesScreen';
 import MyReviewsScreen from '../screens/MyReviewsScreen';
 import LoginScreen from '../screens/LoginScreen';
@@ -76,6 +77,7 @@ function ChatStack() {
         })} 
       />
       <Stack.Screen name="UserProfile" component={UserProfileScreen} options={{ title: 'Профиль пользователя' }} />
+      <Stack.Screen name="PostDetail" component={PostDetailScreen} options={{ title: 'Публикация' }} />
       <Stack.Screen name="UserMedia" component={UserMediaScreen} options={{ title: 'Медиафайлы' }} />
       <Stack.Screen 
         name="PhotoDetail" 
@@ -148,6 +150,7 @@ function ProfileStack() {
       <Stack.Screen name="MyLikes" component={MyLikesScreen} options={{ title: 'Понравилось' }} />
       <Stack.Screen name="MyReviews" component={MyReviewsScreen} options={{ title: 'Мои отзывы' }} />
       <Stack.Screen name="UserProfile" component={UserProfileScreen} options={{ title: 'Профиль пользователя' }} />
+      <Stack.Screen name="PostDetail" component={PostDetailScreen} options={{ title: 'Публикация' }} />
       <Stack.Screen name="WebView" component={WebViewScreen} />
       <Stack.Screen 
         name="Login" 
@@ -177,6 +180,7 @@ function UsersStack() {
       <Stack.Screen name="UsersMain" component={UsersScreen} options={{ title: 'Пользователи' }} />
       <Stack.Screen name="CreatePost" component={CreatePostScreen} options={{ title: 'Новая публикация' }} />
       <Stack.Screen name="UserProfile" component={UserProfileScreen} options={{ title: 'Профиль пользователя' }} />
+      <Stack.Screen name="PostDetail" component={PostDetailScreen} options={{ title: 'Публикация' }} />
       <Stack.Screen name="UserMedia" component={UserMediaScreen} options={{ title: 'Медиафайлы' }} />
       <Stack.Screen 
         name="PhotoDetail" 
@@ -206,6 +210,7 @@ function FeedStack() {
       <Stack.Screen name="CreatePost" component={CreatePostScreen} options={{ title: 'Новая публикация' }} />
       <Stack.Screen name="Notifications" component={NotificationsScreen} options={{ title: 'Уведомления', presentation: 'modal' }} />
       <Stack.Screen name="NewsDetail" component={NewsDetailScreen} options={{ title: 'Новость' }} />
+      <Stack.Screen name="PostDetail" component={PostDetailScreen} options={{ title: 'Публикация' }} />
       <Stack.Screen name="EditNews" component={EditNewsScreen} options={{ title: 'Редактировать новость' }} />
       <Stack.Screen name="UserProfile" component={UserProfileScreen} options={{ title: 'Профиль пользователя' }} />
       <Stack.Screen name="UserMedia" component={UserMediaScreen} options={{ title: 'Медиафайлы' }} />
