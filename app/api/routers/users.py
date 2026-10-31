@@ -1304,17 +1304,8 @@ async def react_to_album(
             "message": f"поставил {action} вашему альбому \"{album_obj.title}\""
         }
         asyncio.create_task(notification_manager.send_personal_message(msg, album_obj.user_id))
-        
-        if album_obj.user.fcm_token:
-             asyncio.create_task(send_fcm_notification(
-                token=album_obj.user.fcm_token,
-                title="Новая реакция",
-                body=f"{msg['sender_name']} {msg['message']}",
-                data=msg,
-                sender_id=current_user.id,
-                sender_avatar=current_user.avatar_url
-            ))
 
+        # Push отправляет create_or_group_notification (через dispatch_notification), прямой FCM здесь не нужен
         from app.core.notification_service import create_or_group_notification
         await create_or_group_notification(
             db,
@@ -1443,17 +1434,8 @@ async def add_album_comment(
             "message": f"прокомментировал ваш альбом \"{album.title}\": {new_comment.comment[:50]}..."
         }
         asyncio.create_task(notification_manager.send_personal_message(msg, album.user_id))
-        
-        if album.user.fcm_token:
-             asyncio.create_task(send_fcm_notification(
-                token=album.user.fcm_token,
-                title="Новый комментарий к альбому",
-                body=f"{msg['sender_name']} {msg['message']}",
-                data=msg,
-                sender_id=current_user.id,
-                sender_avatar=current_user.avatar_url
-            ))
 
+        # Push отправляет create_or_group_notification (через dispatch_notification), прямой FCM здесь не нужен
         from app.core.notification_service import create_or_group_notification
         await create_or_group_notification(
             db,
@@ -1533,16 +1515,8 @@ async def react_to_album_comment(
             "message": f"поставил {action} вашему комментарию к альбому: {comment_obj.comment[:50]}..."
         }
         asyncio.create_task(notification_manager.send_personal_message(msg, comment_obj.user_id))
-        
-        if comment_obj.user.fcm_token:
-             asyncio.create_task(send_fcm_notification(
-                token=comment_obj.user.fcm_token,
-                title="Реакция на ваш комментарий",
-                body=f"{msg['sender_name']} {msg['message']}",
-                data=msg,
-                sender_id=current_user.id,
-                sender_avatar=current_user.avatar_url
-            ))
+
+        # Push отправляет create_or_group_notification ниже, прямой FCM здесь не нужен
 
         from app.core.notification_service import create_or_group_notification
         await create_or_group_notification(
@@ -1985,17 +1959,8 @@ async def react_to_photo(
             "message": f"поставил {action} вашему фото"
         }
         asyncio.create_task(notification_manager.send_personal_message(msg, photo_obj.user_id))
-        
-        if photo_obj.user.fcm_token:
-             asyncio.create_task(send_fcm_notification(
-                token=photo_obj.user.fcm_token,
-                title="Новая реакция",
-                body=f"{msg['sender_name']} {msg['message']}",
-                data=msg,
-                sender_id=current_user.id,
-                sender_avatar=current_user.avatar_url
-            ))
 
+        # Push отправляет create_or_group_notification ниже, прямой FCM здесь не нужен
         from app.core.notification_service import create_or_group_notification
         await create_or_group_notification(
             db,
@@ -2143,16 +2108,8 @@ async def react_to_photo_comment(
             "message": f"поставил {action} вашему комментарию к фото: {comment_obj.comment[:50]}..."
         }
         asyncio.create_task(notification_manager.send_personal_message(msg, comment_obj.user_id))
-        
-        if comment_obj.user.fcm_token:
-             asyncio.create_task(send_fcm_notification(
-                token=comment_obj.user.fcm_token,
-                title="Реакция на ваш комментарий",
-                body=f"{msg['sender_name']} {msg['message']}",
-                data=msg,
-                sender_id=current_user.id,
-                sender_avatar=current_user.avatar_url
-            ))
+
+        # Push отправляет create_or_group_notification ниже, прямой FCM здесь не нужен
 
         from app.core.notification_service import create_or_group_notification
         await create_or_group_notification(
@@ -2212,17 +2169,8 @@ async def add_photo_comment(
             "message": f"прокомментировал ваше фото: {new_comment.comment[:50]}..."
         }
         asyncio.create_task(notification_manager.send_personal_message(msg, photo.user_id))
-        
-        if photo.user.fcm_token:
-             asyncio.create_task(send_fcm_notification(
-                token=photo.user.fcm_token,
-                title="Новый комментарий к фото",
-                body=f"{msg['sender_name']} {msg['message']}",
-                data=msg,
-                sender_id=current_user.id,
-                sender_avatar=current_user.avatar_url
-            ))
 
+        # Push отправляет create_or_group_notification ниже, прямой FCM здесь не нужен
         from app.core.notification_service import create_or_group_notification
         await create_or_group_notification(
             db,
