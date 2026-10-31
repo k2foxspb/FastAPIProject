@@ -35,7 +35,7 @@ services:
       context: .
       dockerfile: app/Dockerfile.prod.yml
     # Запускаем миграции, инициализацию БД и сервер Gunicorn
-    command: sh -c "alembic upgrade head && python -m app.init_db && gunicorn app.main:app --workers 2 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000"
+    command: sh -c "alembic upgrade head && python -m app.init_db && gunicorn app.main:app --workers 1 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000"
     volumes:
       - ./media:/home/fast/app/media
       - ./firebase-service-account.json:/run/secrets/firebase-service-account.json:ro

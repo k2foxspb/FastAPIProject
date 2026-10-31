@@ -37,7 +37,7 @@ export default function ChatScreen({ route, navigation }) {
     setActiveChatId, fetchDialogs, currentUserId, notifications, dialogs, clearUnread, currentUser,
     sendMessage: sendMessageWs, markAsReadWs, deleteMessageWs, bulkDeleteMessagesWs, toggleReactionWs, getHistoryWs,
     onHistoryReceived, onSearchResultsReceived, onUploadProgressReceived, searchMessagesWs, getCachedHistory, isChatConnected,
-    typingUsers, sendTypingStatus,
+    typingUsers, sendTypingStatus, userStatuses,
   } = useNotifications();
   const { userId, userName } = route.params;
 
@@ -92,6 +92,9 @@ export default function ChatScreen({ route, navigation }) {
     restoreActiveUploads: uploads.restoreActiveUploads,
   });
   const { interlocutor, loadMoreMessages } = history;
+  const interlocutorForHeader = interlocutor
+    ? { ...interlocutor, ...(userStatuses[userId] || {}) }
+    : interlocutor;
 
   const selection = useMessageSelection({
     messages,
@@ -322,7 +325,7 @@ export default function ChatScreen({ route, navigation }) {
         navigation={navigation}
         userId={userId}
         userName={userName}
-        interlocutor={interlocutor}
+        interlocutor={interlocutorForHeader}
         selectionMode={selectionMode}
         selectedIds={selectedIds}
         onClearSelection={selection.clearSelection}

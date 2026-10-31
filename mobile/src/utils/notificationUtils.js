@@ -47,27 +47,50 @@ export function getPushRoute(data) {
 // Загрузка аватарки с таймаутом: если картинка недоступна или сеть медленная,
 // возвращаем null, и уведомление показывается без аватарки (с иконкой приложения).
 const AVATAR_TIMEOUT_MS = 4000;
+const inFlightMessageIds = new Set();
 export async function resolveAvatarUrl(url) {
   if (typeof url !== 'string' || !(url.startsWith('http://') || url.startsWith('https://'))) {
+    console.log('[Notifee] Avatar URL is missing or not absolute:', url);
     return null;
   }
   try {
-    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
-    let timer;
-    const timeout = new Promise((resolve) => {
-      timer = setTimeout(() => {
-        if (controller) controller.abort();
-        resolve(null);
-      }, AVATAR_TIMEOUT_MS);
-    });
-    const check = fetch(url, { method: 'HEAD', signal: controller ? controller.signal : undefined })
-      .then((res) => (res && res.ok ? url : null))
-      .catch(() => null);
-    const result = await Promise.race([check, timeout]);
-    clearTimeout(timer);
+    const checkUrl = async (method) => {
+      const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+      let timer;
+      const timeout = new Promise((resolve) => {
+        timer = setTimeout(() => {
+          if (controller) controller.abort();
+          resolve(null);
+        }, AVATAR_TIMEOUT_MS);
+      });
+      const check = fetch(url, {
+        method,
+        ...(method === 'GET' ? { headers: { Range: 'bytes=0-0' } } : {}),
+        signal: controller ? controller.signal : undefined,
+      })
+        .then((res) => {
+          if (!res?.ok) return null;
+          if (method === 'GET' && res.body?.cancel) {
+            const cancelResult = res.body.cancel();
+            if (cancelResult?.catch) cancelResult.catch(() => {});
+          }
+          return url;
+        })
+        .catch(() => null);
+      const result = await Promise.race([check, timeout]);
+      clearTimeout(timer);
+      return result;
+    };
+
+    let result = await checkUrl('HEAD');
+    if (!result) {
+      console.log('[Notifee] Avatar HEAD check failed; retrying with GET:', url);
+      result = await checkUrl('GET');
+    }
+    console.log(`[Notifee] Avatar URL ${result ? 'available' : 'unavailable'}:`, url);
     return result;
   } catch (e) {
-    console.log('[Notifee] resolveAvatarUrl error:', e?.message || e);
+    console.log('[Notifee] resolveAvatarUrl error for URL:', url, e?.message || e);
     return null;
   }
 }
@@ -157,6 +180,13 @@ export async function displayBundledMessage(remoteMessage) {
     // Проверка на дублирование: если сообщение пришло И как notification, И как data, 
     // Android может показать его дважды. Мы используем messageId для отслеживания.
     if (remoteMessage?.messageId) {
+      // Синхронная проверка в памяти: два вызова подряд не должны пройти одновременно
+      if (inFlightMessageIds.has(remoteMessage.messageId)) {
+        console.log(`[Notifee] Message ${remoteMessage.messageId} already in flight, skipping duplicate`);
+        return;
+      }
+      inFlightMessageIds.add(remoteMessage.messageId);
+      setTimeout(() => inFlightMessageIds.delete(remoteMessage.messageId), 60000);
       const alreadyHandled = await storage.getItem(`handled_msg_${remoteMessage.messageId}`);
       if (alreadyHandled) {
         console.log(`[Notifee] Message ${remoteMessage.messageId} already handled, skipping duplicate`);

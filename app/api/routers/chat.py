@@ -295,7 +295,7 @@ async def websocket_chat_endpoint(
     # Fetch sender info once for the session
     sender_name = f"{user.first_name} {user.last_name}".strip() if (user.first_name or user.last_name) else "Пользователь"
     if not sender_name: sender_name = "Пользователь"
-    sender_avatar = user.avatar_url
+    sender_avatar = user.avatar_preview_url or user.avatar_url
 
     try:
         while True:
@@ -1276,11 +1276,11 @@ async def send_message_api(
     await db.refresh(new_msg)
 
     # Находим отправителя для имени и аватарки
-    sender_result = await db.execute(select(UserModel.first_name, UserModel.last_name, UserModel.avatar_url).where(UserModel.id == user_id))
+    sender_result = await db.execute(select(UserModel.first_name, UserModel.last_name, UserModel.avatar_url, UserModel.avatar_preview_url).where(UserModel.id == user_id))
     sender_row = sender_result.first()
     sender_name = f"{sender_row.first_name} {sender_row.last_name}".strip() if sender_row and (sender_row.first_name or sender_row.last_name) else "Пользователь"
     if not sender_name: sender_name = "Пользователь"
-    sender_avatar = sender_row.avatar_url if sender_row else None
+    sender_avatar = (sender_row.avatar_preview_url or sender_row.avatar_url) if sender_row else None
 
     # Готовим данные ответа
     response_data = {
@@ -2204,12 +2204,12 @@ async def upload_chunk(
                     receiver = await db.get(UserModel, upd_msg.receiver_id)
                     if receiver and receiver.fcm_token:
                         sender_result = await db.execute(
-                            select(UserModel.first_name, UserModel.last_name, UserModel.avatar_url)
+                            select(UserModel.first_name, UserModel.last_name, UserModel.avatar_url, UserModel.avatar_preview_url)
                             .where(UserModel.id == user_id)
                         )
                         sender_row = sender_result.first()
                         sender_name = f"{sender_row.first_name} {sender_row.last_name}".strip() if sender_row and (sender_row.first_name or sender_row.last_name) else "Пользователь"
-                        sender_avatar = sender_row.avatar_url if sender_row else None
+                        sender_avatar = (sender_row.avatar_preview_url or sender_row.avatar_url) if sender_row else None
 
                         final_type = upd_msg.message_type
                         if final_type == "video_note":

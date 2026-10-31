@@ -142,7 +142,7 @@ async def create_or_group_notification(
             if actor_id is not None:
                 actor = await db.get(UserModel, actor_id)
                 if actor is not None:
-                    sender_avatar = actor.avatar_url
+                    sender_avatar = actor.avatar_preview_url or actor.avatar_url
                     actor_name = f"{actor.first_name or ''} {actor.last_name or ''}".strip() or actor.email
                     if actor_name:
                         push_data.setdefault("sender_name", actor_name)
