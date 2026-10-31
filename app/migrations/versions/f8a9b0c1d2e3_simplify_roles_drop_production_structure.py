@@ -30,31 +30,54 @@ branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
+def _drop_table_cascade(bind, inspector, table: str) -> None:
+    """
+    Удаляет таблицу, если она существует, используя CASCADE на PostgreSQL,
+    чтобы любые зависимые объекты (внешние ключи из таблиц, которые по
+    каким-то причинам не были удалены ранее в этой же миграции) не мешали
+    удалению (см. DependentObjectsStillExistError). На других диалектах
+    (например SQLite в тестах) CASCADE не поддерживается - используется
+    обычный op.drop_table.
+    """
+    if table not in inspector.get_table_names():
+        return
+    if bind.dialect.name == 'postgresql':
+        op.execute(sa.text(f'DROP TABLE IF EXISTS "{table}" CASCADE'))
+    else:
+        op.drop_table(table)
+
+
 def upgrade() -> None:
     bind = op.get_bind()
     inspector = sa.inspect(bind)
     existing_tables = inspector.get_table_names()
 
     # --- 1. Удаление таблиц табеля и учёта продукции ---
+    # Порядок важен: сначала таблицы, ссылающиеся на timesheet_entries
+    # (согласования и аудит-лог табеля), иначе DROP TABLE timesheet_entries
+    # падает с DependentObjectsStillExistError.
     for table in [
         'production_audit_logs',
         'production_entry_items',
         'production_entries',
         'production_products',
+        'timesheet_entry_approvals',
+        'timesheet_audit_logs',
         'timesheet_entries',
     ]:
-        if table in existing_tables:
-            op.drop_table(table)
+        _drop_table_cascade(bind, inspector, table)
 
     # --- 2. Удаление таблиц заявлений ---
+    # statement_audit_logs и statement_approvals ссылаются на statements -
+    # удаляются первыми по той же причине, что и выше.
     for table in [
+        'statement_audit_logs',
         'statement_approvals',
         'statement_template_recipients',
         'statements',
         'statement_templates',
     ]:
-        if table in inspector.get_table_names():
-            op.drop_table(table)
+        _drop_table_cascade(bind, inspector, table)
 
     # --- 3. Удаление таблиц документов ---
     for table in [
@@ -64,8 +87,7 @@ def upgrade() -> None:
         'documents',
         'document_categories',
     ]:
-        if table in inspector.get_table_names():
-            op.drop_table(table)
+        _drop_table_cascade(bind, inspector, table)
 
     # --- 4. Удаление старых объявлений (заменены ProfilePost.post_type="announcement") ---
     for table in [
@@ -73,8 +95,7 @@ def upgrade() -> None:
         'announcement_recipients',
         'announcements',
     ]:
-        if table in inspector.get_table_names():
-            op.drop_table(table)
+        _drop_table_cascade(bind, inspector, table)
 
     # --- 5. Удаление и.о. и производственной иерархии (должности/цеха/участки) ---
     if 'acting_assignments' in inspector.get_table_names():
@@ -83,10 +104,10 @@ def upgrade() -> None:
             op.drop_index('ix_acting_assignments_is_active', table_name='acting_assignments')
         if 'ix_acting_assignments_user_id' in existing_indexes:
             op.drop_index('ix_acting_assignments_user_id', table_name='acting_assignments')
-        op.drop_table('acting_assignments')
+        _drop_table_cascade(bind, inspector, 'acting_assignments')
 
     if 'positions' in inspector.get_table_names():
-        op.drop_table('positions')
+        _drop_table_cascade(bind, inspector, 'positions')
 
     # --- 6. Удаление колонок users, ссылающихся на цеха/участки/табель ---
     existing_tables = inspector.get_table_names()
