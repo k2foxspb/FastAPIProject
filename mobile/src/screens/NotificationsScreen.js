@@ -22,7 +22,10 @@ export default function NotificationsScreen({ navigation }) {
   const fetchNotifications = useCallback(async () => {
     try {
       const res = await notificationsApi.getNotifications(0, 50);
-      setItems(res.data || []);
+      // Backend возвращает NotificationListResponse: {items: [...], unread_count: N},
+      // а не голый массив - берём именно items, иначе items становится объектом
+      // и последующие setItems(prev => prev.map(...)) падают с "prev.map is not a function".
+      setItems(res.data?.items || []);
     } catch (err) {
       console.log('[NotificationsScreen] Failed to load notifications:', err.message);
     } finally {
