@@ -40,7 +40,9 @@ export default function NotificationsScreen({ navigation }) {
   useFocusEffect(
     useCallback(() => {
       fetchNotifications();
-    }, [fetchNotifications])
+      // Синхронизируем бейдж колокольчика с сервером при каждом открытии экрана
+      refreshUnreadCount?.();
+    }, [fetchNotifications, refreshUnreadCount])
   );
 
   // Живое появление уведомлений в списке, пока экран открыт - аналогично тому,

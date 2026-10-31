@@ -19,7 +19,7 @@ import notifee from '@notifee/react-native';
 import { usersApi, chatApi, setAuthToken } from '../api';
 import { storage } from './storage';
 import { navigationRef } from '../navigation/NavigationService';
-import { displayBundledMessage, handleNotificationResponse, parseNotificationData } from './notificationUtils';
+import { displayBundledMessage, handleNotificationResponse, parseNotificationData, navigateByPushData } from './notificationUtils';
 
 // Global state to track if native module is broken during session
 let nativeMessagingBroken = false;
@@ -382,34 +382,11 @@ export async function setupCloudMessaging(onNotificationReceived = null) {
     const openFromNotification = (remoteMessage) => {
       try {
         const data = remoteMessage?.data || {};
-        const { type, senderId, senderName, newsId } = parseNotificationData(data);
 
         if (!navigationRef?.isReady?.()) return;
 
-        if (type === 'new_message' && senderId) {
-          navigationRef.navigate('Messages', { screen: 'Chat', params: { userId: senderId, userName: senderName || 'Чат' }, initial: false });
-          return;
-        }
-
-        if ((type === 'friend_request' || type === 'friend_accept')) {
-          navigationRef.navigate('Users', { screen: 'UsersMain', params: { initialTab: 'friends' } });
-          return;
-        }
-
-        if (type === 'new_post') {
-          if (newsId) {
-            navigationRef.navigate('Feed', { screen: 'NewsDetail', params: { newsId } });
-          } else {
-            navigationRef.navigate('Feed');
-          }
-          return;
-        }
-
-        if (senderId) {
-          navigationRef.navigate('Messages', { screen: 'Chat', params: { userId: senderId, userName: senderName || 'Чат' }, initial: false });
-        } else {
-          navigationRef.navigate('Feed');
-        }
+        // Единая маршрутизация по data.type: чат/группа -> сообщения, остальное -> колокольчик
+        navigateByPushData(navigationRef, data);
       } catch (e) {
         console.error('[FCM] openFromNotification error:', e);
       }

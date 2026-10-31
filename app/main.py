@@ -11,6 +11,7 @@ from app.api.routers.health import router as health_router
 from app.api.routers.seo import router as seo_router
 
 from fastapi.exceptions import RequestValidationError
+from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
 from loguru import logger
 
@@ -82,6 +83,11 @@ def create_application() -> FastAPI:
 
         mime_type = metadata.mime_type or mimetypes.guess_type(file_path)[0] or "application/octet-stream"
         return StreamingResponse(stream, media_type=mime_type)
+
+    # Статика сайта (общие CSS/JS страниц документации) - /static/css/site.css, /static/js/site.js
+    static_dir = os.path.join(project_root, "app", "static")
+    os.makedirs(static_dir, exist_ok=True)
+    app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
     # Добавляем отдачу файла верификации Mail.ru напрямую из корня
 

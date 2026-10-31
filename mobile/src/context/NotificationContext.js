@@ -10,7 +10,7 @@ import { setNotificationAudioMode } from '../utils/audioSettings';
 import { isWithinQuietHours } from '../utils/quietHours';
 import { navigationRef } from '../navigation/NavigationService';
 import { updateServerFcmToken, checkAndRemindPermissions } from '../utils/notifications';
-import { displayBundledMessage, parseNotificationData } from '../utils/notificationUtils';
+import { displayBundledMessage, parseNotificationData, getPushRoute } from '../utils/notificationUtils';
 
 const NotificationContext = createContext();
 
@@ -111,6 +111,9 @@ export const NotificationProvider = ({ children }) => {
   const [unreadTotal, setUnreadTotal] = useState(0);
   const [friendRequestsCount, setFriendRequestsCount] = useState(0);
   const [unreadNotificationsCount, setUnreadNotificationsCount] = useState(0);
+  // Ссылки на функции, объявленные ниже injectExternalNotification (избегаем обращения до инициализации)
+  const refreshUnreadCountRef = useRef(null);
+  const fetchFriendRequestsCountRef = useRef(null);
   const [isConnected, setIsConnected] = useState(false);
   const [isChatConnected, setIsChatConnected] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
@@ -254,8 +257,26 @@ export const NotificationProvider = ({ children }) => {
     if (!remoteMessage || !remoteMessage.data) return;
     const data = remoteMessage.data;
     const { type, senderId, senderName, notifTitle, notifBody } = parseNotificationData(data);
-    
-    if (type === 'new_message' && senderId) {
+    const route = getPushRoute(data);
+
+    // Маршрутизация data.type -> счётчик:
+    //  - 'bell': счётчик колокольчика берётся с сервера (не локальным +1, чтобы push и WS
+    //    одного и того же события не давали двойной учёт); заявки в друзья тоже обновляем;
+    //  - 'messages': только личные сообщения инжектируются в список диалогов;
+    //  - неизвестный тип: счётчик сообщений не трогаем.
+    if (route === 'bell') {
+      refreshUnreadCountRef.current?.();
+      if (type === 'friend_request' || type === 'friend_accept' || type === 'friend_accepted') {
+        fetchFriendRequestsCountRef.current?.();
+      }
+      return;
+    }
+    if (route === 'messages' && type === 'new_group_message') {
+      // Групповые сообщения приходят по chat WS (onGroupMessageReceived), в личные диалоги не инжектируем
+      return;
+    }
+
+    if (route === 'messages' && type === 'new_message' && senderId) {
       const messageId = data.message_id || data.messageId || String(Date.now());
       const message = {
         id: messageId,
@@ -561,6 +582,9 @@ export const NotificationProvider = ({ children }) => {
     }
   }, []);
 
+  refreshUnreadCountRef.current = refreshUnreadCount;
+  fetchFriendRequestsCountRef.current = fetchFriendRequestsCount;
+
   const playNotificationSound = useCallback(async () => {
     try {
       if (await isWithinQuietHours()) {
@@ -725,7 +749,9 @@ export const NotificationProvider = ({ children }) => {
         // Событие колокольчика уведомлений (GET /notifications и т.д.) - приходит с объектом
         // уведомления в payload.data - обновляем счётчик непрочитанных сразу же, не ждущись следующего открытия ленты.
         if (payload.type === 'notification') {
-          setUnreadNotificationsCount(prev => prev + 1);
+          // Берём актуальный счётчик с сервера вместо локального +1: тот же событие
+          // приходит и по FCM, и по WS, и инкремент дал бы двойной учёт (группировка также учтена сервером).
+          refreshUnreadCount();
           if (appState.current === 'active') {
             Vibration.vibrate(150);
           }

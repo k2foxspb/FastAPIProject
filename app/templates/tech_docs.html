@@ -4,344 +4,105 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Техническая документация — Fokin System</title>
-    <meta name="description" content="Техническая документация Fokin System: архитектура, технологический стек, безопасность, инфраструктура и деплой.">
+    <meta name="description" content="Техническая документация Fokin System: архитектура backend, push-уведомления (FCM, Notifee), мобильное приложение, технологический стек и инфраструктура Docker.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/site.css">
+    <script src="/static/js/site.js"></script>
     <style>
-        :root {
-            --bg-color: #060b14;
-            --panel-color: rgba(15, 23, 42, 0.75);
-            --panel-border: rgba(56, 189, 248, 0.18);
-            --accent-color: #22d3ee;
-            --accent-secondary: #38bdf8;
-            --ok-color: #34d399;
-            --warn-color: #fbbf24;
-            --bad-color: #f87171;
-            --text-primary: #e2e8f0;
-            --text-secondary: #7c8aa5;
-            --mono-font: 'JetBrains Mono', 'Courier New', monospace;
-        }
-
-        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-
+        * { box-sizing: border-box; }
         body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-family: 'Inter', sans-serif;
             background-color: var(--bg-color);
             background-image:
                 linear-gradient(rgba(56, 189, 248, 0.05) 1px, transparent 1px),
                 linear-gradient(90deg, rgba(56, 189, 248, 0.05) 1px, transparent 1px),
-                radial-gradient(circle at 0% 0%, rgba(34, 211, 238, 0.1) 0%, transparent 50%);
+                radial-gradient(circle at 100% 100%, rgba(34, 211, 238, 0.1) 0%, transparent 50%);
             background-size: 42px 42px, 42px 42px, 100% 100%;
             color: var(--text-primary);
-            line-height: 1.65;
+            line-height: 1.6;
             margin: 0;
-            padding: 20px;
+            padding: 24px 16px 60px;
             display: flex;
             flex-direction: column;
             align-items: center;
         }
-
         .topbar {
-            width: 100%;
-            max-width: 1160px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 12px 20px;
-            margin-bottom: 20px;
-            background: var(--panel-color);
-            backdrop-filter: blur(10px);
-            border: 1px solid var(--panel-border);
-            border-radius: 14px;
-            font-family: var(--mono-font);
-            font-size: 12px;
-            color: var(--text-secondary);
+            width: 100%; max-width: 1180px; display: flex; align-items: center; justify-content: space-between;
+            gap: 12px; padding: 10px 20px; margin-bottom: 24px;
+            background: var(--panel-color); backdrop-filter: blur(10px);
+            border: 1px solid var(--panel-border); border-radius: 14px;
+            font-family: var(--mono-font); font-size: 12px; color: var(--text-secondary);
         }
-
-        .topbar a.back-link {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            color: var(--text-secondary);
-            text-decoration: none;
-            transition: color 0.2s;
-        }
-
-        .topbar a.back-link:hover { color: var(--accent-color); }
-
         .doc-tag { color: var(--accent-color); letter-spacing: 0.1em; }
-
-        .layout {
-            width: 100%;
-            max-width: 1160px;
-            display: grid;
-            grid-template-columns: 250px 1fr;
-            gap: 24px;
-            align-items: start;
-        }
-
-        .sidebar {
-            position: sticky;
-            top: 20px;
-            background: var(--panel-color);
-            backdrop-filter: blur(12px);
-            border: 1px solid var(--panel-border);
-            border-radius: 18px;
-            padding: 20px 16px;
-            max-height: calc(100vh - 40px);
-            overflow-y: auto;
-        }
-
-        .sidebar-title {
-            font-family: var(--mono-font);
-            font-size: 11px;
-            letter-spacing: 0.12em;
-            color: var(--text-secondary);
-            margin: 0 0 12px 8px;
-        }
-
-        .sidebar nav a {
-            display: block;
-            padding: 7px 10px;
-            border-radius: 8px;
-            color: var(--text-secondary);
-            text-decoration: none;
-            font-size: 13px;
-            transition: all 0.15s ease;
-            margin-bottom: 2px;
-        }
-
-        .sidebar nav a:hover,
-        .sidebar nav a.active {
-            background: rgba(34, 211, 238, 0.1);
-            color: var(--accent-color);
-        }
-
-        .sidebar nav a .n {
-            font-family: var(--mono-font);
-            opacity: 0.6;
-            margin-right: 6px;
-        }
-
-        .content {
-            background: var(--panel-color);
-            backdrop-filter: blur(12px);
-            border: 1px solid var(--panel-border);
-            border-radius: 24px;
-            padding: 44px;
+        .container {
+            background: var(--panel-color); backdrop-filter: blur(12px);
+            border: 1px solid var(--panel-border); border-radius: 24px; padding: 44px;
             box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
         }
-
         h1 {
-            font-size: 32px;
-            font-weight: 800;
-            margin: 0 0 10px;
-            letter-spacing: -0.02em;
+            font-size: 32px; font-weight: 800; margin: 0 0 12px; letter-spacing: -0.02em;
             background: linear-gradient(135deg, #fff 0%, #7c8aa5 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
+            -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
         }
-
-        .lead {
-            color: var(--text-secondary);
-            font-size: 15px;
-            margin-bottom: 32px;
-            max-width: 720px;
+        html[data-theme="light"] h1 { background: linear-gradient(135deg, #0f172a 0%, #475569 100%); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+        h2 { font-size: 20px; font-weight: 700; margin: 0 0 16px; color: var(--accent-color); font-family: var(--mono-font); }
+        h2 .num { opacity: 0.6; margin-right: 6px; }
+        p, li { color: var(--text-secondary); font-size: 16px; margin: 0 0 12px; }
+        ul { padding-left: 20px; margin: 0 0 20px; }
+        .back-link {
+            display: inline-flex; align-items: center; color: var(--text-secondary); text-decoration: none;
+            margin-bottom: 24px; font-weight: 500; font-family: var(--mono-font); font-size: 13px; transition: color 0.2s;
         }
-
-        .date {
-            font-size: 13px;
-            font-family: var(--mono-font);
-            color: var(--text-secondary);
-            opacity: 0.7;
-            margin-bottom: 0;
-        }
-
-        section.doc-section {
-            margin-bottom: 44px;
-            scroll-margin-top: 20px;
-        }
-
-        h2 {
-            font-size: 19px;
-            font-weight: 700;
-            margin: 0 0 18px;
-            color: var(--accent-color);
-            font-family: var(--mono-font);
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        h2 .num {
-            opacity: 0.55;
-        }
-
-        h3 {
-            font-size: 15px;
-            font-weight: 700;
-            color: #fff;
-            margin: 22px 0 10px;
-        }
-
-        p, li {
-            color: var(--text-secondary);
-            font-size: 15px;
-        }
-
-        p { margin-bottom: 12px; }
-
-        ul, ol {
-            padding-left: 20px;
-            margin-bottom: 16px;
-        }
-
-        li { margin-bottom: 6px; }
-
-        code, .tag {
-            font-family: var(--mono-font);
-            font-size: 12.5px;
-            background: rgba(56, 189, 248, 0.1);
-            border: 1px solid rgba(56, 189, 248, 0.2);
-            color: var(--accent-secondary);
-            padding: 2px 7px;
-            border-radius: 6px;
-        }
-
-        .stack-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-            gap: 16px;
-            margin: 16px 0 24px;
-        }
-
-        .stack-card {
-            border: 1px solid var(--panel-border);
-            background: rgba(255, 255, 255, 0.02);
-            border-radius: 14px;
-            padding: 18px;
-        }
-
-        .stack-card .sc-title {
-            font-family: var(--mono-font);
-            font-size: 12px;
-            letter-spacing: 0.08em;
-            color: var(--accent-color);
-            margin-bottom: 10px;
-        }
-
-        .stack-card ul { margin: 0; padding-left: 18px; }
-        .stack-card li { font-size: 13.5px; }
-
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin: 10px 0 24px;
-            font-size: 13.5px;
-        }
-
-        th, td {
-            text-align: left;
-            padding: 10px 12px;
-            border-bottom: 1px solid var(--panel-border);
-            color: var(--text-secondary);
-        }
-
-        th {
-            font-family: var(--mono-font);
-            font-size: 11.5px;
-            letter-spacing: 0.06em;
-            color: var(--text-primary);
-            opacity: 0.8;
-        }
-
-        td strong, td code { color: var(--text-primary); }
-
-        .badge {
-            display: inline-block;
-            font-family: var(--mono-font);
-            font-size: 11px;
-            padding: 3px 9px;
-            border-radius: 999px;
-            border: 1px solid currentColor;
-            margin: 2px 4px 2px 0;
-        }
-
-        .badge.ok { color: var(--ok-color); }
-        .badge.warn { color: var(--warn-color); }
-        .badge.bad { color: var(--bad-color); }
-        .badge.info { color: var(--accent-secondary); }
-
-        .callout {
-            display: flex;
-            gap: 12px;
-            padding: 14px 16px;
-            border-radius: 12px;
-            margin: 14px 0;
-            font-size: 14px;
-            border: 1px solid;
-        }
-
-        .callout.important { background: rgba(248, 113, 113, 0.07); border-color: rgba(248, 113, 113, 0.3); }
-        .callout.important strong { color: var(--bad-color); }
-        .callout.note { background: rgba(56, 189, 248, 0.07); border-color: rgba(56, 189, 248, 0.25); }
-        .callout.note strong { color: var(--accent-secondary); }
-        .callout.security { background: rgba(52, 211, 153, 0.07); border-color: rgba(52, 211, 153, 0.3); }
-        .callout.security strong { color: var(--ok-color); }
-        .callout p, .callout div { margin: 0; color: var(--text-secondary); }
-
-        .flow {
-            font-family: var(--mono-font);
-            font-size: 13px;
-            background: rgba(255, 255, 255, 0.02);
-            border: 1px solid var(--panel-border);
-            border-radius: 14px;
-            padding: 18px 20px;
-            color: var(--text-secondary);
-            overflow-x: auto;
-            white-space: pre;
-            margin: 10px 0 24px;
-        }
-
-        .flow .arrow { color: var(--accent-color); }
-
-        @media (max-width: 860px) {
-            .layout { grid-template-columns: 1fr; }
-            .sidebar { position: static; max-height: none; }
-            .content { padding: 26px; }
-        }
+        .back-link:hover { color: var(--accent-color); }
+        .date { font-size: 13px; font-family: var(--mono-font); color: var(--text-secondary); opacity: 0.8; margin-bottom: 28px; }
+        .topbar .icon-btn { font-size: 12px; }
     </style>
 </head>
 <body>
-    <div class="topbar">
-        <span>FOKIN SYSTEM</span>
-        <span class="doc-tag">DOC / 04 · ТЕХНИЧЕСКАЯ ДОКУМЕНТАЦИЯ</span>
-    </div>
+    <a class="skip-link" href="#content">Перейти к содержимому</a>
 
-    <div class="layout">
-        <aside class="sidebar">
-            <p class="sidebar-title">СОДЕРЖАНИЕ</p>
-            <nav>
-                <a href="#overview"><span class="n">01</span>Обзор системы</a>
-                <a href="#stack"><span class="n">02</span>Технологический стек</a>
-                <a href="#architecture"><span class="n">03</span>Архитектура и модули</a>
-                <a href="#data"><span class="n">04</span>Данные и хранение</a>
-                <a href="#auth"><span class="n">05</span>Аутентификация и роли</a>
-                <a href="#security"><span class="n">06</span>Безопасность</a>
-                <a href="#realtime"><span class="n">07</span>Реальное время и уведомления</a>
-                <a href="#ai"><span class="n">08</span>ИИ-интеграция</a>
-                <a href="#background"><span class="n">09</span>Фоновые задачи</a>
-                <a href="#infra"><span class="n">10</span>Инфраструктура и деплой</a>
-                <a href="#observability"><span class="n">11</span>Логирование и мониторинг</a>
-                <a href="#mobile"><span class="n">12</span>Мобильное приложение</a>
-                <a href="#checklist"><span class="n">13</span>Чек-лист безопасности</a>
+    <header class="topbar">
+        <span>FOKIN SYSTEM</span>
+        <div class="topbar-actions">
+            <nav class="doc-nav-links" aria-label="Документы">
+                <a class="icon-btn" href="/user-guide">Руководство</a>
+                <a class="icon-btn active" href="/tech-docs" aria-current="page">Техдок</a>
+            </nav>
+            <button type="button" class="icon-btn menu-toggle" data-menu-toggle aria-expanded="false" aria-controls="sidebar">☰ Содержание</button>
+            <span class="doc-tag">DOC / 04 · TECH</span>
+        </div>
+    </header>
+
+    <div class="doc-layout">
+        <div class="sidebar-backdrop" aria-hidden="true"></div>
+        <aside class="sidebar" id="sidebar" aria-label="Содержание документации">
+            <p class="sidebar-title">Поиск</p>
+            <div class="search-box">
+                <label class="sr-only" for="doc-search">Поиск по документации</label>
+                <input type="search" id="doc-search" data-doc-search placeholder="Поиск…" autocomplete="off">
+                <kbd aria-hidden="true">/</kbd>
+            </div>
+            <p class="search-status" role="status" aria-live="polite"></p>
+            <p class="sidebar-title">Разделы</p>
+            <nav aria-label="Разделы">
+                <ul class="toc">
+                    <li><a href="#overview"><span class="num">01</span>Обзор</a></li>
+                    <li><a href="#backend"><span class="num">02</span>Backend и роутеры</a></li>
+                    <li><a href="#push"><span class="num">03</span>Push-уведомления</a></li>
+                    <li><a href="#flow"><span class="num">04</span>Схема потока</a></li>
+                    <li><a href="#mobile"><span class="num">05</span>Мобильное приложение</a></li>
+                    <li><a href="#stack"><span class="num">06</span>Стек и версии</a></li>
+                    <li><a href="#infra"><span class="num">07</span>Инфраструктура</a></li>
+                    <li><a href="#security"><span class="num">08</span>Безопасность</a></li>
+                </ul>
             </nav>
         </aside>
 
-        <main class="content">
-            <a href="/" class="back-link" style="display:inline-flex;align-items:center;gap:8px;color:var(--text-secondary);text-decoration:none;margin-bottom:24px;font-weight:500;font-family:var(--mono-font);font-size:13px;">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <main class="container" id="content">
+            <a href="/" class="back-link">
+                <svg style="margin-right: 8px;" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                     <line x1="19" y1="12" x2="5" y2="12"></line>
                     <polyline points="12 19 5 12 12 5"></polyline>
                 </svg>
@@ -349,261 +110,222 @@
             </a>
 
             <h1>Техническая документация</h1>
-            <p class="date">Для разработчиков, DevOps и технических специалистов</p>
-            <p class="lead">Описание архитектуры, технологического стека, модели безопасности и инфраструктуры платформы Fokin System. Документ предназначен для инженеров, сопровождающих и развивающих систему, и не содержит пользовательских инструкций — они находятся в <a href="/user-guide" style="color:var(--accent-color);">руководстве пользователя</a>.</p>
+            <p class="date">Дата обновления: 31 октября 2026 г.</p>
 
-            <!-- 01. Обзор -->
-            <section class="doc-section" id="overview">
-                <h2><span class="num">01</span>Обзор системы</h2>
-                <p>Fokin System — платформа автоматизации управления производственным коллективом: документооборот с согласованием и ознакомлением, табель рабочего времени, заявления сотрудников, новости и объявления, чаты и push-уведомления, а также встроенный ИИ-помощник по поиску разделов приложения.</p>
-                <p>Система состоит из трёх основных частей:</p>
-                <div class="stack-grid">
-                    <div class="stack-card">
-                        <div class="sc-title">BACKEND</div>
-                        <p style="margin:0;font-size:13.5px;">REST API на FastAPI, обслуживающее мобильное приложение и веб-страницы (лендинг, юридические документы, документация).</p>
+            <section class="doc-section reveal" id="overview">
+                <h2><span class="num">01</span>Обзор</h2>
+                <p class="lead">Fokin System — мобильное приложение для общения: друзья, публикации, объявления, новости, личные и групповые чаты, фото и альбомы, ИИ-чат и колокольчик уведомлений. Серверная часть — асинхронный FastAPI-backend, клиент — React Native (Expo).</p>
+                <div class="card-grid">
+                    <div class="card"><h3>Backend</h3><p>FastAPI, SQLAlchemy 2 (async), PostgreSQL, Redis, Celery.</p></div>
+                    <div class="card"><h3>Мобильный клиент</h3><p>React Native 0.81 и Expo SDK 54 для Android и iOS.</p></div>
+                    <div class="card"><h3>Уведомления</h3><p>WebSocket в реальном времени и push через Firebase Cloud Messaging.</p></div>
+                    <div class="card"><h3>Веб</h3><p>Jinja2-страницы: главная, документация, политика, соглашение.</p></div>
+                </div>
+            </section>
+
+            <section class="doc-section reveal" id="backend">
+                <h2><span class="num">02</span>Backend и роутеры</h2>
+                <p>Приложение создаётся фабрикой <code>create_application()</code> в <code>app/main.py</code>. Роутеры API собираются в <code>app/api/routers/</code>, веб-страницы и статика отдаются самим приложением.</p>
+                <div class="table-wrap">
+                    <table>
+                        <thead><tr><th scope="col">Модуль</th><th scope="col">Назначение</th></tr></thead>
+                        <tbody>
+                            <tr><td>users</td><td>Регистрация, вход, профиль, поиск пользователей, друзья и заявки в друзья, настройки уведомлений.</td></tr>
+                            <tr><td>feed</td><td>Публикации (посты) и лента друзей.</td></tr>
+                            <tr><td>news</td><td>Новости и объявления, реакции, комментарии, альбомы и фото.</td></tr>
+                            <tr><td>chat</td><td>Личные сообщения, диалоги, вложения, WebSocket.</td></tr>
+                            <tr><td>group_chat</td><td>Групповые чаты и их участники.</td></tr>
+                            <tr><td>notification_center</td><td>Колокольчик: список уведомлений, счётчик непрочитанных, «прочитано».</td></tr>
+                            <tr><td>notifications</td><td>WebSocket-менеджер и регистрация FCM-токена устройства.</td></tr>
+                            <tr><td>ai</td><td>ИИ-чат (запросы к модели через настраиваемый адрес сервиса).</td></tr>
+                            <tr><td>admin</td><td>Административные операции и модерация.</td></tr>
+                            <tr><td>tasks</td><td>Запуск и статус фоновых задач Celery.</td></tr>
+                            <tr><td>health, seo, testing</td><td>Проверка состояния, SEO-файлы, служебные тестовые маршруты.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <h3>Веб-маршруты</h3>
+                <div class="table-wrap">
+                    <table>
+                        <thead><tr><th scope="col">Путь</th><th scope="col">Шаблон</th></tr></thead>
+                        <tbody>
+                            <tr><td>/</td><td>index.html</td></tr>
+                            <tr><td>/login</td><td>login.html</td></tr>
+                            <tr><td>/user-guide</td><td>user_guide.html</td></tr>
+                            <tr><td>/tech-docs</td><td>tech_docs.html</td></tr>
+                            <tr><td>/privacy-policy</td><td>privacy_policy.html</td></tr>
+                            <tr><td>/terms</td><td>terms_of_use.html</td></tr>
+                            <tr><td>/static/*</td><td>Общие CSS и JS из <code>app/static</code></td></tr>
+                            <tr><td>/media/*</td><td>Файлы через слой хранения <code>app.utils.storage</code></td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section class="doc-section reveal" id="push">
+                <h2><span class="num">03</span>Push-уведомления</h2>
+                <p>Каждое событие (лайк, комментарий, заявка в друзья, объявление и т.д.) создаёт запись в таблице уведомлений через единую функцию <code>create_or_group_notification()</code> (<code>app/core/notification_service.py</code>). Однотипные события об одном объекте группируются по <code>group_key</code> — счётчик записи растёт, а не создаётся новая строка.</p>
+                <h3>Правила доставки</h3>
+                <ul>
+                    <li><strong>Настройки по группам.</strong> Группы: объявления, новости, личные сообщения, групповые чаты, заявки в друзья, новые посты друзей, фото и альбомы. Пользователь может отключить любую, кроме объявлений и системных сообщений.</li>
+                    <li><strong>Тихие часы.</strong> По умолчанию 22:00–07:00, интервал может переходить через полночь. В это время push доставляется без звука и вибрации (канал <code>silent</code>).</li>
+                    <li><strong>Data-only для Android.</strong> Сервер отправляет только поле <code>data</code> без блока <code>notification</code> с высоким приоритетом. Иначе Android показал бы системное уведомление, а клиент — второе, своё.</li>
+                    <li><strong>iOS.</strong> Через APNs уходит alert вместе с data, включены <code>mutable-content</code> и <code>content-available</code>.</li>
+                    <li><strong>Аватарка отправителя.</strong> Передаётся в <code>sender_avatar</code>; Notifee рисует её в уведомлении на Android, для iOS она передаётся через FCM options.</li>
+                    <li><strong>Тег уведомления.</strong> <code>notif_tag</code> формируется из типа события (новость, заявка в друзья, чат или отправитель), поэтому новое сообщение заменяет предыдущее из того же диалога.</li>
+                    <li><strong>Невалидные токены.</strong> Если Firebase сообщает, что токен недействителен, он автоматически сбрасывается у пользователей в базе данных.</li>
+                </ul>
+                <h3>Раздельные счётчики</h3>
+                <p>Колокольчик и сообщения считаются независимо: непрочитанные уведомления — через <code>/notifications</code> (<code>unread_count</code> и <code>/notifications/unread-count</code>), непрочитанные сообщения — через поле <code>unread_count</code> в списке диалогов чата. Прочтение одного не влияет на другое.</p>
+                <h3>Пример data-payload</h3>
+                <div class="code-block"><pre><code>{
+  "type": "new_message",
+  "notification_group": "chat",
+  "notif_title": "Имя отправителя",
+  "notif_body": "Текст сообщения",
+  "sender_id": "42",
+  "sender_avatar": "/media/avatars/...",
+  "android_channel_id": "messages",
+  "notif_tag": "sender_42",
+  "silent": "false"
+}</code></pre></div>
+                <p>Все значения в <code>data</code> — строки (требование Firebase Admin SDK). Значения выше приведены для иллюстрации.</p>
+            </section>
+
+            <section class="doc-section reveal" id="flow">
+                <h2><span class="num">04</span>Схема потока уведомлений</h2>
+                <p>Нажмите на узел схемы, чтобы увидеть описание этапа. Навигация с клавиатуры: <kbd>Tab</kbd> и <kbd>Enter</kbd>.</p>
+                <div class="flow" data-flow>
+                    <div class="flow-nodes" role="group" aria-label="Узлы схемы доставки уведомлений">
+                        <button type="button" class="flow-node" data-info="info-event">Событие<small>API-роутер</small></button>
+                        <span class="flow-arrow" aria-hidden="true">→</span>
+                        <button type="button" class="flow-node" data-info="info-service">Сервис<small>notification_service</small></button>
+                        <span class="flow-arrow" aria-hidden="true">→</span>
+                        <button type="button" class="flow-node" data-info="info-db">База данных<small>PostgreSQL</small></button>
+                        <span class="flow-arrow" aria-hidden="true">→</span>
+                        <button type="button" class="flow-node" data-info="info-dispatch">Диспетчер<small>настройки, тихие часы</small></button>
+                        <span class="flow-arrow" aria-hidden="true">→</span>
+                        <button type="button" class="flow-node" data-info="info-ws">WebSocket<small>приложение открыто</small></button>
+                        <span class="flow-arrow" aria-hidden="true">→</span>
+                        <button type="button" class="flow-node" data-info="info-fcm">FCM / APNs<small>push</small></button>
+                        <span class="flow-arrow" aria-hidden="true">→</span>
+                        <button type="button" class="flow-node" data-info="info-client">Клиент<small>Notifee</small></button>
                     </div>
-                    <div class="stack-card">
-                        <div class="sc-title">MOBILE</div>
-                        <p style="margin:0;font-size:13.5px;">Кроссплатформенное приложение на React Native / Expo (Android, iOS) — основной клиент для сотрудников.</p>
+                    <div class="flow-detail" aria-live="polite"></div>
+                    <div hidden>
+                        <div id="info-event"><h4>Событие</h4><p>Роутер (users, feed, news, chat…) фиксирует действие: лайк, комментарий, заявку в друзья, новое объявление.</p><p>Роутер вызывает сервис уведомлений, а не работает с моделью напрямую.</p></div>
+                        <div id="info-service"><h4>Сервис уведомлений</h4><p><code>create_or_group_notification()</code> создаёт запись либо увеличивает счётчик существующей непрочитанной записи с тем же <code>group_key</code>.</p><p>Тип события сопоставляется с группой настроек.</p></div>
+                        <div id="info-db"><h4>База данных</h4><p>Запись сохраняется до доставки: колокольчик показывает историю даже если push не дошёл. Список и счётчик отдаёт <code>notification_center</code>.</p></div>
+                        <div id="info-dispatch"><h4>Диспетчер</h4><p><code>dispatch_notification()</code> проверяет, не отключена ли группа, нет ли у пользователя токена и не наступили ли тихие часы.</p><p>Объявления и системные сообщения отправляются всегда. Отправка идёт фоновой задачей и не блокирует запрос.</p></div>
+                        <div id="info-ws"><h4>WebSocket</h4><p>Если приложение открыто, сообщение типа <code>notification</code> уходит по WebSocket сразу, и колокольчик обновляется без опроса.</p></div>
+                        <div id="info-fcm"><h4>FCM / APNs</h4><p>Firebase Admin SDK отправляет сообщение в Firebase Cloud Messaging.</p><div class="flow-branches"><div class="card"><h4>Android</h4><p>Data-only, приоритет high, TTL 24 часа.</p></div><div class="card"><h4>iOS</h4><p>Alert + data через APNs, звук отключается в тихие часы.</p></div></div></div>
+                        <div id="info-client"><h4>Клиент</h4><p>Background handler на <code>@react-native-firebase/messaging</code> принимает data-сообщение, а <code>@notifee/react-native</code> показывает единственное уведомление с аватаркой отправителя в нужном канале (<code>messages</code> или <code>silent</code>).</p></div>
                     </div>
-                    <div class="stack-card">
-                        <div class="sc-title">INFRASTRUCTURE</div>
-                        <p style="margin:0;font-size:13.5px;">Docker Compose: PostgreSQL, Redis, Celery-воркер, Nginx с TLS, автопродление сертификатов.</p>
+                </div>
+            </section>
+
+            <section class="doc-section reveal" id="mobile">
+                <h2><span class="num">05</span>Мобильное приложение</h2>
+                <p>Приложение собрано на Expo SDK 54 и React Native 0.81 с React 19.1. Навигация — React Navigation 7 (native-stack и bottom-tabs). Для сетевых запросов используется axios, для локального хранилища — AsyncStorage.</p>
+                <div class="tabs" data-tabs>
+                    <div class="tablist" aria-label="Платформа">
+                        <button type="button" class="tab-btn" aria-selected="true">Android</button>
+                        <button type="button" class="tab-btn" aria-selected="false">iOS</button>
+                    </div>
+                    <div class="tabpanel">
+                        <ul>
+                            <li>Push приходит как data-only сообщение и обрабатывается в фоне, уведомление строит Notifee.</li>
+                            <li>Каналы уведомлений: <code>messages</code> (звук) и <code>silent</code> (без звука для тихих часов).</li>
+                            <li>В уведомлении показывается аватарка отправителя, повторные сообщения заменяют друг друга по <code>notif_tag</code>.</li>
+                        </ul>
+                    </div>
+                    <div class="tabpanel" hidden>
+                        <ul>
+                            <li>Уведомление формирует APNs: alert, звук (кроме тихих часов), <code>thread-id</code> для группировки по диалогу.</li>
+                            <li>Включены <code>mutable-content</code> и <code>content-available</code>, чтобы клиент мог дополнить уведомление.</li>
+                            <li>Для действий используется категория <code>message_actions</code> у новых сообщений.</li>
+                        </ul>
                     </div>
                 </div>
+                <p>Для проверки подлинности приложения используется Firebase App Check, для входа — Firebase Auth.</p>
             </section>
 
-            <!-- 02. Стек -->
-            <section class="doc-section" id="stack">
-                <h2><span class="num">02</span>Технологический стек</h2>
-
-                <h3>Backend</h3>
-                <table>
-                    <tr><th>Компонент</th><th>Технология</th><th>Назначение</th></tr>
-                    <tr><td>Web-фреймворк</td><td><code>FastAPI</code> + <code>Starlette</code></td><td>Асинхронный REST API, роутинг, middleware, шаблоны Jinja2</td></tr>
-                    <tr><td>ASGI-сервер</td><td><code>Uvicorn</code> / <code>Gunicorn</code></td><td>В продакшене — Gunicorn с воркерами класса <code>UvicornWorker</code></td></tr>
-                    <tr><td>ORM</td><td><code>SQLAlchemy 2.0</code> (async)</td><td>Асинхронный доступ к БД через <code>asyncpg</code></td></tr>
-                    <tr><td>Миграции</td><td><code>Alembic</code></td><td>Версионирование схемы базы данных</td></tr>
-                    <tr><td>База данных</td><td><code>PostgreSQL 15</code></td><td>Основное хранилище (в разработке допускается SQLite)</td></tr>
-                    <tr><td>Кэш / брокер</td><td><code>Redis 7</code></td><td>Брокер и backend для Celery, rate-limiting, кэш</td></tr>
-                    <tr><td>Фоновые задачи</td><td><code>Celery</code></td><td>Асинхронная обработка (рассылки, обработка медиа и т.д.)</td></tr>
-                    <tr><td>Валидация данных</td><td><code>Pydantic v2</code></td><td>Схемы запросов/ответов, валидация входных данных</td></tr>
-                    <tr><td>Аутентификация</td><td><code>PyJWT</code>, <code>bcrypt</code></td><td>JWT-токены, хеширование паролей</td></tr>
-                    <tr><td>Push-уведомления</td><td><code>firebase-admin</code></td><td>Firebase Cloud Messaging, Firebase App Check</td></tr>
-                    <tr><td>Логирование</td><td><code>loguru</code></td><td>Структурированные логи с ротацией</td></tr>
-                    <tr><td>Обработка медиа</td><td><code>Pillow</code>, <code>ffmpeg-python</code></td><td>Миниатюры изображений, обработка видео</td></tr>
-                    <tr><td>HTTP-клиент</td><td><code>httpx</code></td><td>Запросы к внешним сервисам (reCAPTCHA, Ollama и др.)</td></tr>
-                </table>
-
-                <h3>Мобильное приложение</h3>
-                <table>
-                    <tr><th>Компонент</th><th>Технология</th><th>Назначение</th></tr>
-                    <tr><td>Платформа</td><td><code>React Native 0.81</code> + <code>Expo SDK 54</code></td><td>Единая кодовая база для Android и iOS</td></tr>
-                    <tr><td>Навигация</td><td><code>React Navigation 6</code></td><td>Вкладки, стеки экранов, deep-линки из уведомлений и ИИ-помощника</td></tr>
-                    <tr><td>Push / авторизация</td><td><code>@react-native-firebase</code> (auth, messaging, app-check)</td><td>Push-уведомления и защита API-запросов приложения</td></tr>
-                    <tr><td>Локальные уведомления</td><td><code>@notifee/react-native</code></td><td>Отображение и управление уведомлениями на устройстве</td></tr>
-                    <tr><td>Сеть</td><td><code>axios</code></td><td>HTTP-запросы к backend</td></tr>
-                    <tr><td>Хранилище</td><td><code>AsyncStorage</code></td><td>Токены сессии, локальные настройки</td></tr>
-                    <tr><td>Медиа</td><td><code>expo-camera</code>, <code>expo-image-picker</code>, <code>expo-video</code></td><td>Съёмка и выбор фото/видео для новостей и документов</td></tr>
-                </table>
-
-                <h3>Инфраструктура</h3>
-                <table>
-                    <tr><th>Компонент</th><th>Технология</th><th>Назначение</th></tr>
-                    <tr><td>Контейнеризация</td><td><code>Docker</code> / <code>Docker Compose</code></td><td>Изолированные сервисы: web, db, redis, celery_worker, nginx, certbot</td></tr>
-                    <tr><td>Reverse proxy</td><td><code>Nginx</code></td><td>Терминация TLS, проксирование на web-сервис, раздача статики</td></tr>
-                    <tr><td>TLS-сертификаты</td><td><code>Let's Encrypt</code> / <code>certbot</code></td><td>Автоматический выпуск и продление HTTPS-сертификатов</td></tr>
-                    <tr><td>ИИ-модель</td><td><code>Ollama</code> (<code>qwen2.5:7b-instruct</code>)</td><td>Локальная LLM для ИИ-помощника, без внешних API</td></tr>
-                </table>
-            </section>
-
-            <!-- 03. Архитектура -->
-            <section class="doc-section" id="architecture">
-                <h2><span class="num">03</span>Архитектура и модули</h2>
-                <p>Backend построен как модульный монолит: единое FastAPI-приложение с разделением на роутеры по доменным областям. Каждый роутер инкапсулирует эндпоинты, бизнес-логику и обращения к своим моделям данных.</p>
-                <div class="stack-grid">
-                    <div class="stack-card"><div class="sc-title">ПОЛЬЗОВАТЕЛИ</div><ul><li><code>users</code> — регистрация, вход, профили</li><li><code>structure</code> — иерархия должностей, цеха/отделы</li><li><code>acting</code> — временное замещение руководителей</li><li><code>admin</code> — административные операции</li></ul></div>
-                    <div class="stack-card"><div class="sc-title">ДОКУМЕНТООБОРОТ</div><ul><li><code>documents</code> — категории, создание, согласование, ознакомление, отчёты</li><li><code>timesheet</code> — табель рабочего времени</li><li><code>statements</code> — заявления сотрудников</li></ul></div>
-                    <div class="stack-card"><div class="sc-title">КОММУНИКАЦИИ</div><ul><li><code>chat</code> — личные сообщения (WebSocket)</li><li><code>group_chat</code> — групповые чаты</li><li><code>news</code> — лента новостей</li><li><code>announcements</code> — объявления</li><li><code>notifications</code> — push/in-app уведомления</li><li><code>ai</code> — чат с ИИ-помощником</li></ul></div>
-                    <div class="stack-card"><div class="sc-title">СЛУЖЕБНЫЕ</div><ul><li><code>health</code> — healthcheck для Docker/Compose</li><li><code>seo</code> — robots.txt, sitemap.xml, PWA manifest, App Links</li><li><code>tasks</code>, <code>testing</code> — служебные и тестовые эндпоинты</li></ul></div>
+            <section class="doc-section reveal" id="stack">
+                <h2><span class="num">06</span>Стек и версии</h2>
+                <h3>Backend (requirements.txt)</h3>
+                <div class="table-wrap">
+                    <table>
+                        <thead><tr><th scope="col">Компонент</th><th scope="col">Версия</th></tr></thead>
+                        <tbody>
+                            <tr><td>FastAPI</td><td>0.120.4</td></tr>
+                            <tr><td>Starlette</td><td>0.49.1</td></tr>
+                            <tr><td>Uvicorn / Gunicorn</td><td>0.38.0 / 23.0.0</td></tr>
+                            <tr><td>SQLAlchemy (async)</td><td>2.0.44</td></tr>
+                            <tr><td>Alembic</td><td>1.17.1</td></tr>
+                            <tr><td>asyncpg</td><td>0.31.0</td></tr>
+                            <tr><td>Pydantic</td><td>2.12.3</td></tr>
+                            <tr><td>Celery / Flower</td><td>5.6.2 / 2.0.1</td></tr>
+                            <tr><td>redis-py</td><td>7.1.1</td></tr>
+                            <tr><td>firebase-admin</td><td>6.6.0</td></tr>
+                            <tr><td>websockets</td><td>16.0</td></tr>
+                            <tr><td>Jinja2</td><td>3.1.6</td></tr>
+                            <tr><td>Pillow / ffmpeg-python</td><td>12.1.1 / 0.2.0</td></tr>
+                            <tr><td>loguru</td><td>0.7.3</td></tr>
+                        </tbody>
+                    </table>
                 </div>
-                <p>Слои приложения: <code>app/api/routers</code> (HTTP-эндпоинты) → <code>app/models</code> (SQLAlchemy-модели) → <code>app/schemas</code> (Pydantic-схемы) → <code>app/core</code> (аутентификация, конфигурация, middleware, интеграции) → <code>app/utils</code> (хранилище файлов, вспомогательные функции).</p>
-            </section>
-
-            <!-- 04. Данные -->
-            <section class="doc-section" id="data">
-                <h2><span class="num">04</span>Данные и хранение</h2>
-                <p>Основные доменные модели (<code>app/models</code>): <code>users</code>, <code>documents</code>, <code>timesheet</code>, <code>statements</code>, <code>structure</code>, <code>news</code>, <code>announcements</code>, <code>chat</code>.</p>
-                <p>Подключение к базе выполняется асинхронно через <code>SQLAlchemy 2.0</code> + <code>asyncpg</code>; строка подключения формируется в <code>app/core/config.py</code> и может быть переопределена переменной окружения <code>DATABASE_URL</code> (например, для локальной разработки на SQLite через <code>aiosqlite</code>). Эволюция схемы управляется через <code>Alembic</code> (<code>alembic upgrade head</code> выполняется автоматически при старте продакшен-контейнера).</p>
-                <h3>Файловое хранилище</h3>
-                <p>Медиафайлы (документы, фото, видео) не привязаны к единственному диску: слой <code>app.utils.storage</code> умеет сохранять и искать файлы на нескольких дисках (<code>STORAGE_DISKS</code>) по одной из стратегий — <code>first_available</code>, <code>round_robin</code> или <code>most_free_space</code> — с запасным вариантом <code>STORAGE_ROOT</code>, если диски не заданы. Раздача файлов идёт через потоковый эндпоинт <code>/media/{file_path}</code> с определением MIME-типа и корректной обработкой отсутствующих файлов/ошибок хранилища.</p>
-            </section>
-
-            <!-- 05. Auth -->
-            <section class="doc-section" id="auth">
-                <h2><span class="num">05</span>Аутентификация и роли</h2>
-                <div class="flow">Запрос с паролем <span class="arrow">→</span> bcrypt.checkpw() <span class="arrow">→</span> access_token (JWT, 60 мин) + refresh_token (JWT, 30 дней)
-Каждый защищённый эндпоинт <span class="arrow">→</span> OAuth2PasswordBearer <span class="arrow">→</span> jwt.decode(SECRET_KEY) <span class="arrow">→</span> пользователь из БД</div>
-                <ul>
-                    <li>Пароли хранятся только в виде bcrypt-хеша (<code>app/core/auth.py</code>), сам пароль никогда не сохраняется и не логируется.</li>
-                    <li>Access- и refresh-токены — это подписанные JWT (<code>PyJWT</code>, алгоритм <code>HS256</code> по умолчанию) с полями <code>sub</code>, <code>role</code>, <code>id</code>, <code>exp</code>, <code>token_type</code>.</li>
-                    <li>Вход возможен по e-mail/паролю или по номеру телефона с одноразовым SMS-кодом (через HiLink-модем, с резервным вариантом SMS.ru/SMSC).</li>
-                    <li>Веб-страницы (лендинг, документация) используют отдельный механизм сессий на cookie (<code>SessionMiddleware</code>), независимый от мобильной JWT-авторизации.</li>
-                </ul>
-                <h3>Ролевая модель</h3>
-                <p>Иерархия должностей не захардкожена — она хранится в таблице <code>positions</code> и кэшируется в памяти процесса (<code>app/core/roles.py</code>) с перечитыванием при старте и при изменении оргструктуры. Чем меньше <code>level</code>, тем выше должность:</p>
-                <div style="margin-bottom:18px;">
-                    <span class="badge info">0 · owner</span>
-                    <span class="badge info">1 · shop_chief</span>
-                    <span class="badge info">2 · section_chief</span>
-                    <span class="badge info">3 · master</span>
-                    <span class="badge info">4 · assistant_master</span>
-                    <span class="badge info">5 · worker</span>
-                </div>
-                <p>Пользователь может управлять только сотрудниками со строго более низкой должностью и только в пределах своей зоны ответственности (цех/участок). Отдельно существуют предоставляемые права администратора (<code>AdminPermission</code>) и механизм временного замещения руководителя (<code>acting</code>) на период его отсутствия.</p>
-            </section>
-
-            <!-- 06. Security -->
-            <section class="doc-section" id="security">
-                <h2><span class="num">06</span>Безопасность</h2>
-
-                <h3>Защита транспортного уровня и заголовков</h3>
-                <ul>
-                    <li><strong>HTTPS/TLS</strong> — терминируется на Nginx, сертификаты выпускаются и автоматически продлеваются через <code>certbot</code> (Let's Encrypt), сервис перепроверяет сертификат раз в 12 часов.</li>
-                    <li><strong>CORS</strong> — в продакшене разрешён только фиксированный список доменов (<code>CORS_ORIGINS</code>), по умолчанию без wildcard.</li>
-                    <li><strong><code>TrustedHostMiddleware</code></strong> — защищает от подделки заголовка <code>Host</code>; в продакшене список разрешённых хостов не содержит <code>*</code>.</li>
-                    <li><strong>ProxyFix</strong> — корректно восстанавливает исходную схему (<code>X-Forwarded-Proto</code>) и хост (<code>X-Forwarded-Host</code>) за обратным прокси.</li>
-                    <li><strong>GZip</strong> — сжатие ответов свыше 1000 байт.</li>
-                </ul>
-
-                <h3>Защита сессий и секретов</h3>
-                <ul>
-                    <li>Секреты (<code>SECRET_KEY</code>, <code>SESSION_SECRET_KEY</code>, пароль БД, сервисный аккаунт Firebase) задаются только через переменные окружения / Docker-секреты; в продакшене приложение не запускается, если ключевые секреты не заданы явно.</li>
-                    <li>Сессионная cookie подписывается <code>SESSION_SECRET_KEY</code>, имеет флаг <code>same_site=lax</code> и помечается <code>https_only=True</code> в продакшене.</li>
-                    <li>Файл сервисного аккаунта Firebase монтируется в контейнер как read-only секрет, а не копируется в образ.</li>
-                </ul>
-
-                <h3>Защита от автоматизированных и мошеннических запросов</h3>
-                <ul>
-                    <li><strong>Firebase App Check</strong> — опционально принудительно проверяет, что запрос пришёл из подлинного экземпляра мобильного приложения, а не стороннего клиента.</li>
-                    <li><strong>Google reCAPTCHA Enterprise</strong> — верификация токена с анализом риска (score) при чувствительных действиях (например, вход).</li>
-                    <li><strong>Rate-limiting SMS-кодов</strong> — через Redis: не чаще одного SMS в 60 секунд и не более пяти за 15 минут на один номер телефона.</li>
-                </ul>
-
-                <h3>Эксплуатационная безопасность</h3>
-                <ul>
-                    <li>Swagger/ReDoc (<code>/docs</code>, <code>/redoc</code>) и схема <code>openapi.json</code> отключены в продакшене по умолчанию (<code>ENABLE_API_DOCS=false</code>) и доступны только при явном включении.</li>
-                    <li><code>robots.txt</code> закрывает от индексации служебные пути (<code>/api/</code>, <code>/docs</code>, <code>/redoc</code>, <code>/admin/</code>, тестовые WebSocket-страницы).</li>
-                    <li>Логи в продакшене используют уровень <code>INFO</code> (не <code>DEBUG</code>), чтобы снизить риск утечки чувствительных данных в журналы.</li>
-                    <li>Каждый контейнер ограничен лимитами CPU/RAM и имеет healthcheck, что снижает влияние единичного сбоя на всю систему.</li>
-                </ul>
-
-                <div class="callout important">
-                    <div><strong>Важно.</strong> ИИ-ассистент («Фокси») обращается к локальной модели Ollama только со стороны backend. Мобильное приложение никогда не взаимодействует с Ollama напрямую — только через авторизованный эндпоинт <code>POST /api/ai/chat</code>, что исключает прямой доступ к модели и её инфраструктуре извне.</div>
+                <h3>Мобильное приложение (mobile/package.json)</h3>
+                <div class="table-wrap">
+                    <table>
+                        <thead><tr><th scope="col">Компонент</th><th scope="col">Версия</th></tr></thead>
+                        <tbody>
+                            <tr><td>React Native</td><td>0.81.5</td></tr>
+                            <tr><td>React</td><td>19.1.0</td></tr>
+                            <tr><td>Expo SDK</td><td>~54.0</td></tr>
+                            <tr><td>@react-native-firebase/* (app, auth, app-check, messaging)</td><td>23.8.8</td></tr>
+                            <tr><td>@notifee/react-native</td><td>^9.1.8</td></tr>
+                            <tr><td>React Navigation (native, native-stack, bottom-tabs)</td><td>^7</td></tr>
+                            <tr><td>react-native-reanimated</td><td>~4.1</td></tr>
+                            <tr><td>axios</td><td>1.20.0</td></tr>
+                        </tbody>
+                    </table>
                 </div>
             </section>
 
-            <!-- 07. Realtime -->
-            <section class="doc-section" id="realtime">
-                <h2><span class="num">07</span>Реальное время и уведомления</h2>
-                <p>Личные и групповые чаты (<code>chat</code>, <code>group_chat</code>) работают поверх <code>WebSocket</code>-соединений (пакет <code>websockets</code>), что обеспечивает доставку сообщений без постоянного опроса сервера.</p>
-                <p>Push-уведомления о новых документах, согласованиях, сообщениях и объявлениях доставляются на устройства через <code>Firebase Cloud Messaging</code> (<code>app/core/fcm.py</code>); локальное отображение и управление уведомлениями на устройстве — через <code>Notifee</code>.</p>
+            <section class="doc-section reveal" id="infra">
+                <h2><span class="num">07</span>Инфраструктура</h2>
+                <p>Продакшн описан в <code>docker-compose.prod.yml</code>. Образ приложения основан на <code>tiangolo/uvicorn-gunicorn:python3.11-slim</code>.</p>
+                <div class="table-wrap">
+                    <table>
+                        <thead><tr><th scope="col">Сервис</th><th scope="col">Роль</th></tr></thead>
+                        <tbody>
+                            <tr><td>web</td><td>Gunicorn с приложением FastAPI. При старте выполняются <code>alembic upgrade head</code> и <code>python -m app.init_db</code>. Healthcheck — <code>/health</code>.</td></tr>
+                            <tr><td>celery_worker</td><td>Фоновые задачи.</td></tr>
+                            <tr><td>db</td><td>PostgreSQL 15.8 с постоянным томом.</td></tr>
+                            <tr><td>redis</td><td>Redis 7.4 — брокер и кэш.</td></tr>
+                            <tr><td>nginx</td><td>Обратный прокси и TLS.</td></tr>
+                            <tr><td>certbot</td><td>Автоматическое продление сертификатов Let's Encrypt.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <h3>Локальный запуск</h3>
+                <div class="code-block"><pre><code>docker compose up --build</code></pre></div>
+                <div class="code-block"><pre><code>alembic upgrade head</code></pre></div>
+                <p>Параметры подключения (БД, Redis, Firebase, адрес ИИ-сервиса) задаются через переменные окружения и в документации не приводятся.</p>
             </section>
 
-            <!-- 08. AI -->
-            <section class="doc-section" id="ai">
-                <h2><span class="num">08</span>ИИ-интеграция</h2>
-                <p>Встроенный ИИ-помощник работает на базе собственной (self-hosted) языковой модели <code>Ollama</code> (<code>qwen2.5:7b-instruct</code>), развёрнутой на том же сервере — без отправки данных во внешние облачные ИИ-сервисы.</p>
+            <section class="doc-section reveal" id="security">
+                <h2><span class="num">08</span>Безопасность</h2>
                 <ul>
-                    <li>Единая точка входа — <code>POST /api/ai/chat</code> (<code>app/api/routers/ai.py</code>), доступная только авторизованным пользователям мобильного приложения.</li>
-                    <li>Системный промпт включает каталог разделов приложения (<code>APP_SECTIONS</code>), что позволяет модели отвечать ссылками вида <code>[Название](app://ключ)</code> на реальные экраны — приложение превращает их в кликабельную навигацию.</li>
-                    <li>Ответы проходят санитизацию: ссылки на несуществующие разделы заменяются обычным текстом, чтобы в интерфейсе не появлялись нерабочие кнопки.</li>
-                    <li>Реализована защита от переключения модели на другой язык ответа (анализ языка ответа, повторные попытки генерации, запасной ответ на русском при неудаче).</li>
+                    <li>Доступ к API — по токену аутентификации, права разграничены ролями.</li>
+                    <li>Трафик защищён HTTPS/TLS на уровне nginx.</li>
+                    <li>Учётные данные сервисов (в том числе Firebase) хранятся вне репозитория и подключаются через окружение.</li>
+                    <li>Недействительные push-токены автоматически удаляются.</li>
+                    <li>Файлы отдаются через слой хранения, который проверяет существование и тип.</li>
                 </ul>
-            </section>
-
-            <!-- 09. Background -->
-            <section class="doc-section" id="background">
-                <h2><span class="num">09</span>Фоновые задачи</h2>
-                <p>Долгие или отложенные операции выполняются асинхронно через <code>Celery</code> с брокером и result backend на <code>Redis</code> (<code>app/core/celery_app.py</code>). Задачи декларируются в <code>app/tasks</code> и исполняются отдельным сервисом <code>celery_worker</code> в Docker Compose — это изолирует тяжёлые операции от обработки HTTP-запросов и позволяет масштабировать воркеры независимо от web-сервиса.</p>
-            </section>
-
-            <!-- 10. Infra -->
-            <section class="doc-section" id="infra">
-                <h2><span class="num">10</span>Инфраструктура и деплой</h2>
-                <p>Продакшен развёртывается через <code>docker-compose.prod.yml</code> как набор взаимосвязанных сервисов:</p>
-                <table>
-                    <tr><th>Сервис</th><th>Образ / сборка</th><th>Роль</th></tr>
-                    <tr><td><code>web</code></td><td>собственный, <code>app/Dockerfile.prod.yml</code></td><td>Gunicorn + Uvicorn workers, применяет миграции и инициализацию БД при старте</td></tr>
-                    <tr><td><code>celery_worker</code></td><td>тот же образ, что <code>web</code></td><td>Обработка фоновых задач</td></tr>
-                    <tr><td><code>db</code></td><td><code>postgres:15.8</code></td><td>Основная база данных с healthcheck <code>pg_isready</code></td></tr>
-                    <tr><td><code>redis</code></td><td><code>redis:7.4-alpine</code></td><td>Брокер Celery, кэш, rate-limiting</td></tr>
-                    <tr><td><code>nginx</code></td><td>собственная сборка (<code>nginx/</code>)</td><td>TLS-терминация, реверс-прокси на 80/443</td></tr>
-                    <tr><td><code>certbot</code></td><td><code>certbot/certbot</code></td><td>Выпуск и автопродление TLS-сертификатов каждые 12 часов</td></tr>
-                </table>
-                <ul>
-                    <li>Каждый сервис имеет <code>healthcheck</code>, и зависимые сервисы (например, <code>web</code> от <code>db</code> и <code>redis</code>) стартуют только после того, как зависимость станет «healthy».</li>
-                    <li>Данные БД, Redis и загруженные медиафайлы хранятся в именованных Docker-томах (<code>postgres_data</code>, <code>redis_data</code>, <code>media_data</code>), переживающих пересоздание контейнеров.</li>
-                    <li>Логи всех сервисов ограничены по размеру (<code>json-file</code>, до 3 файлов по 10 МБ) — предотвращает переполнение диска сервера.</li>
-                    <li>Каждому сервису заданы лимиты CPU/RAM, что защищает от деградации всей системы из-за одного перегруженного контейнера.</li>
-                </ul>
-            </section>
-
-            <!-- 11. Observability -->
-            <section class="doc-section" id="observability">
-                <h2><span class="num">11</span>Логирование и мониторинг</h2>
-                <ul>
-                    <li><strong>Логирование</strong> — <code>loguru</code> с двумя приёмниками: консоль (уровень <code>DEBUG</code> в разработке, <code>INFO</code> в продакшене) и файл <code>info.log</code> с автоматической ротацией (10 МБ), хранением 10 дней и сжатием в zip.</li>
-                    <li><strong>Время обработки запросов</strong> — отдельный <code>TimingMiddleware</code> логирует длительность каждого HTTP-запроса, включая запросы, завершившиеся ошибкой.</li>
-                    <li><strong>Проверка состояния</strong> — эндпоинт <code>/health</code>, используемый Docker healthcheck для автоматического перезапуска нездоровых контейнеров.</li>
-                    <li><strong>Обработка ошибок валидации</strong> — все ошибки валидации запросов (422) логируются с телом запроса для быстрой диагностики проблем интеграции.</li>
-                </ul>
-            </section>
-
-            <!-- 12. Mobile -->
-            <section class="doc-section" id="mobile">
-                <h2><span class="num">12</span>Мобильное приложение</h2>
-                <p>Мобильный клиент собран на <code>Expo</code> (управляемый workflow с нативными модулями через <code>expo-dev-client</code> / <code>expo-build-properties</code>) и поддерживает Android и iOS из единой кодовой базы.</p>
-                <ul>
-                    <li>Навигация реализована через <code>React Navigation</code> (вкладки + стеки), с поддержкой программных переходов по deep-ссылкам из push-уведомлений и ответов ИИ-помощника.</li>
-                    <li>Push-уведомления и аутентификация интегрированы с Firebase (<code>@react-native-firebase/auth</code>, <code>messaging</code>, <code>app-check</code>).</li>
-                    <li>Состояние авторизации и токены хранятся локально через <code>AsyncStorage</code>.</li>
-                    <li>Медиафункции (камера, выбор фото/видео, миниатюры видео, расшаривание и открытие файлов) реализованы через соответствующие модули <code>expo-*</code>.</li>
-                </ul>
-            </section>
-
-            <!-- 13. Checklist -->
-            <section class="doc-section" id="checklist">
-                <h2><span class="num">13</span>Чек-лист безопасности</h2>
-                <div class="callout security"><div><strong>Готово.</strong> Пароли хешируются bcrypt, JWT подписываются секретом, секреты не хранятся в коде, TLS выпускается и продлевается автоматически.</div></div>
-                <div class="callout security"><div><strong>Готово.</strong> В продакшене CORS и TrustedHost ограничены конкретными доменами, документация API скрыта по умолчанию.</div></div>
-                <div class="callout note"><div><strong>Рекомендация.</strong> Перед релизом на внешний контур убедитесь, что <code>FIREBASE_APP_CHECK_ENFORCED=true</code> и заданы реальные ключи reCAPTCHA — иначе эти уровни защиты фактически отключены.</div></div>
-                <div class="callout note"><div><strong>Рекомендация.</strong> Файл <code>firebase-service-account.json</code> и переменные окружения (<code>.env</code>) не должны попадать в систему контроля версий и публичные бэкапы.</div></div>
+                <div class="note"><span class="note-title">Поддержка</span><p>Вопросы по работе системы: <a href="mailto:k2foxspb@mail.ru">k2foxspb@mail.ru</a>.</p></div>
             </section>
         </main>
     </div>
-
-    <script>
-        (function () {
-            var links = document.querySelectorAll('.sidebar nav a');
-            var sections = Array.prototype.map.call(links, function (a) {
-                return document.querySelector(a.getAttribute('href'));
-            });
-
-            function onScroll() {
-                var pos = window.scrollY + 120;
-                var activeIndex = 0;
-                sections.forEach(function (sec, i) {
-                    if (sec && sec.offsetTop <= pos) activeIndex = i;
-                });
-                links.forEach(function (a, i) {
-                    a.classList.toggle('active', i === activeIndex);
-                });
-            }
-
-            window.addEventListener('scroll', onScroll);
-            onScroll();
-        })();
-    </script>
 </body>
 </html>

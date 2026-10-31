@@ -21,6 +21,15 @@ from app.core.notifications import dispatch_notification, dispatch_system_notifi
 _ALWAYS_ON_NOTIF_TYPES = {"announcement", "system"}
 
 # Соответствие notif_type -> группа настроек уведомлений (app.core.notifications.NOTIFICATION_GROUPS)
+# Тип push (data.type), который видит клиент, если вызывающий код не задал свой в data.
+# Клиент маршрутизирует все эти типы в колокольчик (см. app.core.fcm.get_push_route).
+_NOTIF_TYPE_TO_PUSH_TYPE = {
+    "announcement": "announcement",
+    "friend_request": "friend_request",
+    "friend_accepted": "friend_accepted",
+    "friend_post": "news_post",
+}
+
 _NOTIF_TYPE_TO_GROUP = {
     "post_like": "friend_posts",
     "post_comment": "friend_posts",
@@ -123,13 +132,29 @@ async def create_or_group_notification(
             }
 
             group = _NOTIF_TYPE_TO_GROUP.get(notif_type, "announcements")
+
+            # Данные автора события (аватарка/имя) для push; тип push задаём явно,
+            # иначе fcm.py подставит "new_message" и клиент засчитает его как сообщение чата.
+            sender_avatar = None
+            push_data = dict(data or {})
+            push_data.setdefault("type", _NOTIF_TYPE_TO_PUSH_TYPE.get(notif_type, notif_type))
+            push_data["notification_id"] = notification.id
+            if actor_id is not None:
+                actor = await db.get(UserModel, actor_id)
+                if actor is not None:
+                    sender_avatar = actor.avatar_url
+                    actor_name = f"{actor.first_name or ''} {actor.last_name or ''}".strip() or actor.email
+                    if actor_name:
+                        push_data.setdefault("sender_name", actor_name)
+
             if notif_type in _ALWAYS_ON_NOTIF_TYPES:
                 dispatch_system_notification(
                     user,
                     title=title,
                     body=body or "",
-                    data=data,
+                    data=push_data,
                     sender_id=actor_id,
+                    sender_avatar=sender_avatar,
                     ws_manager=ws_manager,
                     ws_message=ws_message,
                 )
@@ -139,8 +164,9 @@ async def create_or_group_notification(
                     group=group,
                     title=title,
                     body=body or "",
-                    data=data,
+                    data=push_data,
                     sender_id=actor_id,
+                    sender_avatar=sender_avatar,
                     ws_manager=ws_manager,
                     ws_message=ws_message,
                 )

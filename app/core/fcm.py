@@ -5,7 +5,7 @@ from firebase_admin import credentials, messaging, exceptions
 from typing import Optional
 import os
 import time
-from app.core.config import FIREBASE_SERVICE_ACCOUNT_PATH
+from app.core.config import FIREBASE_SERVICE_ACCOUNT_PATH, DOMAIN
 
 # Инициализация Firebase Admin SDK
 # Мы инициализируем его один раз при импорте модуля
@@ -55,6 +55,32 @@ try:
         logger.info("FCM: Firebase Admin SDK already initialized")
 except Exception as e:
     logger.exception(f"FCM: Critical error during Firebase Admin SDK module loading: {e}")
+
+# Классификация типа push -> куда его маршрутизирует клиент:
+#   "messages" - счётчик непрочитанных сообщений чата;
+#   "bell"     - колокольчик (таблица Notification, /notifications/unread-count).
+# Соответствие схеме: chat_message = "new_message", group_message = "new_group_message",
+# news_post = "new_post", friend_accepted = "friend_accept"/"friend_accepted".
+MESSAGE_PUSH_TYPES = {"new_message", "chat_message", "new_group_message", "group_message"}
+
+
+def absolute_media_url(url: Optional[str]) -> Optional[str]:
+    """
+    Делает ссылку на медиа абсолютной (DOMAIN + /media/...). Роут /media/ в app/main.py
+    отдаёт файлы без авторизации, поэтому такая ссылка доступна системе/Notifee напрямую.
+    """
+    if not url:
+        return None
+    url = str(url)
+    if url.startswith(("http://", "https://")):
+        return url
+    return f"{DOMAIN.rstrip('/')}/{url.lstrip('/')}"
+
+
+def get_push_route(msg_type: Optional[str]) -> str:
+    """Возвращает "messages" для чатовых типов и "bell" для всех остальных."""
+    return "messages" if msg_type in MESSAGE_PUSH_TYPES else "bell"
+
 
 async def invalidate_fcm_token(token: str):
     """
@@ -108,6 +134,8 @@ async def send_fcm_notification(
         return False
 
     try:
+        sender_avatar = absolute_media_url(sender_avatar)
+
         # Подготовка данных для уведомления
         # Все значения в data должны быть строками для Firebase Admin SDK
         fcm_data = {}
@@ -121,8 +149,8 @@ async def send_fcm_notification(
         
         if sender_avatar:
             fcm_data["sender_avatar"] = str(sender_avatar)
-            # Для стандартных уведомлений Android (если бы мы их использовали)
-            # fcm_data["image"] = str(sender_avatar)
+            # Явный алиас для ясности на клиенте (sender_avatar остаётся для совместимости)
+            fcm_data["sender_avatar_url"] = str(sender_avatar)
         
         # Добавляем поля для обработки на клиенте (особенно важно для Android data-only/custom)
         if title:
@@ -143,6 +171,9 @@ async def send_fcm_notification(
         
         if "type" not in fcm_data:
             fcm_data["type"] = "new_message"
+
+        # Явный маршрут для клиента: счётчик сообщений или колокольчик
+        fcm_data["notif_route"] = get_push_route(fcm_data["type"])
 
         # Флаг для клиента: показать уведомление без звука/вибрации (ночной режим)
         fcm_data["silent"] = "true" if silent else "false"
@@ -193,7 +224,7 @@ async def send_fcm_notification(
                     thread_id=str(sender_id) if sender_id else (fcm_data.get("chat_id") or fcm_data.get("news_id")),
                     content_available=True,
                     mutable_content=True,
-                    category="message_actions" if fcm_data.get("type") == "new_message" else None,
+                    category="message_actions" if fcm_data.get("notif_route") == "messages" else None,
                     badge=1
                 )
             ),

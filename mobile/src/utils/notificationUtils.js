@@ -2,10 +2,81 @@ import { Platform } from 'react-native';
 import notifee, { AndroidImportance, AndroidGroupAlertBehavior, EventType, AndroidStyle } from '@notifee/react-native';
 import { storage } from './storage';
 
+// --- Единая маршрутизация push по data.type ---
+// Соответствие схеме: chat_message = 'new_message', group_message = 'new_group_message',
+// news_post = 'new_post', friend_accepted = 'friend_accept' / 'friend_accepted'.
+//   'messages' -> счётчик непрочитанных сообщений чата (dialogs.unread_count)
+//   'bell'     -> колокольчик (GET /notifications/unread-count)
+//   'ignore'   -> не влияет ни на один счётчик
+export const PUSH_TYPE_ROUTES = {
+  new_message: 'messages',
+  chat_message: 'messages',
+  new_group_message: 'messages',
+  group_message: 'messages',
+  new_post: 'bell',
+  news_post: 'bell',
+  announcement: 'bell',
+  friend_request: 'bell',
+  friend_accept: 'bell',
+  friend_accepted: 'bell',
+  friend_post: 'bell',
+  post_like: 'bell',
+  post_comment: 'bell',
+  post_moderated: 'bell',
+  news_reaction: 'bell',
+  news_comment: 'bell',
+  album_reaction: 'bell',
+  album_comment: 'bell',
+  album_comment_reaction: 'bell',
+  photo_reaction: 'bell',
+  photo_comment: 'bell',
+  photo_comment_reaction: 'bell',
+  system: 'bell',
+};
+
+// Возвращает 'messages' | 'bell' | 'ignore'. Неизвестный тип НИКОГДА не считается
+// сообщением чата: безопасный fallback - колокольчик (счётчик всё равно берётся с сервера).
+export function getPushRoute(data) {
+  if (!data) return 'ignore';
+  const type = data.type || data.msg_type;
+  if (type && PUSH_TYPE_ROUTES[type]) return PUSH_TYPE_ROUTES[type];
+  if (data.notif_route === 'messages' || data.notif_route === 'bell') return data.notif_route;
+  return type ? 'bell' : 'ignore';
+}
+
+// Загрузка аватарки с таймаутом: если картинка недоступна или сеть медленная,
+// возвращаем null, и уведомление показывается без аватарки (с иконкой приложения).
+const AVATAR_TIMEOUT_MS = 4000;
+export async function resolveAvatarUrl(url) {
+  if (typeof url !== 'string' || !(url.startsWith('http://') || url.startsWith('https://'))) {
+    return null;
+  }
+  try {
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    let timer;
+    const timeout = new Promise((resolve) => {
+      timer = setTimeout(() => {
+        if (controller) controller.abort();
+        resolve(null);
+      }, AVATAR_TIMEOUT_MS);
+    });
+    const check = fetch(url, { method: 'HEAD', signal: controller ? controller.signal : undefined })
+      .then((res) => (res && res.ok ? url : null))
+      .catch(() => null);
+    const result = await Promise.race([check, timeout]);
+    clearTimeout(timer);
+    return result;
+  } catch (e) {
+    console.log('[Notifee] resolveAvatarUrl error:', e?.message || e);
+    return null;
+  }
+}
+
 // --- Helpers to extract info from various notification data formats ---
 export function parseNotificationData(data) {
   if (!data) return {};
-  const type = data.type || data.msg_type || 'new_message';
+  // Без явного типа считаем сообщением чата только push с признаками чата (обратная совместимость)
+  const type = data.type || data.msg_type || ((data.chat_id || data.message_id) ? 'new_message' : 'unknown');
   
   // Расширенный поиск ID отправителя (чат, новости, заявки в друзья)
   const senderIdRaw = data.sender_id || data.senderId || 
@@ -28,9 +99,11 @@ export function parseNotificationData(data) {
   const notifTitle = data.notif_title || data.notifTitle;
   const notifBody = data.notif_body || data.notifBody;
   
-  const senderAvatar = data.sender_avatar || data.senderAvatar || data.image || data.avatar_url;
+  const senderAvatar = data.sender_avatar_url || data.sender_avatar || data.senderAvatar || data.image || data.avatar_url;
+  const groupIdRaw = data.group_id || data.groupId;
+  const groupId = groupIdRaw ? parseInt(groupIdRaw, 10) : null;
   
-  return { type, senderId, senderName, newsId, notifTitle, notifBody, senderAvatar };
+  return { type, senderId, senderName, newsId, notifTitle, notifBody, senderAvatar, groupId };
 }
 
 // --- Helpers for Notifee ---
@@ -140,9 +213,8 @@ export async function displayBundledMessage(remoteMessage) {
 
     // ВАЖНО: Notifee ожидает ЛИБО валидный URL (http/https), ЛИБО ресурс. 
     // Пустые строки или относительные пути ('/media/...') вызывают ошибку отображения.
-    const iconUrl = (typeof senderAvatar === 'string' && (senderAvatar.startsWith('http://') || senderAvatar.startsWith('https://'))) 
-      ? senderAvatar 
-      : null;
+    // Аватарка проверяется с таймаутом (Promise.race): при ошибке/таймауте - без картинки.
+    const iconUrl = await resolveAvatarUrl(senderAvatar);
 
     if (!text && !nameToDisplay) {
       console.log('[Notifee] Skipping display: empty content');
@@ -215,6 +287,7 @@ export async function displayBundledMessage(remoteMessage) {
 
       if (iconUrl) {
         notificationOptions.android.largeIcon = iconUrl;
+        notificationOptions.android.circularLargeIcon = true;
       }
 
       // На Android мы используем фиксированный ID для диалога (sender_{id}), 
@@ -251,6 +324,7 @@ export async function displayBundledMessage(remoteMessage) {
 
       if (iconUrl) {
         notificationOptions.android.largeIcon = iconUrl;
+        notificationOptions.android.circularLargeIcon = true;
         notificationOptions.ios.attachments = [{ url: iconUrl }];
       }
 
@@ -316,6 +390,34 @@ async function waitForNavigation() {
     console.log('[Notifee] waitForNavigation error:', e);
   }
   return false;
+}
+
+// Единый переход по тапу на push (Notifee и FCM fallbacks):
+// чатовые типы -> чат/группа, остальные -> колокольчик (экран уведомлений) или связанный объект.
+export function navigateByPushData(navigationRef, data) {
+  const { type, senderId, senderName, newsId, groupId } = parseNotificationData(data);
+  const route = getPushRoute(data);
+
+  if (route === 'messages') {
+    if ((type === 'new_group_message' || type === 'group_message') && groupId) {
+      navigationRef.navigate('Messages', { screen: 'GroupChat', params: { groupId, groupName: senderName || 'Группа' }, initial: false });
+    } else if (senderId) {
+      navigationRef.navigate('Messages', { screen: 'Chat', params: { userId: senderId, userName: senderName || 'Чат' }, initial: false });
+    }
+    return;
+  }
+
+  if (route === 'bell') {
+    if ((type === 'new_post' || type === 'news_post') && newsId) {
+      navigationRef.navigate('Feed', { screen: 'NewsDetail', params: { newsId } });
+    } else {
+      // Колокольчик: экран уведомлений (там же синхронизируется счётчик с сервером)
+      navigationRef.navigate('Feed', { screen: 'Notifications' });
+    }
+    return;
+  }
+
+  navigationRef.navigate('Feed');
 }
 
 export async function handleNotificationResponse(event) {
@@ -398,17 +500,9 @@ export async function handleNotificationResponse(event) {
       if (isNavReady) {
         console.log(`[Notifee] Handling default click for type: ${msgType}`);
         
+        navigateByPushData(navigationRef, notifData);
         if (msgType === 'new_message' && senderId) {
-          navigationRef.navigate('Messages', { screen: 'Chat', params: { userId: senderId, userName: senderName || 'Чат' }, initial: false });
           try { await storage.removeItem(`notif_messages_${senderId}`); } catch (_) {}
-        } else if (msgType === 'friend_request' || msgType === 'friend_accept') {
-          navigationRef.navigate('Users', { screen: 'UsersMain', params: { initialTab: 'friends' } });
-        } else if (msgType === 'new_post' && newsId) {
-          navigationRef.navigate('Feed', { screen: 'NewsDetail', params: { newsId } });
-        } else if (senderId) {
-          navigationRef.navigate('Messages', { screen: 'Chat', params: { userId: senderId, userName: senderName || 'Чат' }, initial: false });
-        } else {
-          navigationRef.navigate('Feed');
         }
         
         await cancelGroup(groupId, senderId);

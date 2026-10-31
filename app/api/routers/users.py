@@ -2523,15 +2523,8 @@ async def send_friend_request(
     }
     asyncio.create_task(notification_manager.send_personal_message(msg, user_id))
     
-    if target_user.fcm_token:
-        asyncio.create_task(send_fcm_notification(
-            token=target_user.fcm_token,
-            title="Новая заявка в друзья",
-            body=f"{msg['sender_name']} хочет добавить вас в друзья",
-            data=msg,
-            sender_id=current_user.id,
-            sender_avatar=current_user.avatar_url
-        ))
+    # Push отправляет create_or_group_notification (с аватаркой и типом friend_request),
+    # прямой вызов send_fcm_notification дублировал бы уведомление.
 
     from app.core.notification_service import create_or_group_notification
     await create_or_group_notification(
@@ -2584,15 +2577,7 @@ async def accept_friend_request(
     }
     asyncio.create_task(notification_manager.send_personal_message(msg, sender_id))
     
-    if sender and sender.fcm_token:
-        asyncio.create_task(send_fcm_notification(
-            token=sender.fcm_token,
-            title="Заявка принята",
-            body=f"{msg['sender_name']} принял вашу заявку в друзья",
-            data=msg,
-            sender_id=current_user.id,
-            sender_avatar=current_user.avatar_url
-        ))
+    # Push отправляет create_or_group_notification (с аватаркой и типом friend_accepted).
 
     from app.core.notification_service import create_or_group_notification
     await create_or_group_notification(

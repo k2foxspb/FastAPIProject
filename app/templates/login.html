@@ -71,11 +71,17 @@
         }
 
         .btn:hover { background: var(--accent-hover); }
+        .btn:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+
+        @media (prefers-reduced-motion: reduce) {
+            .spinner { animation: none; }
+            .btn { transition: none; }
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="spinner"></div>
+        <div class="spinner" role="status" aria-label="Перенаправление"></div>
         <h1>Перенаправляем в приложение</h1>
         <p>Если приложение не открылось автоматически, нажмите кнопку ниже.</p>
         <a id="redirect-link" class="btn" href="#">Открыть приложение</a>

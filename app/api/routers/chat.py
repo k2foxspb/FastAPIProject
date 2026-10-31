@@ -1032,8 +1032,10 @@ async def websocket_chat_endpoint(
                                     sender_id=user_id,
                                     sender_avatar=sender_avatar,
                                     data={
+                                        "type": "new_group_message",
                                         "group_id": str(group_id),
-                                        "message_id": str(new_msg.id)
+                                        "message_id": str(new_msg.id),
+                                        "sender_name": sender_name,
                                     }
                                 ))
                 continue

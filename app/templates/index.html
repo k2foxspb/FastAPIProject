@@ -4,9 +4,9 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-    <title>Fokin System — Автоматизация системы управления</title>
-    <meta name="description" content="Fokin System — платформа автоматизации системы управления. Политика конфиденциальности и пользовательское соглашение.">
-    <meta name="keywords" content="Fokin, система управления, автоматизация, политика конфиденциальности, пользовательское соглашение">
+    <title>Fokin System — друзья, публикации, чаты и уведомления</title>
+    <meta name="description" content="Fokin System — приложение для общения: друзья, публикации, объявления, личные и групповые чаты, колокольчик уведомлений. Документация, политика конфиденциальности и пользовательское соглашение.">
+    <meta name="keywords" content="Fokin, друзья, публикации, чаты, уведомления, политика конфиденциальности, пользовательское соглашение">
     <meta name="author" content="Fokin Team">
     <meta name="robots" content="index, follow">
     <link rel="canonical" href="https://fokin.fun/">
@@ -19,8 +19,8 @@
 
     <!-- Open Graph -->
     <meta property="og:type" content="website">
-    <meta property="og:title" content="Fokin System — Автоматизация системы управления">
-    <meta property="og:description" content="Политика конфиденциальности и пользовательское соглашение сервиса Fokin.">
+    <meta property="og:title" content="Fokin System — друзья, публикации, чаты и уведомления">
+    <meta property="og:description" content="Приложение для общения: друзья, публикации, объявления, чаты и уведомления.">
     <meta property="og:url" content="https://fokin.fun/">
     <meta property="og:site_name" content="Fokin System">
     <meta property="og:locale" content="ru_RU">
@@ -397,7 +397,31 @@
             .download-panel .download-info { justify-content: center; }
             .download-btn { justify-content: center; }
         }
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 16px;
+            max-width: 980px;
+            width: 100%;
+            margin: 28px 0 40px;
+            text-align: left;
+        }
+        .feature-card {
+            background: var(--panel-color);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--panel-border);
+            border-radius: 18px;
+            padding: 20px;
+            transition: transform 0.25s ease, border-color 0.25s ease;
+        }
+        .js .feature-card.reveal { transition: opacity 0.6s ease, transform 0.6s ease, border-color 0.25s ease; }
+        .feature-card:hover { border-color: var(--accent-color); }
+        .feature-card h3 { margin: 0 0 6px; font-size: 16px; color: var(--text-primary); }
+        .feature-card p { margin: 0; font-size: 14px; color: var(--text-secondary); }
+        .feature-card .feature-ico { font-family: var(--mono-font); color: var(--accent-color); font-size: 12px; letter-spacing: 0.12em; margin-bottom: 10px; display: block; }
     </style>
+    <link rel="stylesheet" href="/static/css/site.css">
+    <script src="/static/js/site.js"></script>
     <meta name="google-site-verification" content="29HuyK0yV3eZ1XaA4VNvb3JqYKFLdkrytJH3DNJUScw">
 </head>
 <body>
@@ -413,8 +437,9 @@
     </div>
 
     <div class="hero">
-        <div class="eyebrow">Автоматизация системы управления</div>
+        <div class="eyebrow">Друзья · Публикации · Чаты · Уведомления</div>
         <h1>Fokin System</h1>
+        <p class="tagline">Приложение для общения: добавляйте друзей, делитесь публикациями, читайте объявления и переписывайтесь в чатах.</p>
 
         <div class="download-panel">
             <div class="download-info">
@@ -436,6 +461,14 @@
             </a>
         </div>
 
+        <div class="features-grid" role="list" aria-label="Возможности приложения">
+            <div class="feature-card reveal" role="listitem"><span class="feature-ico" aria-hidden="true">01 / FRIENDS</span><h3>Друзья</h3><p>Поиск людей и заявки в друзья.</p></div>
+            <div class="feature-card reveal" role="listitem"><span class="feature-ico" aria-hidden="true">02 / POSTS</span><h3>Публикации</h3><p>Посты, фото и альбомы, реакции и комментарии.</p></div>
+            <div class="feature-card reveal" role="listitem"><span class="feature-ico" aria-hidden="true">03 / NEWS</span><h3>Объявления и новости</h3><p>Важные сообщения всегда под рукой.</p></div>
+            <div class="feature-card reveal" role="listitem"><span class="feature-ico" aria-hidden="true">04 / CHAT</span><h3>Чаты</h3><p>Личные и групповые переписки, а также ИИ-чат.</p></div>
+            <div class="feature-card reveal" role="listitem"><span class="feature-ico" aria-hidden="true">05 / BELL</span><h3>Колокольчик</h3><p>Все события в одном списке и push на телефон.</p></div>
+        </div>
+
         <div class="docs-grid">
             <a href="/privacy-policy" class="doc-card">
                 <div class="doc-index">DOC / 01</div>
@@ -445,7 +478,7 @@
                     </svg>
                 </div>
                 <div class="doc-title">Политика конфиденциальности</div>
-                <div class="doc-desc">Правила сбора, обработки и защиты данных пользователей в рамках работы системы управления.</div>
+                <div class="doc-desc">Правила сбора, обработки и защиты данных пользователей приложения.</div>
                 <span class="doc-link">
                     Открыть документ
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -464,7 +497,7 @@
                     </svg>
                 </div>
                 <div class="doc-title">Пользовательское соглашение</div>
-                <div class="doc-desc">Условия и регламент использования системы управления, права и обязанности сторон.</div>
+                <div class="doc-desc">Условия использования приложения, права и обязанности сторон.</div>
                 <span class="doc-link">
                     Открыть документ
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -483,7 +516,7 @@
                     </svg>
                 </div>
                 <div class="doc-title">Руководство пользователя</div>
-                <div class="doc-desc">Подробная инструкция по работе с документами, согласованием, табелем и уведомлениями для всех ролей.</div>
+                <div class="doc-desc">Вход, друзья, публикации, объявления, чаты и уведомления. FAQ и решение проблем.</div>
                 <span class="doc-link">
                     Открыть документ
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -502,7 +535,7 @@
                     </svg>
                 </div>
                 <div class="doc-title">Техническая документация</div>
-                <div class="doc-desc">Архитектура, технологический стек, безопасность и инфраструктура платформы — для разработчиков и DevOps.</div>
+                <div class="doc-desc">Архитектура, push-уведомления, технологический стек и инфраструктура Docker — для разработчиков и DevOps.</div>
                 <span class="doc-link">
                     Открыть документ
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">

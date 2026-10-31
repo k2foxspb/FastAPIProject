@@ -184,6 +184,9 @@ export default function LoginScreen({navigation}) {
                 <Text style={[styles.subtitle, {color: colors.textSecondary}]}>
                     Вход по номеру телефона
                 </Text>
+                <Text style={[styles.description, {color: colors.textSecondary}]}>
+                    Находи друзей, общайся в чатах, делись фото и будь в курсе новостей и объявлений.
+                </Text>
 
                 {!confirm ? (
                     <>
@@ -272,16 +275,8 @@ export default function LoginScreen({navigation}) {
 
                 <View style={styles.features}>
                     <View style={styles.featureItem}>
-                        <Ionicons name="flash-outline" size={20} color={colors.primary}/>
-                        <Text style={[styles.featureText, {color: colors.textSecondary}]}>Быстрый вход</Text>
-                    </View>
-                    <View style={styles.featureItem}>
                         <Ionicons name="shield-checkmark-outline" size={20} color={colors.primary}/>
                         <Text style={[styles.featureText, {color: colors.textSecondary}]}>Безопасно</Text>
-                    </View>
-                    <View style={styles.featureItem}>
-                        <Ionicons name="sync-outline" size={20} color={colors.primary}/>
-                        <Text style={[styles.featureText, {color: colors.textSecondary}]}>Синхронизация</Text>
                     </View>
                 </View>
 
@@ -321,15 +316,23 @@ const styles = StyleSheet.create({
     subtitle: {
         fontSize: 16,
         textAlign: 'center',
-        marginBottom: 32,
+        marginBottom: 8,
         lineHeight: 24,
         paddingHorizontal: 30,
+        opacity: 0.8
+    },
+    description: {
+        fontSize: 14,
+        textAlign: 'center',
+        marginBottom: 24,
+        lineHeight: 20,
+        paddingHorizontal: 16,
         opacity: 0.8
     },
     buttonDisabled: {opacity: 0.7},
     features: {
         flexDirection: 'row',
-        justifyContent: 'space-between',
+        justifyContent: 'center',
         marginTop: 32,
         paddingHorizontal: 10
     },

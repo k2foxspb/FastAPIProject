@@ -24,7 +24,11 @@ router = APIRouter(prefix="/news", tags=["news"])
 async def notify_friends_about_news(news_id: int, author_id: int, author_name: str, news_title: str, db: AsyncSession):
     """Уведомляет друзей автора о новой новости."""
     from loguru import logger
+    from app.database import async_session_maker
+    from app.core.notification_service import create_or_group_notification
     try:
+      # Фоновая задача: используем собственную сессию (сессия запроса к этому моменту закрыта)
+      async with async_session_maker() as db:
         # Находим всех подтвержденных друзей автора
         res = await db.execute(
             select(UserModel).join(
@@ -38,36 +42,36 @@ async def notify_friends_about_news(news_id: int, author_id: int, author_name: s
                 UserModel.id != author_id
             ).execution_options(populate_existing=True)
         )
-        friends = res.scalars().all()
-        
-        if not friends:
+        friend_ids = [f.id for f in res.scalars().all()]
+
+        if not friend_ids:
             logger.debug(f"FCM: No friends found to notify for author {author_id}")
             return
 
-        msg_type = "new_post" # Или "new_news"
         notification_msg = {
-            "type": msg_type,
+            "type": "new_post",
             "news_id": news_id,
             "author_id": author_id,
             "author_name": author_name,
             "title": news_title
         }
 
-        for friend in friends:
-            # WebSocket уведомление
-            asyncio.create_task(notification_manager.send_personal_message(notification_msg, friend.id))
-            
-            # FCM уведомление
-            if friend.fcm_token:
-                asyncio.create_task(send_fcm_notification(
-                    token=friend.fcm_token,
-                    title=f"Новая запись: {author_name}",
-                    body=news_title if len(news_title) < 50 else f"{news_title[:47]}...",
-                    data=notification_msg,
-                    sender_id=author_id
-                ))
-        
-        logger.info(f"FCM: Notifications sent to {len(friends)} friends of {author_id} for news {news_id}")
+        for friend_id in friend_ids:
+            # WebSocket (legacy-событие для открытой ленты)
+            asyncio.create_task(notification_manager.send_personal_message(notification_msg, friend_id))
+
+            # Запись в колокольчике + push (с аватаркой автора, тип new_post -> колокольчик)
+            await create_or_group_notification(
+                db,
+                user_id=friend_id,
+                notif_type="friend_post",
+                title=f"Новая запись: {author_name}",
+                body=news_title if len(news_title) < 50 else f"{news_title[:47]}...",
+                data={"object_type": "news", "object_id": news_id, "news_id": news_id, "type": "new_post"},
+                actor_id=author_id,
+            )
+
+        logger.info(f"FCM: Notifications sent to {len(friend_ids)} friends of {author_id} for news {news_id}")
     except Exception as e:
         logger.error(f"FCM: Error notifying friends about news: {e}")
 
