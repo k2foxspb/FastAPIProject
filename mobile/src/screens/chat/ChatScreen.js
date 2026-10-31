@@ -323,7 +323,6 @@ export default function ChatScreen({ route, navigation }) {
         userId={userId}
         userName={userName}
         interlocutor={interlocutor}
-        isPartnerTyping={isPartnerTyping}
         selectionMode={selectionMode}
         selectedIds={selectedIds}
         onClearSelection={selection.clearSelection}
@@ -370,7 +369,8 @@ export default function ChatScreen({ route, navigation }) {
           uploads.uploadingProgress, 
           uploads.uploadingData, 
           uploads.activeUploadId, 
-          history.token
+          history.token,
+          isPartnerTyping
         ]}
         keyExtractor={(item) => `msg_${item.id !== undefined && item.id !== null ? String(item.id) : (item.client_id || Math.random())}`}
         renderItem={renderMessageItem}
@@ -378,13 +378,20 @@ export default function ChatScreen({ route, navigation }) {
         onEndReachedThreshold={0.1}
         inverted={true}
         ListHeaderComponent={
-          <UploadPlaceholder
-            uploadingProgress={uploads.uploadingProgress}
-            uploadingData={uploads.uploadingData}
-            activeUploadId={uploads.activeUploadId}
-            onCancel={uploads.handleCancelUpload}
-            colors={colors}
-          />
+          <View>
+            {isPartnerTyping && (
+              <View style={[styles.typingBubble, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <Text style={[styles.typingBubbleText, { color: colors.textSecondary }]}>печатает...</Text>
+              </View>
+            )}
+            <UploadPlaceholder
+              uploadingProgress={uploads.uploadingProgress}
+              uploadingData={uploads.uploadingData}
+              activeUploadId={uploads.activeUploadId}
+              onCancel={uploads.handleCancelUpload}
+              colors={colors}
+            />
+          </View>
         }
         onScrollToIndexFailed={(info) => {
           chatFlatListRef.current?.scrollToOffset({ 

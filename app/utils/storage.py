@@ -54,6 +54,7 @@ __all__ = [
     "InvalidPathError",
     "FileMetadata",
     "build_key",
+    "user_media_category",
     "save_file",
     "delete",
     "read_file",
@@ -79,6 +80,11 @@ def build_key(category: str, filename_hint: str) -> str:
     name = _timestamped_name(filename_hint)
     category = (category or "misc").strip("/")
     return f"{category}/{name}"
+
+
+def user_media_category(user_id: int, section: str) -> str:
+    """Возвращает категорию (папку) файлов пользователя: users/<user_id>/<раздел>, например users/5/albums."""
+    return f"users/{user_id}/{section}"
 
 
 def _encode_key(metadata: FileMetadata) -> str:

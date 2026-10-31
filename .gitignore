@@ -6,6 +6,7 @@ __pycache__/
 *.pyc
 app/app/
 app/media/
+media/
 .env
 mobile/.env
 *.db

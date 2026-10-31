@@ -73,6 +73,18 @@ export const styles = StyleSheet.create({
     padding: 4,
     marginLeft: 2,
   },
+  typingBubble: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    marginVertical: 4,
+  },
+  typingBubbleText: {
+    fontSize: 14,
+    fontStyle: 'italic',
+  },
   scrollDownButton: {
     position: 'absolute',
     bottom: 80,

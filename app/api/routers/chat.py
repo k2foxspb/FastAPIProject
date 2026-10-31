@@ -1749,6 +1749,7 @@ async def bulk_delete_messages(
 @router.post("/upload")
 async def upload_chat_file(
     file: UploadFile = File(...),
+    current_user: Optional[UserModel] = Depends(get_current_user_optional),
 ):
     # В реальном приложении здесь должна быть проверка токена
     file_extension = os.path.splitext(file.filename or "")[1]
@@ -1772,8 +1773,9 @@ async def upload_chat_file(
 
     # Сохраняем оригинал через абстракцию хранилища
     base_name = str(uuid.uuid4())
+    chat_category = storage.user_media_category(current_user.id, "chat") if current_user else "chat"
     original_url, _ = storage.save_file(
-        category="chat",
+        category=chat_category,
         filename_hint=f"{base_name}{file_extension or ''}",
         fileobj=io.BytesIO(content),
         content_type=content_type,
@@ -1790,7 +1792,7 @@ async def upload_chat_file(
                 img.save(thumb_buffer, format=fmt)
                 thumb_buffer.seek(0)
                 _thumb_url, _ = storage.save_file(
-                    category="chat",
+                    category=chat_category,
                     filename_hint=f"{base_name}_thumb{file_extension or ''}",
                     fileobj=thumb_buffer,
                     content_type=file.content_type or "image/jpeg",
@@ -2136,7 +2138,7 @@ async def upload_chunk(
         try:
             with open(file_path, "rb") as f_in:
                 url, _ = storage.save_file(
-                    category="chat",
+                    category=storage.user_media_category(user_id, "chat"),
                     filename_hint=unique_name,
                     fileobj=f_in,
                     content_type=final_content_type,

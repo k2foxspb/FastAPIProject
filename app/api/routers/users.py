@@ -422,7 +422,7 @@ async def update_me(
 
     if avatar:
         # Сохраняем аватарку (используем существующую функцию сохранения фото)
-        image_url, preview_url = await save_user_photo(avatar)
+        image_url, preview_url = await save_user_photo(avatar, current_user.id, "avatars")
         current_user.avatar_url = image_url
         current_user.avatar_preview_url = preview_url
 
@@ -508,15 +508,6 @@ async def create_user(
          raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                             detail="Cannot register as owner or admin via this endpoint")
 
-    # Сохранение аватарки если она есть
-    avatar_url = None
-    avatar_preview_url = None
-    if avatar:
-        try:
-            avatar_url, avatar_preview_url = await save_user_photo(avatar)
-        except Exception as e:
-            print(f"Error saving registration avatar: {e}")
-
     # Создание объекта пользователя
     db_user = UserModel(
         email=email,
@@ -526,13 +517,24 @@ async def create_user(
         last_name=last_name,
         role=role,
         is_active=True,
-        avatar_url=avatar_url,
-        avatar_preview_url=avatar_preview_url
     )
 
     db.add(db_user)
     await db.commit()
     await db.refresh(db_user)
+
+    # Аватарка сохраняется после создания пользователя, чтобы файл попал в его папку
+    avatar_url = None
+    avatar_preview_url = None
+    if avatar:
+        try:
+            avatar_url, avatar_preview_url = await save_user_photo(avatar, db_user.id, "avatars")
+            db_user.avatar_url = avatar_url
+            db_user.avatar_preview_url = avatar_preview_url
+            await db.commit()
+            await db.refresh(db_user)
+        except Exception as e:
+            print(f"Error saving registration avatar: {e}")
 
     # Если была загружена аватарка, создаем альбом "Аватарки" и добавляем фото туда
     if avatar_url:
@@ -1668,15 +1670,16 @@ MEDIA_ROOT = os.getenv("MEDIA_ROOT", os.path.join(BASE_DIR, "media"))
 USER_MEDIA_ROOT = os.path.join(MEDIA_ROOT, "users")
 os.makedirs(USER_MEDIA_ROOT, exist_ok=True)
 
-async def save_user_photo(file: UploadFile) -> tuple[str, str]:
+async def save_user_photo(file: UploadFile, user_id: int, section: str = "photos") -> tuple[str, str]:
     file_extension = os.path.splitext(file.filename or "")[1] or ".jpg"
     is_video = file_extension.lower() in [".mp4", ".mov", ".avi", ".mkv", ".webm"]
     original_name = f"{uuid.uuid4()}{file_extension}"
     content = await file.read()
+    user_category = storage.user_media_category(user_id, section)
 
     # Сохраняем оригинал через абстракцию хранилища
     original_url, original_fs_path = storage.save_file(
-        category="users",
+        category=user_category,
         filename_hint=original_name,
         fileobj=io.BytesIO(content),
         content_type=file.content_type or ("video/mp4" if is_video else "image/jpeg"),
@@ -1708,7 +1711,7 @@ async def save_user_photo(file: UploadFile) -> tuple[str, str]:
                 thumb_buffer.seek(0)
                 
                 thumb_url, _ = storage.save_file(
-                    category="users",
+                    category=user_category,
                     filename_hint=thumb_name,
                     fileobj=thumb_buffer,
                     content_type="image/jpeg",
@@ -1732,7 +1735,7 @@ async def save_user_photo(file: UploadFile) -> tuple[str, str]:
                 img.save(thumb_buffer, format=fmt)
                 thumb_buffer.seek(0)
                 thumb_url, _ = storage.save_file(
-                    category="users",
+                    category=user_category,
                     filename_hint=thumb_name,
                     fileobj=thumb_buffer,
                     content_type=file.content_type or "image/jpeg",
@@ -1771,7 +1774,7 @@ async def upload_photo(
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Album not found")
 
     try:
-        image_url, preview_url = await save_user_photo(file)
+        image_url, preview_url = await save_user_photo(file, current_user.id, "albums" if album_id else "photos")
         print(f"DEBUG: Photo saved: {image_url}, {preview_url}")
     except Exception as e:
         print(f"DEBUG: Error saving photo: {e}")
@@ -1821,7 +1824,7 @@ async def bulk_upload_photos(
     db_photos = []
     for file in files:
         try:
-            image_url, preview_url = await save_user_photo(file)
+            image_url, preview_url = await save_user_photo(file, current_user.id, "albums" if album_id else "photos")
             db_photo = UserPhotoModel(
                 user_id=current_user.id,
                 album_id=album_id,

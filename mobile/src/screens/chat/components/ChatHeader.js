@@ -13,7 +13,6 @@ export default function ChatHeader({
   userId,
   userName,
   interlocutor,
-  isPartnerTyping,
   // групповой режим
   isGroupChat = false,
   groupId,
@@ -147,9 +146,7 @@ export default function ChatHeader({
               </View>
               <View>
                 <Text style={[styles.headerTitle, { color: colors.text }]}>{formatName(interlocutor) || userName}</Text>
-                {isPartnerTyping ? (
-                  <Text style={[styles.headerStatus, { color: colors.primary, fontWeight: 'bold' }]}>печатает...</Text>
-                ) : interlocutor && (
+                {interlocutor && (
                   <Text style={[styles.headerStatus, { color: colors.textSecondary }]}>
                     {formatStatus(interlocutor.status, interlocutor.last_seen)}
                   </Text>

@@ -497,12 +497,17 @@ export const NotificationProvider = ({ children }) => {
   }, [connectChatWs]);
 
   const markAsReadWs = useCallback((otherId) => {
+    const payload = { type: 'mark_read', other_id: otherId };
     if (chatWs.current && chatWs.current.readyState === WebSocket.OPEN) {
-      chatWs.current.send(JSON.stringify({
-        type: 'mark_read',
-        other_id: otherId
-      }));
+      chatWs.current.send(JSON.stringify(payload));
       return true;
+    }
+    // Сокет не открыт - не теряем отметку прочтения, а ставим в очередь (отправится при onopen)
+    const alreadyQueued = pendingMessages.current.some(
+      m => m.type === 'mark_read' && String(m.other_id) === String(otherId)
+    );
+    if (!alreadyQueued) {
+      pendingMessages.current.push(payload);
     }
     return false;
   }, []);

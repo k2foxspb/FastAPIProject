@@ -38,6 +38,9 @@ class ConnectionManager:
             except ValueError:
                 pass
 
+    def is_online(self, user_id: int) -> bool:
+        return bool(self.active_connections.get(user_id))
+
     async def send_personal_message(self, message: dict, user_id: int):
         logger.debug(f"NotificationsManager trying to send message to user {user_id}. Type: {type(user_id)}")
         logger.debug(f"Active connections: {list(self.active_connections.keys())}")
@@ -193,8 +196,25 @@ async def websocket_endpoint(
             if user_id is not None:
                 logger.info(f"WS Disconnected: user_id={user_id}")
                 manager.disconnect(websocket, user_id)
-                async with async_session_maker() as db_off:
-                    last_seen = await update_user_status(user_id, "offline", db_off)
+                # Офлайн только если у пользователя не осталось других живых сокетов (например, уже переподключился)
+                if not manager.is_online(user_id):
+                    async with async_session_maker() as db_off:
+                        last_seen = await update_user_status(user_id, "offline", db_off)
+                        await manager.broadcast({
+                            "type": "user_status",
+                            "data": {
+                                "user_id": user_id,
+                                "status": "offline",
+                                "last_seen": last_seen
+                            }
+                        })
+    except Exception as e:
+        logger.error(f"WS Error for user_id={user_id if user_id is not None else 'unknown'}: {e}")
+        if user_id is not None:
+            manager.disconnect(websocket, user_id)
+            if not manager.is_online(user_id):
+                async with async_session_maker() as db_err:
+                    last_seen = await update_user_status(user_id, "offline", db_err)
                     await manager.broadcast({
                         "type": "user_status",
                         "data": {
@@ -203,17 +223,3 @@ async def websocket_endpoint(
                             "last_seen": last_seen
                         }
                     })
-    except Exception as e:
-        logger.error(f"WS Error for user_id={user_id if user_id is not None else 'unknown'}: {e}")
-        if user_id is not None:
-            manager.disconnect(websocket, user_id)
-            async with async_session_maker() as db_err:
-                last_seen = await update_user_status(user_id, "offline", db_err)
-                await manager.broadcast({
-                    "type": "user_status",
-                    "data": {
-                        "user_id": user_id,
-                        "status": "offline",
-                        "last_seen": last_seen
-                    }
-                })
