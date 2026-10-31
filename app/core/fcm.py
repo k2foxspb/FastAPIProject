@@ -71,10 +71,23 @@ def absolute_media_url(url: Optional[str]) -> Optional[str]:
     """
     if not url:
         return None
-    url = str(url)
+    url = str(url).strip()
     if url.startswith(("http://", "https://")):
         return url
-    return f"{DOMAIN.rstrip('/')}/{url.lstrip('/')}"
+    if url.startswith("//"):
+        return f"https:{url}"
+
+    domain = str(DOMAIN or "").strip().rstrip("/")
+    if domain and not domain.startswith(("http://", "https://")):
+        domain = f"https://{domain.lstrip('/')}"
+    if not domain:
+        return url
+
+    # В некоторых старых записях сохранён хост без схемы, например fokin.fun/media/...
+    first_segment = url.split("/", 1)[0]
+    if not url.startswith("/") and ("." in first_segment or ":" in first_segment):
+        return f"https://{url}"
+    return f"{domain}/{url.lstrip('/')}"
 
 
 def get_push_route(msg_type: Optional[str]) -> str:
