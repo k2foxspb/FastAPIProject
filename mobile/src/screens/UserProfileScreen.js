@@ -10,8 +10,10 @@ import { Ionicons as Icon } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import { useNotifications } from '../context/NotificationContext';
 import { theme as themeConstants } from '../constants/theme';
-import { formatStatus, formatName, getAvatarUrl, stripHtml } from '../utils/formatters';
+import { formatStatus, formatName, getAvatarUrl, stripHtml, getFullUrl } from '../utils/formatters';
 import { getRoleLabel, getRoleIcon, isAdminOrOwner } from '../constants/roles';
+import FadeInImage from '../components/FadeInImage';
+import VideoPlayer from '../components/VideoPlayer';
 
 export default function UserProfileScreen({ route, navigation }) {
   const { theme } = useTheme();
@@ -210,10 +212,16 @@ export default function UserProfileScreen({ route, navigation }) {
   const renderPostItem = (item) => {
     const privacyInfo = getPrivacyBadge(item.privacy);
     const hasMedia = !!item.media_url;
+    const isVideoMedia = hasMedia && (
+      item.media_type === 'video' ||
+      (item.media_type !== 'image' && ['mp4', 'm4v', 'mov', 'avi', 'mkv', 'webm'].includes((item.media_url.split('.').pop() || '').toLowerCase()))
+    );
 
     return (
-      <View 
+      <TouchableOpacity 
         key={item.id}
+        activeOpacity={0.9}
+        onPress={() => openComments(item)}
         style={[styles.postCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
       >
         <View style={styles.postAuthorHeader}>
@@ -258,18 +266,28 @@ export default function UserProfileScreen({ route, navigation }) {
         )}
 
         {hasMedia && (
-          <Image
-            source={{ uri: getFullUrl(item.media_url) }}
-            style={{ width: '100%', height: 200, marginVertical: 4 }}
-            resizeMode="cover"
-          />
+          isVideoMedia ? (
+            <VideoPlayer
+              uri={getFullUrl(item.media_url)}
+              style={{ width: '100%', height: 200, marginVertical: 4 }}
+              useNativeControls
+              shouldPlay={false}
+              resizeMode="cover"
+            />
+          ) : (
+            <FadeInImage
+              source={{ uri: getFullUrl(item.media_url) }}
+              style={{ width: '100%', height: 200, marginVertical: 4 }}
+              resizeMode="cover"
+            />
+          )
         )}
 
         <View style={styles.postFooter}>
           <View style={styles.reactionsRow}>
             <TouchableOpacity 
               style={styles.reactionItem}
-              onPress={() => handleReactToPost(item.id)}
+              onPress={(e) => { e.stopPropagation(); handleReactToPost(item.id); }}
             >
               <Icon 
                 name={item.my_reaction ? "heart" : "heart-outline"} 
@@ -283,7 +301,7 @@ export default function UserProfileScreen({ route, navigation }) {
 
             <TouchableOpacity 
               style={[styles.reactionItem, { marginLeft: 16 }]}
-              onPress={() => openComments(item)}
+              onPress={(e) => { e.stopPropagation(); openComments(item); }}
             >
               <Icon name="chatbubble-outline" size={17} color={colors.textSecondary} />
               <Text style={[styles.reactionCount, { color: colors.textSecondary }]}>
@@ -292,7 +310,7 @@ export default function UserProfileScreen({ route, navigation }) {
             </TouchableOpacity>
           </View>
         </View>
-      </View>
+      </TouchableOpacity>
     );
   };
 

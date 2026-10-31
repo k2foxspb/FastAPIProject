@@ -358,6 +358,13 @@ class PhotoAlbum(PhotoAlbumBase):
             )
 
 
+class BanUserRequest(BaseModel):
+    """Запрос на блокировку пользователя: причина (опционально) и срок."""
+    reason: Optional[str] = None
+    # None/отсутствует - блокировка навсегда; иначе - блокировка на указанное число часов
+    duration_hours: Optional[int] = Field(default=None, gt=0)
+
+
 class AdminPermissionCreate(BaseModel):
     admin_id: int
     model_name: str
@@ -383,6 +390,10 @@ class User(BaseModel):
     avatar_preview_url: Optional[str] = None
     fcm_token: Optional[str] = None
     friendship_status: Optional[str] = None # "pending", "accepted", "requested_by_me", "requested_by_them", null
+    is_banned: bool = False
+    ban_reason: Optional[str] = None
+    banned_until: Optional[datetime] = None  # null при is_banned=True означает блокировку навсегда
+    banned_at: Optional[datetime] = None
     photos: list[UserPhoto] = []
     albums: list[PhotoAlbum] = []
     admin_permissions: list[AdminPermission] = []
@@ -410,6 +421,10 @@ class User(BaseModel):
                     "avatar_preview_url": obj.get("avatar_preview_url"),
                     "fcm_token": obj.get("fcm_token"),
                     "friendship_status": obj.get("friendship_status"),
+                    "is_banned": obj.get("is_banned", False),
+                    "ban_reason": obj.get("ban_reason"),
+                    "banned_until": obj.get("banned_until"),
+                    "banned_at": obj.get("banned_at"),
                     "photos": obj.get("photos", []),
                     "albums": obj.get("albums", []),
                     "admin_permissions": obj.get("admin_permissions", []),
@@ -417,7 +432,7 @@ class User(BaseModel):
                     "latest_app_version": obj.get("latest_app_version")
                 }
                 return cls(**data)
-                
+
             # Получаем базовые поля
             data = {
                 "id": int(getattr(obj, "id", 0)),
@@ -433,6 +448,10 @@ class User(BaseModel):
                 "avatar_preview_url": getattr(obj, "avatar_preview_url", None),
                 "fcm_token": getattr(obj, "fcm_token", None),
                 "friendship_status": getattr(obj, "friendship_status", None),
+                "is_banned": bool(getattr(obj, "is_banned", False)),
+                "ban_reason": getattr(obj, "ban_reason", None),
+                "banned_until": getattr(obj, "banned_until", None),
+                "banned_at": getattr(obj, "banned_at", None),
                 "photos": [],
                 "albums": [],
                 "admin_permissions": [],

@@ -591,7 +591,11 @@ async def login(
             detail="Incorrect email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
+
+    # Проверяем, не заблокирован ли пользователь (снимает истёкшую временную блокировку автоматически)
+    from app.core.auth import enforce_not_banned
+    await enforce_not_banned(user, db)
+
     # Обновляем FCM токен, если он передан
     if fcm_token:
         # Обеспечиваем уникальность токена (очищаем у других пользователей)
@@ -952,6 +956,10 @@ async def verify_phone_code(
             await db.refresh(user)
             logger.info(f"Custom Phone Auth: Activated user {phone}")
 
+    # Проверяем, не заблокирован ли пользователь (снимает истёкшую временную блокировку автоматически)
+    from app.core.auth import enforce_not_banned
+    await enforce_not_banned(user, db)
+
     # Генерируем токены
     access_token = create_access_token(data={"sub": phone, "role": user.role, "id": user.id})
     refresh_token = create_refresh_token(data={"sub": phone, "role": user.role, "id": user.id})
@@ -1070,6 +1078,10 @@ async def firebase_auth(
             user.fcm_token = request.fcm_token
             await db.commit()
 
+        # Проверяем, не заблокирован ли пользователь (снимает истёкшую временную блокировку автоматически)
+        from app.core.auth import enforce_not_banned
+        await enforce_not_banned(user, db)
+
         # Генерируем токены. Используем то что есть (email или телефон) для sub
         sub_val = user.email or user.phone_number
         access_token = create_access_token(data={"sub": sub_val, "role": user.role, "id": user.id})
@@ -1083,7 +1095,9 @@ async def firebase_auth(
             "needs_phone": user.phone_number is None,
             "needs_email": user.email is None
         }
-        
+
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Firebase Auth error: {e}")
         raise HTTPException(status_code=401, detail=str(e))

@@ -20,6 +20,38 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 60
 REFRESH_TOKEN_EXPIRE_DAYS = 30
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="users/token")
 
+
+async def enforce_not_banned(user: UserModel, db: AsyncSession) -> None:
+    """
+    Проверяет блокировку пользователя. Если временная блокировка уже истекла -
+    автоматически снимает её (восстанавливает доступ). Если блокировка ещё
+    действует (навсегда или до banned_until) - выбрасывает 403 с причиной и
+    сроком окончания.
+    """
+    if not user.is_banned:
+        return
+
+    now = datetime.now(timezone.utc)
+    if user.banned_until is not None:
+        banned_until = user.banned_until
+        if banned_until.tzinfo is None:
+            banned_until = banned_until.replace(tzinfo=timezone.utc)
+        if banned_until <= now:
+            # Срок временной блокировки истёк - автоматически восстанавливаем доступ
+            user.is_banned = False
+            user.ban_reason = None
+            user.banned_until = None
+            await db.commit()
+            await db.refresh(user)
+            return
+
+    detail = {
+        "message": "User is banned",
+        "reason": user.ban_reason,
+        "banned_until": user.banned_until.isoformat() if user.banned_until else None,
+    }
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=detail)
+
 def hash_password(password: str) -> str:
     """
     Преобразует пароль в хеш с использованием bcrypt.
@@ -84,7 +116,12 @@ async def get_current_user_optional(
                 UserModel.is_active == True
             )
         )
-        return result.first()
+        user = result.first()
+        if user is not None:
+            await enforce_not_banned(user, db)
+        return user
+    except HTTPException:
+        raise
     except jwt.ExpiredSignatureError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -133,6 +170,7 @@ async def get_current_user(token: str = Depends(oauth2_scheme),
     user = result.first()
     if user is None:
         raise credentials_exception
+    await enforce_not_banned(user, db)
     return user
 
 
@@ -166,6 +204,7 @@ async def verify_refresh_token(refresh_token: str, db: AsyncSession):
     user = result.first()
     if user is None:
         raise credentials_exception
+    await enforce_not_banned(user, db)
     return user
 
 

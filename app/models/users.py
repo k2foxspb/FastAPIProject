@@ -19,6 +19,18 @@ class User(Base):
     status: Mapped[str] = mapped_column(String, default="offline", nullable=True)
     last_seen: Mapped[str] = mapped_column(String, nullable=True)
 
+    # Блокировка пользователя (бан) администратором/владельцем.
+    # is_banned=True + banned_until=None  -> блокировка навсегда.
+    # is_banned=True + banned_until=<dt>  -> временная блокировка до указанного момента
+    #                                        (автоматически снимается при проверке в app.core.auth).
+    # Разблокировать (восстановить) пользователя можно досрочно через соответствующий
+    # эндпоинт в app.api.routers.admin.
+    is_banned: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0", nullable=False)
+    ban_reason: Mapped[str | None] = mapped_column(String, nullable=True)
+    banned_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    banned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    banned_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
     avatar_url: Mapped[str | None] = mapped_column(String, nullable=True)
     avatar_preview_url: Mapped[str | None] = mapped_column(String, nullable=True)
     verification_code: Mapped[str | None] = mapped_column(String, nullable=True)

@@ -12,11 +12,12 @@ from app.utils import storage
 from app.models.users import User as UserModel, AdminPermission as AdminPermissionModel, PhotoAlbum as PhotoAlbumModel, AppVersion as AppVersionModel
 from app.models.news import News as NewsModel
 from app.models.chat import ChatMessage as ChatMessageModel, FileUploadSession
-from app.schemas.users import User as UserSchema, AdminPermissionCreate, AdminPermission as AdminPermissionSchema, AppVersionResponse, AppLogRequest
+from app.schemas.users import User as UserSchema, AdminPermissionCreate, AdminPermission as AdminPermissionSchema, AppVersionResponse, AppLogRequest, BanUserRequest
 from app.schemas.chat import ChatMessageResponse, DialogResponse, UploadInitRequest, UploadSessionResponse, UploadStatusResponse
 from app.api.dependencies import get_async_db
 from app.core.auth import get_current_owner, get_current_admin, check_admin_permission
-from app.core.roles import can_change_role
+from app.core.roles import can_change_role, can_moderate_user
+from datetime import timedelta, timezone as dt_timezone
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -90,6 +91,64 @@ async def update_user_role(
     user.role = role
     await db.commit()
     return {"message": f"User {user.email} role updated to {role}"}
+
+@router.post("/users/{user_id}/ban")
+async def ban_user(
+    user_id: int,
+    payload: BanUserRequest,
+    admin: UserModel = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Блокирует пользователя временно (на указанное число часов) или навсегда
+    (если duration_hours не передан). Администратор не может заблокировать
+    другого администратора или владельца - это может сделать только владелец.
+    """
+    result = await db.execute(select(UserModel).where(UserModel.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    if user.id == admin.id:
+        raise HTTPException(status_code=400, detail="Cannot ban yourself")
+
+    if not can_moderate_user(admin.role, user.role):
+        raise HTTPException(status_code=403, detail="Not allowed to ban this user")
+
+    now = datetime.now(dt_timezone.utc)
+    user.is_banned = True
+    user.ban_reason = payload.reason
+    user.banned_until = (now + timedelta(hours=payload.duration_hours)) if payload.duration_hours else None
+    user.banned_at = now
+    user.banned_by_id = admin.id
+    await db.commit()
+    await db.refresh(user)
+    return UserSchema.model_validate(user)
+
+
+@router.post("/users/{user_id}/unban")
+async def unban_user(
+    user_id: int,
+    admin: UserModel = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Снимает блокировку с пользователя (восстанавливает доступ)."""
+    result = await db.execute(select(UserModel).where(UserModel.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    if not can_moderate_user(admin.role, user.role):
+        raise HTTPException(status_code=403, detail="Not allowed to unban this user")
+
+    user.is_banned = False
+    user.ban_reason = None
+    user.banned_until = None
+    user.banned_by_id = None
+    await db.commit()
+    await db.refresh(user)
+    return UserSchema.model_validate(user)
+
 
 @router.post("/permissions", response_model=AdminPermissionSchema)
 async def grant_permission(

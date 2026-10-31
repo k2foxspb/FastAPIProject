@@ -51,6 +51,21 @@ def can_assign_admin(current_role: str | None) -> bool:
     return current_role == ROLE_OWNER
 
 
+def can_moderate_user(current_role: str | None, target_role: str | None) -> bool:
+    """
+    Проверяет, может ли пользователь с ролью current_role модерировать
+    (например, блокировать/разблокировать) пользователя с ролью target_role:
+      - владельца не может заблокировать никто;
+      - администратора может заблокировать только владелец;
+      - обычного пользователя может заблокировать админ или владелец.
+    """
+    if target_role == ROLE_OWNER:
+        return False
+    if target_role == ROLE_ADMIN:
+        return current_role == ROLE_OWNER
+    return current_role in (ROLE_OWNER, ROLE_ADMIN)
+
+
 def can_change_role(current_role: str | None, target_role: str | None, new_role: str) -> bool:
     """
     Проверяет, может ли пользователь с ролью current_role сменить роль
