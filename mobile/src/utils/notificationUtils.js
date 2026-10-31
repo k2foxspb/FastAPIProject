@@ -349,6 +349,8 @@ export async function displayBundledMessage(remoteMessage) {
             importance: AndroidImportance.HIGH,
             subText: nameToDisplay,
             pressAction: { id: 'default', launchActivity: 'default' },
+            // Сводка видна в шторке, если дочернее уведомление одно - аватарка должна быть и здесь
+            ...(iconUrl ? { largeIcon: iconUrl, circularLargeIcon: true } : {}),
           },
         });
       }
