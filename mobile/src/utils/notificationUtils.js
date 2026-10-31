@@ -1,6 +1,7 @@
 import { Platform } from 'react-native';
 import notifee, { AndroidImportance, AndroidGroupAlertBehavior, EventType, AndroidStyle } from '@notifee/react-native';
 import { storage } from './storage';
+import { API_BASE_URL } from '../constants';
 
 // --- Единая маршрутизация push по data.type ---
 // Соответствие схеме: chat_message = 'new_message', group_message = 'new_group_message',
@@ -49,9 +50,22 @@ export function getPushRoute(data) {
 const AVATAR_TIMEOUT_MS = 4000;
 const inFlightMessageIds = new Set();
 export async function resolveAvatarUrl(url) {
-  if (typeof url !== 'string' || !(url.startsWith('http://') || url.startsWith('https://'))) {
-    console.log('[Notifee] Avatar URL is missing or not absolute:', url);
+  if (typeof url !== 'string' || !url.trim()) {
+    console.log('[Notifee] Avatar URL is missing:', url);
     return null;
+  }
+  const candidate = url.trim();
+  const baseUrl = API_BASE_URL.replace(/\/+$/, '');
+  let normalizedUrl = candidate;
+  if (candidate.startsWith('//')) {
+    normalizedUrl = `https:${candidate}`;
+  } else if (candidate.startsWith('/')) {
+    normalizedUrl = `${baseUrl}${candidate}`;
+  } else if (!/^https?:\/\//i.test(candidate)) {
+    const firstSegment = candidate.split('/', 1)[0];
+    normalizedUrl = firstSegment.includes('.') || firstSegment.includes(':')
+      ? `https://${candidate}`
+      : `${baseUrl}/${candidate}`;
   }
   try {
     const checkUrl = async (method) => {
@@ -63,7 +77,7 @@ export async function resolveAvatarUrl(url) {
           resolve(null);
         }, AVATAR_TIMEOUT_MS);
       });
-      const check = fetch(url, {
+      const check = fetch(normalizedUrl, {
         method,
         ...(method === 'GET' ? { headers: { Range: 'bytes=0-0' } } : {}),
         signal: controller ? controller.signal : undefined,
@@ -74,7 +88,7 @@ export async function resolveAvatarUrl(url) {
             const cancelResult = res.body.cancel();
             if (cancelResult?.catch) cancelResult.catch(() => {});
           }
-          return url;
+          return normalizedUrl;
         })
         .catch(() => null);
       const result = await Promise.race([check, timeout]);
@@ -84,13 +98,13 @@ export async function resolveAvatarUrl(url) {
 
     let result = await checkUrl('HEAD');
     if (!result) {
-      console.log('[Notifee] Avatar HEAD check failed; retrying with GET:', url);
+      console.log('[Notifee] Avatar HEAD check failed; retrying with GET:', normalizedUrl);
       result = await checkUrl('GET');
     }
-    console.log(`[Notifee] Avatar URL ${result ? 'available' : 'unavailable'}:`, url);
+    console.log(`[Notifee] Avatar URL ${result ? 'available' : 'unavailable'}:`, normalizedUrl);
     return result;
   } catch (e) {
-    console.log('[Notifee] resolveAvatarUrl error for URL:', url, e?.message || e);
+    console.log('[Notifee] resolveAvatarUrl error for URL:', normalizedUrl, e?.message || e);
     return null;
   }
 }

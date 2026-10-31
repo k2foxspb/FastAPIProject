@@ -10,7 +10,8 @@ import { useTheme } from '../context/ThemeContext';
 import { useNotifications } from '../context/NotificationContext';
 import { theme as themeConstants } from '../constants/theme';
 import { formatStatus, formatName, getAvatarUrl, stripHtml, getFullUrl } from '../utils/formatters';
-import { getRoleLabel, getRoleIcon, isAdminOrOwner } from '../constants/roles';
+import { getRoleLabel, isAdminOrOwner } from '../constants/roles';
+import RoleBadge from '../components/RoleBadge';
 import FadeInImage from '../components/FadeInImage';
 import VideoPlayer from '../components/VideoPlayer';
 
@@ -319,11 +320,7 @@ export default function UserProfileScreen({ route, navigation }) {
           {user.status === 'online' && (
             <View style={[styles.onlineBadge, { backgroundColor: '#4CAF50', borderColor: colors.background }]} />
           )}
-          {isAdminOrOwner(user.role) && (
-            <View style={[styles.roleBadge, { backgroundColor: colors.primary, borderColor: colors.background }]}>
-              <Icon name={getRoleIcon(user.role)} size={12} color="#fff" />
-            </View>
-          )}
+          <RoleBadge role={user.role} size={28} borderColor={colors.background} style={styles.roleBadge} />
         </TouchableOpacity>
         <Text style={[styles.name, { color: colors.text }]}>{formatName(user)}</Text>
         <Text style={[styles.statusText, { color: colors.textSecondary }]}>{formatStatus(user.status, user.last_seen)}</Text>
@@ -438,17 +435,7 @@ const styles = StyleSheet.create({
     borderWidth: 3,
     zIndex: 1
   },
-  roleBadge: {
-    position: 'absolute',
-    bottom: 10,
-    right: 0,
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 2,
-  },
+  roleBadge: { top: 0, right: 2 },
   name: { fontSize: 20, fontWeight: 'bold', marginBottom: 2 },
   statusText: { fontSize: 13, marginBottom: 10 },
   statsContainer: { flexDirection: 'row', width: '100%', justifyContent: 'center', marginBottom: 10 },

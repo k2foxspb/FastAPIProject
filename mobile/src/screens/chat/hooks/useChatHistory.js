@@ -192,9 +192,19 @@ export default function useChatHistory({
       // 4. Прочтение сообщений
       else if (notifyType === 'messages_read' || notifyType === 'your_messages_read' || notifyType === 'mark_read') {
           const readerId = data.reader_id || lastNotify.reader_id;
-          if (notifyType === 'your_messages_read' || notifyType === 'mark_read' || (notifyType === 'messages_read' && readerId && Number(readerId) === Number(userId))) {
+          const fromUserId = data.from_user_id || data.user_id || lastNotify.other_id;
+          const readByPartner = Number(readerId) === currentChatId;
+          const incomingRead = Number(fromUserId) === currentChatId && Number(readerId) === myIdNum;
+          if (
+            (notifyType === 'your_messages_read' && readByPartner) ||
+            (notifyType === 'mark_read' && readByPartner) ||
+            (notifyType === 'messages_read' && (readByPartner || incomingRead))
+          ) {
             setMessages(prev => prev.map(m => 
-              (m.sender_id && Number(m.sender_id) === myIdNum) ? { ...m, is_read: true } : m
+              (readByPartner && Number(m.sender_id) === myIdNum) ||
+              (incomingRead && Number(m.sender_id) === currentChatId)
+                ? { ...m, is_read: true }
+                : m
             ));
           }
       }

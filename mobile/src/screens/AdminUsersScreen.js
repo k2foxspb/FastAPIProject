@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert, Modal, TextInput, TouchableWithoutFeedback } from 'react-native';
 import api, { adminApi } from '../api';
-import { Ionicons as Icon } from '@expo/vector-icons';
+import { Ionicons as Icon, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
-import { getRoleLabel, getRoleIcon, canManageRoles } from '../constants/roles';
+import { getRoleLabel, getRoleIcon, getRoleColor, canManageRoles } from '../constants/roles';
 import { useNotifications } from '../context/NotificationContext';
 
 // Варианты срока блокировки: null означает "навсегда"
@@ -139,7 +139,7 @@ export default function AdminUsersScreen({ navigation }) {
       onPress={() => navigation.navigate('UserProfile', { userId: item.id, isAdminView: true })}
     >
       <View style={styles.userInfo}>
-        <Icon name={getRoleIcon(item.role)} size={18} color={colors.primary} style={styles.roleIcon} />
+        <MaterialCommunityIcons name={getRoleIcon(item.role)} size={20} color={getRoleColor(item.role)} style={styles.roleIcon} />
         <View>
           <Text style={[styles.userEmail, { color: colors.text }]}>{item.email}</Text>
           <Text style={[styles.userRole, { color: colors.primary }]}>{getRoleLabel(item.role)}</Text>

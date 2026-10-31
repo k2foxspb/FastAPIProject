@@ -13,7 +13,8 @@ import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
 import { storage } from '../utils/storage';
 import { formatName, getFullUrl, formatPostDateTime } from '../utils/formatters';
-import { getRoleLabel, getRoleIcon } from '../constants/roles';
+import { getRoleLabel } from '../constants/roles';
+import RoleBadge from '../components/RoleBadge';
 import { SkeletonItem, NewsSkeleton } from '../components/SkeletonLoader';
 import { requestAllAppPermissions } from '../utils/permissions';
 
@@ -532,9 +533,7 @@ export default function ProfileScreen({ navigation }) {
             source={{ uri: getFullUrl(user.avatar_url) || 'https://via.placeholder.com/150' }} 
             style={styles.avatar} 
           />
-          <View style={[styles.roleBadge, { backgroundColor: colors.primary }]}>
-            <Icon name={getRoleIcon(user.role)} size={12} color="#fff" />
-          </View>
+          <RoleBadge role={user.role} size={30} style={styles.roleBadge} />
         </TouchableOpacity>
         <Text style={[styles.name, { color: colors.text }]}>{formatName(user)}</Text>
 
@@ -814,7 +813,7 @@ const styles = StyleSheet.create({
   header: { alignItems: 'center', padding: 25, borderBottomWidth: 1, borderColor: '#eee' },
   avatarContainer: { position: 'relative', marginBottom: 15 },
   avatar: { width: 100, height: 100, borderRadius: 50, borderWidth: 3, borderColor: '#fff', ...getShadow('#000', { width: 0, height: 4 }, 0.2, 5, 5) },
-  roleBadge: { position: 'absolute', bottom: 0, right: 0, width: 28, height: 28, borderRadius: 14, justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: '#fff' },
+  roleBadge: { top: 0, right: 0 },
   name: { fontSize: 22, fontWeight: '800', marginBottom: 20 },
   statsContainer: { flexDirection: 'row', width: '100%', marginTop: 10, paddingHorizontal: 10 },
   statItem: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 5 },

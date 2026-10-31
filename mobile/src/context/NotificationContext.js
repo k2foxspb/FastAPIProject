@@ -428,14 +428,13 @@ export const NotificationProvider = ({ children }) => {
           } else if (msgType === 'reaction_updated') {
             setNotifications(prev => [payload, ...prev].slice(0, MAX_NOTIFICATIONS));
           } else if (msgType === 'messages_read') {
-            const otherId = payload.reader_id || payload.data?.reader_id;
+            const otherId = payload.data?.from_user_id;
             if (otherId) {
               setDialogs(prev => prev.map(d => 
                 Number(d.user_id) === Number(otherId) ? { ...d, unread_count: 0 } : d
               ));
-              
-              setNotifications(prev => [payload, ...prev].slice(0, MAX_NOTIFICATIONS));
             }
+            setNotifications(prev => [payload, ...prev].slice(0, MAX_NOTIFICATIONS));
           } else if (msgType === 'group_chat_history') {
             groupHistoryListeners.forEach(cb => {
               try { cb(payload); } catch (e) { console.error('Error in group history listener:', e); }
@@ -662,6 +661,8 @@ export const NotificationProvider = ({ children }) => {
       clearTimeout(connectionTimeout);
       console.log('[NotificationContext] Notifications WS connected. readyState:', socket.readyState);
       setIsConnected(true);
+      setUserStatuses({});
+      fetchDialogs();
       reconnectAttempt.current = 0; // Reset attempts on successful connection
       if (reconnectTimer.current) {
         clearTimeout(reconnectTimer.current);
@@ -708,18 +709,17 @@ export const NotificationProvider = ({ children }) => {
         if (payload.type === 'messages_read' || payload.type === 'your_messages_read') {
           // messages_read: я прочитал сообщения от from_user_id
           // your_messages_read: мои сообщения прочитал reader_id
-          let otherId = null;
-          if (payload.type === 'messages_read') {
-            otherId = payload.data?.from_user_id || payload.data?.user_id || payload.other_id;
-          } else {
-            otherId = payload.reader_id || payload.data?.reader_id;
-          }
-          
+          const otherId = payload.type === 'messages_read'
+            ? payload.data?.from_user_id
+            : null;
+
           if (otherId) {
             setDialogs(prev => prev.map(d => 
               Number(d.user_id) === Number(otherId) ? { ...d, unread_count: 0 } : d
             ));
+            fetchDialogs();
           }
+          setNotifications(prev => [payload, ...prev].slice(0, MAX_NOTIFICATIONS));
         }
 
         if (payload.type === 'user_status') {

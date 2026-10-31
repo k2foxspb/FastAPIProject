@@ -1,17 +1,16 @@
 import React from 'react';
-import { View, Image, StyleSheet } from 'react-native';
-import { Ionicons as Icon } from '@expo/vector-icons';
+import { View, Image } from 'react-native';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
-import { isAdminOrOwner, getRoleIcon } from '../constants/roles';
+import RoleBadge from './RoleBadge';
 
 // Переиспользуемая аватарка со значком роли (admin/owner),
 // чтобы не дублировать разметку бейджа на каждом экране со списком пользователей.
+// Значок роли находится в правом верхнем углу и не мешает индикатору онлайна.
 export default function AvatarWithBadge({ uri, role, size = 40, style, imageStyle }) {
   const { theme } = useTheme();
   const colors = themeConstants[theme];
-  const badgeSize = Math.max(14, Math.round(size * 0.42));
-  const iconSize = Math.round(badgeSize * 0.55);
+  const badgeSize = Math.max(16, Math.round(size * 0.42));
 
   return (
     <View style={[{ width: size, height: size }, style]}>
@@ -19,33 +18,12 @@ export default function AvatarWithBadge({ uri, role, size = 40, style, imageStyl
         source={{ uri: uri || 'https://via.placeholder.com/150' }}
         style={[{ width: size, height: size, borderRadius: size / 2 }, imageStyle]}
       />
-      {isAdminOrOwner(role) && (
-        <View
-          style={[
-            styles.badge,
-            {
-              width: badgeSize,
-              height: badgeSize,
-              borderRadius: badgeSize / 2,
-              backgroundColor: colors.primary,
-              borderColor: colors.background,
-            },
-          ]}
-        >
-          <Icon name={getRoleIcon(role)} size={iconSize} color="#fff" />
-        </View>
-      )}
+      <RoleBadge
+        role={role}
+        size={badgeSize}
+        borderColor={colors.background}
+        style={{ top: -2, right: -2, borderWidth: 1.5 }}
+      />
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  badge: {
-    position: 'absolute',
-    bottom: -1,
-    right: -1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1.5,
-  },
-});
