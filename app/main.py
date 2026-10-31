@@ -64,7 +64,7 @@ def create_application() -> FastAPI:
     from app.utils import storage as storage_service
     from app.utils.storage_exceptions import FileNotFoundInStorageError, StorageError
 
-    @app.get("/media/{file_path:path}")
+    @app.api_route("/media/{file_path:path}", methods=["GET", "HEAD"])
     async def serve_media(file_path: str):
         metadata = storage_service.resolve_url(file_path)
         if metadata is None and "_thumb" in file_path:
