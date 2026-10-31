@@ -50,6 +50,9 @@ class ChatManager:
             except ValueError:
                 pass
 
+    def is_online(self, user_id: int) -> bool:
+        return bool(self.active_connections.get(user_id))
+
     async def send_personal_message(self, message: dict, user_id: int):
         if user_id in self.active_connections:
             logger.debug(f"ChatManager: Sending message to user {user_id} (Connections: {len(self.active_connections[user_id])})")
@@ -498,11 +501,12 @@ async def websocket_chat_endpoint(
                         }, int(other_id)),
                         manager.send_personal_message({
                             "type": "messages_read",
-                            "reader_id": user_id
+                            "reader_id": user_id,
+                            "data": {"reader_id": user_id}
                         }, int(other_id)),
                         notifications_manager.send_personal_message({
                             "type": "messages_read",
-                            "data": {"from_user_id": int(other_id)}
+                            "data": {"from_user_id": int(other_id), "reader_id": user_id}
                         }, user_id),
                         return_exceptions=True
                     )
@@ -1532,6 +1536,9 @@ async def get_dialogs(
         )
         unread_count = unread_res.scalar()
 
+        is_online = manager.is_online(p_id) or notifications_manager.is_online(p_id)
+        partner_status = "online" if is_online else ("offline" if partner.status == "online" else partner.status)
+
         dialogs.append({
             "user_id": p_id,
             "email": partner.email,
@@ -1541,7 +1548,7 @@ async def get_dialogs(
             "last_message": last_msg.message if last_msg and last_msg.message else "[Файл]",
             "last_message_time": last_msg.timestamp if last_msg and last_msg.timestamp else datetime.utcnow(),
             "unread_count": unread_count or 0,
-            "status": partner.status,
+            "status": partner_status,
             "last_seen": partner.last_seen
         })
 
@@ -1574,7 +1581,7 @@ async def mark_messages_as_read(
     # Уведомляем пользователя об обновлении счетчиков
     await notifications_manager.send_personal_message({
         "type": "messages_read",
-        "data": {"from_user_id": other_user_id}
+        "data": {"from_user_id": other_user_id, "reader_id": user_id}
     }, user_id)
 
     # Уведомляем отправителя о том, что его сообщения прочитаны
@@ -1585,7 +1592,8 @@ async def mark_messages_as_read(
     
     await manager.send_personal_message({
         "type": "messages_read",
-        "reader_id": user_id
+        "reader_id": user_id,
+        "data": {"reader_id": user_id}
     }, other_user_id)
 
     return {"status": "ok"}
