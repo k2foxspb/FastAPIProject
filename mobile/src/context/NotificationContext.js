@@ -4,13 +4,21 @@ import NetInfo from '@react-native-community/netinfo';
 import Constants from 'expo-constants';
 import { useAudioPlayer } from 'expo-audio';
 import { API_BASE_URL } from '../constants';
-import { usersApi, chatApi, notificationsApi, setAuthToken } from '../api';
+import { usersApi, chatApi, notificationsApi, adminApi, setAuthToken } from '../api';
 import { storage } from '../utils/storage';
+import { setRemoteLogSink } from '../utils/logger';
 import { setNotificationAudioMode } from '../utils/audioSettings';
 import { isWithinQuietHours } from '../utils/quietHours';
 import { navigationRef } from '../navigation/NavigationService';
 import { updateServerFcmToken, checkAndRemindPermissions } from '../utils/notifications';
 import { displayBundledMessage, parseNotificationData, getPushRoute } from '../utils/notificationUtils';
+
+// Отправка warn/error логов на сервер (см. setRemoteLogSink в utils/logger.js).
+// Вызывается для всех авторизованных пользователей; ошибки сети молча игнорируются.
+const sendAppLogToServer = (level, message) => {
+  const version = Constants.expoConfig?.version || 'unknown';
+  adminApi.addAppLog({ message, level, device_info: `app ${version}` }).catch(() => {});
+};
 
 const NotificationContext = createContext();
 
@@ -937,12 +945,14 @@ export const NotificationProvider = ({ children }) => {
         setCurrentUser(userRes.data);
         setCurrentUserId(userRes.data.id);
         await storage.saveUserId(userRes.data.id);
+        setRemoteLogSink(sendAppLogToServer);
         
         // After user is successfully loaded, make sure FCM token is on the server
         updateServerFcmToken();
       } else {
         setCurrentUser(null);
         setCurrentUserId(null);
+        setRemoteLogSink(null);
       }
     } catch (err) {
       console.log('[NotificationContext] Failed to load current user', err);
@@ -952,6 +962,7 @@ export const NotificationProvider = ({ children }) => {
         setAuthToken(null);
         setCurrentUser(null);
         setCurrentUserId(null);
+        setRemoteLogSink(null);
       }
     } finally {
       setLoadingUser(false);

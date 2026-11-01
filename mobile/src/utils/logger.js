@@ -24,12 +24,28 @@ const toSafe = (arg) => {
   return '[unsupported]';
 };
 
+const REMOTE_LEVELS = ['warn', 'error'];
+let remoteSink = null;
+
+// Передаёт warn/error на сервер (только если sink установлен, т.е. пользователь авторизован).
+// Работает и в production, где вывод в консоль отключён.
+export const setRemoteLogSink = (sink) => {
+  remoteSink = typeof sink === 'function' ? sink : null;
+};
+
 const write = (level, tag, args) => {
+  const message = `[${tag}] ${args.map(toSafe).join(' ')}`;
+  if (remoteSink && REMOTE_LEVELS.includes(level)) {
+    try {
+      remoteSink(level, message);
+    } catch (e) {
+      // ошибки отправки логов не должны ломать приложение
+    }
+  }
   if (!__DEV__) return;
-  const message = args.map(toSafe).join(' ');
   // eslint-disable-next-line no-console
   const fn = console[level] || console.log;
-  fn(`[${tag}] ${message}`);
+  fn(message);
 };
 
 export const logger = {

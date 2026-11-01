@@ -15,7 +15,7 @@ from app.models.chat import ChatMessage as ChatMessageModel, FileUploadSession
 from app.schemas.users import User as UserSchema, AdminPermissionCreate, AdminPermission as AdminPermissionSchema, AppVersionResponse, AppLogRequest, BanUserRequest
 from app.schemas.chat import ChatMessageResponse, DialogResponse, UploadInitRequest, UploadSessionResponse, UploadStatusResponse
 from app.api.dependencies import get_async_db
-from app.core.auth import get_current_owner, get_current_admin, check_admin_permission
+from app.core.auth import get_current_owner, get_current_admin, get_current_user, check_admin_permission
 from app.core.roles import can_change_role, can_moderate_user
 from datetime import timedelta, timezone as dt_timezone
 
@@ -635,7 +635,7 @@ async def get_logs(
 @router.post("/app-logs")
 async def add_app_log(
     log: AppLogRequest,
-    admin: UserModel = Depends(get_current_admin)
+    user: UserModel = Depends(get_current_user)
 ):
     """Добавляет лог от мобильного приложения."""
     # Пытаемся найти файл в корне проекта
