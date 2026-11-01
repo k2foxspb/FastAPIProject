@@ -40,6 +40,8 @@ const SettingsContent = () => {
   const colors = useColors();
   const { settings, syncState, syncNow } = useJournal();
   const [tz, setTz] = useState(settings?.timezone || deviceTimeZone());
+  const [heightCm, setHeightCm] = useState(settings?.height_cm ? String(settings.height_cm) : '');
+  const [weightKg, setWeightKg] = useState(settings?.weight_kg != null ? String(settings.weight_kg) : '');
   const { data: rejected } = useJournalQuery(() => listRejectedChanges(), [syncState.status]);
   const device = deviceTimeZone();
   const navigation = useNavigation();
@@ -47,6 +49,21 @@ const SettingsContent = () => {
   useEffect(() => {
     if (settings?.timezone) setTz(settings.timezone);
   }, [settings?.timezone]);
+
+  useEffect(() => {
+    setHeightCm(settings?.height_cm ? String(settings.height_cm) : '');
+    setWeightKg(settings?.weight_kg != null ? String(settings.weight_kg) : '');
+  }, [settings?.height_cm, settings?.weight_kg]);
+
+  const saveBodyMetrics = async () => {
+    const h = heightCm.trim() ? Number(heightCm.replace(',', '.')) : null;
+    const w = weightKg.trim() ? Number(weightKg.replace(',', '.')) : null;
+    if ((h !== null && (!Number.isInteger(h) || h < 50 || h > 260)) || (w !== null && (!(w >= 30) || w > 300))) {
+      Alert.alert('Проверьте значения', 'Рост - целое число см (50-260), вес - в кг (30-300)');
+      return;
+    }
+    await updateSettings({ height_cm: h, weight_kg: w !== null ? Math.round(w * 10) / 10 : null });
+  };
 
   const saveTz = async (value) => {
     const v = value.trim();
@@ -160,6 +177,19 @@ const SettingsContent = () => {
         {settings?.timezone !== device && (
           <PrimaryButton title={`Использовать ${device}`} onPress={() => saveTz(device)} style={{ marginTop: 12 }} />
         )}
+        <View style={{ height: 12 }} />
+      </Section>
+
+      <Section title="Рост и вес">
+        <Text style={[styles.note, { color: colors.textSecondary }]}>
+          Нужны для расчёта нормы калорий и БЖУ в целях по питанию.
+        </Text>
+        <Field label="Рост, см">
+          <Input value={heightCm} onChangeText={setHeightCm} keyboardType="number-pad" placeholder="175" onEndEditing={saveBodyMetrics} />
+        </Field>
+        <Field label="Вес, кг">
+          <Input value={weightKg} onChangeText={setWeightKg} keyboardType="decimal-pad" placeholder="70.5" onEndEditing={saveBodyMetrics} />
+        </Field>
         <View style={{ height: 12 }} />
       </Section>
 

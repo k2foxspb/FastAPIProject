@@ -85,6 +85,8 @@ class SettingsData(EntityData):
     fat_g_goal: int | None = Field(default=None, ge=0, le=2000)
     carbs_g_goal: int | None = Field(default=None, ge=0, le=5000)
     water_ml_goal: int | None = Field(default=None, ge=0, le=20000)
+    height_cm: int | None = Field(default=None, ge=50, le=260)
+    weight_kg: JNumber = None
     seed_version: int = Field(default=0, ge=0, le=1000)
 
     @field_validator("timezone")

@@ -8,7 +8,7 @@ export const ENTITIES = {
     table: 'settings',
     fields: {
       timezone: 'text', week_start: 'int', kcal_goal: 'int', protein_g_goal: 'int', fat_g_goal: 'int',
-      carbs_g_goal: 'int', water_ml_goal: 'int', seed_version: 'int',
+      carbs_g_goal: 'int', water_ml_goal: 'int', height_cm: 'int', weight_kg: 'real', seed_version: 'int',
     },
   },
   tracker: {

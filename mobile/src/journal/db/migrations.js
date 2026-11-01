@@ -146,6 +146,11 @@ export const MIGRATIONS = [
   );
   CREATE INDEX IF NOT EXISTS ix_health_imports_metric ON health_imports(metric);
   `,
+  // 6 - рост и вес в настройках журнала (для расчёта калорий и БЖУ)
+  `
+  ALTER TABLE settings ADD COLUMN height_cm INTEGER;
+  ALTER TABLE settings ADD COLUMN weight_kg REAL;
+  `,
 ];
 
 export const runMigrations = async (db) => {

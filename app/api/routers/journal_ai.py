@@ -17,6 +17,8 @@ from app.schemas.journal.finance import CategorySuggestionRequest, CategorySugge
 from app.schemas.journal.goals import WeeklySummaryResponse
 from app.services.journal import ai as ai_service
 from app.services.journal import ai_analysis
+from app.services.journal import nutrition_plan
+from app.services.journal.nutrition_plan import NutritionPlanResponse
 
 router = APIRouter(prefix="/api/journal/ai", tags=["journal"])
 
@@ -90,6 +92,21 @@ async def analysis(
         return await ai_analysis.analyze(db, current_user.id, date_from, date_to, selected)
     except ollama.OllamaError as e:
         raise_ai_error(e)
+
+
+@router.post("/nutrition-plan", response_model=NutritionPlanResponse)
+async def nutrition_plan_advice(
+    payload: nutrition_plan.NutritionPlanInput,
+    current_user: UserModel = Depends(_ai_limit),
+):
+    """Норма КБЖУ по анкете (формула) и ИИ-рекомендации к ней. Ничего не сохраняет."""
+    plan = nutrition_plan.calculate_plan(payload)
+    try:
+        advice = await ai_service.nutrition_advice(payload, plan)
+    except ollama.OllamaError as e:
+        raise_ai_error(e)
+    logger.info(f"Journal AI nutrition plan: user={current_user.id}")
+    return NutritionPlanResponse(plan=plan, advice=advice)
 
 
 @router.post("/suggest-categories", response_model=CategorySuggestionResponse)

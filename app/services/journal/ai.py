@@ -15,6 +15,7 @@ from app.schemas.journal.diet import AiNutritionAnswer, EstimatedItem, EstimateN
 from app.models.journal import JournalFinanceCategory
 from app.schemas.journal.finance import CategorySuggestion, CategorySuggestionResponse
 from app.services.journal.nutrition import NUTRIENTS, round2
+from app.services.journal.nutrition_plan import NutritionPlanInput, NutritionPlanResult
 
 AI_TIMEOUT_SEC = 60.0
 
@@ -93,6 +94,41 @@ async def weekly_summary(db: AsyncSession, user_id: int, date_from: date, date_t
     ]
     answer = await ollama.chat_json(messages, WeeklySummaryAnswer, timeout=AI_TIMEOUT_SEC, options={"temperature": 0.3})
     return answer.summary
+
+
+NUTRITION_ADVICE_SYSTEM_PROMPT = (
+    "Ты помощник по питанию в личном журнале. Пользователю уже рассчитана норма калорий и БЖУ "
+    "по его данным. Напиши 3-5 коротких практических советов на русском: как распределить "
+    "питание, на что обратить внимание при выбранной цели, как учитывать активность. "
+    "Не меняй цифры нормы, не ставь диагнозов и не давай медицинских назначений. "
+    "Ответь ТОЛЬКО JSON в формате: {\"advice\": \"текст\"}."
+)
+
+
+class NutritionAdviceAnswer(BaseModel):
+    advice: str = Field(min_length=1, max_length=2000)
+
+
+async def nutrition_advice(payload: NutritionPlanInput, plan: NutritionPlanResult) -> str:
+    """Текстовые ИИ-рекомендации к уже рассчитанной норме КБЖУ."""
+    facts = {
+        "sex": payload.sex,
+        "age": payload.age,
+        "height_cm": payload.height_cm,
+        "weight_kg": payload.weight_kg,
+        "activity": payload.activity,
+        "goal": payload.goal,
+        "kcal": plan.kcal,
+        "protein_g": plan.protein_g,
+        "fat_g": plan.fat_g,
+        "carbs_g": plan.carbs_g,
+    }
+    messages = [
+        {"role": "system", "content": NUTRITION_ADVICE_SYSTEM_PROMPT},
+        {"role": "user", "content": str(facts)},
+    ]
+    answer = await ollama.chat_json(messages, NutritionAdviceAnswer, timeout=AI_TIMEOUT_SEC, options={"temperature": 0.3})
+    return answer.advice
 
 
 class CategoryAnswerItem(BaseModel):
