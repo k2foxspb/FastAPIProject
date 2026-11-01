@@ -509,6 +509,10 @@ async def create_user(
          raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                             detail="Cannot register as owner or admin via this endpoint")
 
+    # Первый зарегистрированный пользователь становится владельцем
+    users_count = await db.scalar(select(func.count(UserModel.id)))
+    user_role = "owner" if not users_count else role
+
     # Создание объекта пользователя
     db_user = UserModel(
         email=email,
@@ -516,7 +520,7 @@ async def create_user(
         hashed_password=hash_password(password),
         first_name=first_name,
         last_name=last_name,
-        role=role,
+        role=user_role,
         is_active=True,
     )
 

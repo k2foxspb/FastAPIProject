@@ -78,6 +78,11 @@
     "react-refresh": "^0.18.0"
   },
   "private": true,
+  "overrides": {
+    "@react-native/virtualized-lists": {
+      "react-native": "$react-native"
+    }
+  },
   "expo": {
     "doctor": {
       "reactNativeDirectoryCheck": {
