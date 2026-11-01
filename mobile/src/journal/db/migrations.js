@@ -139,6 +139,13 @@ export const MIGRATIONS = [
   );
   CREATE INDEX IF NOT EXISTS ix_import_batches_created ON import_batches(created_at DESC);
   `,
+  // 5 - Apple Health / Health Connect (фаза 5): локальная дедупликация импорта (не синхронизируется)
+  `
+  CREATE TABLE IF NOT EXISTS health_imports (
+    external_id TEXT PRIMARY KEY NOT NULL, metric TEXT NOT NULL, local_uuid TEXT, imported_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS ix_health_imports_metric ON health_imports(metric);
+  `,
 ];
 
 export const runMigrations = async (db) => {
