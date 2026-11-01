@@ -6,6 +6,7 @@ import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
 import { notificationsApi, feedApi } from '../api';
 import { useNotifications } from '../context/NotificationContext';
+import { startAppUpdate } from '../utils/appUpdate';
 
 // Экран со списком уведомлений (GET /notifications) - открывается нажатием на
 // колокольчик на экране "Лента". Нажатие на пункт помечает его прочитанным и
@@ -113,7 +114,10 @@ export default function NotificationsScreen({ navigation }) {
     const objectId = item.data?.object_id;
 
     try {
-      if (objectType === 'profile_post' && objectId) {
+      if (objectType === 'app_version') {
+        // Новая версия приложения - запускаем скачивание и установку
+        startAppUpdate(item.data?.file_path, item.data?.version);
+      } else if (objectType === 'profile_post' && objectId) {
         const res = await feedApi.getPost(objectId);
         navigation.navigate('PostDetail', { item: res.data });
       } else if (objectType === 'news' && objectId) {

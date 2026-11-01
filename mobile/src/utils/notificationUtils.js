@@ -17,6 +17,8 @@ export const PUSH_TYPE_ROUTES = {
   new_post: 'bell',
   news_post: 'bell',
   announcement: 'bell',
+  app_update: 'bell',
+  app_update_progress: 'ignore',
   friend_request: 'bell',
   friend_accept: 'bell',
   friend_accepted: 'bell',
@@ -443,6 +445,20 @@ async function waitForNavigation() {
 export function navigateByPushData(navigationRef, data) {
   const { type, senderId, senderName, newsId, groupId } = parseNotificationData(data);
   const route = getPushRoute(data);
+
+  // Новая версия приложения: сразу запускаем скачивание и установку обновления
+  const rawType = data?.type || data?.msg_type;
+  if (rawType === 'app_update') {
+    const { startAppUpdate } = require('./appUpdate');
+    startAppUpdate(data?.file_path, data?.version);
+    if (data?.notification_id) {
+      const { notificationsApi } = require('../api');
+      notificationsApi.markRead(data.notification_id).catch(() => {});
+    }
+    return;
+  }
+  // Нажатие на уведомление с прогрессом загрузки просто открывает приложение
+  if (rawType === 'app_update_progress') return;
 
   if (route === 'messages') {
     if ((type === 'new_group_message' || type === 'group_message') && groupId) {

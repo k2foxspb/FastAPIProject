@@ -18,13 +18,14 @@ from app.core.notifications import dispatch_notification, dispatch_system_notifi
 
 # Группы оповещений (NOTIFICATION_GROUPS), которые всегда отправляются
 # неотключаемо через dispatch_system_notification.
-_ALWAYS_ON_NOTIF_TYPES = {"announcement", "system"}
+_ALWAYS_ON_NOTIF_TYPES = {"announcement", "system", "app_update"}
 
 # Соответствие notif_type -> группа настроек уведомлений (app.core.notifications.NOTIFICATION_GROUPS)
 # Тип push (data.type), который видит клиент, если вызывающий код не задал свой в data.
 # Клиент маршрутизирует все эти типы в колокольчик (см. app.core.fcm.get_push_route).
 _NOTIF_TYPE_TO_PUSH_TYPE = {
     "announcement": "announcement",
+    "app_update": "app_update",
     "friend_request": "friend_request",
     "friend_accepted": "friend_accepted",
     "friend_post": "news_post",
@@ -39,6 +40,7 @@ _NOTIF_TYPE_TO_GROUP = {
     "post_moderated": "friend_posts",
     "announcement": "announcements",
     "system": "announcements",
+    "app_update": "announcements",
     "news_reaction": "news",
     "news_comment": "news",
     "album_reaction": "photos_albums",

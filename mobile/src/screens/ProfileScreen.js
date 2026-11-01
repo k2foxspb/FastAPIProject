@@ -12,6 +12,7 @@ import { useNotifications } from '../context/NotificationContext';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
 import { storage } from '../utils/storage';
+import { startAppUpdate } from '../utils/appUpdate';
 import { formatName, getFullUrl, formatPostDateTime } from '../utils/formatters';
 import { getRoleLabel } from '../constants/roles';
 import RoleBadge from '../components/RoleBadge';
@@ -506,10 +507,8 @@ export default function ProfileScreen({ navigation }) {
           <TouchableOpacity 
             style={styles.updateBanner} 
             onPress={() => {
-              const url = user.latest_app_version?.file_path || (Platform.OS === 'ios' 
-                ? 'https://fokin.fun' 
-                : 'https://fokin.fun');
-              Linking.openURL(getFullUrl(url)).catch(err => console.error("Couldn't load page", err));
+              const url = user.latest_app_version?.file_path;
+              startAppUpdate(url ? getFullUrl(url) : null, user.latest_app_version?.version);
             }}
           >
             <Icon name="cloud-download-outline" size={24} color="#fff" />

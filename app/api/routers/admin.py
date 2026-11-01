@@ -1,5 +1,5 @@
 from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException, status, File, UploadFile, Form, Query
+from fastapi import APIRouter, Depends, HTTPException, status, File, UploadFile, Form, Query, BackgroundTasks
 from typing import List, Optional
 import os
 import shutil
@@ -192,11 +192,62 @@ async def get_manageable_models():
 
 # --- Управление версиями приложения (Только для Owner) ---
 
+async def notify_users_about_app_version(version_id: int, version: str, file_url: str):
+    """
+    Рассылает всем активным пользователям уведомление (колокольчик + push) о выходе
+    новой версии приложения. По нажатию клиент скачивает и устанавливает APK из file_url.
+    """
+    from loguru import logger
+    from app.database import async_session_maker
+    from app.core.notification_service import create_or_group_notification
+    from app.core.fcm import absolute_media_url
+
+    try:
+        # Фоновая задача: используем собственную сессию (сессия запроса к этому моменту закрыта)
+        async with async_session_maker() as db:
+            res = await db.execute(
+                select(UserModel.id).where(
+                    UserModel.is_active == True,
+                    UserModel.is_banned == False,
+                )
+            )
+            user_ids = list(res.scalars().all())
+
+            data = {
+                "type": "app_update",
+                "object_type": "app_version",
+                "object_id": version_id,
+                "version": version,
+                "file_path": absolute_media_url(file_url) or file_url,
+            }
+
+            sent = 0
+            for user_id in user_ids:
+                try:
+                    await create_or_group_notification(
+                        db,
+                        user_id=user_id,
+                        notif_type="app_update",
+                        title="Доступна новая версия приложения",
+                        body=f"Версия {version}. Нажмите, чтобы скачать и установить обновление.",
+                        data=dict(data),
+                    )
+                    sent += 1
+                except Exception as e:
+                    await db.rollback()
+                    logger.error(f"App update: failed to notify user {user_id}: {e}")
+
+            logger.info(f"App update: notified {sent}/{len(user_ids)} users about version {version}")
+    except Exception as e:
+        logger.error(f"App update: error notifying users about version {version}: {e}")
+
 @router.post("/upload-app", response_model=AppVersionResponse)
 async def upload_app_version(
+    background_tasks: BackgroundTasks,
     version: str = Form(...),
     file: Optional[UploadFile] = File(None),
     file_path: Optional[str] = Form(None),
+    notify_users: bool = Form(True),
     owner: UserModel = Depends(get_current_owner),
     db: AsyncSession = Depends(get_async_db)
 ):
@@ -229,6 +280,10 @@ async def upload_app_version(
     db.add(db_version)
     await db.commit()
     await db.refresh(db_version)
+
+    # Оповещаем всех пользователей о выходе новой версии
+    if notify_users:
+        background_tasks.add_task(notify_users_about_app_version, db_version.id, db_version.version, db_version.file_path)
 
     return db_version
 

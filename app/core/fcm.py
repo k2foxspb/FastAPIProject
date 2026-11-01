@@ -196,7 +196,10 @@ async def send_fcm_notification(
         news_id = fcm_data.get("news_id")
         chat_id = fcm_data.get("chat_id")
         
-        if msg_type == "new_post" and news_id:
+        if msg_type == "app_update":
+            # Новое уведомление о версии заменяет предыдущее в шторке
+            notif_tag = "app_update"
+        elif msg_type == "new_post" and news_id:
             notif_tag = f"news_{news_id}"
         elif msg_type == "friend_request" and sender_id:
             notif_tag = f"friend_request_{sender_id}"
