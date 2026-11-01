@@ -106,7 +106,7 @@ class EventData(EntityData):
     rrule: str | None = Field(default=None, max_length=255)
     until_date: OptJDate = None
     status: Literal["planned", "done", "skipped"] = "planned"
-    ref_type: Literal["tracker"] | None = None
+    ref_type: Literal["tracker", "account"] | None = None
     ref_uuid: OptUUIDStr = None
     payload: dict[str, Any] | None = None
     color: OptStr = Field(default=None, max_length=20)

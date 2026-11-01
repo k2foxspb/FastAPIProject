@@ -16,11 +16,17 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.journal import (
-    JournalAttachment, JournalDiaryEntry, JournalEvent, JournalEventOccurrence, JournalFood,
+    JournalAccount, JournalAttachment, JournalBudget, JournalDiaryEntry, JournalEvent,
+    JournalEventOccurrence, JournalFinanceCategory, JournalFood,
     JournalFoodEntry, JournalMealType, JournalRecipeItem, JournalReminder, JournalSettings,
-    JournalTracker, JournalTrackerValue, JournalWaterEntry,
+    JournalTracker, JournalTrackerValue, JournalTransaction, JournalWaterEntry,
+    JournalImportBatch, JournalImportProfile, JournalImportRule,
 )
 from app.schemas.journal.diet import FoodData, FoodEntryData, MealTypeData, RecipeItemData, WaterEntryData
+from app.schemas.journal.finance import (
+    AccountData, BudgetData, FinanceCategoryData, ImportBatchData, ImportProfileData,
+    ImportRuleData, TransactionData,
+)
 from app.schemas.journal.sync import (
     AttachmentData, DiaryEntryData, EventData, EventOccurrenceData, ReminderData, SettingsData,
     TrackerData, TrackerValueData,
@@ -28,6 +34,7 @@ from app.schemas.journal.sync import (
 
 # validate(db, user_id, existing, values, resolved) -> причина отказа или None
 ValidateHook = Callable[[AsyncSession, int, Any, dict, dict], Awaitable[str | None]]
+AfterApplyHook = Callable[[int, list[Any]], None]
 
 
 @dataclass(frozen=True)
@@ -57,6 +64,7 @@ class EntitySpec:
     poly_refs: list[PolyRefSpec] = field(default_factory=list)
     ops: frozenset[str] = frozenset({"upsert", "delete"})
     validate: ValidateHook | None = None
+    after_apply: AfterApplyHook | None = None
 
 
 REGISTRY: dict[str, EntitySpec] = {}
@@ -145,6 +153,37 @@ async def _validate_recipe_item(db: AsyncSession, user_id: int, existing, values
     return None
 
 
+async def _validate_transaction(db: AsyncSession, user_id: int, existing, values: dict, resolved: dict) -> str | None:
+    if values.get("direction") == "transfer":
+        if values.get("to_account_id") is None or values.get("to_account_id") == values.get("account_id"):
+            return "invalid: перевод требует два разных счёта"
+        if values.get("category_id") is not None:
+            return "invalid: перевод не может иметь категорию"
+    elif values.get("to_account_id") is not None:
+        return "invalid: счёт-получатель допустим только для перевода"
+    category = resolved.get("category_uuid")
+    if category is not None and category.kind != values.get("direction"):
+        return "invalid: категория не соответствует типу операции"
+    return None
+
+
+def _schedule_budget_check(user_id: int, changes: list[Any]) -> None:
+    """Запускает проверку бюджетов после commit, не блокируя sync при сбое брокера."""
+    months = set()
+    for change in changes:
+        transaction_date = (change.data or {}).get("transaction_date")
+        if transaction_date:
+            months.add(str(transaction_date)[:7])
+    if not months:
+        return
+    try:
+        from app.core.celery_app import celery_app
+        celery_app.send_task("journal.check_budgets", args=[user_id, sorted(months)])
+    except Exception:
+        from loguru import logger
+        logger.exception("Не удалось поставить проверку бюджета в очередь")
+
+
 # ---------------------------------------------------------------- регистрация фазы 1
 
 register(EntitySpec(
@@ -154,7 +193,7 @@ register(EntitySpec(
 register(EntitySpec(name="tracker", model=JournalTracker, schema=TrackerData, order=10))
 register(EntitySpec(
     name="event", model=JournalEvent, schema=EventData, order=20,
-    poly_refs=[PolyRefSpec("ref_type", "ref_uuid", {"tracker": "tracker"})],
+    poly_refs=[PolyRefSpec("ref_type", "ref_uuid", {"tracker": "tracker", "account": "account"})],
 ))
 register(EntitySpec(
     name="event_occurrence", model=JournalEventOccurrence, schema=EventOccurrenceData, order=30,
@@ -198,6 +237,43 @@ register(EntitySpec(
         "food_entry": "food_entry", "food": "food",
     })],
     ops=frozenset({"delete"}),
+))
+
+# ---------------------------------------------------------------- регистрация фазы 3 (финансы и импорт)
+
+register(EntitySpec(name="account", model=JournalAccount, schema=AccountData, order=10))
+register(EntitySpec(
+    name="finance_category", model=JournalFinanceCategory, schema=FinanceCategoryData, order=10,
+    refs=[RefSpec("parent_uuid", "parent_id", "finance_category", on_delete="set_null")],
+))
+register(EntitySpec(
+    name="transaction", model=JournalTransaction, schema=TransactionData, order=30,
+    refs=[
+        RefSpec("account_uuid", "account_id", "account", on_delete="set_null"),
+        RefSpec("to_account_uuid", "to_account_id", "account", on_delete="set_null"),
+        RefSpec("category_uuid", "category_id", "finance_category", on_delete="set_null"),
+    ],
+    validate=_validate_transaction,
+    after_apply=_schedule_budget_check,
+))
+register(EntitySpec(
+    name="budget", model=JournalBudget, schema=BudgetData, order=30,
+    refs=[RefSpec("category_uuid", "category_id", "finance_category", on_delete="set_null")],
+))
+register(EntitySpec(
+    name="import_profile", model=JournalImportProfile, schema=ImportProfileData, order=20,
+))
+register(EntitySpec(
+    name="import_rule", model=JournalImportRule, schema=ImportRuleData, order=30,
+    refs=[RefSpec("category_uuid", "category_id", "finance_category", on_delete="set_null")],
+))
+register(EntitySpec(
+    name="import_batch", model=JournalImportBatch, schema=ImportBatchData, order=40,
+    refs=[
+        RefSpec("account_uuid", "account_id", "account", on_delete="set_null"),
+        RefSpec("profile_uuid", "profile_id", "import_profile", on_delete="set_null"),
+    ],
+    ops=frozenset(),
 ))
 
 # Допустимые типы владельцев вложений (POST /api/journal/attachments).

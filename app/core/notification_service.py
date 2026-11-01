@@ -29,6 +29,8 @@ _NOTIF_TYPE_TO_PUSH_TYPE = {
     "friend_request": "friend_request",
     "friend_accepted": "friend_accepted",
     "friend_post": "news_post",
+    "journal_budget": "journal_budget",
+    "journal_summary": "journal_summary",
 }
 
 _NOTIF_TYPE_TO_GROUP = {
@@ -49,6 +51,8 @@ _NOTIF_TYPE_TO_GROUP = {
     "photo_reaction": "photos_albums",
     "photo_comment": "photos_albums",
     "photo_comment_reaction": "photos_albums",
+    "journal_budget": "journal",
+    "journal_summary": "journal",
 }
 
 

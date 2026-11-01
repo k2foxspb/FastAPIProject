@@ -56,6 +56,23 @@ services:
       - db
       - redis
 
+  celery_beat:
+    restart: always
+    build:
+      context: .
+      dockerfile: ./app/Dockerfile
+    command: celery -A app.core.celery_app beat --loglevel=info
+    env_file:
+      - .env
+    environment:
+      - REDIS_HOST=${REDIS_HOST:-redis}
+      - POSTGRES_HOST=${POSTGRES_HOST:-db}
+      - POSTGRES_USER=${POSTGRES_USER:-ecommerce_user}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-xxxxxxxx}
+      - POSTGRES_DB=${POSTGRES_DB:-ecommerce_db}
+    depends_on:
+      - redis
+
   db:
     restart: always
     image: postgres:15

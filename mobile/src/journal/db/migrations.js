@@ -104,6 +104,41 @@ export const MIGRATIONS = [
   );
   CREATE INDEX IF NOT EXISTS ix_water_entries_date ON water_entries(entry_date);
   `,
+  // 4 - финансы и партии универсального импорта (фаза 3)
+  `
+  CREATE TABLE IF NOT EXISTS accounts (
+    ${entityColumns}, name TEXT NOT NULL, kind TEXT, currency TEXT, opening_balance_kop INTEGER DEFAULT 0,
+    archived INTEGER DEFAULT 0
+  );
+  CREATE TABLE IF NOT EXISTS finance_categories (
+    ${entityColumns}, name TEXT NOT NULL, kind TEXT NOT NULL, parent_uuid TEXT, icon TEXT, color TEXT,
+    sort_order INTEGER DEFAULT 0
+  );
+  CREATE TABLE IF NOT EXISTS transactions (
+    ${entityColumns}, account_uuid TEXT, to_account_uuid TEXT, category_uuid TEXT, import_batch_uuid TEXT,
+    transaction_date TEXT NOT NULL, direction TEXT NOT NULL, amount_kop INTEGER NOT NULL, description TEXT DEFAULT '',
+    merchant TEXT, note TEXT, external_id TEXT, transfer_pair_uuid TEXT, review_required INTEGER DEFAULT 0, source TEXT
+  );
+  CREATE INDEX IF NOT EXISTS ix_transactions_date ON transactions(transaction_date);
+  CREATE INDEX IF NOT EXISTS ix_transactions_account_date ON transactions(account_uuid, transaction_date);
+  CREATE INDEX IF NOT EXISTS ix_transactions_review ON transactions(review_required, transaction_date);
+  CREATE TABLE IF NOT EXISTS budgets (
+    ${entityColumns}, category_uuid TEXT, period_month TEXT NOT NULL, limit_kop INTEGER NOT NULL, enabled INTEGER DEFAULT 1
+  );
+  CREATE TABLE IF NOT EXISTS import_rules (
+    ${entityColumns}, match_text TEXT NOT NULL, match_field TEXT DEFAULT 'description', category_uuid TEXT,
+    priority INTEGER DEFAULT 100, enabled INTEGER DEFAULT 1
+  );
+  CREATE TABLE IF NOT EXISTS import_profiles (
+    ${entityColumns}, name TEXT NOT NULL, file_format TEXT NOT NULL, header_fingerprint TEXT NOT NULL,
+    mapping TEXT NOT NULL, date_format TEXT, delimiter TEXT
+  );
+  CREATE TABLE IF NOT EXISTS import_batches (
+    ${entityColumns}, account_uuid TEXT, profile_uuid TEXT, filename TEXT NOT NULL, content_fingerprint TEXT NOT NULL,
+    status TEXT NOT NULL, imported_count INTEGER DEFAULT 0, duplicate_count INTEGER DEFAULT 0, reverted_at TEXT
+  );
+  CREATE INDEX IF NOT EXISTS ix_import_batches_created ON import_batches(created_at DESC);
+  `,
 ];
 
 export const runMigrations = async (db) => {

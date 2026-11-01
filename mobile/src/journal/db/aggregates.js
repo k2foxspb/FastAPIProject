@@ -5,10 +5,12 @@
 import { getJournalDb } from './database';
 import { eventsInRange } from './repos/events';
 import { kcalByDay } from './repos/diet';
+import { expenseByDay } from './repos/finance';
 import { addDays, compareKeys } from '../utils/dates';
 
 export const DAY_TOTAL_PROVIDERS = [
   kcalByDay, // фаза 2: ккал из записей о еде
+  expenseByDay, // фаза 3: расходы без переводов
 ];
 
 const emptyDay = (date) => ({

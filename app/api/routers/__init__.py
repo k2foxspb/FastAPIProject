@@ -17,6 +17,8 @@ from app.api.routers import (
     journal_attachments,
     journal_diet,
     journal_ai,
+    journal_finance,
+    journal_import,
 )
 
 # Основной роутер для API v1
@@ -37,6 +39,8 @@ public_routers = [
     (journal_attachments.router, ["journal"]),
     (journal_diet.router, ["journal"]),
     (journal_ai.router, ["journal"]),
+    (journal_finance.router, ["journal"]),
+    (journal_import.router, ["journal"]),
 ]
 
 for router, tags in public_routers:

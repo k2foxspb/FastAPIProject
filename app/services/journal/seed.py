@@ -13,13 +13,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import config
-from app.models.journal import JournalMealType, JournalSettings
+from app.models.journal import JournalAccount, JournalFinanceCategory, JournalMealType, JournalSettings
 from app.models.journal.base import utcnow
 
-# Пространство имён UUIDv5 журнала (то же значение используется в mobile/src/journal/utils/seed.js).
+# Пространство имён UUIDv5 журнала.
 NS_JOURNAL = uuid.UUID("6f2c1a3e-8d4b-4f7a-9c1e-2b5d7e9f0a13")
-# 1 - настройки (фаза 1); 2 - типы приёмов пищи (фаза 2)
-SEED_VERSION = 2
+# 1 - настройки; 2 - типы приёмов пищи; 3 - финансовые категории и счёт
+SEED_VERSION = 3
 
 # Стартовые типы приёмов пищи (ключ UUIDv5 - "meal_type:<key>"); напоминания выключены,
 # пользователь включает их сам на экране «Приёмы пищи».
@@ -42,6 +42,18 @@ TRACKER_TEMPLATES = [
      "icon": "heart-outline", "color": "#E53935", "frequency": "daily"},
     {"template_key": "habit", "name": "Привычка", "value_type": "bool",
      "icon": "checkmark-done-outline", "color": "#43A047", "frequency": "daily"},
+]
+
+FINANCE_CATEGORIES = [
+    {"key": "food", "name": "Продукты", "kind": "expense", "icon": "basket-outline"},
+    {"key": "transport", "name": "Транспорт", "kind": "expense", "icon": "bus-outline"},
+    {"key": "housing", "name": "Дом", "kind": "expense", "icon": "home-outline"},
+    {"key": "shopping", "name": "Покупки", "kind": "expense", "icon": "cart-outline"},
+    {"key": "health", "name": "Здоровье", "kind": "expense", "icon": "heart-outline"},
+    {"key": "entertainment", "name": "Развлечения", "kind": "expense", "icon": "film-outline"},
+    {"key": "other_expense", "name": "Прочее", "kind": "expense", "icon": "ellipsis-horizontal-outline"},
+    {"key": "salary", "name": "Зарплата", "kind": "income", "icon": "cash-outline"},
+    {"key": "other_income", "name": "Прочий доход", "kind": "income", "icon": "trending-up-outline"},
 ]
 
 
@@ -91,6 +103,38 @@ async def ensure_seed(db: AsyncSession, user_id: int, only_upgrade: bool = False
                 reminder_enabled=False,
                 created_at=now,
                 updated_at=now,
+                server_rev=next_rev(state),
+            ))
+
+    if version < 3:
+        category_uuids = {
+            seed_uuid(user_id, f"finance_category:{item['key']}"): item for item in FINANCE_CATEGORIES
+        }
+        present_categories = set((await db.execute(
+            select(JournalFinanceCategory.client_uuid).where(
+                JournalFinanceCategory.user_id == user_id,
+                JournalFinanceCategory.client_uuid.in_(list(category_uuids)),
+            )
+        )).scalars().all())
+        for client_uuid, item in category_uuids.items():
+            if client_uuid in present_categories:
+                continue
+            db.add(JournalFinanceCategory(
+                user_id=user_id, client_uuid=client_uuid, name=item["name"], kind=item["kind"],
+                icon=item["icon"], sort_order=(FINANCE_CATEGORIES.index(item) + 1) * 10,
+                created_at=now, updated_at=now, server_rev=next_rev(state),
+            ))
+
+        cash_uuid = seed_uuid(user_id, "account:cash")
+        cash_exists = (await db.execute(
+            select(JournalAccount.id).where(
+                JournalAccount.user_id == user_id, JournalAccount.client_uuid == cash_uuid
+            )
+        )).first()
+        if not cash_exists:
+            db.add(JournalAccount(
+                user_id=user_id, client_uuid=cash_uuid, name="Наличные", kind="cash", currency="RUB",
+                opening_balance_kop=0, archived=False, created_at=now, updated_at=now,
                 server_rev=next_rev(state),
             ))
 

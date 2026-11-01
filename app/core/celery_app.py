@@ -5,12 +5,13 @@ celery_app = Celery(
     "worker",
     broker=CELERY_BROKER_URL,
     backend=CELERY_RESULT_BACKEND,
-    include=["app.tasks.example_tasks"]
+    include=["app.tasks.example_tasks", "app.tasks.journal_tasks"]
 )
 
 # Форсируем загрузку задач при импорте
 try:
     import app.tasks.example_tasks
+    import app.tasks.journal_tasks
 except ImportError:
     pass
 

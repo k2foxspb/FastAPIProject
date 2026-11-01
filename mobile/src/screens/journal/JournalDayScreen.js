@@ -11,14 +11,17 @@ import { deleteTrackerValue, formatTrackerValue, listTrackers, listValuesByDate 
 import { addDays, formatDateRu, formatTime } from '../../journal/utils/dates';
 import { addWater, guessMealType, loadDietDay } from '../../journal/db/repos/diet';
 import { formatAmount } from '../../journal/utils/nutrition';
+import { formatKop } from '../../journal/utils/money';
+import { listTransactions } from '../../journal/db/repos/finance';
 
 const KIND_ICONS = { meal: 'restaurant-outline', payment: 'card-outline', note: 'document-text-outline', tracker: 'pulse-outline', custom: 'star-outline' };
 
 const loadDay = async (date) => {
-  const [events, diary, values, diet] = await Promise.all([
+  const [events, diary, values, diet, transactions] = await Promise.all([
     eventsInRange(date, date), listDiaryByDate(date), listValuesByDate(date), loadDietDay(date),
+    listTransactions({ from: date, to: date }),
   ]);
-  return { events, diary, values, diet };
+  return { events, diary, values, diet, transactions };
 };
 
 const DayContent = ({ navigation, date }) => {
@@ -34,6 +37,7 @@ const DayContent = ({ navigation, date }) => {
     const hasDiet = data.diet.entries.length > 0 || data.diet.waterMl > 0;
     return [
       { key: 'diet', title: 'Питание', data: hasDiet ? [data.diet] : [] },
+      { key: 'finance', title: 'Финансы', data: data.transactions },
       { key: 'events', title: 'События', data: data.events },
       { key: 'diary', title: 'Дневник', data: data.diary },
       { key: 'values', title: 'Трекеры', data: data.values },
@@ -101,6 +105,21 @@ const DayContent = ({ navigation, date }) => {
         </TouchableOpacity>
       );
     }
+    if (section.key === 'finance') {
+      return (
+        <TouchableOpacity style={[styles.item, { backgroundColor: colors.card }]} onPress={() => navigation.navigate('TransactionEdit', { uuid: item.uuid })}>
+          <Icon name={item.direction === 'expense' ? 'arrow-up-circle-outline' : 'arrow-down-circle-outline'} size={22}
+            color={item.direction === 'expense' ? colors.error : colors.success} />
+          <View style={styles.itemBody}>
+            <Text style={[styles.itemTitle, { color: colors.text }]} numberOfLines={1}>{item.description}</Text>
+            <Text style={[styles.itemSub, { color: colors.textSecondary }]}>{item.category_name || item.account_name || 'Операция'}</Text>
+          </View>
+          <Text style={{ color: item.direction === 'expense' ? colors.error : colors.success }}>
+            {item.direction === 'expense' ? '−' : '+'}{formatKop(item.amount_kop)}
+          </Text>
+        </TouchableOpacity>
+      );
+    }
     if (section.key === 'diary') {
       const mood = MOODS.find((m) => m.value === item.mood);
       return (
@@ -145,6 +164,7 @@ const DayContent = ({ navigation, date }) => {
       <ActionButton colors={colors} icon="add-circle-outline" label="Событие" onPress={() => navigation.navigate('EventEdit', { date })} />
       <ActionButton colors={colors} icon="book-outline" label="Запись" onPress={() => navigation.navigate('DiaryEdit', { date })} />
       <ActionButton colors={colors} icon="pulse-outline" label="Трекер" onPress={() => setPickerOpen(true)} />
+      <ActionButton colors={colors} icon="remove-circle-outline" label="Расход" onPress={() => navigation.navigate('TransactionEdit', { direction: 'expense', date })} />
     </View>
   );
 

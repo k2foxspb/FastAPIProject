@@ -18,6 +18,20 @@ export const journalApi = {
   // Диета: поиск по своей базе на сервере и сводка за период (итоги пересчитываются сервером)
   searchFoods: (q, page = 1, limit = 30) => api.get('/api/journal/foods/search', { params: { q, page, limit } }),
   getDietSummary: (from, to) => api.get('/api/journal/diet/summary', { params: { from, to } }),
+  getFinanceBalances: () => api.get('/api/journal/finance/balances'),
+  getFinanceBudgets: (month) => api.get('/api/journal/finance/budgets', { params: { month } }),
+  getFinanceAnalytics: (from, to) => api.get('/api/journal/finance/analytics', { params: { from, to } }),
+  getFinanceReview: (limit = 100) => api.get('/api/journal/finance/review', { params: { limit } }),
+  getTransferPairs: () => api.get('/api/journal/finance/transfer-pairs'),
+  mergeTransferPair: (first_uuid, second_uuid) => api.post('/api/journal/finance/transfer-pairs/merge', { first_uuid, second_uuid }),
+  importPreview: (formData) => api.post('/api/journal/import/preview', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }, timeout: 60000,
+  }),
+  importCommit: (payload) => api.post('/api/journal/import/commit', payload, { timeout: 60000 }),
+  getImportBatches: () => api.get('/api/journal/import/batches'),
+  getImportBatch: (uuid) => api.get(`/api/journal/import/batches/${uuid}`),
+  revertImportBatch: (uuid) => api.post(`/api/journal/import/batches/${uuid}/revert`),
+  suggestCategories: (descriptions) => api.post('/api/journal/ai/suggest-categories', { descriptions }, { timeout: 90000 }),
   // ИИ-оценка КБЖУ по тексту: только предложение, пользователь подтверждает перед сохранением
   estimateNutrition: (text) => api.post('/api/journal/ai/estimate-nutrition', { text }, { timeout: 90000 }),
 };

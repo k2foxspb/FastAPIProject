@@ -120,6 +120,30 @@ services:
           memory: 512m
     logging: *default-logging
 
+  celery_beat:
+    restart: unless-stopped
+    build:
+      context: .
+      dockerfile: app/Dockerfile.prod.yml
+    user: "0:0"
+    command: celery -A app.core.celery_app beat --loglevel=info
+    env_file:
+      - .env
+    environment:
+      <<: *common-env
+      ENVIRONMENT: production
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256m
+    logging: *default-logging
+
   db:
     restart: unless-stopped
     image: postgres:15.8

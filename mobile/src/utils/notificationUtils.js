@@ -34,6 +34,8 @@ export const PUSH_TYPE_ROUTES = {
   photo_reaction: 'bell',
   photo_comment: 'bell',
   photo_comment_reaction: 'bell',
+  journal_budget: 'bell',
+  journal_summary: 'bell',
   system: 'bell',
 };
 
@@ -454,6 +456,10 @@ export function navigateByPushData(navigationRef, data) {
 
   // Новая версия приложения: сразу запускаем скачивание и установку обновления
   const rawType = data?.type || data?.msg_type;
+  if (rawType === 'journal_budget' || rawType === 'journal_summary') {
+    navigationRef.navigate('Journal', { screen: 'Budgets' });
+    return;
+  }
   if (rawType === 'app_update') {
     const { startAppUpdate } = require('./appUpdate');
     startAppUpdate(data?.file_path, data?.version);

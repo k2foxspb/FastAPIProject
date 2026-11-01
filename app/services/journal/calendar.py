@@ -19,6 +19,7 @@ from app.models.journal import (
 )
 from app.schemas.journal.calendar import CalendarDay, CalendarMonthResponse, DayResponse, EventInstanceOut
 from app.services.journal import nutrition
+from app.services.journal.finance import expense_by_day
 from app.services.journal.recurrence import EventInstance, expand_event
 from app.services.journal.sync_registry import REGISTRY
 from app.services.journal.sync_service import serialize_rows
@@ -26,6 +27,7 @@ from app.services.journal.sync_service import serialize_rows
 DayTotalsProvider = Callable[[AsyncSession, int, date, date], Awaitable[dict[date, dict[str, int]]]]
 DAY_TOTAL_PROVIDERS: list[DayTotalsProvider] = [
     nutrition.kcal_by_day,  # фаза 2: ккал из записей о еде
+    expense_by_day,  # фаза 3: расходы без переводов
 ]
 
 

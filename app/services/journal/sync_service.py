@@ -32,7 +32,7 @@ from app.services.journal.sync_registry import (
 )
 
 # Не отдаются клиенту: внутренние ключи и служебные поля (storage_key - путь к файлу в хранилище).
-INTERNAL_COLUMNS = {"id", "user_id", "client_uuid", "server_rev", "deleted_at", "storage_key"}
+INTERNAL_COLUMNS = {"id", "user_id", "client_uuid", "server_rev", "deleted_at", "storage_key", "import_batch_id"}
 
 
 @dataclass
@@ -293,11 +293,21 @@ async def push(db: AsyncSession, user_id: int, request: SyncPushRequest) -> Sync
 
     results: dict[int, SyncResult] = {}
     deleted_files: list[str] = []
+    applied_by_hook: dict[Any, list[SyncChange]] = {}
     for index, change in sorted(enumerate(request.changes), key=sort_key):
         results[index] = await _apply_change(db, user_id, state, change, now, deleted_files)
+        spec = REGISTRY.get(change.entity)
+        if results[index].status == "applied" and spec is not None and spec.after_apply is not None:
+            applied_by_hook.setdefault(spec.after_apply, []).append(change)
 
     cursor = state.last_rev
     await db.commit()
+
+    for hook, changes in applied_by_hook.items():
+        try:
+            hook(user_id, changes)
+        except Exception:
+            logger.exception("Journal sync after_apply hook failed")
 
     if deleted_files:
         from app.utils import storage as storage_service

@@ -5,8 +5,14 @@
 """
 from decimal import Decimal
 
+from pydantic import BaseModel, Field
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core import ollama
 from app.schemas.journal.diet import AiNutritionAnswer, EstimatedItem, EstimateNutritionResponse
+from app.models.journal import JournalFinanceCategory
+from app.schemas.journal.finance import CategorySuggestion, CategorySuggestionResponse
 from app.services.journal.nutrition import NUTRIENTS, round2
 
 AI_TIMEOUT_SEC = 60.0
@@ -52,3 +58,47 @@ async def estimate_nutrition(text: str) -> EstimateNutritionResponse:
     ]
     answer = await ollama.chat_json(messages, AiNutritionAnswer, timeout=AI_TIMEOUT_SEC, options={"temperature": 0.1})
     return build_estimate(answer)
+
+
+class CategoryAnswerItem(BaseModel):
+    index: int = Field(ge=0, le=49)
+    category_name: str
+    confidence: float = Field(ge=0, le=1)
+
+
+class CategoryAnswer(BaseModel):
+    items: list[CategoryAnswerItem] = Field(max_length=50)
+
+
+async def suggest_categories(db: AsyncSession, user_id: int, descriptions: list[str]) -> CategorySuggestionResponse:
+    categories = (await db.execute(select(JournalFinanceCategory).where(
+        JournalFinanceCategory.user_id == user_id, JournalFinanceCategory.deleted_at.is_(None),
+        JournalFinanceCategory.kind == "expense",
+    ).order_by(JournalFinanceCategory.sort_order, JournalFinanceCategory.name))).scalars().all()
+    if not categories:
+        return CategorySuggestionResponse(suggestions=[
+            CategorySuggestion(description=text, confidence=0) for text in descriptions
+        ])
+    allowed = [category.name for category in categories]
+    messages = [
+        {"role": "system", "content": (
+            "Подбери наиболее вероятную категорию расхода для каждой операции. "
+            "Используй только названия из списка категорий. Ответь только JSON: "
+            '{"items":[{"index":0,"category_name":"Продукты","confidence":0.8}]}'
+        )},
+        {"role": "user", "content": f"Категории: {allowed}\nОперации: {descriptions}"},
+    ]
+    answer = await ollama.chat_json(messages, CategoryAnswer, timeout=AI_TIMEOUT_SEC, options={"temperature": 0.1})
+    by_name = {category.name.casefold(): category for category in categories}
+    by_index = {item.index: item for item in answer.items if item.index < len(descriptions)}
+    result = []
+    for index, description in enumerate(descriptions):
+        item = by_index.get(index)
+        category = by_name.get(item.category_name.casefold()) if item else None
+        result.append(CategorySuggestion(
+            description=description,
+            category_uuid=category.client_uuid if category else None,
+            category_name=category.name if category else None,
+            confidence=item.confidence if category and item else 0,
+        ))
+    return CategorySuggestionResponse(suggestions=result)

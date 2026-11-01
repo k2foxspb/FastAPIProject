@@ -3,11 +3,15 @@ from typing import NoReturn
 
 from fastapi import APIRouter, Depends, HTTPException
 from loguru import logger
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.api.dependencies import get_async_db
 
 from app.core import config, ollama
 from app.core.rate_limit import rate_limit
 from app.models.users import User as UserModel
 from app.schemas.journal.diet import EstimateNutritionRequest, EstimateNutritionResponse
+from app.schemas.journal.finance import CategorySuggestionRequest, CategorySuggestionResponse
 from app.services.journal import ai as ai_service
 
 router = APIRouter(prefix="/api/journal/ai", tags=["journal"])
@@ -41,3 +45,16 @@ async def estimate_nutrition(
     # Текст запроса и значения в лог не пишем (личные данные)
     logger.info(f"Journal AI estimate: user={current_user.id} items={len(result.items)}")
     return result
+
+
+@router.post("/suggest-categories", response_model=CategorySuggestionResponse)
+async def suggest_categories(
+    payload: CategorySuggestionRequest,
+    current_user: UserModel = Depends(_ai_limit),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """ИИ предлагает категории расходов, но ничего не сохраняет автоматически."""
+    try:
+        return await ai_service.suggest_categories(db, current_user.id, payload.descriptions)
+    except ollama.OllamaError as e:
+        raise_ai_error(e)

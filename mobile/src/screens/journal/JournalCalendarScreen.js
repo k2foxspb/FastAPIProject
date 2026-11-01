@@ -13,6 +13,7 @@ import { formatKop } from '../../journal/utils/money';
 import { addWater, guessMealType, listMealTypes } from '../../journal/db/repos/diet';
 
 const QUICK_ACTIONS = [
+  { key: 'expense', icon: 'remove-circle-outline', label: 'Расход' },
   { key: 'food', icon: 'restaurant-outline', label: 'Еда' },
   { key: 'water', icon: 'water-outline', label: '+250 мл' },
   { key: 'event', icon: 'add-circle-outline', label: 'Событие' },
@@ -53,6 +54,7 @@ const CalendarContent = ({ navigation }) => {
   const todaySummary = days?.[today];
 
   const onQuick = async (key) => {
+    if (key === 'expense') navigation.navigate('TransactionEdit', { direction: 'expense', date: today });
     if (key === 'food') {
       // Приём пищи по текущему времени - добавление в 2-3 тапа
       const meal = guessMealType(await listMealTypes());
@@ -104,6 +106,10 @@ const CalendarContent = ({ navigation }) => {
           </Text>
           <Icon name="chevron-forward" size={18} color={colors.textSecondary} />
         </TouchableOpacity>
+      </Section>
+
+      <Section title="Финансы">
+        <NavRow colors={colors} icon="wallet-outline" label="Финансы" onPress={() => navigation.navigate('FinanceHome')} last />
       </Section>
 
       <Section title="За месяц">
