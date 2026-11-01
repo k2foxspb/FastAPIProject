@@ -22,6 +22,8 @@ from app.models.journal import (
     JournalTracker, JournalTrackerValue, JournalTransaction, JournalWaterEntry,
     JournalImportBatch, JournalImportProfile, JournalImportRule,
 )
+from app.models.journal import JournalGoal
+from app.schemas.journal.goals import GoalData
 from app.schemas.journal.diet import FoodData, FoodEntryData, MealTypeData, RecipeItemData, WaterEntryData
 from app.schemas.journal.finance import (
     AccountData, BudgetData, FinanceCategoryData, ImportBatchData, ImportProfileData,
@@ -298,6 +300,10 @@ register(EntitySpec(
     ],
     ops=frozenset(),
 ))
+
+# ---------------------------------------------------------------- регистрация фазы 4 (цели)
+
+register(EntitySpec(name="goal", model=JournalGoal, schema=GoalData, order=30))
 
 # Допустимые типы владельцев вложений (POST /api/journal/attachments).
 ATTACHMENT_OWNER_TYPES = REGISTRY["attachment"].poly_refs[0].targets

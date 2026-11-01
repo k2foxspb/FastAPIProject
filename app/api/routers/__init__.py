@@ -19,6 +19,7 @@ from app.api.routers import (
     journal_ai,
     journal_finance,
     journal_import,
+    journal_analytics,
 )
 
 # Основной роутер для API v1
@@ -41,6 +42,7 @@ public_routers = [
     (journal_ai.router, ["journal"]),
     (journal_finance.router, ["journal"]),
     (journal_import.router, ["journal"]),
+    (journal_analytics.router, ["journal"]),
 ]
 
 for router, tags in public_routers:

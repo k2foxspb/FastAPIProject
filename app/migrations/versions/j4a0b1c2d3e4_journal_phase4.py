@@ -42,11 +42,12 @@ def upgrade() -> None:
         sa.Column("source_type", sa.String(20), nullable=False),
         sa.Column("source_uuid", sa.String(36), nullable=True),
         sa.Column("target_value", sa.Numeric(14, 4), nullable=False),
-        sa.Column("direction", sa.String(20), nullable=False),
-        sa.Column("unit", sa.String(20), nullable=True),
+        sa.Column("start_value", sa.Numeric(14, 4), nullable=True),
+        sa.Column("period", sa.String(10), nullable=False),
         sa.Column("start_date", sa.Date(), nullable=False),
-        sa.Column("end_date", sa.Date(), nullable=True),
-        sa.Column("archived", sa.Boolean(), nullable=False),
+        sa.Column("deadline", sa.Date(), nullable=True),
+        sa.Column("direction", sa.String(20), nullable=False),
+        sa.Column("status", sa.String(20), nullable=False),
     )
     op.create_index("ix_journal_goals_user_id", "journal_goals", ["user_id"])
     op.create_index("ix_journal_goals_user_rev", "journal_goals", ["user_id", "server_rev"])
