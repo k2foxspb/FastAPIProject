@@ -70,7 +70,7 @@ async def client(session_maker, users, storage_dir, monkeypatch):
     # Redis в тестах не нужен - сразу используем счётчики в памяти
     monkeypatch.setattr(rate_limit, "_redis_down_until", float("inf"))
     # Celery broker is external; individual tests can replace this stub to assert failure handling.
-    monkeypatch.setattr(celery_app, "send_task", lambda *args, **kwargs: None)
+    monkeypatch.setitem(celery_app.__dict__, "send_task", lambda *args, **kwargs: None)
     rate_limit.reset_memory_counters()
 
     app.dependency_overrides[get_async_db] = override_db

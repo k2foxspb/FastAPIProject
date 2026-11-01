@@ -34,5 +34,4 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     """Downgrade schema."""
-    if 'announcement_comments' in sa.inspect(op.get_bind()).get_table_names():
-        op.drop_table('announcement_comments')
+    op.drop_table('announcement_comments')

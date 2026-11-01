@@ -68,8 +68,7 @@ def downgrade() -> None:
     if 'timesheet_entry_approvals' in existing_tables:
         op.drop_table('timesheet_entry_approvals')
 
-    if 'timesheet_entries' in existing_tables:
-        columns = [c['name'] for c in inspector.get_columns('timesheet_entries')]
-        with op.batch_alter_table('timesheet_entries') as batch_op:
-            if 'approval_round' in columns:
-                batch_op.drop_column('approval_round')
+    columns = [c['name'] for c in inspector.get_columns('timesheet_entries')]
+    with op.batch_alter_table('timesheet_entries') as batch_op:
+        if 'approval_round' in columns:
+            batch_op.drop_column('approval_round')

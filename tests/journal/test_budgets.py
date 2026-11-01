@@ -96,7 +96,7 @@ async def test_budget_hook_failure_does_not_rollback_sync(client, monkeypatch):
     def unavailable_broker(*args, **kwargs):
         raise RuntimeError("broker unavailable")
 
-    monkeypatch.setattr(celery_app, "send_task", unavailable_broker)
+    monkeypatch.setitem(celery_app.__dict__, "send_task", unavailable_broker)
     response = await client.post("/api/journal/sync/push", json={"changes": [change("transaction", new_uuid(), {
         "account_uuid": account_uuid, "transaction_date": "2025-03-01", "direction": "expense",
         "amount_kop": 125, "description": "Тест",
