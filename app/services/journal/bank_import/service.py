@@ -82,8 +82,10 @@ async def _load_preview(user_id: int, token: str) -> dict:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         raise ImportNotFound
-    if data.get("user_id") != user_id or data.get("expires_at", 0) < datetime.now().timestamp():
+    if data.get("expires_at", 0) < datetime.now().timestamp():
         path.unlink(missing_ok=True)
+        raise ImportNotFound
+    if data.get("user_id") != user_id:
         raise ImportNotFound
     return data["payload"]
 
