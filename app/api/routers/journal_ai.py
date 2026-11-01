@@ -99,14 +99,17 @@ async def nutrition_plan_advice(
     payload: nutrition_plan.NutritionPlanInput,
     current_user: UserModel = Depends(_ai_limit),
 ):
-    """Норма КБЖУ по анкете (формула) и ИИ-рекомендации к ней. Ничего не сохраняет."""
+    """Норма КБЖУ по анкете: формула и корректировка ИИ с советами. Ничего не сохраняет."""
     plan = nutrition_plan.calculate_plan(payload)
     try:
-        advice = await ai_service.nutrition_advice(payload, plan)
+        answer = await ai_service.nutrition_advice(payload, plan)
     except ollama.OllamaError as e:
         raise_ai_error(e)
+    recommended = nutrition_plan.apply_ai_correction(
+        plan, payload.goal, answer.kcal, answer.protein_pct, answer.fat_pct, answer.carbs_pct
+    )
     logger.info(f"Journal AI nutrition plan: user={current_user.id}")
-    return NutritionPlanResponse(plan=plan, advice=advice)
+    return NutritionPlanResponse(plan=plan, recommended=recommended, advice=answer.advice)
 
 
 @router.post("/suggest-categories", response_model=CategorySuggestionResponse)

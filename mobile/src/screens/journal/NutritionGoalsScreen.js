@@ -1,10 +1,25 @@
 import React, { useEffect, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Platform, ScrollView, Text, TouchableOpacity } from 'react-native';
 import { useJournal } from '../../context/JournalContext';
-import { Field, Input, JournalGate, PrimaryButton, Section, useColors } from '../../components/journal/common';
+import { Chip, Field, Input, JournalGate, PrimaryButton, Section, useColors } from '../../components/journal/common';
 import { updateSettings } from '../../journal/db/repos/settings';
+import { journalAiErrorMessage, journalApi } from '../../api/journal';
 
 const LIMITS = { kcal_goal: 20000, protein_g_goal: 2000, fat_g_goal: 2000, carbs_g_goal: 5000, water_ml_goal: 20000 };
+
+const ACTIVITY = [
+  { value: 'sedentary', label: 'Сидячая' },
+  { value: 'light', label: 'Лёгкая' },
+  { value: 'moderate', label: 'Средняя' },
+  { value: 'active', label: 'Высокая' },
+  { value: 'very_active', label: 'Очень высокая' },
+];
+
+const GOALS = [
+  { value: 'lose', label: 'Похудеть' },
+  { value: 'maintain', label: 'Поддержать' },
+  { value: 'gain', label: 'Набрать' },
+];
 
 const FIELDS = [
   { key: 'kcal_goal', label: 'Калории, ккал в день', placeholder: 'например 2000' },
@@ -20,6 +35,13 @@ const Content = ({ navigation }) => {
   const { settings } = useJournal();
   const [values, setValues] = useState({});
   const [saving, setSaving] = useState(false);
+  const [sex, setSex] = useState('male');
+  const [age, setAge] = useState('');
+  const [activity, setActivity] = useState('moderate');
+  const [goal, setGoal] = useState('maintain');
+  const [planLoading, setPlanLoading] = useState(false);
+  const [advice, setAdvice] = useState('');
+  const [formulaKcal, setFormulaKcal] = useState(null);
 
   useEffect(() => {
     const next = {};
@@ -37,6 +59,33 @@ const Content = ({ navigation }) => {
       fat_g_goal: String(Math.round((kcal * 0.3) / 9)),
       carbs_g_goal: String(Math.round((kcal * 0.45) / 4)),
     }));
+  };
+
+  const calculatePlan = async () => {
+    const ageNum = parseInt(age, 10);
+    const height = settings?.height_cm;
+    const weight = settings?.weight_kg;
+    if (!height || !weight) return Alert.alert('Укажите рост и вес', 'Их можно добавить в настройках журнала');
+    if (!ageNum || ageNum < 14 || ageNum > 100) return Alert.alert('Проверьте возраст', 'Возраст от 14 до 100 лет');
+    setPlanLoading(true);
+    try {
+      const { data } = await journalApi.nutritionPlan({
+        sex, age: ageNum, height_cm: height, weight_kg: weight, activity, goal,
+      });
+      setValues((v) => ({
+        ...v,
+        kcal_goal: String(data.recommended.kcal),
+        protein_g_goal: String(data.recommended.protein_g),
+        fat_g_goal: String(data.recommended.fat_g),
+        carbs_g_goal: String(data.recommended.carbs_g),
+      }));
+      setFormulaKcal(data.plan.kcal);
+      setAdvice(data.advice);
+    } catch (e) {
+      Alert.alert('Не удалось рассчитать', journalAiErrorMessage(e));
+    } finally {
+      setPlanLoading(false);
+    }
   };
 
   const save = async () => {
@@ -79,6 +128,34 @@ const Content = ({ navigation }) => {
         <TouchableOpacity onPress={fillMacros} style={{ marginHorizontal: 16, marginTop: 12 }}>
           <Text style={{ color: colors.primary }}>Рассчитать БЖУ из калорий (25/30/45 %)</Text>
         </TouchableOpacity>
+        <Section title="Расчёт по анкете" style={{ marginTop: 16 }}>
+          <Field label="Пол">
+            <Chip label="Мужской" selected={sex === 'male'} onPress={() => setSex('male')} />
+            <Chip label="Женский" selected={sex === 'female'} onPress={() => setSex('female')} />
+          </Field>
+          <Field label="Возраст, лет">
+            <Input value={age} onChangeText={(t) => setAge(t.replace(/\D/g, ''))} keyboardType="number-pad" placeholder="30" maxLength={3} />
+          </Field>
+          <Field label="Активность">
+            {ACTIVITY.map((a) => (
+              <Chip key={a.value} label={a.label} selected={activity === a.value} onPress={() => setActivity(a.value)} />
+            ))}
+          </Field>
+          <Field label="Цель">
+            {GOALS.map((g) => (
+              <Chip key={g.value} label={g.label} selected={goal === g.value} onPress={() => setGoal(g.value)} />
+            ))}
+          </Field>
+          <PrimaryButton title="Рассчитать и получить советы ИИ" onPress={calculatePlan} loading={planLoading} />
+          {!!advice && (
+            <Text style={{ color: colors.textSecondary, fontSize: 13, paddingHorizontal: 12, paddingTop: 10 }}>
+              Формула: {formulaKcal} ккал. Значения выше предложил ИИ (отклонение не больше 15%). Сохраните их, если подходят.
+            </Text>
+          )}
+          {!!advice && (
+            <Text style={{ color: colors.text, fontSize: 14, paddingHorizontal: 12, paddingTop: 10 }}>{advice}</Text>
+          )}
+        </Section>
         <Section style={{ marginTop: 16 }}>
           <Text style={{ color: colors.textSecondary, fontSize: 13, paddingHorizontal: 12 }}>
             Пустое поле - цель не задана. Это ориентиры, а не медицинские рекомендации.

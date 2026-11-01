@@ -34,6 +34,8 @@ export const journalApi = {
   suggestCategories: (descriptions) => api.post('/api/journal/ai/suggest-categories', { descriptions }, { timeout: 90000 }),
   // ИИ-оценка КБЖУ по тексту: только предложение, пользователь подтверждает перед сохранением
   estimateNutrition: (text) => api.post('/api/journal/ai/estimate-nutrition', { text }, { timeout: 90000 }),
+  // Норма КБЖУ по анкете (формула на сервере) и ИИ-рекомендации к ней; ничего не сохраняет
+  nutritionPlan: (answers) => api.post('/api/journal/ai/nutrition-plan', answers, { timeout: 90000 }),
   // ИИ-аналитика по сферам журнала за период (факты считает сервер, ничего не сохраняет)
   getAnalysis: (from, to, areas) => api.get('/api/journal/ai/analysis', { params: { from, to, areas: areas.join(',') }, timeout: 120000 }),
 };

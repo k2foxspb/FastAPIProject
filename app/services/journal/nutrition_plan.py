@@ -50,11 +50,21 @@ class NutritionPlanResult(BaseModel):
 
 class NutritionPlanResponse(BaseModel):
     plan: NutritionPlanResult
+    recommended: NutritionPlanResult
     advice: str
 
 
 def _round_int(value: Decimal) -> int:
     return int(value.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+
+
+def _macros(kcal: Decimal, splits: tuple[Decimal, Decimal, Decimal]) -> dict[str, int]:
+    protein_pct, fat_pct, carbs_pct = splits
+    return {
+        "protein_g": _round_int(kcal * protein_pct / 100 / Decimal(4)),
+        "fat_g": _round_int(kcal * fat_pct / 100 / Decimal(9)),
+        "carbs_g": _round_int(kcal * carbs_pct / 100 / Decimal(4)),
+    }
 
 
 def calculate_plan(data: NutritionPlanInput) -> NutritionPlanResult:
@@ -64,12 +74,31 @@ def calculate_plan(data: NutritionPlanInput) -> NutritionPlanResult:
     bmr = base + (Decimal(5) if data.sex == "male" else Decimal(-161))
     tdee = bmr * ACTIVITY_FACTORS[data.activity]
     kcal = max(tdee + GOAL_ADJUSTMENTS[data.goal], Decimal(1200))
-    protein_pct, fat_pct, carbs_pct = MACRO_SPLITS[data.goal]
     return NutritionPlanResult(
         bmr_kcal=_round_int(bmr),
         tdee_kcal=_round_int(tdee),
         kcal=_round_int(kcal),
-        protein_g=_round_int(kcal * protein_pct / 100 / Decimal(4)),
-        fat_g=_round_int(kcal * fat_pct / 100 / Decimal(9)),
-        carbs_g=_round_int(kcal * carbs_pct / 100 / Decimal(4)),
+        **_macros(kcal, MACRO_SPLITS[data.goal]),
+    )
+
+
+def apply_ai_correction(
+    base: NutritionPlanResult, goal: str, kcal: int, protein_pct: int, fat_pct: int, carbs_pct: int
+) -> NutritionPlanResult:
+    """Проверяет значения ИИ: калории не дальше 15% от формулы, при неверном распределении БЖУ берётся формула."""
+    low = Decimal(base.kcal) * Decimal("0.85")
+    high = Decimal(base.kcal) * Decimal("1.15")
+    final_kcal = min(max(Decimal(kcal), low), high)
+    valid_split = (
+        10 <= protein_pct <= 35
+        and 20 <= fat_pct <= 35
+        and 40 <= carbs_pct <= 65
+        and protein_pct + fat_pct + carbs_pct == 100
+    )
+    splits = (Decimal(protein_pct), Decimal(fat_pct), Decimal(carbs_pct)) if valid_split else MACRO_SPLITS[goal]
+    return NutritionPlanResult(
+        bmr_kcal=base.bmr_kcal,
+        tdee_kcal=base.tdee_kcal,
+        kcal=_round_int(final_kcal),
+        **_macros(final_kcal, splits),
     )

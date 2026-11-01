@@ -97,20 +97,25 @@ async def weekly_summary(db: AsyncSession, user_id: int, date_from: date, date_t
 
 
 NUTRITION_ADVICE_SYSTEM_PROMPT = (
-    "Ты помощник по питанию в личном журнале. Пользователю уже рассчитана норма калорий и БЖУ "
-    "по его данным. Напиши 3-5 коротких практических советов на русском: как распределить "
-    "питание, на что обратить внимание при выбранной цели, как учитывать активность. "
-    "Не меняй цифры нормы, не ставь диагнозов и не давай медицинских назначений. "
-    "Ответь ТОЛЬКО JSON в формате: {\"advice\": \"текст\"}."
+    "Ты помощник по питанию в личном журнале. Пользователю рассчитана формульная норма калорий "
+    "(kcal) и БЖУ по его данным. Скорректируй калории не более чем на 15% от kcal с учётом цели и "
+    "активности и предложи распределение БЖУ в процентах от калорий (белки 10-35, жиры 20-35, "
+    "углеводы 40-65, сумма 100). Напиши 3-5 коротких практических советов на русском: как распределить "
+    "питание по приёмам пищи и на что обратить внимание. Не ставь диагнозов и не давай медицинских назначений. "
+    "Ответь ТОЛЬКО JSON в формате: {\"kcal\": число, \"protein_pct\": число, \"fat_pct\": число, \"carbs_pct\": число, \"advice\": \"текст\"}."
 )
 
 
 class NutritionAdviceAnswer(BaseModel):
+    kcal: int = Field(ge=800, le=6000)
+    protein_pct: int = Field(ge=0, le=100)
+    fat_pct: int = Field(ge=0, le=100)
+    carbs_pct: int = Field(ge=0, le=100)
     advice: str = Field(min_length=1, max_length=2000)
 
 
-async def nutrition_advice(payload: NutritionPlanInput, plan: NutritionPlanResult) -> str:
-    """Текстовые ИИ-рекомендации к уже рассчитанной норме КБЖУ."""
+async def nutrition_advice(payload: NutritionPlanInput, plan: NutritionPlanResult) -> NutritionAdviceAnswer:
+    """ИИ-корректировка формульной нормы КБЖУ и текстовые рекомендации."""
     facts = {
         "sex": payload.sex,
         "age": payload.age,
@@ -128,7 +133,7 @@ async def nutrition_advice(payload: NutritionPlanInput, plan: NutritionPlanResul
         {"role": "user", "content": str(facts)},
     ]
     answer = await ollama.chat_json(messages, NutritionAdviceAnswer, timeout=AI_TIMEOUT_SEC, options={"temperature": 0.3})
-    return answer.advice
+    return answer
 
 
 class CategoryAnswerItem(BaseModel):
