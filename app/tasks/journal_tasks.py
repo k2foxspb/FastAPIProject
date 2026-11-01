@@ -13,6 +13,7 @@ from sqlalchemy.pool import NullPool
 from app.core import config
 from app.core.celery_app import celery_app
 from app.core.fcm import send_fcm_notification
+from app.core.notification_service import create_or_group_notification
 from app.models.journal import JournalBudget, JournalSettings, JournalSyncState
 from app.models.users import User
 from app.services.journal import budgets
@@ -83,19 +84,16 @@ def weekly_summary_scan() -> int:
             last_sunday = last_monday + timedelta(days=6)
             async with _sessions() as db:
                 text = await ai.weekly_summary(db, user_id, last_monday, last_sunday)
-                user = await db.get(User, user_id)
-                token = user.fcm_token if user else None
+                await create_or_group_notification(
+                    db,
+                    user_id=user_id,
+                    notif_type="journal_summary",
+                    title="Сводка за неделю",
+                    body=text[:200],
+                    data={"type": "journal_summary", "week_start": last_monday.isoformat()},
+                    group_key=f"journal_summary:{last_monday.isoformat()}",
+                )
             sent += 1
-            if token:
-                try:
-                    await send_fcm_notification(
-                        token=token, title="Сводка за неделю", body=text[:200],
-                        data={"type": "journal_weekly_summary", "notification_group": "journal",
-                              "android_channel_id": "journal"},
-                        silent=False,
-                    )
-                except Exception:
-                    logger.exception("Journal weekly summary push failed")
         return sent
     return asyncio.run(run())
 
