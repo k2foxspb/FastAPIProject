@@ -8,8 +8,8 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import get_async_db
+from app.core import ollama
 from app.core.auth import get_current_user
-from app.core.config import OLLAMA_MODEL, OLLAMA_URL
 from app.models.users import Friendship, User as UserModel
 from app.schemas.ai import AiChatResponse
 
@@ -137,50 +137,14 @@ def _sanitize_section_links(text: str) -> str:
 
 
 async def _call_ollama(client: httpx.AsyncClient, ollama_messages: list) -> str:
-    """Отправляет один запрос в Ollama и возвращает текст ответа ассистента."""
-    request_body = {
-        "model": OLLAMA_MODEL,
-        "messages": ollama_messages,
-        "stream": False,
-        "options": {
-            "temperature": 0.3,
-            "top_p": 0.8,
-            "repeat_penalty": 1.1,
-            "num_ctx": 4096,
-        },
-    }
-
+    """Отправляет один запрос в Ollama (общий клиент app/core/ollama.py) и возвращает текст ответа."""
     try:
-        response = await client.post(f"{OLLAMA_URL}/api/chat", json=request_body)
-        response.raise_for_status()
-        data = response.json()
-    except httpx.RequestError as e:
-        logger.error(
-            f"Ollama недоступна ({OLLAMA_URL}): {e}. "
-            "Проверьте на сервере: 1) запущен ли сервис Ollama (systemctl status ollama); "
-            "2) слушает ли он 0.0.0.0, а не только 127.0.0.1 (переменная OLLAMA_HOST=0.0.0.0 "
-            "в systemd-юните ollama.service, затем systemctl restart ollama); "
-            "3) актуален ли OLLAMA_URL в .env на сервере (для backend в Docker - "
-            "http://host.docker.internal:11434, для backend на хосте - http://localhost:11434) "
-            "и был ли пересоздан контейнер web после изменения .env "
-            "(docker compose up -d --build web)."
-        )
+        return await ollama.chat(ollama_messages, client=client)
+    except ollama.OllamaUnavailable:
+        # Включая таймаут - для чата ИИ текст и код ошибки не меняются
         raise HTTPException(status_code=500, detail="Сервис ИИ временно недоступен. Попробуйте позже.")
-    except httpx.HTTPStatusError as e:
-        logger.error(f"Ollama вернула ошибку {e.response.status_code}: {e.response.text}")
-        raise HTTPException(status_code=500, detail="Сервис ИИ вернул ошибку. Попробуйте позже.")
-    except ValueError as e:
-        logger.error(f"Не удалось разобрать ответ Ollama как JSON: {e}")
-        raise HTTPException(status_code=500, detail="Сервис ИИ вернул некорректный ответ.")
-
-    message = data.get("message") if isinstance(data, dict) else None
-    content = message.get("content") if isinstance(message, dict) else None
-
-    if not content or not str(content).strip():
-        logger.error(f"Пустой ответ от Ollama: {data}")
-        raise HTTPException(status_code=500, detail="Сервис ИИ вернул пустой ответ. Попробуйте переформулировать запрос.")
-
-    return str(content)
+    except ollama.OllamaError as e:
+        raise HTTPException(status_code=500, detail=e.message)
 
 
 def _is_people_search_request(text: str) -> bool:

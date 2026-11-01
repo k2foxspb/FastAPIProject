@@ -48,6 +48,13 @@ import TrackerDetailScreen from '../screens/journal/TrackerDetailScreen';
 import JournalSettingsScreen from '../screens/journal/JournalSettingsScreen';
 import ReminderDiagnosticsScreen from '../screens/journal/ReminderDiagnosticsScreen';
 import BatteryHelpScreen from '../screens/journal/BatteryHelpScreen';
+import DietDayScreen from '../screens/journal/DietDayScreen';
+import FoodSearchScreen from '../screens/journal/FoodSearchScreen';
+import FoodEntryEditScreen from '../screens/journal/FoodEntryEditScreen';
+import FoodEditScreen from '../screens/journal/FoodEditScreen';
+import RecipeEditScreen from '../screens/journal/RecipeEditScreen';
+import MealTypesScreen from '../screens/journal/MealTypesScreen';
+import NutritionGoalsScreen from '../screens/journal/NutritionGoalsScreen';
 import { JournalProvider } from '../context/JournalContext';
 
 
@@ -280,6 +287,13 @@ function JournalStack() {
         <Stack.Screen name="JournalSettings" component={JournalSettingsScreen} options={{ title: 'Настройки журнала' }} />
         <Stack.Screen name="ReminderDiagnostics" component={ReminderDiagnosticsScreen} options={{ title: 'Проверка напоминаний' }} />
         <Stack.Screen name="BatteryHelp" component={BatteryHelpScreen} options={{ title: 'Экономия батареи' }} />
+        <Stack.Screen name="DietDay" component={DietDayScreen} options={{ title: 'Питание' }} />
+        <Stack.Screen name="FoodSearch" component={FoodSearchScreen} options={{ title: 'Добавить еду' }} />
+        <Stack.Screen name="FoodEntryEdit" component={FoodEntryEditScreen} options={{ title: 'Запись о еде' }} />
+        <Stack.Screen name="FoodEdit" component={FoodEditScreen} options={{ title: 'Продукт' }} />
+        <Stack.Screen name="RecipeEdit" component={RecipeEditScreen} options={{ title: 'Рецепт' }} />
+        <Stack.Screen name="MealTypes" component={MealTypesScreen} options={{ title: 'Приёмы пищи' }} />
+        <Stack.Screen name="NutritionGoals" component={NutritionGoalsScreen} options={{ title: 'Цели питания' }} />
       </Stack.Navigator>
   );
 }

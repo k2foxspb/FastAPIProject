@@ -20,7 +20,9 @@ export const MAX_TRIGGERS = Platform.OS === 'ios' ? 60 : 300;
 export const TEST_TRIGGER_ID = `${TRIGGER_PREFIX}test`;
 const RESCHEDULE_DELAY_MS = 1500;
 // Изменения этих сущностей влияют на окно напоминаний
-const RELEVANT = new Set(['event', 'event_occurrence', 'reminder', 'tracker', 'tracker_value', 'settings']);
+const RELEVANT = new Set([
+  'event', 'event_occurrence', 'reminder', 'tracker', 'tracker_value', 'settings', 'meal_type', 'food_entry',
+]);
 
 const isJournalTrigger = (id) => typeof id === 'string' && id.startsWith(TRIGGER_PREFIX);
 const isManagedTrigger = (id) => isJournalTrigger(id) && !id.endsWith(SNOOZE_SUFFIX) && id !== TEST_TRIGGER_ID;
@@ -111,7 +113,19 @@ const loadPlanInput = async (now) => {
     )).forEach((v) => trackerValueKeys.add(`${v.tracker_uuid}:${v.value_date}`));
   }
 
-  return { reminders, events, overrides, trackers, trackerValueKeys, timezone };
+  // Приёмы пищи с напоминанием и дни, когда за них уже есть записи о еде
+  const mealTypes = (await db.getAllAsync('SELECT * FROM meal_types WHERE reminder_enabled = 1'))
+    .map((r) => rowToObject('meal_type', r));
+  const mealEntryKeys = new Set();
+  if (mealTypes.length) {
+    (await db.getAllAsync(
+      `SELECT DISTINCT meal_type_uuid, entry_date FROM food_entries
+       WHERE meal_type_uuid IS NOT NULL AND entry_date BETWEEN ? AND ?`,
+      [from, addDays(today, 1)],
+    )).forEach((e) => mealEntryKeys.add(`${e.meal_type_uuid}:${e.entry_date}`));
+  }
+
+  return { reminders, events, overrides, trackers, trackerValueKeys, mealTypes, mealEntryKeys, timezone };
 };
 
 // ---------------------------------------------------------------- пересчёт окна

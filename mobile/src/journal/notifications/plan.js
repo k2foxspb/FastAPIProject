@@ -3,6 +3,8 @@
 // Напоминание события срабатывает за offset_min до каждого экземпляра события
 // (для событий «весь день» - от time_of_day напоминания, по умолчанию 09:00).
 // Напоминание трекера - в time_of_day по своему правилу (по умолчанию каждый день).
+// Напоминание приёма пищи - каждый день в default_time типа приёма пищи (reminder_enabled),
+// если за этот приём в этот день ещё нет записей о еде.
 // ID триггера детерминированный: jr:<reminderUuid>:<YYYYMMDDHHmm исходного экземпляра>,
 // поэтому пересчёт окна не создаёт дублей.
 import { expandEvent, iterDates } from '../utils/recurrence';
@@ -10,6 +12,8 @@ import { localToUtc } from '../utils/tz';
 import { addDays, compareKeys, formatDateRu, normalizeTime } from '../utils/dates';
 
 export const TRIGGER_PREFIX = 'jr:';
+// Ключ напоминания приёма пищи в ID триггера (отдельной сущности reminder у него нет)
+export const mealReminderKey = (mealTypeUuid) => `meal-${mealTypeUuid}`;
 export const SNOOZE_SUFFIX = ':snooze';
 export const DEFAULT_ALL_DAY_TIME = '09:00';
 const MINUTE = 60000;
@@ -50,6 +54,8 @@ const offsetText = (min) => {
  * @param {object} p.overrides - { event_uuid: { 'YYYY-MM-DD': occurrence } }
  * @param {object} p.trackers - { uuid: tracker }
  * @param {Set} p.trackerValueKeys - 'tracker_uuid:YYYY-MM-DD' дней, где значение уже записано
+ * @param {Array} p.mealTypes - типы приёмов пищи (uuid, name, default_time, reminder_enabled)
+ * @param {Set} p.mealEntryKeys - 'meal_type_uuid:YYYY-MM-DD' дней, где еда уже записана
  * @param {string} p.timezone - часовой пояс журнала (IANA)
  * @param {number} p.now - текущий момент (ms)
  * @param {number} p.windowDays - размер окна в днях
@@ -58,6 +64,7 @@ const offsetText = (min) => {
  */
 export const planReminderTriggers = ({
   reminders, events, overrides = {}, trackers = {}, trackerValueKeys = new Set(),
+  mealTypes = [], mealEntryKeys = new Set(),
   timezone, now, windowDays, maxCount,
 }) => {
   const today = dateKeyAt(now, timezone);
@@ -136,6 +143,32 @@ export const planReminderTriggers = ({
             date,
           },
         });
+      });
+    }
+  });
+
+  (mealTypes || []).forEach((meal) => {
+    const time = normalizeTime(meal?.default_time);
+    if (!meal || !meal.reminder_enabled || !time) return;
+    const key = mealReminderKey(meal.uuid);
+    for (let i = -1; i <= windowDays + 1; i += 1) {
+      const date = addDays(today, i);
+      // За этот приём пищи уже есть запись - напоминать не нужно
+      if (mealEntryKeys.has(`${meal.uuid}:${date}`)) continue;
+      push({
+        id: triggerId(key, date, time),
+        fireAt: localToUtc(date, time, timezone).getTime(),
+        reminderUuid: key,
+        targetType: 'meal',
+        title: meal.name,
+        body: `Пора поесть · ${time}. Не забудьте записать, что съели`,
+        data: {
+          kind: 'journal_reminder',
+          reminder_uuid: key,
+          target_type: 'meal',
+          meal_type_uuid: meal.uuid,
+          date,
+        },
       });
     }
   });

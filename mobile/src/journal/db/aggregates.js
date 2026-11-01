@@ -4,9 +4,12 @@
 // async (db, start, end) => ({ 'YYYY-MM-DD': { kcal: 1200, expense_kop: 35000 } })
 import { getJournalDb } from './database';
 import { eventsInRange } from './repos/events';
+import { kcalByDay } from './repos/diet';
 import { addDays, compareKeys } from '../utils/dates';
 
-export const DAY_TOTAL_PROVIDERS = [];
+export const DAY_TOTAL_PROVIDERS = [
+  kcalByDay, // фаза 2: ккал из записей о еде
+];
 
 const emptyDay = (date) => ({
   date, kcal: 0, expense_kop: 0, has_diary: false, tracker_count: 0, events_total: 0, events_done: 0,

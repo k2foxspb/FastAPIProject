@@ -15,6 +15,8 @@ from app.api.routers import (
     journal_sync,
     journal_calendar,
     journal_attachments,
+    journal_diet,
+    journal_ai,
 )
 
 # Основной роутер для API v1
@@ -33,6 +35,8 @@ public_routers = [
     (journal_sync.router, ["journal"]),
     (journal_calendar.router, ["journal"]),
     (journal_attachments.router, ["journal"]),
+    (journal_diet.router, ["journal"]),
+    (journal_ai.router, ["journal"]),
 ]
 
 for router, tags in public_routers:

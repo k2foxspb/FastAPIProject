@@ -70,6 +70,40 @@ export const MIGRATIONS = [
   );
   CREATE INDEX IF NOT EXISTS ix_triggers_fire ON scheduled_triggers(fire_at);
   `,
+  // 3 - диета (фаза 2): типы приёмов пищи, продукты и рецепты, записи о еде и воде
+  `
+  CREATE TABLE IF NOT EXISTS meal_types (
+    ${entityColumns},
+    name TEXT NOT NULL, default_time TEXT, icon TEXT, sort_order INTEGER DEFAULT 0, reminder_enabled INTEGER DEFAULT 0
+  );
+  CREATE TABLE IF NOT EXISTS foods (
+    ${entityColumns},
+    name TEXT NOT NULL, brand TEXT, kcal_100 REAL DEFAULT 0, protein_100 REAL DEFAULT 0, fat_100 REAL DEFAULT 0,
+    carbs_100 REAL DEFAULT 0, serving_g REAL, barcode TEXT, source TEXT DEFAULT 'manual', is_recipe INTEGER DEFAULT 0,
+    recipe_yield_g REAL, use_count INTEGER DEFAULT 0, last_used_at TEXT
+  );
+  CREATE INDEX IF NOT EXISTS ix_foods_usage ON foods(use_count DESC, last_used_at DESC);
+  CREATE INDEX IF NOT EXISTS ix_foods_barcode ON foods(barcode);
+  CREATE TABLE IF NOT EXISTS recipe_items (
+    ${entityColumns},
+    recipe_uuid TEXT NOT NULL, ingredient_uuid TEXT NOT NULL, grams REAL NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS ix_recipe_items_recipe ON recipe_items(recipe_uuid);
+  CREATE INDEX IF NOT EXISTS ix_recipe_items_ingredient ON recipe_items(ingredient_uuid);
+  CREATE TABLE IF NOT EXISTS food_entries (
+    ${entityColumns},
+    entry_date TEXT NOT NULL, entry_time TEXT, meal_type_uuid TEXT, food_uuid TEXT, name TEXT NOT NULL,
+    grams REAL NOT NULL, kcal REAL DEFAULT 0, protein REAL DEFAULT 0, fat REAL DEFAULT 0, carbs REAL DEFAULT 0, note TEXT
+  );
+  CREATE INDEX IF NOT EXISTS ix_food_entries_date ON food_entries(entry_date);
+  CREATE INDEX IF NOT EXISTS ix_food_entries_meal ON food_entries(meal_type_uuid);
+  CREATE INDEX IF NOT EXISTS ix_food_entries_food ON food_entries(food_uuid);
+  CREATE TABLE IF NOT EXISTS water_entries (
+    ${entityColumns},
+    entry_date TEXT NOT NULL, entry_time TEXT NOT NULL, amount_ml INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS ix_water_entries_date ON water_entries(entry_date);
+  `,
 ];
 
 export const runMigrations = async (db) => {

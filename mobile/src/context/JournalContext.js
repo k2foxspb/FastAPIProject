@@ -4,6 +4,7 @@ import { storage } from '../utils/storage';
 import { useNotifications } from './NotificationContext';
 import { closeJournalDb, openJournalDb, subscribeJournalChanges } from '../journal/db/database';
 import { ensureLocalSettings, getSettings } from '../journal/db/repos/settings';
+import { ensureLocalMealTypes } from '../journal/db/repos/diet';
 import { startSyncEngine, stopSyncEngine, subscribeSyncState, syncNow } from '../journal/sync/syncEngine';
 import { deviceTimeZone, todayKey } from '../journal/utils/dates';
 import notifee from '@notifee/react-native';
@@ -53,6 +54,7 @@ export const JournalProvider = ({ children }) => {
       userIdRef.current = id;
       setUserId(id);
       setSettings(await ensureLocalSettings(id));
+      await ensureLocalMealTypes(id);
       setStatus('ready');
       setDataVersion((v) => v + 1);
       startSyncEngine();

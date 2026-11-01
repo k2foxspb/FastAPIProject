@@ -37,3 +37,5 @@ class DayResponse(BaseModel):
     events: list[EventInstanceOut]
     diary_entries: list[dict[str, Any]]
     tracker_values: list[dict[str, Any]]
+    food_entries: list[dict[str, Any]] = []
+    water_ml: int = 0

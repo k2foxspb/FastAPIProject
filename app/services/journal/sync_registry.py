@@ -16,9 +16,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.journal import (
-    JournalAttachment, JournalDiaryEntry, JournalEvent, JournalEventOccurrence, JournalReminder,
-    JournalSettings, JournalTracker, JournalTrackerValue,
+    JournalAttachment, JournalDiaryEntry, JournalEvent, JournalEventOccurrence, JournalFood,
+    JournalFoodEntry, JournalMealType, JournalRecipeItem, JournalReminder, JournalSettings,
+    JournalTracker, JournalTrackerValue, JournalWaterEntry,
 )
+from app.schemas.journal.diet import FoodData, FoodEntryData, MealTypeData, RecipeItemData, WaterEntryData
 from app.schemas.journal.sync import (
     AttachmentData, DiaryEntryData, EventData, EventOccurrenceData, ReminderData, SettingsData,
     TrackerData, TrackerValueData,
@@ -33,6 +35,9 @@ class RefSpec:
     field: str      # ключ в data, например "event_uuid"
     column: str     # FK-колонка модели, например "event_id"
     target: str     # имя сущности-родителя в реестре
+    # Что делать с дочерней записью при удалении родителя: "cascade" - удалить,
+    # "set_null" - обнулить ссылку (запись о еде остаётся при удалении продукта).
+    on_delete: str = "cascade"
 
 
 @dataclass(frozen=True)
@@ -129,6 +134,17 @@ async def _validate_tracker_value(db: AsyncSession, user_id: int, existing, valu
     return None
 
 
+async def _validate_recipe_item(db: AsyncSession, user_id: int, existing, values: dict, resolved: dict) -> str | None:
+    recipe = resolved.get("recipe_uuid")
+    ingredient = resolved.get("ingredient_uuid")
+    if recipe is not None and not recipe.is_recipe:
+        return "invalid: recipe_uuid должен ссылаться на рецепт"
+    # Вложенные рецепты не поддерживаются - так не бывает циклов при расчёте КБЖУ
+    if ingredient is not None and ingredient.is_recipe:
+        return "invalid: ингредиентом не может быть другой рецепт"
+    return None
+
+
 # ---------------------------------------------------------------- регистрация фазы 1
 
 register(EntitySpec(
@@ -153,10 +169,33 @@ register(EntitySpec(
     name="tracker_value", model=JournalTrackerValue, schema=TrackerValueData, order=30,
     refs=[RefSpec("tracker_uuid", "tracker_id", "tracker")], validate=_validate_tracker_value,
 ))
+
+# ---------------------------------------------------------------- регистрация фазы 2 (диета)
+
+register(EntitySpec(name="meal_type", model=JournalMealType, schema=MealTypeData, order=10))
+register(EntitySpec(name="food", model=JournalFood, schema=FoodData, order=10))
+register(EntitySpec(
+    name="recipe_item", model=JournalRecipeItem, schema=RecipeItemData, order=30,
+    refs=[
+        RefSpec("recipe_uuid", "recipe_id", "food"),
+        RefSpec("ingredient_uuid", "ingredient_id", "food"),
+    ],
+    validate=_validate_recipe_item,
+))
+register(EntitySpec(
+    name="food_entry", model=JournalFoodEntry, schema=FoodEntryData, order=30,
+    refs=[
+        RefSpec("meal_type_uuid", "meal_type_id", "meal_type", on_delete="set_null"),
+        RefSpec("food_uuid", "food_id", "food", on_delete="set_null"),
+    ],
+))
+register(EntitySpec(name="water_entry", model=JournalWaterEntry, schema=WaterEntryData, order=20))
+
 register(EntitySpec(
     name="attachment", model=JournalAttachment, schema=AttachmentData, order=90,
     poly_refs=[PolyRefSpec("owner_type", "owner_uuid", {
         "diary_entry": "diary_entry", "tracker_value": "tracker_value", "event": "event",
+        "food_entry": "food_entry", "food": "food",
     })],
     ops=frozenset({"delete"}),
 ))

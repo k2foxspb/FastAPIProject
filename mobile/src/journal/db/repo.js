@@ -80,13 +80,39 @@ export const saveLocalOnly = (entity, data, uuid, extra = null) => serializeWrit
 });
 
 // Дочерние записи (как каскад на сервере): по прямым ссылкам и полиморфным.
+// Ссылки с onDelete: 'set_null' не удаляют детей, а обнуляются (сервер пришлёт то же через pull).
+const nullifyRefs = async (db, entity, uuid) => {
+  for (const childName of ENTITY_NAMES) {
+    const spec = ENTITIES[childName];
+    for (const p of spec.parents || []) {
+      if (p.entity === entity && p.onDelete === 'set_null') {
+        const rows = await db.getAllAsync(`SELECT uuid FROM ${spec.table} WHERE ${p.field} = ?`, [uuid]);
+        if (!rows.length) continue;
+        await db.runAsync(`UPDATE ${spec.table} SET ${p.field} = NULL WHERE ${p.field} = ?`, [uuid]);
+        // Неотправленные правки детей не должны ссылаться на удалённую запись (иначе missing_ref)
+        for (const { uuid: childUuid } of rows) {
+          const pending = await db.getFirstAsync(
+            'SELECT op FROM outbox WHERE entity = ? AND uuid = ?', [childName, childUuid],
+          );
+          if (pending?.op !== 'upsert') continue;
+          const row = await db.getFirstAsync(`SELECT * FROM ${spec.table} WHERE uuid = ?`, [childUuid]);
+          await db.runAsync(
+            'UPDATE outbox SET payload = ? WHERE entity = ? AND uuid = ?',
+            [JSON.stringify(rowToPayload(childName, row)), childName, childUuid],
+          );
+        }
+      }
+    }
+  }
+};
+
 const collectChildren = async (db, entity, uuid) => {
   const result = [];
   for (const childName of ENTITY_NAMES) {
     const spec = ENTITIES[childName];
     const fields = [];
     (spec.parents || []).forEach((p) => {
-      if (p.entity === entity) fields.push(p.field);
+      if (p.entity === entity && p.onDelete !== 'set_null') fields.push(p.field);
     });
     if (spec.polyParents) fields.push(spec.polyParents.uuidField);
     for (const field of fields) {
@@ -98,6 +124,7 @@ const collectChildren = async (db, entity, uuid) => {
 };
 
 const removeLocal = async (db, entity, uuid, removedFiles) => {
+  await nullifyRefs(db, entity, uuid);
   const children = await collectChildren(db, entity, uuid);
   for (const child of children) {
     await removeLocal(db, child.entity, child.row.uuid, removedFiles);

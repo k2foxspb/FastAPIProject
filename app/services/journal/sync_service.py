@@ -154,6 +154,12 @@ async def _cascade_delete(db: AsyncSession, user_id: int, state: JournalSyncStat
             )
         )).scalars().all()
         for child in children:
+            if ref.on_delete == "set_null":
+                # Запись остаётся, ссылка обнуляется; новая ревизия доставит это клиентам
+                setattr(child, ref.column, None)
+                child.updated_at = now
+                child.server_rev = next_rev(state)
+                continue
             await _soft_delete(db, user_id, state, child_spec, child, now, now, deleted_files)
 
     for child_spec, poly, type_value in poly_children_of(spec.name):
@@ -308,7 +314,9 @@ async def push(db: AsyncSession, user_id: int, request: SyncPushRequest) -> Sync
 async def pull(db: AsyncSession, user_id: int, since: int, limit: int) -> SyncPullResponse:
     limit = max(1, min(limit, config.JOURNAL_SYNC_PULL_MAX_LIMIT))
 
-    if since == 0 and await seed.ensure_seed(db, user_id):
+    # Полная синхронизация создаёт стартовые наборы; обычный pull только досоздаёт наборы новых
+    # фаз у уже синхронизированных клиентов (если версия актуальна - это один SELECT).
+    if await seed.ensure_seed(db, user_id, only_upgrade=since != 0):
         await db.commit()
 
     state = (await db.execute(

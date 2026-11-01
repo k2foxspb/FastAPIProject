@@ -57,6 +57,40 @@ export const ENTITIES = {
     },
     parents: [{ field: 'tracker_uuid', entity: 'tracker' }],
   },
+  // ---- фаза 2: диета
+  meal_type: {
+    table: 'meal_types',
+    fields: { name: 'text', default_time: 'time', icon: 'text', sort_order: 'int', reminder_enabled: 'bool' },
+  },
+  food: {
+    table: 'foods',
+    fields: {
+      name: 'text', brand: 'text', kcal_100: 'real', protein_100: 'real', fat_100: 'real', carbs_100: 'real',
+      serving_g: 'real', barcode: 'text', source: 'text', is_recipe: 'bool', recipe_yield_g: 'real',
+      use_count: 'int', last_used_at: 'text',
+    },
+  },
+  recipe_item: {
+    table: 'recipe_items',
+    fields: { recipe_uuid: 'text', ingredient_uuid: 'text', grams: 'real' },
+    parents: [{ field: 'recipe_uuid', entity: 'food' }, { field: 'ingredient_uuid', entity: 'food' }],
+  },
+  food_entry: {
+    table: 'food_entries',
+    fields: {
+      entry_date: 'text', entry_time: 'time', meal_type_uuid: 'text', food_uuid: 'text', name: 'text', grams: 'real',
+      kcal: 'real', protein: 'real', fat: 'real', carbs: 'real', note: 'text',
+    },
+    // Удаление продукта или типа приёма пищи не удаляет записи о еде - ссылка обнуляется
+    parents: [
+      { field: 'meal_type_uuid', entity: 'meal_type', onDelete: 'set_null' },
+      { field: 'food_uuid', entity: 'food', onDelete: 'set_null' },
+    ],
+  },
+  water_entry: {
+    table: 'water_entries',
+    fields: { entry_date: 'text', entry_time: 'time', amount_ml: 'int' },
+  },
   // Вложения создаются загрузкой файла (uploader.js), через sync - только удаление.
   attachment: {
     table: 'attachments',

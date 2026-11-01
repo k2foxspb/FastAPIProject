@@ -14,14 +14,19 @@ from loguru import logger
 from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.journal import JournalDiaryEntry, JournalEvent, JournalEventOccurrence, JournalTrackerValue
+from app.models.journal import (
+    JournalDiaryEntry, JournalEvent, JournalEventOccurrence, JournalFoodEntry, JournalTrackerValue, JournalWaterEntry,
+)
 from app.schemas.journal.calendar import CalendarDay, CalendarMonthResponse, DayResponse, EventInstanceOut
+from app.services.journal import nutrition
 from app.services.journal.recurrence import EventInstance, expand_event
 from app.services.journal.sync_registry import REGISTRY
 from app.services.journal.sync_service import serialize_rows
 
 DayTotalsProvider = Callable[[AsyncSession, int, date, date], Awaitable[dict[date, dict[str, int]]]]
-DAY_TOTAL_PROVIDERS: list[DayTotalsProvider] = []
+DAY_TOTAL_PROVIDERS: list[DayTotalsProvider] = [
+    nutrition.kcal_by_day,  # фаза 2: ккал из записей о еде
+]
 
 
 def month_bounds(year: int, month: int) -> tuple[date, date]:
@@ -149,10 +154,30 @@ async def day_details(db: AsyncSession, user_id: int, day: date) -> DayResponse:
     for row, data in zip(value_rows, values):
         data["client_uuid"] = row.client_uuid
 
+    food_rows = (await db.execute(
+        select(JournalFoodEntry).where(
+            JournalFoodEntry.user_id == user_id,
+            JournalFoodEntry.deleted_at.is_(None),
+            JournalFoodEntry.entry_date == day,
+        ).order_by(JournalFoodEntry.entry_time, JournalFoodEntry.id)
+    )).scalars().all()
+    food = await serialize_rows(db, REGISTRY["food_entry"], food_rows)
+    for row, data in zip(food_rows, food):
+        data["client_uuid"] = row.client_uuid
+    water_rows = (await db.execute(
+        select(JournalWaterEntry).where(
+            JournalWaterEntry.user_id == user_id,
+            JournalWaterEntry.deleted_at.is_(None),
+            JournalWaterEntry.entry_date == day,
+        )
+    )).scalars().all()
+
     return DayResponse(
         date=day,
         summary=summary,
         events=[EventInstanceOut(**inst.__dict__) for inst in instances],
         diary_entries=diary,
         tracker_values=values,
+        food_entries=food,
+        water_ml=sum(row.amount_ml for row in water_rows),
     )

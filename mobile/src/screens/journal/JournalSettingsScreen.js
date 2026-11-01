@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import { Ionicons as Icon } from '@expo/vector-icons';
 import { useJournal, useJournalQuery } from '../../context/JournalContext';
 import { Chip, Field, Input, JournalGate, PrimaryButton, Section, useColors } from '../../components/journal/common';
@@ -41,6 +42,7 @@ const SettingsContent = () => {
   const [tz, setTz] = useState(settings?.timezone || deviceTimeZone());
   const { data: rejected } = useJournalQuery(() => listRejectedChanges(), [syncState.status]);
   const device = deviceTimeZone();
+  const navigation = useNavigation();
 
   useEffect(() => {
     if (settings?.timezone) setTz(settings.timezone);
@@ -104,6 +106,34 @@ const SettingsContent = () => {
           </View>
         </Section>
       )}
+
+      <Section title="Питание">
+        <TouchableOpacity style={styles.row} onPress={() => navigation.navigate('NutritionGoals')}>
+          <Icon name="flag-outline" size={20} color={colors.primary} />
+          <Text style={[styles.rowText, { color: colors.text }]}>Цели по КБЖУ и воде</Text>
+          <Icon name="chevron-forward" size={18} color={colors.textSecondary} />
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.row} onPress={() => navigation.navigate('MealTypes')}>
+          <Icon name="restaurant-outline" size={20} color={colors.primary} />
+          <Text style={[styles.rowText, { color: colors.text }]}>Приёмы пищи и напоминания</Text>
+          <Icon name="chevron-forward" size={18} color={colors.textSecondary} />
+        </TouchableOpacity>
+      </Section>
+
+      <Section title="Напоминания">
+        <TouchableOpacity style={styles.row} onPress={() => navigation.navigate('ReminderDiagnostics')}>
+          <Icon name="notifications-outline" size={20} color={colors.primary} />
+          <Text style={[styles.rowText, { color: colors.text }]}>Проверка напоминаний</Text>
+          <Icon name="chevron-forward" size={18} color={colors.textSecondary} />
+        </TouchableOpacity>
+        {Platform.OS === 'android' && (
+          <TouchableOpacity style={styles.row} onPress={() => navigation.navigate('BatteryHelp')}>
+            <Icon name="battery-charging-outline" size={20} color={colors.primary} />
+            <Text style={[styles.rowText, { color: colors.text }]}>Экономия батареи</Text>
+            <Icon name="chevron-forward" size={18} color={colors.textSecondary} />
+          </TouchableOpacity>
+        )}
+      </Section>
 
       <Section title="Часовой пояс">
         <Text style={[styles.note, { color: colors.textSecondary }]}>

@@ -2,23 +2,28 @@ import React, { useCallback, useLayoutEffect, useMemo, useState } from 'react';
 import { Alert, FlatList, Modal, SectionList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons as Icon } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { useJournalQuery } from '../../context/JournalContext';
+import { useJournal, useJournalQuery } from '../../context/JournalContext';
 import { EmptyState, JournalGate, MOODS, SyncBadge, useColors } from '../../components/journal/common';
 import TrackerValueModal from '../../components/journal/TrackerValueModal';
 import { cancelInstance, eventsInRange, setInstanceStatus } from '../../journal/db/repos/events';
 import { listDiaryByDate } from '../../journal/db/repos/diary';
 import { deleteTrackerValue, formatTrackerValue, listTrackers, listValuesByDate } from '../../journal/db/repos/trackers';
 import { addDays, formatDateRu, formatTime } from '../../journal/utils/dates';
+import { addWater, guessMealType, loadDietDay } from '../../journal/db/repos/diet';
+import { formatAmount } from '../../journal/utils/nutrition';
 
 const KIND_ICONS = { meal: 'restaurant-outline', payment: 'card-outline', note: 'document-text-outline', tracker: 'pulse-outline', custom: 'star-outline' };
 
 const loadDay = async (date) => {
-  const [events, diary, values] = await Promise.all([eventsInRange(date, date), listDiaryByDate(date), listValuesByDate(date)]);
-  return { events, diary, values };
+  const [events, diary, values, diet] = await Promise.all([
+    eventsInRange(date, date), listDiaryByDate(date), listValuesByDate(date), loadDietDay(date),
+  ]);
+  return { events, diary, values, diet };
 };
 
 const DayContent = ({ navigation, date }) => {
   const colors = useColors();
+  const { settings } = useJournal();
   const { data } = useJournalQuery(() => loadDay(date), [date]);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [valueModal, setValueModal] = useState(null); // { tracker, value }
@@ -26,7 +31,9 @@ const DayContent = ({ navigation, date }) => {
 
   const sections = useMemo(() => {
     if (!data) return [];
+    const hasDiet = data.diet.entries.length > 0 || data.diet.waterMl > 0;
     return [
+      { key: 'diet', title: 'Питание', data: hasDiet ? [data.diet] : [] },
       { key: 'events', title: 'События', data: data.events },
       { key: 'diary', title: 'Дневник', data: data.diary },
       { key: 'values', title: 'Трекеры', data: data.values },
@@ -59,6 +66,23 @@ const DayContent = ({ navigation, date }) => {
   }, [trackers]);
 
   const renderItem = ({ item, section }) => {
+    if (section.key === 'diet') {
+      return (
+        <TouchableOpacity style={[styles.item, { backgroundColor: colors.card }]} onPress={() => navigation.navigate('DietDay', { date })}>
+          <Icon name="restaurant-outline" size={22} color={colors.primary} />
+          <View style={styles.itemBody}>
+            <Text style={[styles.itemTitle, { color: colors.text }]}>
+              {formatAmount(item.totals.kcal, 0)} ккал{settings?.kcal_goal ? ` из ${settings.kcal_goal}` : ''}
+            </Text>
+            <Text style={[styles.itemSub, { color: colors.textSecondary }]}>
+              {item.entries.length} зап. · Б {formatAmount(item.totals.protein)} · Ж {formatAmount(item.totals.fat)} · У {formatAmount(item.totals.carbs)}
+              {item.waterMl ? ` · вода ${(item.waterMl / 1000).toFixed(2).replace('.', ',')} л` : ''}
+            </Text>
+          </View>
+          <Icon name="chevron-forward" size={18} color={colors.textSecondary} />
+        </TouchableOpacity>
+      );
+    }
     if (section.key === 'events') {
       const done = item.status === 'done';
       const skipped = item.status === 'skipped';
@@ -103,6 +127,21 @@ const DayContent = ({ navigation, date }) => {
 
   const footer = (
     <View style={styles.actions}>
+      <ActionButton
+        colors={colors}
+        icon="restaurant-outline"
+        label="Еда"
+        onPress={() => navigation.navigate('FoodSearch', { date, mealTypeUuid: guessMealType(data?.diet?.mealTypes)?.uuid || null })}
+      />
+      <ActionButton
+        colors={colors}
+        icon="water-outline"
+        label="+250 мл"
+        onPress={() => {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
+          addWater(date, 250);
+        }}
+      />
       <ActionButton colors={colors} icon="add-circle-outline" label="Событие" onPress={() => navigation.navigate('EventEdit', { date })} />
       <ActionButton colors={colors} icon="book-outline" label="Запись" onPress={() => navigation.navigate('DiaryEdit', { date })} />
       <ActionButton colors={colors} icon="pulse-outline" label="Трекер" onPress={() => setPickerOpen(true)} />
@@ -214,7 +253,7 @@ const styles = StyleSheet.create({
   strike: { textDecorationLine: 'line-through', opacity: 0.6 },
   value: { fontSize: 15, fontWeight: '600' },
   actions: { flexDirection: 'row', marginHorizontal: 8, marginTop: 16 },
-  action: { flex: 1, marginHorizontal: 4, alignItems: 'center', paddingVertical: 12, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth },
+  action: { flex: 1, marginHorizontal: 3, alignItems: 'center', paddingVertical: 12, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth },
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'center', padding: 24 },
   picker: { borderRadius: 16, paddingVertical: 8, maxHeight: '70%' },
   pickerTitle: { fontSize: 17, fontWeight: '600', paddingHorizontal: 16, paddingVertical: 8 },
