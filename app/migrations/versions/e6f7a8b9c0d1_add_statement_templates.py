@@ -53,10 +53,11 @@ def upgrade() -> None:
     # (app/models/statements.py: Statement.template_id).
     statement_columns = {c['name'] for c in inspector.get_columns('statements')} if 'statements' in existing_tables else set()
     if 'statements' in existing_tables and 'template_id' not in statement_columns:
-        op.add_column(
-            'statements',
-            sa.Column('template_id', sa.Integer(), sa.ForeignKey('statement_templates.id', ondelete='SET NULL'), nullable=True),
-        )
+        with op.batch_alter_table('statements') as batch_op:
+            batch_op.add_column(sa.Column('template_id', sa.Integer(), nullable=True))
+            batch_op.create_foreign_key(
+                None, 'statement_templates', ['template_id'], ['id'], ondelete='SET NULL'
+            )
 
 
 def downgrade() -> None:
@@ -67,7 +68,8 @@ def downgrade() -> None:
     if 'statements' in existing_tables:
         statement_columns = {c['name'] for c in inspector.get_columns('statements')}
         if 'template_id' in statement_columns:
-            op.drop_column('statements', 'template_id')
+            with op.batch_alter_table('statements') as batch_op:
+                batch_op.drop_column('template_id')
 
     if 'statement_template_recipients' in existing_tables:
         op.drop_table('statement_template_recipients')

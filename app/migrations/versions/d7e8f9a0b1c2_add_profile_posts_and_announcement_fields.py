@@ -23,21 +23,24 @@ def upgrade() -> None:
 
     # 1. Update announcements table if columns are missing
     if 'announcements' in existing_tables:
-        existing_columns = [col['name'] for col in inspector.get_columns('announcements')]
-        if 'priority' not in existing_columns:
-            op.add_column('announcements', sa.Column('priority', sa.String(length=20), server_default='normal', nullable=False))
-        if 'target_type' not in existing_columns:
-            op.add_column('announcements', sa.Column('target_type', sa.String(length=50), nullable=True))
-        if 'target_workshop_id' not in existing_columns:
-            op.add_column('announcements', sa.Column('target_workshop_id', sa.Integer(), sa.ForeignKey('workshops.id', ondelete='SET NULL'), nullable=True))
-        if 'target_section_id' not in existing_columns:
-            op.add_column('announcements', sa.Column('target_section_id', sa.Integer(), sa.ForeignKey('sections.id', ondelete='SET NULL'), nullable=True))
-        if 'target_role' not in existing_columns:
-            op.add_column('announcements', sa.Column('target_role', sa.String(length=50), nullable=True))
-        if 'expires_at' not in existing_columns:
-            op.add_column('announcements', sa.Column('expires_at', sa.DateTime(timezone=True), nullable=True))
-        if 'is_active' not in existing_columns:
-            op.add_column('announcements', sa.Column('is_active', sa.Boolean(), server_default=sa.true(), nullable=False))
+        existing_columns = {col['name'] for col in inspector.get_columns('announcements')}
+        with op.batch_alter_table('announcements') as batch_op:
+            if 'priority' not in existing_columns:
+                batch_op.add_column(sa.Column('priority', sa.String(length=20), server_default='normal', nullable=False))
+            if 'target_type' not in existing_columns:
+                batch_op.add_column(sa.Column('target_type', sa.String(length=50), nullable=True))
+            if 'target_workshop_id' not in existing_columns:
+                batch_op.add_column(sa.Column('target_workshop_id', sa.Integer(), nullable=True))
+                batch_op.create_foreign_key(None, 'workshops', ['target_workshop_id'], ['id'], ondelete='SET NULL')
+            if 'target_section_id' not in existing_columns:
+                batch_op.add_column(sa.Column('target_section_id', sa.Integer(), nullable=True))
+                batch_op.create_foreign_key(None, 'sections', ['target_section_id'], ['id'], ondelete='SET NULL')
+            if 'target_role' not in existing_columns:
+                batch_op.add_column(sa.Column('target_role', sa.String(length=50), nullable=True))
+            if 'expires_at' not in existing_columns:
+                batch_op.add_column(sa.Column('expires_at', sa.DateTime(timezone=True), nullable=True))
+            if 'is_active' not in existing_columns:
+                batch_op.add_column(sa.Column('is_active', sa.Boolean(), server_default=sa.true(), nullable=False))
 
     # 2. Update announcement_recipients table
     if 'announcement_recipients' in existing_tables:
@@ -105,3 +108,13 @@ def downgrade() -> None:
         op.drop_table('profile_post_comments')
     if 'profile_posts' in existing_tables:
         op.drop_table('profile_posts')
+
+    if 'announcements' in existing_tables:
+        removable = {
+            'priority', 'target_type', 'target_workshop_id', 'target_section_id',
+            'target_role', 'expires_at', 'is_active',
+        } & {column['name'] for column in inspector.get_columns('announcements')}
+        if removable:
+            with op.batch_alter_table('announcements') as batch_op:
+                for column in sorted(removable):
+                    batch_op.drop_column(column)

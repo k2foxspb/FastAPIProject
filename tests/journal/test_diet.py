@@ -80,7 +80,7 @@ async def test_existing_user_gets_meal_types_on_regular_pull(client, session_mak
 
     changes, _ = await pull_all(client, since=cursor)
     settings = next(c for c in changes if c["entity"] == "settings")
-    assert settings["data"]["seed_version"] == 2
+    assert settings["data"]["seed_version"] == 3
     # Удалённый пользователем стартовый тип не воскрешается
     alive = [c for c in changes if c["entity"] == "meal_type" and c["deleted_at"] is None]
     assert deleted_uuid not in {c["client_uuid"] for c in alive}
