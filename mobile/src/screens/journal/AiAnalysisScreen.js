@@ -17,11 +17,11 @@ const PERIOD_OPTIONS = [
   { key: 'month', label: '30 дней', days: 30 },
 ];
 
-const Content = () => {
+const Content = ({ initialAreas }) => {
   const colors = useColors();
   const { timezone } = useJournal();
   const [period, setPeriod] = useState('week');
-  const [areas, setAreas] = useState(AREA_OPTIONS.map((a) => a.key));
+  const [areas, setAreas] = useState(initialAreas || AREA_OPTIONS.map((a) => a.key));
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
 
@@ -108,10 +108,10 @@ const Content = () => {
   );
 };
 
-export default function AiAnalysisScreen({ navigation }) {
+export default function AiAnalysisScreen({ navigation, route }) {
   return (
     <JournalGate navigation={navigation}>
-      <Content />
+      <Content initialAreas={route.params?.areas} />
     </JournalGate>
   );
 }

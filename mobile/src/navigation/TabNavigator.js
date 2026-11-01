@@ -43,7 +43,6 @@ import EventEditScreen from '../screens/journal/EventEditScreen';
 import DiaryListScreen from '../screens/journal/DiaryListScreen';
 import DiaryEditScreen from '../screens/journal/DiaryEditScreen';
 import TrackersScreen from '../screens/journal/TrackersScreen';
-import TrackerEditScreen from '../screens/journal/TrackerEditScreen';
 import TrackerDetailScreen from '../screens/journal/TrackerDetailScreen';
 import JournalSettingsScreen from '../screens/journal/JournalSettingsScreen';
 import HealthImportScreen from '../screens/journal/HealthImportScreen';
@@ -304,7 +303,6 @@ function JournalStack() {
         <Stack.Screen name="DiaryList" component={DiaryListScreen} options={{ title: 'Дневник' }} />
         <Stack.Screen name="DiaryEdit" component={DiaryEditScreen} options={{ title: 'Запись' }} />
         <Stack.Screen name="Trackers" component={TrackersScreen} options={{ title: 'Трекеры' }} />
-        <Stack.Screen name="TrackerEdit" component={TrackerEditScreen} options={{ title: 'Трекер' }} />
         <Stack.Screen name="TrackerDetail" component={TrackerDetailScreen} options={{ title: 'Трекер' }} />
         <Stack.Screen name="JournalSettings" component={JournalSettingsScreen} options={{ title: 'Настройки журнала' }} />
         <Stack.Screen name="HealthImport" component={HealthImportScreen} options={{ title: 'Здоровье' }} />

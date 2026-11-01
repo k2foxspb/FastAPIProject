@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { formatKop } from '../../journal/utils/money';
 import { accountBalances, listBudgets, listTransactions } from '../../journal/db/repos/finance';
 import { EmptyState, JournalGate, Section, useColors } from '../../components/journal/common';
@@ -22,6 +22,12 @@ function Content({ navigation }) {
   const { data: budgets } = useJournalQuery(() => listBudgets(month), [month]);
   const [limit, setLimit] = useState(PAGE);
   const { data: transactions } = useJournalQuery(() => listTransactions({ limit }), [limit]);
+  const addFinance = () => Alert.alert('Добавить', 'Что создать?', [
+    { text: 'Расход', onPress: () => navigation.navigate('TransactionEdit', { direction: 'expense' }) },
+    { text: 'Доход', onPress: () => navigation.navigate('TransactionEdit', { direction: 'income' }) },
+    { text: 'Бюджет', onPress: () => navigation.navigate('Budgets') },
+    { text: 'Отмена', style: 'cancel' },
+  ]);
   return (
     <ScrollView style={{ backgroundColor: colors.background }} contentContainerStyle={{ paddingBottom: 32 }}>
       <Section title="Счета">
@@ -32,9 +38,9 @@ function Content({ navigation }) {
           </View>
         ))}
       </Section>
-      <TouchableOpacity onPress={() => navigation.navigate('TransactionEdit', { direction: 'expense' })}
+      <TouchableOpacity onPress={addFinance}
         style={{ margin: 16, padding: 15, alignItems: 'center', borderRadius: 12, backgroundColor: colors.primary }}>
-        <Text style={{ color: '#fff', fontWeight: '700' }}>＋ Расход</Text>
+        <Text style={{ color: '#fff', fontWeight: '700' }}>＋ Добавить</Text>
       </TouchableOpacity>
       <Section title="Финансы">
         {LINKS.map(([screen, title]) => (

@@ -1,14 +1,13 @@
 import React, { useCallback, useLayoutEffect, useMemo, useState } from 'react';
-import { Alert, FlatList, Modal, SectionList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, SectionList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons as Icon } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useJournal, useJournalQuery } from '../../context/JournalContext';
 import { EmptyState, JournalGate, MOODS, SyncBadge, useColors } from '../../components/journal/common';
 import ShareButton from '../../components/journal/ShareButton';
-import TrackerValueModal from '../../components/journal/TrackerValueModal';
 import { cancelInstance, eventsInRange, setInstanceStatus } from '../../journal/db/repos/events';
 import { listDiaryByDate } from '../../journal/db/repos/diary';
-import { deleteTrackerValue, formatTrackerValue, listTrackers, listValuesByDate } from '../../journal/db/repos/trackers';
+import { formatTrackerValue, listValuesByDate } from '../../journal/db/repos/trackers';
 import { addDays, formatDateRu, formatTime } from '../../journal/utils/dates';
 import { addWater, guessMealType, loadDietDay } from '../../journal/db/repos/diet';
 import { formatAmount } from '../../journal/utils/nutrition';
@@ -30,9 +29,6 @@ const DayContent = ({ navigation, date }) => {
   const colors = useColors();
   const { settings } = useJournal();
   const { data } = useJournalQuery(() => loadDay(date), [date]);
-  const [pickerOpen, setPickerOpen] = useState(false);
-  const [valueModal, setValueModal] = useState(null); // { tracker, value }
-  const { data: trackers } = useJournalQuery(() => listTrackers(), []);
 
   const sections = useMemo(() => {
     if (!data) return [];
@@ -63,13 +59,6 @@ const DayContent = ({ navigation, date }) => {
     Alert.alert(inst.title, null, buttons);
   }, [navigation]);
 
-  const valueMenu = useCallback((value) => {
-    Alert.alert(value.tracker_name, null, [
-      { text: 'Изменить', onPress: () => setValueModal({ tracker: trackers?.find((t) => t.uuid === value.tracker_uuid), value }) },
-      { text: 'Удалить', style: 'destructive', onPress: () => deleteTrackerValue(value.uuid) },
-      { text: 'Отмена', style: 'cancel' },
-    ]);
-  }, [trackers]);
 
   const renderItem = ({ item, section }) => {
     if (section.key === 'diet') {
@@ -135,14 +124,14 @@ const DayContent = ({ navigation, date }) => {
       );
     }
     return (
-      <TouchableOpacity style={[styles.item, { backgroundColor: colors.card }]} onPress={() => valueMenu(item)}>
+      <View style={[styles.item, { backgroundColor: colors.card }]}>
         <Icon name={item.tracker_icon || 'pulse-outline'} size={22} color={item.tracker_color || colors.primary} />
         <View style={styles.itemBody}>
           <Text style={[styles.itemTitle, { color: colors.text }]}>{item.tracker_name}</Text>
           {!!item.note && <Text style={[styles.itemSub, { color: colors.textSecondary }]} numberOfLines={1}>{item.note}</Text>}
         </View>
         <Text style={[styles.value, { color: colors.text }]}>{formatTrackerValue(item, item)}</Text>
-      </TouchableOpacity>
+      </View>
     );
   };
 
@@ -165,7 +154,6 @@ const DayContent = ({ navigation, date }) => {
       />
       <ActionButton colors={colors} icon="add-circle-outline" label="Событие" onPress={() => navigation.navigate('EventEdit', { date })} />
       <ActionButton colors={colors} icon="book-outline" label="Запись" onPress={() => navigation.navigate('DiaryEdit', { date })} />
-      <ActionButton colors={colors} icon="pulse-outline" label="Трекер" onPress={() => setPickerOpen(true)} />
       <ActionButton colors={colors} icon="remove-circle-outline" label="Расход" onPress={() => navigation.navigate('TransactionEdit', { direction: 'expense', date })} />
     </View>
   );
@@ -194,55 +182,13 @@ const DayContent = ({ navigation, date }) => {
           <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>{section.title}</Text>
         )}
         ListEmptyComponent={data ? (
-          <EmptyState icon="calendar-clear-outline" title="В этот день пока пусто" subtitle="Добавьте событие, запись дневника или значение трекера" />
+          <EmptyState icon="calendar-clear-outline" title="В этот день пока пусто" subtitle="Добавьте событие или запись дневника" />
         ) : null}
         ListFooterComponent={<View>{footer}{shareRow}</View>}
         stickySectionHeadersEnabled={false}
         contentContainerStyle={{ paddingBottom: 32 }}
       />
 
-      <Modal visible={pickerOpen} transparent animationType="fade" onRequestClose={() => setPickerOpen(false)}>
-        <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={() => setPickerOpen(false)}>
-          <View style={[styles.picker, { backgroundColor: colors.card }]}>
-            <Text style={[styles.pickerTitle, { color: colors.text }]}>Какой трекер?</Text>
-            <FlatList
-              data={trackers || []}
-              keyExtractor={(t) => t.uuid}
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  style={styles.pickerRow}
-                  onPress={() => {
-                    setPickerOpen(false);
-                    setValueModal({ tracker: item, value: null });
-                  }}
-                >
-                  <Icon name={item.icon || 'pulse-outline'} size={20} color={item.color || colors.primary} />
-                  <Text style={[styles.pickerText, { color: colors.text }]}>{item.name}</Text>
-                </TouchableOpacity>
-              )}
-              ListEmptyComponent={<Text style={{ color: colors.textSecondary, padding: 12 }}>Трекеров пока нет</Text>}
-            />
-            <TouchableOpacity
-              style={styles.pickerRow}
-              onPress={() => {
-                setPickerOpen(false);
-                navigation.navigate('TrackerEdit', {});
-              }}
-            >
-              <Icon name="add" size={20} color={colors.primary} />
-              <Text style={[styles.pickerText, { color: colors.primary }]}>Новый трекер</Text>
-            </TouchableOpacity>
-          </View>
-        </TouchableOpacity>
-      </Modal>
-
-      <TrackerValueModal
-        visible={!!valueModal}
-        tracker={valueModal?.tracker}
-        value={valueModal?.value}
-        date={date}
-        onClose={() => setValueModal(null)}
-      />
     </View>
   );
 };
@@ -290,9 +236,4 @@ const styles = StyleSheet.create({
   value: { fontSize: 15, fontWeight: '600' },
   actions: { flexDirection: 'row', marginHorizontal: 8, marginTop: 16 },
   action: { flex: 1, marginHorizontal: 3, alignItems: 'center', paddingVertical: 12, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth },
-  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'center', padding: 24 },
-  picker: { borderRadius: 16, paddingVertical: 8, maxHeight: '70%' },
-  pickerTitle: { fontSize: 17, fontWeight: '600', paddingHorizontal: 16, paddingVertical: 8 },
-  pickerRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12 },
-  pickerText: { fontSize: 16, marginLeft: 12 },
 });

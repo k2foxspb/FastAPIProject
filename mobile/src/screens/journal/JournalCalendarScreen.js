@@ -15,9 +15,8 @@ import { addWater, guessMealType, listMealTypes } from '../../journal/db/repos/d
 import { buildMonthCalendarText } from '../../journal/share/summaryText';
 
 const QUICK_ACTIONS = [
-  { key: 'expense', icon: 'remove-circle-outline', label: 'Расход' },
+  { key: 'finance', icon: 'wallet-outline', label: 'Финансы' },
   { key: 'food', icon: 'restaurant-outline', label: 'Еда' },
-  { key: 'water', icon: 'water-outline', label: '+250 мл' },
   { key: 'event', icon: 'add-circle-outline', label: 'Событие' },
   { key: 'diary', icon: 'book-outline', label: 'Дневник' },
   { key: 'tracker', icon: 'pulse-outline', label: 'Трекер' },
@@ -62,6 +61,7 @@ const CalendarContent = ({ navigation }) => {
 
   const runQuick = async (key, date) => {
     if (key === 'expense') navigation.navigate('TransactionEdit', { direction: 'expense', date });
+    if (key === 'finance') navigation.navigate('FinanceHome');
     if (key === 'food') {
       // Приём пищи по текущему времени - добавление в 2-3 тапа
       const meal = guessMealType(await listMealTypes());

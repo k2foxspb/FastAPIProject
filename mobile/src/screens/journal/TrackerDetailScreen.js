@@ -1,11 +1,9 @@
 import React, { useLayoutEffect, useMemo, useState } from 'react';
-import { Alert, FlatList, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
+import { Alert, FlatList, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { LineChart } from 'react-native-gifted-charts';
-import { Ionicons as Icon } from '@expo/vector-icons';
 import { useJournal, useJournalQuery } from '../../context/JournalContext';
 import { Chip, EmptyState, HeaderButton, JournalGate, Section, useColors } from '../../components/journal/common';
-import TrackerValueModal from '../../components/journal/TrackerValueModal';
-import { deleteTrackerValue, formatTrackerValue, getTracker, listTrackerValues } from '../../journal/db/repos/trackers';
+import { deleteTracker, formatTrackerValue, getTracker, listTrackerValues } from '../../journal/db/repos/trackers';
 import { addDays, formatDateRu, formatDateShort, formatTime } from '../../journal/utils/dates';
 
 const PERIODS = [
@@ -21,7 +19,6 @@ const TrackerDetailContent = ({ navigation, uuid }) => {
   const { today } = useJournal();
   const { width } = useWindowDimensions();
   const [period, setPeriod] = useState(30);
-  const [modal, setModal] = useState(null); // { value } | { value: null }
   const from = addDays(today, -period + 1);
 
   const { data } = useJournalQuery(async () => {
@@ -73,14 +70,6 @@ const TrackerDetailContent = ({ navigation, uuid }) => {
   const format = (n) => formatTrackerValue(tracker, { num_value: n });
   const isBool = tracker.value_type === 'bool';
   const boolDone = isBool ? data.values.filter((v) => Number(v.num_value) === 1).length : 0;
-
-  const valueMenu = (value) => {
-    Alert.alert(formatDateRu(value.value_date), formatTrackerValue(tracker, value), [
-      { text: 'Изменить', onPress: () => setModal({ value }) },
-      { text: 'Удалить', style: 'destructive', onPress: () => deleteTrackerValue(value.uuid) },
-      { text: 'Отмена', style: 'cancel' },
-    ]);
-  };
 
   const header = (
     <View>
@@ -158,7 +147,7 @@ const TrackerDetailContent = ({ navigation, uuid }) => {
         keyExtractor={(v) => v.uuid}
         ListHeaderComponent={header}
         renderItem={({ item }) => (
-          <TouchableOpacity style={[styles.valueRow, { backgroundColor: colors.card }]} onPress={() => valueMenu(item)}>
+          <View style={[styles.valueRow, { backgroundColor: colors.card }]}>
             <View style={{ flex: 1 }}>
               <Text style={{ color: colors.text, fontSize: 15 }}>
                 {formatDateRu(item.value_date, { withYear: false })}{item.value_time ? `, ${formatTime(item.value_time)}` : ''}
@@ -166,16 +155,12 @@ const TrackerDetailContent = ({ navigation, uuid }) => {
               {!!item.note && <Text style={{ color: colors.textSecondary, fontSize: 13 }} numberOfLines={1}>{item.note}</Text>}
             </View>
             <Text style={{ color: colors.text, fontSize: 16, fontWeight: '600' }}>{formatTrackerValue(tracker, item)}</Text>
-          </TouchableOpacity>
+          </View>
         )}
-        ListEmptyComponent={<EmptyState icon="pulse-outline" title="Значений пока нет" subtitle="Нажмите «+», чтобы добавить первое" />}
-        contentContainerStyle={{ paddingBottom: 96 }}
+        ListEmptyComponent={<EmptyState icon="pulse-outline" title="Значений пока нет" subtitle="Значения импортируются из приложения «Здоровье»" />}
+        contentContainerStyle={{ paddingBottom: 32 }}
         initialNumToRender={15}
       />
-      <TouchableOpacity style={[styles.fab, { backgroundColor: color }]} onPress={() => setModal({ value: null })}>
-        <Icon name="add" size={28} color="#fff" />
-      </TouchableOpacity>
-      <TrackerValueModal visible={!!modal} tracker={tracker} value={modal?.value} date={today} onClose={() => setModal(null)} />
     </View>
   );
 };
@@ -189,13 +174,27 @@ const Stat = ({ colors, label, value }) => (
 
 export default function TrackerDetailScreen({ navigation, route }) {
   const uuid = route.params?.uuid;
+  const colors = useColors();
   const { data: tracker } = useJournalQuery(() => getTracker(uuid), [uuid]);
+  const remove = () => {
+    Alert.alert('Удалить трекер?', 'Трекер и все его значения будут удалены.', [
+      { text: 'Отмена', style: 'cancel' },
+      {
+        text: 'Удалить',
+        style: 'destructive',
+        onPress: async () => {
+          await deleteTracker(uuid);
+          navigation.goBack();
+        },
+      },
+    ]);
+  };
   useLayoutEffect(() => {
     navigation.setOptions({
       title: tracker?.name || 'Трекер',
-      headerRight: () => <HeaderButton icon="create-outline" onPress={() => navigation.navigate('TrackerEdit', { uuid })} />,
+      headerRight: () => (tracker ? <HeaderButton icon="trash-outline" color={colors.error} onPress={remove} /> : null),
     });
-  }, [navigation, tracker, uuid]);
+  }, [navigation, tracker, colors]);
   return (
     <JournalGate navigation={navigation}>
       <TrackerDetailContent navigation={navigation} uuid={uuid} />
@@ -213,5 +212,4 @@ const styles = StyleSheet.create({
   delta: { fontSize: 13, paddingHorizontal: 12, paddingBottom: 4 },
   historyTitle: { fontSize: 13, fontWeight: '600', textTransform: 'uppercase', marginTop: 16, marginBottom: 6, marginHorizontal: 16 },
   valueRow: { flexDirection: 'row', alignItems: 'center', marginHorizontal: 12, marginBottom: 6, borderRadius: 10, padding: 12 },
-  fab: { position: 'absolute', right: 20, bottom: 24, width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center', elevation: 4 },
 });

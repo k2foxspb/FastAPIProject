@@ -375,7 +375,7 @@ export async function setupCloudMessaging(onNotificationReceived = null) {
     // Обработка обновления токена
     if (typeof onTokenRefresh === 'function') {
       onTokenRefresh(messaging, token => {
-        console.log('FCM Token refreshed:', token);
+
         storage.saveItem('fcm_token', token);
         updateServerFcmToken(token);
       });
