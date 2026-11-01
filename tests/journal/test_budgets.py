@@ -84,3 +84,22 @@ async def test_finance_sync_rejects_invalid_amount_and_category_type(client):
     }))
     assert result["results"][0]["status"] == "rejected"
     assert result["results"][0]["reason"].startswith("invalid:")
+
+
+async def test_budget_hook_failure_does_not_rollback_sync(client, monkeypatch):
+    from app.core.celery_app import celery_app
+
+    await pull_all(client)
+    user_id = client.users.alice.id
+    account_uuid = seed_uuid(user_id, "account:cash")
+
+    def unavailable_broker(*args, **kwargs):
+        raise RuntimeError("broker unavailable")
+
+    monkeypatch.setattr(celery_app, "send_task", unavailable_broker)
+    response = await client.post("/api/journal/sync/push", json={"changes": [change("transaction", new_uuid(), {
+        "account_uuid": account_uuid, "transaction_date": "2025-03-01", "direction": "expense",
+        "amount_kop": 125, "description": "Тест",
+    })]})
+    assert response.status_code == 200
+    assert response.json()["results"][0]["status"] == "applied"

@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine  # no
 
 from app.api.dependencies import get_async_db  # noqa: E402
 from app.core import rate_limit  # noqa: E402
+from app.core.celery_app import celery_app  # noqa: E402
 from app.core.auth import get_current_user  # noqa: E402
 from app.database import Base  # noqa: E402
 from app.main import app  # noqa: E402
@@ -68,6 +69,8 @@ async def client(session_maker, users, storage_dir, monkeypatch):
 
     # Redis в тестах не нужен - сразу используем счётчики в памяти
     monkeypatch.setattr(rate_limit, "_redis_down_until", float("inf"))
+    # Celery broker is external; individual tests can replace this stub to assert failure handling.
+    monkeypatch.setattr(celery_app, "send_task", lambda *args, **kwargs: None)
     rate_limit.reset_memory_counters()
 
     app.dependency_overrides[get_async_db] = override_db
