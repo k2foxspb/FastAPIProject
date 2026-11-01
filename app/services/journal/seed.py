@@ -40,8 +40,10 @@ TRACKER_TEMPLATES = [
      "icon": "happy-outline", "color": "#FFB300", "frequency": "daily"},
     {"template_key": "wellbeing", "name": "Самочувствие", "value_type": "scale", "scale_min": 1, "scale_max": 10,
      "icon": "heart-outline", "color": "#E53935", "frequency": "daily"},
-    {"template_key": "habit", "name": "Привычка", "value_type": "bool",
+     {"template_key": "habit", "name": "Привычка", "value_type": "bool",
      "icon": "checkmark-done-outline", "color": "#43A047", "frequency": "daily"},
+    {"template_key": "pulse", "name": "Пульс", "value_type": "number", "unit": "уд/мин",
+     "icon": "pulse-outline", "color": "#E91E63", "frequency": "daily"},
 ]
 
 FINANCE_CATEGORIES = [

@@ -215,4 +215,4 @@ async def test_meta(client):
     body = (await client.get("/api/journal/sync/meta")).json()
     assert body["user_id"] == client.users.alice.id
     assert body["entities"][0] == "settings" and "attachment" in body["entities"]
-    assert {t["template_key"] for t in body["tracker_templates"]} == {"weight", "sleep", "mood", "wellbeing", "habit"}
+    assert {t["template_key"] for t in body["tracker_templates"]} == {"weight", "sleep", "mood", "wellbeing", "habit", "pulse"}

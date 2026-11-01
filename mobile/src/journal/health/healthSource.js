@@ -20,6 +20,12 @@ const loadAndroid = () => {
       const res = await hc.readRecords(recordType, {
         timeRangeFilter: { operator: 'between', startTime: startIso, endTime: endIso },
       });
+      if (recordType === 'HeartRate') {
+        // Health Connect отдаёт пульс пачкой замеров внутри одной записи
+        return (res.records || []).flatMap((r) => (r.samples || []).map((s) => ({
+          time: s.time, endTime: s.time, value: s.beatsPerMinute, uuid: `${r.metadata?.id}:${s.time}`,
+        })));
+      }
       return (res.records || []).map(normalizeRecord);
     },
   };
@@ -31,6 +37,7 @@ const loadIos = () => {
     Weight: { id: hk.QuantityTypeIdentifier.bodyMass, unit: 'kg' },
     Steps: { id: hk.QuantityTypeIdentifier.stepCount, unit: 'count' },
     Hydration: { id: hk.QuantityTypeIdentifier.dietaryWater, unit: 'mL' },
+    HeartRate: { id: hk.QuantityTypeIdentifier.heartRate, unit: 'count/min' },
   };
   const toRead = (recordTypes) => recordTypes.flatMap((t) => {
     if (quantityMap[t]) return [quantityMap[t].id];

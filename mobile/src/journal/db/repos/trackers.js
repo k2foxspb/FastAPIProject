@@ -9,6 +9,7 @@ export const TRACKER_TEMPLATES = [
   { template_key: 'mood', name: 'Настроение', value_type: 'scale', scale_min: 1, scale_max: 5, icon: 'happy-outline', color: '#FFB300', frequency: 'daily' },
   { template_key: 'wellbeing', name: 'Самочувствие', value_type: 'scale', scale_min: 1, scale_max: 10, icon: 'heart-outline', color: '#E53935', frequency: 'daily' },
   { template_key: 'habit', name: 'Привычка', value_type: 'bool', icon: 'checkmark-done-outline', color: '#43A047', frequency: 'daily' },
+  { template_key: 'pulse', name: 'Пульс', value_type: 'number', unit: 'уд/мин', icon: 'pulse-outline', color: '#E91E63', frequency: 'daily' },
 ];
 
 export const VALUE_TYPES = [
@@ -74,6 +75,14 @@ export const listValuesByDate = async (date) => {
   );
   return rows.map((r) => rowToObject('tracker_value', r));
 };
+
+// Одно значение на день (среднее за день) - для графиков, чтобы объём замеров не обрезал период
+export const listTrackerDailyValues = (trackerUuid, { from, to }) => getJournalDb().getAllAsync(
+  `SELECT value_date, AVG(num_value) AS num_value FROM tracker_values
+   WHERE tracker_uuid = ? AND value_date >= ? AND value_date <= ? AND num_value IS NOT NULL
+   GROUP BY value_date ORDER BY value_date`,
+  [trackerUuid, from, to],
+);
 
 export const saveTrackerValue = (data, uuid = null) => saveEntity('tracker_value', data, uuid);
 export const deleteTrackerValue = (uuid) => deleteEntity('tracker_value', uuid);

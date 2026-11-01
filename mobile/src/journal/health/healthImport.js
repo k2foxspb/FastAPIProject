@@ -22,6 +22,11 @@ const timeOf = (iso) => {
   const d = new Date(iso);
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 };
+const startOfDayIso = (iso) => {
+  const d = new Date(iso);
+  d.setHours(0, 0, 0, 0);
+  return d.toISOString();
+};
 
 export const isHealthEnabled = async () => (await getMeta(ENABLED_KEY, '0')) === '1';
 
@@ -46,6 +51,7 @@ export const requestHealthPermissions = async (metricKeys) => {
     if (k === 'sleep') return ['SleepSession'];
     if (k === 'steps') return ['Steps'];
     if (k === 'water') return ['Hydration'];
+    if (k === 'heart_rate') return ['HeartRate'];
     return [];
   });
   await source.init();
@@ -92,12 +98,12 @@ const importRecord = async (metric, record, trackerUuidByMetric) => {
       num_value: minutes,
     });
     await markImported(externalId, metric, uuid);
-  } else if (metric === 'steps') {
-    const count = Math.round(record.count ?? record.value ?? 0);
-    if (!count) return false;
+  } else if (metric === 'heart_rate') {
+    const bpm = Math.round(record.value ?? 0);
+    if (!bpm) return false;
     const uuid = await saveTrackerValue({
-      tracker_uuid: trackerUuidByMetric.steps, value_date: dayOf(record.time), value_time: timeOf(record.time),
-      num_value: count,
+      tracker_uuid: trackerUuidByMetric.heart_rate, value_date: dayOf(record.time), value_time: timeOf(record.time),
+      num_value: bpm,
     });
     await markImported(externalId, metric, uuid);
   } else if (metric === 'water') {
@@ -109,6 +115,27 @@ const importRecord = async (metric, record, trackerUuidByMetric) => {
     return false;
   }
   return true;
+};
+
+// Шаги - сумма за день: одна запись на день, пересчитывается при каждом импорте (как сон - по дню)
+const importStepsByDay = async (records, trackerUuid) => {
+  const totals = new Map();
+  for (const r of records) {
+    const day = dayOf(r.time);
+    totals.set(day, (totals.get(day) || 0) + Math.round(r.count ?? r.value ?? 0));
+  }
+  let written = 0;
+  for (const [day, count] of totals) {
+    if (!count) continue;
+    const externalId = `steps:${day}`;
+    const row = await getJournalDb().getFirstAsync('SELECT local_uuid FROM health_imports WHERE external_id = ?', [externalId]);
+    const uuid = await saveTrackerValue({
+      tracker_uuid: trackerUuid, value_date: day, value_time: null, num_value: count,
+    }, row?.local_uuid || null);
+    if (!row) await markImported(externalId, 'steps', uuid);
+    written += 1;
+  }
+  return written;
 };
 
 // Инкрементальный импорт: читает только период после курсора. Возвращает число новых записей.
@@ -127,11 +154,16 @@ export const runHealthImport = async () => {
     if (spec.template && !trackerUuidByMetric[metricKey]) {
       trackerUuidByMetric[metricKey] = await ensureTracker(spec.template);
     }
-    const recordType = { weight: 'Weight', sleep: 'SleepSession', steps: 'Steps', water: 'Hydration' }[metricKey];
-    const start = (await getMeta(cursorKey(metricKey), null)) || fallbackStart;
+    const recordType = { weight: 'Weight', sleep: 'SleepSession', steps: 'Steps', water: 'Hydration', heart_rate: 'HeartRate' }[metricKey];
+    let start = (await getMeta(cursorKey(metricKey), null)) || fallbackStart;
+    if (metricKey === 'steps') start = startOfDayIso(start);
     const records = await source.read(recordType, start, now.toISOString());
-    for (const record of records) {
-      if (await importRecord(metricKey, record, trackerUuidByMetric)) imported += 1;
+    if (metricKey === 'steps') {
+      imported += await importStepsByDay(records, trackerUuidByMetric.steps);
+    } else {
+      for (const record of records) {
+        if (await importRecord(metricKey, record, trackerUuidByMetric)) imported += 1;
+      }
     }
     await setMeta(cursorKey(metricKey), now.toISOString());
   }

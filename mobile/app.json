@@ -52,7 +52,7 @@
       [
         "@kingstinct/react-native-healthkit",
         {
-          "NSHealthShareUsageDescription": "Приложение читает вес, сон, шаги и воду из Здоровья, чтобы вести их в журнале. Импорт включается только по вашему решению."
+          "NSHealthShareUsageDescription": "Приложение читает вес, сон, шаги, пульс и воду из Здоровья, чтобы вести их в журнале. Импорт включается только по вашему решению."
         }
       ]
     ],
@@ -205,7 +205,8 @@
         "android.permission.health.READ_WEIGHT",
         "android.permission.health.READ_SLEEP",
         "android.permission.health.READ_STEPS",
-        "android.permission.health.READ_HYDRATION"
+        "android.permission.health.READ_HYDRATION",
+        "android.permission.health.READ_HEART_RATE"
       ]
     },
     "extra": {

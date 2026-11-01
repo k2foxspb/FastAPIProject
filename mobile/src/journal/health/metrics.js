@@ -20,6 +20,12 @@ export const HEALTH_METRICS = [
     template: { template_key: 'steps', name: 'Шаги', value_type: 'number', unit: 'шагов', icon: 'walk-outline', color: '#43A047', frequency: 'daily' },
   },
   {
+    key: 'heart_rate',
+    title: 'Пульс',
+    hint: 'Замеры пульса - в трекер «Пульс»',
+    template: { template_key: 'pulse', name: 'Пульс', value_type: 'number', unit: 'уд/мин', icon: 'pulse-outline', color: '#E91E63', frequency: 'daily' },
+  },
+  {
     key: 'water',
     title: 'Вода',
     hint: 'Записи о воде - в дневник воды',

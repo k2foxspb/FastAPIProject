@@ -3,7 +3,7 @@ import { Alert, FlatList, StyleSheet, Text, View, useWindowDimensions } from 're
 import { LineChart } from 'react-native-gifted-charts';
 import { useJournal, useJournalQuery } from '../../context/JournalContext';
 import { Chip, EmptyState, HeaderButton, JournalGate, Section, useColors } from '../../components/journal/common';
-import { deleteTracker, formatTrackerValue, getTracker, listTrackerValues } from '../../journal/db/repos/trackers';
+import { deleteTracker, formatTrackerValue, getTracker, listTrackerDailyValues, listTrackerValues } from '../../journal/db/repos/trackers';
 import { addDays, formatDateRu, formatDateShort, formatTime } from '../../journal/utils/dates';
 
 const PERIODS = [
@@ -22,25 +22,21 @@ const TrackerDetailContent = ({ navigation, uuid }) => {
   const from = addDays(today, -period + 1);
 
   const { data } = useJournalQuery(async () => {
-    const [tracker, values, all] = await Promise.all([
+    const [tracker, daily, all] = await Promise.all([
       getTracker(uuid),
-      listTrackerValues(uuid, { from, to: today, limit: 2000 }),
+      listTrackerDailyValues(uuid, { from, to: today }),
       listTrackerValues(uuid, { limit: 200 }),
     ]);
-    return { tracker, values, all };
+    return { tracker, daily, all };
   }, [uuid, from, today]);
 
   const tracker = data?.tracker;
   const numeric = tracker && tracker.value_type !== 'text';
 
-  // Для графика - одно значение на день (последнее за день), в хронологическом порядке
+  // Для графика - одно значение на день (среднее за день), в хронологическом порядке
   const chart = useMemo(() => {
     if (!data || !numeric) return null;
-    const byDay = new Map();
-    [...data.values].reverse().forEach((v) => {
-      if (v.num_value !== null && v.num_value !== undefined) byDay.set(v.value_date, Number(v.num_value));
-    });
-    const points = [...byDay.entries()];
+    const points = data.daily.map((v) => [v.value_date, Number(v.num_value)]);
     if (!points.length) return null;
     const step = Math.max(1, Math.ceil(points.length / 6));
     const series = points.map(([d, value], i) => ({
@@ -69,7 +65,7 @@ const TrackerDetailContent = ({ navigation, uuid }) => {
   const color = tracker.color || colors.primary;
   const format = (n) => formatTrackerValue(tracker, { num_value: n });
   const isBool = tracker.value_type === 'bool';
-  const boolDone = isBool ? data.values.filter((v) => Number(v.num_value) === 1).length : 0;
+  const boolDone = isBool ? data.daily.filter((v) => Number(v.num_value) === 1).length : 0;
 
   const header = (
     <View>
@@ -79,6 +75,7 @@ const TrackerDetailContent = ({ navigation, uuid }) => {
       {numeric && !isBool && chart && chart.count > 1 && (
         <View style={[styles.chartBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <LineChart
+            key={`${uuid}-${period}`}
             data={chart.series}
             width={width - 90}
             height={180}
