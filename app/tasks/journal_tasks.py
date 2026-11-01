@@ -13,7 +13,7 @@ from sqlalchemy.pool import NullPool
 from app.core import config
 from app.core.celery_app import celery_app
 from app.core.fcm import send_fcm_notification
-from app.models.journal import JournalBudget, JournalSyncState
+from app.models.journal import JournalBudget, JournalSettings, JournalSyncState
 from app.models.users import User
 from app.services.journal import budgets
 from app.services.journal.sync_registry import ordered_specs
@@ -58,6 +58,45 @@ def daily_budget_scan() -> int:
         for user_id in user_ids:
             count += await _check_budgets(user_id, [month])
         return count
+    return asyncio.run(run())
+
+
+@celery_app.task(name="journal.weekly_summary")
+def weekly_summary_scan() -> int:
+    """Понедельник 09:00 по локальному времени пользователя: сводка за прошедшую неделю."""
+    async def run() -> int:
+        from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+        from app.services.journal import ai
+
+        sent = 0
+        now_utc = datetime.now(timezone.utc)
+        async with _sessions() as db:
+            rows = (await db.execute(select(JournalSettings.user_id, JournalSettings.timezone))).all()
+        for user_id, tz_name in rows:
+            try:
+                local_now = now_utc.astimezone(ZoneInfo(tz_name))
+            except (ZoneInfoNotFoundError, ValueError):
+                continue
+            if local_now.weekday() != 0 or local_now.hour != 9:
+                continue
+            last_monday = local_now.date() - timedelta(days=7)
+            last_sunday = last_monday + timedelta(days=6)
+            async with _sessions() as db:
+                text = await ai.weekly_summary(db, user_id, last_monday, last_sunday)
+                user = await db.get(User, user_id)
+                token = user.fcm_token if user else None
+            sent += 1
+            if token:
+                try:
+                    await send_fcm_notification(
+                        token=token, title="Сводка за неделю", body=text[:200],
+                        data={"type": "journal_weekly_summary", "notification_group": "journal",
+                              "android_channel_id": "journal"},
+                        silent=False,
+                    )
+                except Exception:
+                    logger.exception("Journal weekly summary push failed")
+        return sent
     return asyncio.run(run())
 
 
@@ -123,4 +162,5 @@ celery_app.conf.beat_schedule = {
     "journal-daily-budget-scan": {"task": "journal.daily_budget_scan", "schedule": crontab(hour=20, minute=0)},
     "journal-purge-tombstones": {"task": "journal.purge_tombstones", "schedule": crontab(hour=2, minute=30)},
     "journal-cleanup-import-previews": {"task": "journal.cleanup_import_previews", "schedule": 900.0},
+    "journal-weekly-summary": {"task": "journal.weekly_summary", "schedule": crontab(hour="*", minute=5, day_of_week=1)},
 }

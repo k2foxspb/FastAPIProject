@@ -1,7 +1,8 @@
 """ИИ «Журнала жизни» (Ollama через backend): оценка КБЖУ по тексту."""
+from datetime import date
 from typing import NoReturn
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,6 +13,7 @@ from app.core.rate_limit import rate_limit
 from app.models.users import User as UserModel
 from app.schemas.journal.diet import EstimateNutritionRequest, EstimateNutritionResponse
 from app.schemas.journal.finance import CategorySuggestionRequest, CategorySuggestionResponse
+from app.schemas.journal.goals import WeeklySummaryResponse
 from app.services.journal import ai as ai_service
 
 router = APIRouter(prefix="/api/journal/ai", tags=["journal"])
@@ -45,6 +47,25 @@ async def estimate_nutrition(
     # Текст запроса и значения в лог не пишем (личные данные)
     logger.info(f"Journal AI estimate: user={current_user.id} items={len(result.items)}")
     return result
+
+
+@router.get("/weekly-summary", response_model=WeeklySummaryResponse)
+async def weekly_summary(
+    date_from: date = Query(..., alias="from"),
+    date_to: date = Query(..., alias="to"),
+    current_user: UserModel = Depends(_ai_limit),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Короткая ИИ-сводка за период по питанию и воде. Ничего не сохраняет."""
+    if date_to < date_from:
+        raise HTTPException(status_code=422, detail="Конец периода раньше начала")
+    if (date_to - date_from).days + 1 > 14:
+        raise HTTPException(status_code=422, detail="Период сводки не длиннее 14 дней")
+    try:
+        text = await ai_service.weekly_summary(db, current_user.id, date_from, date_to)
+    except ollama.OllamaError as e:
+        raise_ai_error(e)
+    return WeeklySummaryResponse(date_from=date_from, date_to=date_to, summary=text)
 
 
 @router.post("/suggest-categories", response_model=CategorySuggestionResponse)

@@ -3,6 +3,7 @@
 пользователь подтверждает или правит их перед сохранением, поэтому здесь
 ничего не записывается в БД.
 """
+from datetime import date
 from decimal import Decimal
 
 from pydantic import BaseModel, Field
@@ -58,6 +59,40 @@ async def estimate_nutrition(text: str) -> EstimateNutritionResponse:
     ]
     answer = await ollama.chat_json(messages, AiNutritionAnswer, timeout=AI_TIMEOUT_SEC, options={"temperature": 0.1})
     return build_estimate(answer)
+
+
+class WeeklySummaryAnswer(BaseModel):
+    summary: str = Field(min_length=1, max_length=1500)
+
+
+WEEKLY_SUMMARY_SYSTEM_PROMPT = (
+    "Ты помощник по личному журналу. По итогам недели (питание, вода) напиши короткую дружелюбную "
+    "сводку на русском: 3-5 предложений, без медицинских советов, без выдуманных цифр. "
+    "Ответь ТОЛЬКО JSON в формате: {\"summary\": \"текст\"}."
+)
+
+
+async def weekly_summary(db: AsyncSession, user_id: int, date_from: date, date_to: date) -> str:
+    """Текст сводки за неделю по данным питания и воды; при пустой неделе ИИ не вызывается."""
+    from app.services.journal import nutrition
+
+    diet = await nutrition.diet_summary(db, user_id, date_from, date_to)
+    if diet.total.entries == 0 and diet.total.water_ml == 0:
+        return "На этой неделе записей о питании и воде не было."
+    facts = {
+        "period": f"{date_from.isoformat()} - {date_to.isoformat()}",
+        "days_with_entries": sum(1 for day in diet.days if day.entries or day.water_ml),
+        "average_kcal": diet.average.kcal,
+        "average_protein": diet.average.protein,
+        "average_water_ml": diet.average.water_ml,
+        "goals": diet.goals.model_dump(),
+    }
+    messages = [
+        {"role": "system", "content": WEEKLY_SUMMARY_SYSTEM_PROMPT},
+        {"role": "user", "content": str(facts)},
+    ]
+    answer = await ollama.chat_json(messages, WeeklySummaryAnswer, timeout=AI_TIMEOUT_SEC, options={"temperature": 0.3})
+    return answer.summary
 
 
 class CategoryAnswerItem(BaseModel):

@@ -31,6 +31,12 @@ class GoalData(EntityData):
         return self
 
 
+class WeeklySummaryResponse(BaseModel):
+    date_from: date
+    date_to: date
+    summary: str
+
+
 class GoalProgress(BaseModel):
     goal_uuid: str
     title: str
