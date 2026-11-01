@@ -57,6 +57,22 @@ const EditContent = ({ navigation, route }) => {
     });
   }, [existingUuid, navigation]);
 
+  // Новая запись из продукта (например, после сканирования штрихкода) - предзаполняем КБЖУ на порцию
+  useEffect(() => {
+    const presetFoodUuid = route.params?.foodUuid;
+    if (existingUuid || !presetFoodUuid) return;
+    getFood(presetFoodUuid).then((f) => {
+      if (!f) return;
+      setFood(f);
+      setName(f.name);
+      const grams = f.serving_g || 100;
+      setGramsText(toText(grams));
+      const p = portion(per100Of(f), grams);
+      setValues({ kcal: toText(p.kcal), protein: toText(p.protein), fat: toText(p.fat), carbs: toText(p.carbs) });
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [route.params?.foodUuid]);
+
   // Время по умолчанию для новой записи - когда известны типы приёмов пищи
   useEffect(() => {
     if (existingUuid || time !== null || !mealTypes) return;

@@ -108,9 +108,6 @@ const CalendarContent = ({ navigation }) => {
         </TouchableOpacity>
       </Section>
 
-      <Section title="Финансы">
-        <NavRow colors={colors} icon="wallet-outline" label="Финансы" onPress={() => navigation.navigate('FinanceHome')} last />
-      </Section>
 
       <Section title="За месяц">
         <View style={styles.statsRow}>
@@ -121,12 +118,6 @@ const CalendarContent = ({ navigation }) => {
         </View>
       </Section>
 
-      <Section>
-        <NavRow colors={colors} icon="restaurant-outline" label="Питание" onPress={() => navigation.navigate('DietDay', { date: today })} />
-        <NavRow colors={colors} icon="book-outline" label="Дневник" onPress={() => navigation.navigate('DiaryList')} />
-        <NavRow colors={colors} icon="pulse-outline" label="Трекеры" onPress={() => navigation.navigate('Trackers')} />
-        <NavRow colors={colors} icon="settings-outline" label="Настройки журнала" onPress={() => navigation.navigate('JournalSettings')} last />
-      </Section>
     </ScrollView>
   );
 };
@@ -138,13 +129,6 @@ const Stat = ({ colors, value, label }) => (
   </View>
 );
 
-const NavRow = ({ colors, icon, label, onPress, last }) => (
-  <TouchableOpacity style={[styles.row, !last && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border }]} onPress={onPress}>
-    <Icon name={icon} size={20} color={colors.primary} />
-    <Text style={[styles.rowText, { color: colors.text, marginLeft: 12 }]}>{label}</Text>
-    <Icon name="chevron-forward" size={18} color={colors.textSecondary} />
-  </TouchableOpacity>
-);
 
 export default function JournalCalendarScreen({ navigation }) {
   useLayoutEffect(() => {

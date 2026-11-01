@@ -10,9 +10,14 @@ const DayCell = ({ date, state, marking, onPress, colors }) => {
   const isToday = state === 'today';
   const disabled = state === 'disabled';
   const selected = marking?.selected;
+  const hasData = !disabled && !!s && (s.events_total > 0 || s.kcal > 0 || s.expense_kop > 0 || s.has_diary || s.tracker_count > 0);
   return (
     <TouchableOpacity
-      style={[styles.cell, selected && { backgroundColor: `${colors.primary}22` }]}
+      style={[
+        styles.cell,
+        hasData && { backgroundColor: `${colors.primary}10` },
+        selected && { backgroundColor: `${colors.primary}26` },
+      ]}
       onPress={() => onPress?.(date)}
       activeOpacity={0.6}
     >
@@ -26,7 +31,7 @@ const DayCell = ({ date, state, marking, onPress, colors }) => {
               {s.events_done}/{s.events_total}
             </Text>
           )}
-          {s.kcal > 0 && <Text style={[styles.line, { color: colors.textSecondary }]} numberOfLines={1}>{s.kcal}к</Text>}
+          {s.kcal > 0 && <Text style={[styles.line, { color: colors.textSecondary }]} numberOfLines={1}>{s.kcal} ккал</Text>}
           {s.expense_kop > 0 && (
             <Text style={[styles.line, { color: colors.error }]} numberOfLines={1}>−{formatKopCompact(s.expense_kop)}</Text>
           )}
@@ -57,11 +62,11 @@ export default memo(DayCell, (prev, next) => (
 ));
 
 const styles = StyleSheet.create({
-  cell: { width: '100%', minHeight: 58, alignItems: 'center', paddingTop: 2, borderRadius: 8 },
-  dayCircle: { width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  day: { fontSize: 14, fontWeight: '500' },
-  info: { alignItems: 'center', marginTop: 1 },
-  line: { fontSize: 9, lineHeight: 11 },
+  cell: { width: '100%', minHeight: 60, alignItems: 'center', paddingTop: 4, paddingBottom: 3, borderRadius: 10, marginVertical: 1 },
+  dayCircle: { width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
+  day: { fontSize: 14, fontWeight: '600' },
+  info: { alignItems: 'center', marginTop: 2 },
+  line: { fontSize: 9, lineHeight: 12, fontWeight: '500' },
   dots: { flexDirection: 'row', alignItems: 'center', height: 10, marginTop: 1 },
   dot: { width: 5, height: 5, borderRadius: 3, marginLeft: 3 },
 });

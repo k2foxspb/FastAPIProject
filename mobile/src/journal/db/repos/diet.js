@@ -92,6 +92,13 @@ export const searchFoods = async (query, { limit = 50, offset = 0 } = {}) => {
   return rows.map((r) => rowToObject('food', r));
 };
 
+export const getFoodByBarcode = async (barcode) => {
+  const row = await getJournalDb().getFirstAsync(
+    'SELECT * FROM foods WHERE barcode = ? ORDER BY use_count DESC LIMIT 1', [String(barcode || '').trim()],
+  );
+  return row ? rowToObject('food', row) : null;
+};
+
 export const listRecentFoods = async (limit = 15) => {
   const rows = await getJournalDb().getAllAsync(
     'SELECT * FROM foods WHERE last_used_at IS NOT NULL ORDER BY last_used_at DESC LIMIT ?', [limit],

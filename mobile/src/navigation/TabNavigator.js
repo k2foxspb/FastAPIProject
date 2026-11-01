@@ -68,6 +68,12 @@ import ReviewQueueScreen from '../screens/journal/ReviewQueueScreen';
 import ImportRulesScreen from '../screens/journal/ImportRulesScreen';
 import ExpenseAnalyticsScreen from '../screens/journal/ExpenseAnalyticsScreen';
 import TransferPairsScreen from '../screens/journal/TransferPairsScreen';
+import GoalsScreen from '../screens/journal/GoalsScreen';
+import GoalEditScreen from '../screens/journal/GoalEditScreen';
+import AnalyticsScreen from '../screens/journal/AnalyticsScreen';
+import ExportScreen from '../screens/journal/ExportScreen';
+import BarcodeScanScreen from '../screens/journal/BarcodeScanScreen';
+import WeeklySummaryScreen from '../screens/journal/WeeklySummaryScreen';
 import { JournalProvider } from '../context/JournalContext';
 
 
@@ -320,6 +326,12 @@ function JournalStack() {
         <Stack.Screen name="ImportRules" component={ImportRulesScreen} options={{ title: 'Правила импорта' }} />
         <Stack.Screen name="ExpenseAnalytics" component={ExpenseAnalyticsScreen} options={{ title: 'Расходы' }} />
         <Stack.Screen name="TransferPairs" component={TransferPairsScreen} options={{ title: 'Найденные переводы' }} />
+        <Stack.Screen name="Goals" component={GoalsScreen} options={{ title: 'Цели' }} />
+        <Stack.Screen name="GoalEdit" component={GoalEditScreen} options={{ title: 'Цель' }} />
+        <Stack.Screen name="Analytics" component={AnalyticsScreen} options={{ title: 'Аналитика' }} />
+        <Stack.Screen name="Export" component={ExportScreen} options={{ title: 'Экспорт' }} />
+        <Stack.Screen name="BarcodeScan" component={BarcodeScanScreen} options={{ title: 'Сканировать штрихкод' }} />
+        <Stack.Screen name="WeeklySummary" component={WeeklySummaryScreen} options={{ title: 'Сводка за неделю' }} />
       </Stack.Navigator>
   );
 }

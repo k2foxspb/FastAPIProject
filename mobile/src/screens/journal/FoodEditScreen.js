@@ -17,7 +17,7 @@ const EditContent = ({ navigation, route }) => {
   const [brand, setBrand] = useState('');
   const [values, setValues] = useState({ kcal: '', protein: '', fat: '', carbs: '' });
   const [serving, setServing] = useState('');
-  const [barcode, setBarcode] = useState('');
+  const [barcode, setBarcode] = useState(route.params?.barcode || '');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
