@@ -14,9 +14,6 @@ from app.services.journal.bank_import.sniff import parse_delimited, sniff_delimi
 from app.services.journal.seed import seed_uuid
 from tests.journal.helpers import change, new_uuid, pull_all, push
 
-pytestmark = pytest.mark.asyncio
-
-
 def test_decoding_delimiters_headers_and_multiline_rows():
     assert "Операция" in decode_text("Дата;Операция".encode("utf-8-sig"))
     assert "Операция" in decode_text("Дата;Операция".encode("cp1251"))
@@ -78,6 +75,7 @@ def test_xlsx_read_only_parser():
     assert headers == ["Дата операции", "Описание", "Сумма"] and rows[0][1] == "Магазин"
 
 
+@pytest.mark.asyncio
 async def test_preview_commit_dedup_revert_and_batch_owner_access(client, as_user):
     await pull_all(client)
     account_uuid = seed_uuid(client.users.alice.id, "account:cash")
@@ -130,6 +128,7 @@ async def test_preview_commit_dedup_revert_and_batch_owner_access(client, as_use
     assert all(item["deleted_at"] is not None for item in details.json()["transactions"])
 
 
+@pytest.mark.asyncio
 async def test_import_limits_and_invalid_file(client, monkeypatch):
     from app.core import config
 
@@ -143,6 +142,7 @@ async def test_import_limits_and_invalid_file(client, monkeypatch):
     assert response.status_code == 413
 
 
+@pytest.mark.asyncio
 async def test_sync_transaction_refs_are_owner_scoped(client, as_user):
     await pull_all(client)
     account_uuid = seed_uuid(client.users.alice.id, "account:cash")

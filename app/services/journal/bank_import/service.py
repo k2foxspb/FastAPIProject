@@ -273,7 +273,7 @@ async def commit(db: AsyncSession, user_id: int, request: ImportCommitRequest) -
             from app.core.celery_app import celery_app
             celery_app.send_task("journal.check_budgets", args=[
                 user_id, sorted({item["transaction_date"].strftime("%Y-%m") for item in imported})
-            ])
+            ], retry=False)
         except Exception:
             logger.exception("Не удалось поставить проверку бюджетов после импорта")
 

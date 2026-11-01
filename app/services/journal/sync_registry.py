@@ -178,7 +178,7 @@ def _schedule_budget_check(user_id: int, changes: list[Any]) -> None:
         return
     try:
         from app.core.celery_app import celery_app
-        celery_app.send_task("journal.check_budgets", args=[user_id, sorted(months)])
+        celery_app.send_task("journal.check_budgets", args=[user_id, sorted(months)], retry=False)
     except Exception:
         from loguru import logger
         logger.exception("Не удалось поставить проверку бюджета в очередь")
