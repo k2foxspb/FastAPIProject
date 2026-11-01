@@ -40,7 +40,7 @@ export default function CreatePostScreen({ navigation, route }) {
 
   const pickImages = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
+      mediaTypes: ['images', 'videos'],
       allowsMultipleSelection: true,
       quality: 0.8,
     });
@@ -71,22 +71,23 @@ export default function CreatePostScreen({ navigation, route }) {
 
       // Если есть прикреплённые изображения, загружаем первое как обложку/основное медиа
       if (images.length > 0) {
-        const firstImg = images[0];
+        const firstMedia = images[0];
+        const isVideo = firstMedia.type === 'video';
         const formData = new FormData();
-        const uri = firstImg.uri;
+        const uri = firstMedia.uri;
         const uriParts = uri.split('.');
         const fileType = uriParts[uriParts.length - 1];
         const fileName = uri.split('/').pop();
 
         formData.append('file', {
           uri: uri,
-          name: fileName || `post_cover_${Date.now()}.${fileType || 'jpg'}`,
-          type: `image/${fileType || 'jpeg'}`,
+          name: fileName || `post_media_${Date.now()}.${fileType || (isVideo ? 'mp4' : 'jpg')}`,
+          type: isVideo ? `video/${fileType || 'mp4'}` : `image/${fileType || 'jpeg'}`,
         });
 
-        const uploadRes = await newsApi.uploadMedia(formData);
-        mediaUrl = uploadRes.data?.url || uploadRes.data?.location;
-        mediaType = 'image';
+        const uploadRes = await usersApi.uploadProfilePostMedia(formData);
+        mediaUrl = uploadRes.data?.url;
+        mediaType = uploadRes.data?.media_type || (isVideo ? 'video' : 'image');
       }
 
       if (isAnnouncement) {
@@ -128,7 +129,13 @@ export default function CreatePostScreen({ navigation, route }) {
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.imagesScroll}>
             {images.map((img, index) => (
               <View key={index} style={styles.imageWrapper}>
-                <Image source={{ uri: img.uri }} style={styles.imageThumb} />
+                {img.type === 'video' ? (
+                  <View style={[styles.imageThumb, styles.videoThumb]}>
+                    <Icon name="play-circle" size={32} color="#fff" />
+                  </View>
+                ) : (
+                  <Image source={{ uri: img.uri }} style={styles.imageThumb} />
+                )}
                 <TouchableOpacity
                   style={[styles.removeImageBtn, { backgroundColor: colors.surface }]}
                   onPress={() => removeImage(index)}
@@ -262,6 +269,7 @@ const styles = StyleSheet.create({
   imagesScroll: { marginBottom: 15 },
   imageWrapper: { marginRight: 12, position: 'relative' },
   imageThumb: { width: 80, height: 80, borderRadius: 8 },
+  videoThumb: { backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' },
   removeImageBtn: {
     position: 'absolute',
     top: -8,

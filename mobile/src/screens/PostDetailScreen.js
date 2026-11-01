@@ -10,6 +10,8 @@ import {
   Alert,
   TextInput,
   Dimensions,
+  Modal,
+  StatusBar,
 } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -41,6 +43,7 @@ export default function PostDetailScreen({ route, navigation }) {
   const [loadingComments, setLoadingComments] = useState(false);
   const [newCommentText, setNewCommentText] = useState('');
   const [submittingComment, setSubmittingComment] = useState(false);
+  const [fullScreenVisible, setFullScreenVisible] = useState(false);
 
   const isAnnouncement = post?.item_type === 'announcement';
 
@@ -191,21 +194,23 @@ export default function PostDetailScreen({ route, navigation }) {
         )}
 
         {hasMedia && (
-          isVideoMedia ? (
-            <VideoPlayer
-              uri={getFullUrl(post.media_url)}
-              style={{ width: '100%', height: 260, marginVertical: 6 }}
-              useNativeControls
-              shouldPlay={false}
-              resizeMode="contain"
-            />
-          ) : (
-            <FadeInImage
-              source={{ uri: getFullUrl(post.media_url) }}
-              style={{ width: '100%', height: 300, marginVertical: 6 }}
-              resizeMode="contain"
-            />
-          )
+          <TouchableOpacity activeOpacity={0.9} onPress={() => setFullScreenVisible(true)}>
+            {isVideoMedia ? (
+              <VideoPlayer
+                uri={getFullUrl(post.media_url)}
+                style={{ width: '100%', height: 260, marginVertical: 6 }}
+                useNativeControls
+                shouldPlay={false}
+                resizeMode="contain"
+              />
+            ) : (
+              <FadeInImage
+                source={{ uri: getFullUrl(post.media_url) }}
+                style={{ width: '100%', height: 300, marginVertical: 6 }}
+                resizeMode="contain"
+              />
+            )}
+          </TouchableOpacity>
         )}
 
         <View style={[styles.reactionsRow, { borderColor: colors.border }]}>
@@ -264,6 +269,39 @@ export default function PostDetailScreen({ route, navigation }) {
           )}
         </View>
       </ScrollView>
+
+      {hasMedia && (
+        <Modal
+          visible={fullScreenVisible}
+          transparent={false}
+          animationType="fade"
+          onRequestClose={() => setFullScreenVisible(false)}
+        >
+          <StatusBar barStyle="light-content" backgroundColor="#000" />
+          <View style={styles.fullScreenContainer}>
+            <View style={[styles.fullScreenTop, { paddingTop: insets.top + 10 }]}>
+              <TouchableOpacity style={styles.fullScreenCloseBtn} onPress={() => setFullScreenVisible(false)}>
+                <Icon name="close" size={30} color="#fff" />
+              </TouchableOpacity>
+            </View>
+            {isVideoMedia ? (
+              <VideoPlayer
+                uri={getFullUrl(post.media_url)}
+                style={styles.fullScreenMedia}
+                useNativeControls
+                shouldPlay
+                resizeMode="contain"
+              />
+            ) : (
+              <FadeInImage
+                source={{ uri: getFullUrl(post.media_url) }}
+                style={styles.fullScreenMedia}
+                resizeMode="contain"
+              />
+            )}
+          </View>
+        </Modal>
+      )}
 
       <View style={[styles.commentInputRow, { borderTopColor: colors.border, backgroundColor: colors.background }]}>
         <TextInput
@@ -328,4 +366,8 @@ const styles = StyleSheet.create({
   commentInputRow: { flexDirection: 'row', alignItems: 'center', padding: 10, borderTopWidth: 1 },
   commentInput: { flex: 1, borderWidth: 1, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 8, marginRight: 8 },
   sendCommentBtn: { width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center' },
+  fullScreenContainer: { flex: 1, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' },
+  fullScreenTop: { position: 'absolute', top: 0, left: 0, right: 0, flexDirection: 'row', justifyContent: 'flex-end', paddingHorizontal: 12, zIndex: 10 },
+  fullScreenCloseBtn: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center' },
+  fullScreenMedia: { width: Dimensions.get('window').width, height: Dimensions.get('window').height },
 });

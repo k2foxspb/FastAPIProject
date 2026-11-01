@@ -2886,6 +2886,24 @@ async def create_profile_post(
     return resp
 
 
+@router.post("/me/posts/upload-media")
+async def upload_profile_post_media(
+    file: UploadFile = File(...),
+    current_user: UserModel = Depends(get_current_user),
+):
+    """Загружает фото или видео для публикации в профиле и возвращает URL и тип медиа."""
+    file_extension = os.path.splitext(file.filename or "")[1].lower()
+    is_video = file_extension in [".mp4", ".mov", ".avi", ".mkv", ".webm"] or (
+        file.content_type or ""
+    ).startswith("video/")
+    media_url, thumb_url = await save_user_photo(file, current_user, section="posts")
+    return {
+        "url": media_url,
+        "thumb_url": thumb_url,
+        "media_type": "video" if is_video else "image",
+    }
+
+
 @router.get("/{user_id}/posts", response_model=list[ProfilePostResponse])
 async def get_user_profile_posts(
     user_id: int,

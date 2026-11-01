@@ -182,6 +182,9 @@ export const usersApi = {
   // Личные публикации в профиле (Profile Posts)
   getProfilePosts: (userId) => api.get(`/users/${userId}/posts`),
   createProfilePost: (data) => api.post('/users/me/posts', data),
+  uploadProfilePostMedia: (formData) => api.post('/users/me/posts/upload-media', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  }),
   updateProfilePost: (postId, data) => api.patch(`/users/me/posts/${postId}`, data),
   deleteProfilePost: (postId) => api.delete(`/users/me/posts/${postId}`),
   reactToProfilePost: (postId, reactionType) => api.post(`/users/posts/${postId}/react`, null, { params: { reaction_type: reactionType } }),
