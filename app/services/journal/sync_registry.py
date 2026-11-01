@@ -154,6 +154,8 @@ async def _validate_recipe_item(db: AsyncSession, user_id: int, existing, values
 
 
 async def _validate_transaction(db: AsyncSession, user_id: int, existing, values: dict, resolved: dict) -> str | None:
+    if existing is None and values.get("account_id") is None:
+        return "invalid: операция должна быть привязана к счёту"
     if values.get("direction") == "transfer":
         if values.get("to_account_id") is None or values.get("to_account_id") == values.get("account_id"):
             return "invalid: перевод требует два разных счёта"
@@ -164,6 +166,24 @@ async def _validate_transaction(db: AsyncSession, user_id: int, existing, values
     category = resolved.get("category_uuid")
     if category is not None and category.kind != values.get("direction"):
         return "invalid: категория не соответствует типу операции"
+    return None
+
+
+async def _validate_finance_category(db: AsyncSession, user_id: int, existing, values: dict, resolved: dict) -> str | None:
+    parent = resolved.get("parent_uuid")
+    if parent is None:
+        return None
+    if existing is not None and parent.id == existing.id:
+        return "invalid: категория не может быть родителем самой себя"
+    if parent.kind != values.get("kind"):
+        return "invalid: родительская категория другого типа"
+    return None
+
+
+async def _validate_expense_category(db: AsyncSession, user_id: int, existing, values: dict, resolved: dict) -> str | None:
+    category = resolved.get("category_uuid")
+    if category is not None and category.kind != "expense":
+        return "invalid: нужна категория расходов"
     return None
 
 
@@ -245,6 +265,7 @@ register(EntitySpec(name="account", model=JournalAccount, schema=AccountData, or
 register(EntitySpec(
     name="finance_category", model=JournalFinanceCategory, schema=FinanceCategoryData, order=10,
     refs=[RefSpec("parent_uuid", "parent_id", "finance_category", on_delete="set_null")],
+    validate=_validate_finance_category,
 ))
 register(EntitySpec(
     name="transaction", model=JournalTransaction, schema=TransactionData, order=30,
@@ -259,6 +280,7 @@ register(EntitySpec(
 register(EntitySpec(
     name="budget", model=JournalBudget, schema=BudgetData, order=30,
     refs=[RefSpec("category_uuid", "category_id", "finance_category", on_delete="set_null")],
+    validate=_validate_expense_category,
 ))
 register(EntitySpec(
     name="import_profile", model=JournalImportProfile, schema=ImportProfileData, order=20,
@@ -266,6 +288,7 @@ register(EntitySpec(
 register(EntitySpec(
     name="import_rule", model=JournalImportRule, schema=ImportRuleData, order=30,
     refs=[RefSpec("category_uuid", "category_id", "finance_category", on_delete="set_null")],
+    validate=_validate_expense_category,
 ))
 register(EntitySpec(
     name="import_batch", model=JournalImportBatch, schema=ImportBatchData, order=40,

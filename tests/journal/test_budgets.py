@@ -78,12 +78,41 @@ async def test_finance_sync_rejects_invalid_amount_and_category_type(client):
     user_id = client.users.alice.id
     account_uuid = seed_uuid(user_id, "account:cash")
     income_category = seed_uuid(user_id, "finance_category:salary")
-    result = await push(client, change("transaction", new_uuid(), {
-        "account_uuid": account_uuid, "category_uuid": income_category, "transaction_date": "2025-03-01",
-        "direction": "expense", "amount_kop": 0, "description": "Invalid",
+    result = await push(
+        client,
+        change("transaction", new_uuid(), {
+            "account_uuid": account_uuid, "transaction_date": "2025-03-01",
+            "direction": "expense", "amount_kop": 0, "description": "Invalid amount",
+        }),
+        change("transaction", new_uuid(), {
+            "account_uuid": account_uuid, "category_uuid": income_category, "transaction_date": "2025-03-01",
+            "direction": "expense", "amount_kop": 100, "description": "Wrong category kind",
+        }),
+    )
+    assert [item["status"] for item in result["results"]] == ["rejected", "rejected"]
+    assert all(item["reason"].startswith("invalid:") for item in result["results"])
+
+
+async def test_recurring_payment_event_refers_to_owned_account(client, as_user):
+    await pull_all(client)
+    account_uuid = seed_uuid(client.users.alice.id, "account:cash")
+    event_uuid = new_uuid()
+    result = await push(client, change("event", event_uuid, {
+        "kind": "payment", "title": "Оплата подписки", "start_date": "2025-03-01",
+        "rrule": "FREQ=MONTHLY;BYMONTHDAY=1", "ref_type": "account", "ref_uuid": account_uuid,
     }))
-    assert result["results"][0]["status"] == "rejected"
-    assert result["results"][0]["reason"].startswith("invalid:")
+    assert result["results"][0]["status"] == "applied"
+    changes, _ = await pull_all(client)
+    event = next(item for item in changes if item["client_uuid"] == event_uuid)
+    assert event["data"]["ref_type"] == "account" and event["data"]["ref_uuid"] == account_uuid
+
+    as_user(client.users.bob)
+    foreign = await push(client, change("event", new_uuid(), {
+        "kind": "payment", "title": "Чужой счёт", "start_date": "2025-03-01",
+        "ref_type": "account", "ref_uuid": account_uuid,
+    }))
+    assert foreign["results"][0]["status"] == "rejected"
+    assert foreign["results"][0]["reason"] == "missing_ref:ref_uuid"
 
 
 async def test_budget_hook_failure_does_not_rollback_sync(client, monkeypatch):
