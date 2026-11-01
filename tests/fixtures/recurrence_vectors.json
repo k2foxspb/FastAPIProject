@@ -1,0 +1,76 @@
+{
+  "_comment": "Общие тест-векторы правил повторения журнала. Используются pytest (tests/journal/test_recurrence.py) и сверочным JS-скриптом мобильного приложения (npm rrule + @date-fns/tz). Даты - «плавающие» локальные.",
+  "expand": [
+    {
+      "name": "daily",
+      "rrule": "FREQ=DAILY",
+      "dtstart": "2025-03-01",
+      "range": ["2025-03-01", "2025-03-05"],
+      "expected": ["2025-03-01", "2025-03-02", "2025-03-03", "2025-03-04", "2025-03-05"]
+    },
+    {
+      "name": "weekly_byday_mo_we_fr",
+      "rrule": "FREQ=WEEKLY;BYDAY=MO,WE,FR",
+      "dtstart": "2025-03-03",
+      "range": ["2025-03-01", "2025-03-16"],
+      "expected": ["2025-03-03", "2025-03-05", "2025-03-07", "2025-03-10", "2025-03-12", "2025-03-14"]
+    },
+    {
+      "name": "every_3_days",
+      "rrule": "FREQ=DAILY;INTERVAL=3",
+      "dtstart": "2025-03-01",
+      "range": ["2025-03-05", "2025-03-15"],
+      "expected": ["2025-03-07", "2025-03-10", "2025-03-13"]
+    },
+    {
+      "name": "monthly_bymonthday_31_skips_short_months",
+      "rrule": "FREQ=MONTHLY;BYMONTHDAY=31",
+      "dtstart": "2025-01-31",
+      "range": ["2025-01-01", "2025-06-30"],
+      "expected": ["2025-01-31", "2025-03-31", "2025-05-31"]
+    },
+    {
+      "name": "monthly_last_day",
+      "rrule": "FREQ=MONTHLY;BYMONTHDAY=-1",
+      "dtstart": "2025-01-31",
+      "range": ["2025-01-01", "2025-04-30"],
+      "expected": ["2025-01-31", "2025-02-28", "2025-03-31", "2025-04-30"]
+    },
+    {
+      "name": "rrule_until",
+      "rrule": "FREQ=DAILY;UNTIL=20250303",
+      "dtstart": "2025-03-01",
+      "range": ["2025-03-01", "2025-03-10"],
+      "expected": ["2025-03-01", "2025-03-02", "2025-03-03"]
+    },
+    {
+      "name": "until_date_column",
+      "rrule": "FREQ=WEEKLY",
+      "dtstart": "2025-03-03",
+      "until": "2025-03-17",
+      "range": ["2025-03-01", "2025-03-31"],
+      "expected": ["2025-03-03", "2025-03-10", "2025-03-17"]
+    },
+    {
+      "name": "biweekly_tuesday",
+      "rrule": "FREQ=WEEKLY;INTERVAL=2;BYDAY=TU",
+      "dtstart": "2025-03-04",
+      "range": ["2025-03-01", "2025-03-31"],
+      "expected": ["2025-03-04", "2025-03-18"]
+    },
+    {
+      "name": "dtstart_inside_range",
+      "rrule": "FREQ=DAILY",
+      "dtstart": "2025-03-10",
+      "range": ["2025-03-08", "2025-03-11"],
+      "expected": ["2025-03-10", "2025-03-11"]
+    }
+  ],
+  "to_utc": [
+    {"name": "berlin_dst_start_day", "date": "2025-03-30", "time": "08:00", "tz": "Europe/Berlin", "expected": "2025-03-30T06:00:00+00:00"},
+    {"name": "berlin_before_dst", "date": "2025-03-29", "time": "08:00", "tz": "Europe/Berlin", "expected": "2025-03-29T07:00:00+00:00"},
+    {"name": "berlin_after_dst_end", "date": "2025-10-26", "time": "08:00", "tz": "Europe/Berlin", "expected": "2025-10-26T07:00:00+00:00"},
+    {"name": "berlin_nonexistent_time_shifts_forward", "date": "2025-03-30", "time": "02:30", "tz": "Europe/Berlin", "expected": "2025-03-30T01:30:00+00:00"},
+    {"name": "moscow_no_dst", "date": "2025-06-01", "time": "13:00", "tz": "Europe/Moscow", "expected": "2025-06-01T10:00:00+00:00"}
+  ]
+}

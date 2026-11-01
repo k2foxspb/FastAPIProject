@@ -44,7 +44,8 @@
           "microphonePermission": "Приложение запрашивает доступ к микрофону."
         }
       ],
-      "expo-asset"
+      "expo-asset",
+      "expo-sqlite"
     ],
     "name": "FastAPI",
     "slug": "fastapi",

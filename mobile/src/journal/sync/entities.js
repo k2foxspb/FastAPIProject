@@ -1,0 +1,125 @@
+// Описание синхронизируемых сущностей журнала на клиенте. Совпадает с реестром
+// на сервере (app/services/journal/sync_registry.py): имя сущности, локальная
+// таблица SQLite и поля `data` (ссылки - через *_uuid).
+// Типы полей: text | int | real | bool | json | time (время хранится как 'HH:MM').
+
+export const ENTITIES = {
+  settings: {
+    table: 'settings',
+    fields: {
+      timezone: 'text', week_start: 'int', kcal_goal: 'int', protein_g_goal: 'int', fat_g_goal: 'int',
+      carbs_g_goal: 'int', water_ml_goal: 'int', seed_version: 'int',
+    },
+  },
+  tracker: {
+    table: 'trackers',
+    fields: {
+      name: 'text', value_type: 'text', unit: 'text', icon: 'text', color: 'text', scale_min: 'real',
+      scale_max: 'real', frequency: 'text', goal_value: 'real', goal_direction: 'text', template_key: 'text',
+      sort_order: 'int', archived: 'bool',
+    },
+  },
+  event: {
+    table: 'events',
+    fields: {
+      kind: 'text', title: 'text', description: 'text', start_date: 'text', start_time: 'time', timezone: 'text',
+      duration_min: 'int', rrule: 'text', until_date: 'text', status: 'text', ref_type: 'text', ref_uuid: 'text',
+      payload: 'json', color: 'text',
+    },
+    // Событие трекера удаляется вместе с трекером (как каскад на сервере)
+    polyParents: { typeField: 'ref_type', uuidField: 'ref_uuid' },
+  },
+  event_occurrence: {
+    table: 'event_occurrences',
+    fields: {
+      event_uuid: 'text', occurrence_date: 'text', status: 'text', moved_date: 'text', moved_time: 'time',
+      done_at: 'text', note: 'text',
+    },
+    parents: [{ field: 'event_uuid', entity: 'event' }],
+  },
+  reminder: {
+    table: 'reminders',
+    fields: {
+      target_type: 'text', target_uuid: 'text', offset_min: 'int', time_of_day: 'time', rrule: 'text', enabled: 'bool',
+    },
+    polyParents: { typeField: 'target_type', uuidField: 'target_uuid' },
+  },
+  diary_entry: {
+    table: 'diary_entries',
+    fields: {
+      entry_date: 'text', entry_time: 'time', title: 'text', body: 'text', body_format: 'text', mood: 'int', tags: 'json',
+    },
+  },
+  tracker_value: {
+    table: 'tracker_values',
+    fields: {
+      tracker_uuid: 'text', value_date: 'text', value_time: 'time', num_value: 'real', text_value: 'text', note: 'text',
+    },
+    parents: [{ field: 'tracker_uuid', entity: 'tracker' }],
+  },
+  // Вложения создаются загрузкой файла (uploader.js), через sync - только удаление.
+  attachment: {
+    table: 'attachments',
+    fields: {
+      owner_type: 'text', owner_uuid: 'text', mime: 'text', size_bytes: 'int', width: 'int', height: 'int',
+    },
+    polyParents: { typeField: 'owner_type', uuidField: 'owner_uuid' },
+    pushUpsert: false,
+  },
+};
+
+export const ENTITY_NAMES = Object.keys(ENTITIES);
+
+const normalizeTimeValue = (value) => {
+  if (!value) return null;
+  const m = String(value).match(/^(\d{2}):(\d{2})/);
+  return m ? `${m[1]}:${m[2]}` : null;
+};
+
+// Значение из JS/сервера -> значение колонки SQLite
+export const toDbValue = (type, value) => {
+  if (value === undefined || value === null || value === '') return type === 'text' && value === '' ? '' : null;
+  switch (type) {
+    case 'int': return Number.isFinite(Number(value)) ? Math.trunc(Number(value)) : null;
+    case 'real': return Number.isFinite(Number(value)) ? Number(value) : null;
+    case 'bool': return value ? 1 : 0;
+    case 'json': return JSON.stringify(value);
+    case 'time': return normalizeTimeValue(value);
+    default: return String(value);
+  }
+};
+
+// Колонка SQLite -> значение JS
+export const fromDbValue = (type, value) => {
+  if (value === undefined || value === null) return null;
+  switch (type) {
+    case 'bool': return !!value;
+    case 'json':
+      try {
+        return JSON.parse(value);
+      } catch {
+        return null;
+      }
+    default: return value;
+  }
+};
+
+export const rowToObject = (entity, row) => {
+  if (!row) return null;
+  const { fields } = ENTITIES[entity];
+  const obj = { ...row };
+  Object.entries(fields).forEach(([name, type]) => {
+    obj[name] = fromDbValue(type, row[name]);
+  });
+  return obj;
+};
+
+// Данные записи для sync push (только поля сущности)
+export const rowToPayload = (entity, row) => {
+  const { fields } = ENTITIES[entity];
+  const data = {};
+  Object.entries(fields).forEach(([name, type]) => {
+    data[name] = fromDbValue(type, row[name]);
+  });
+  return data;
+};

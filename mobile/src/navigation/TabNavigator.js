@@ -37,6 +37,16 @@ import AdminAppUploadScreen from '../screens/AdminAppUploadScreen';
 import AdminLogsScreen from '../screens/AdminLogsScreen';
 import AiChatScreen from '../screens/aiChat/AiChatScreen';
 import EditNewsScreen from '../screens/EditNewsScreen';
+import JournalCalendarScreen from '../screens/journal/JournalCalendarScreen';
+import JournalDayScreen from '../screens/journal/JournalDayScreen';
+import EventEditScreen from '../screens/journal/EventEditScreen';
+import DiaryListScreen from '../screens/journal/DiaryListScreen';
+import DiaryEditScreen from '../screens/journal/DiaryEditScreen';
+import TrackersScreen from '../screens/journal/TrackersScreen';
+import TrackerEditScreen from '../screens/journal/TrackerEditScreen';
+import TrackerDetailScreen from '../screens/journal/TrackerDetailScreen';
+import JournalSettingsScreen from '../screens/journal/JournalSettingsScreen';
+import { JournalProvider } from '../context/JournalContext';
 
 
 const Tab = createBottomTabNavigator();
@@ -243,6 +253,34 @@ function FeedStack() {
   );
 }
 
+// Журнал жизни: локальная БД и синхронизация запускаются при первом открытии вкладки (JournalProvider).
+function JournalStack() {
+  const { theme } = useTheme();
+  const colors = themeConstants[theme];
+  return (
+    <JournalProvider>
+      <Stack.Navigator
+        screenOptions={{
+          headerStyle: { backgroundColor: colors.background },
+          headerTintColor: colors.text,
+          contentStyle: { backgroundColor: colors.background },
+          animation: 'slide_from_right',
+        }}
+      >
+        <Stack.Screen name="JournalCalendar" component={JournalCalendarScreen} options={{ title: 'Журнал' }} />
+        <Stack.Screen name="JournalDay" component={JournalDayScreen} options={{ title: 'День' }} />
+        <Stack.Screen name="EventEdit" component={EventEditScreen} options={{ title: 'Событие' }} />
+        <Stack.Screen name="DiaryList" component={DiaryListScreen} options={{ title: 'Дневник' }} />
+        <Stack.Screen name="DiaryEdit" component={DiaryEditScreen} options={{ title: 'Запись' }} />
+        <Stack.Screen name="Trackers" component={TrackersScreen} options={{ title: 'Трекеры' }} />
+        <Stack.Screen name="TrackerEdit" component={TrackerEditScreen} options={{ title: 'Трекер' }} />
+        <Stack.Screen name="TrackerDetail" component={TrackerDetailScreen} options={{ title: 'Трекер' }} />
+        <Stack.Screen name="JournalSettings" component={JournalSettingsScreen} options={{ title: 'Настройки журнала' }} />
+      </Stack.Navigator>
+    </JournalProvider>
+  );
+}
+
 export default function TabNavigator() {
   const { unreadTotal, friendRequestsCount } = useNotifications();
   const { theme } = useTheme();
@@ -260,6 +298,8 @@ export default function TabNavigator() {
             iconName = focused ? 'people' : 'people-outline';
           } else if (route.name === 'Messages') {
             iconName = focused ? 'chatbubbles' : 'chatbubbles-outline';
+          } else if (route.name === 'Journal') {
+            iconName = focused ? 'calendar' : 'calendar-outline';
           } else if (route.name === 'Profile') {
             iconName = focused ? 'person' : 'person-outline';
           }
@@ -327,6 +367,7 @@ export default function TabNavigator() {
           };
         }} 
       />
+      <Tab.Screen name="Journal" component={JournalStack} options={{ title: 'Журнал', headerShown: false }} />
       <Tab.Screen name="Profile" component={ProfileStack} options={{ title: 'Профиль', headerShown: false }} />
     </Tab.Navigator>
   );
