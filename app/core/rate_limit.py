@@ -31,6 +31,7 @@ def _get_redis():
         _redis_client = aioredis.Redis(
             host=config.REDIS_HOST,
             port=int(config.REDIS_PORT),
+            password=config.REDIS_PASSWORD or None,
             db=1,
             socket_connect_timeout=0.5,
             socket_timeout=0.5,

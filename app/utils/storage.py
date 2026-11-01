@@ -20,17 +20,20 @@
     exists(file_metadata) -> bool
     resolve_url(url_or_key) -> FileMetadata | None
 """
+import hashlib
+import hmac
 import os
+import posixpath
 import re
 import unicodedata
+import uuid
 from typing import IO, Any, Iterator, Optional, Tuple
-from datetime import datetime
 from urllib.parse import quote, unquote
 
 from loguru import logger
 
 from app.core import config
-from app.utils.local_storage import FileMetadata, LocalStorageService, safe_filename
+from app.utils.local_storage import FileMetadata, LocalStorageService
 from app.utils.media_processing import (
     IMAGE_CONTENT_TYPES,
     VIDEO_CONTENT_TYPES,
@@ -66,23 +69,36 @@ __all__ = [
     "get_file_stream",
     "exists",
     "resolve_url",
+    "is_private_relative_path",
+    "sign_media_path",
+    "verify_media_signature",
+    "PROTECTED_MEDIA_PREFIX",
 ]
 
 MEDIA_URL_PREFIX = "/media/"
+# Внутренний префикс nginx (location internal), куда приложение отдаёт приватные файлы через X-Accel-Redirect.
+PROTECTED_MEDIA_PREFIX = "/protected_media/"
+# Верхний уровень папок, которые считаются приватными (файлы чатов и журнал).
+_PRIVATE_TOP_LEVEL = ("chat", "journal")
 
 # Единственный экземпляр сервиса хранения на процесс (переиспользуется между запросами).
 _service = LocalStorageService(disks=config.STORAGE_DISKS, strategy=config.STORAGE_STRATEGY)
 
 
-def _timestamped_name(filename_hint: str) -> str:
-    base = safe_filename(filename_hint) or "file"
-    ts = datetime.utcnow().strftime("%Y%m%d%H%M%S%f")
-    return f"{ts}_{base}"
+def _random_name(filename_hint: str) -> str:
+    """
+    Случайное имя файла (uuid4) с сохранённым расширением. Оригинальное имя
+    не попадает в URL - его можно хранить только в БД.
+    """
+    suffix = "".join(
+        ch for ch in os.path.splitext(filename_hint or "")[1].lower() if ch.isascii() and ch.isalnum()
+    )[:10]
+    return f"{uuid.uuid4().hex}.{suffix}" if suffix else uuid.uuid4().hex
 
 
 def build_key(category: str, filename_hint: str) -> str:
-    """Строит относительный путь файла внутри хранилища (category/имя_с_таймстампом)."""
-    name = _timestamped_name(filename_hint)
+    """Строит относительный путь файла внутри хранилища (category/случайное_имя.ext)."""
+    name = _random_name(filename_hint)
     category = (category or "misc").strip("/")
     return f"{category}/{name}"
 
@@ -148,6 +164,37 @@ def chat_media_category(owner: Any, partner: Any = None, group_name: Optional[st
     return base
 
 
+def _normalize_relative(relative_path: str) -> str:
+    return posixpath.normpath(relative_path.replace("\\", "/")).lstrip("/")
+
+
+def is_private_relative_path(relative_path: str) -> bool:
+    """
+    Приватные файлы: вложения чатов (users/<имя>/chats/..., chat/...).
+    Публичные (аватары, посты, новости, сборки приложения) остаются открытыми.
+    """
+    parts = _normalize_relative(relative_path).lower().split("/")
+    if parts[0] in _PRIVATE_TOP_LEVEL:
+        return True
+    return len(parts) >= 3 and parts[0] == "users" and parts[2] == "chats"
+
+
+def _media_signing_key() -> bytes:
+    return (config.SECRET_KEY or config.SESSION_SECRET_KEY).encode("utf-8")
+
+
+def sign_media_path(relative_path: str) -> str:
+    """HMAC-подпись относительного пути приватного файла (добавляется в URL как ?sig=...)."""
+    message = b"media:" + _normalize_relative(relative_path).encode("utf-8")
+    return hmac.new(_media_signing_key(), message, hashlib.sha256).hexdigest()
+
+
+def verify_media_signature(relative_path: str, signature: Optional[str]) -> bool:
+    if not signature:
+        return False
+    return hmac.compare_digest(sign_media_path(relative_path), signature)
+
+
 def _encode_key(metadata: FileMetadata) -> str:
     """Кодирует diskId и relativePath в единую строку-ключ для хранения во внешнем коде (БД)."""
     return f"{metadata.disk_id}:{metadata.relative_path}"
@@ -170,6 +217,11 @@ def resolve_url(url_or_key: str) -> Optional[FileMetadata]:
     Выполняет fallback-поиск по всем дискам. Возвращает None, если файл не найден
     или ссылка указывает на внешний ресурс.
     """
+    if not url_or_key:
+        return None
+
+    # Убираем подпись (?sig=...), она не является частью пути к файлу.
+    url_or_key = url_or_key.split("?", 1)[0]
     if not url_or_key:
         return None
 
@@ -233,6 +285,8 @@ def save_file(
 
     # Папки пользователей могут содержать кириллицу - отдаём URL в percent-encoding.
     url = f"{MEDIA_URL_PREFIX}{quote(metadata.relative_path, safe='/()')}"
+    if is_private_relative_path(metadata.relative_path):
+        url = f"{url}?sig={sign_media_path(metadata.relative_path)}"
     key = _encode_key(metadata)
     return url, key
 

@@ -8,7 +8,20 @@ app/app/
 app/media/
 media/
 .env
+.env.*
+!.env.example
 mobile/.env
+mobile/.env.*
+!mobile/.env.example
 *.db
 
 firebase-service-account.json
+GoogleService-Info.plist
+*.keystore
+*.jks
+*.p8
+*.p12
+*.pem
+*.key
+logs/
+*.log

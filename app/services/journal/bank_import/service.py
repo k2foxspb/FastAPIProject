@@ -42,7 +42,7 @@ def _preview_file(token: str) -> Path:
 
 async def _redis_client():
     import redis.asyncio as redis
-    return redis.Redis(host=config.REDIS_HOST, port=int(config.REDIS_PORT), db=1,
+    return redis.Redis(host=config.REDIS_HOST, port=int(config.REDIS_PORT), password=config.REDIS_PASSWORD or None, db=1,
                        socket_connect_timeout=0.5, socket_timeout=0.5)
 
 

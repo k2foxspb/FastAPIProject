@@ -1,4 +1,5 @@
 import os
+from urllib.parse import quote
 
 from dotenv import load_dotenv
 from loguru import logger
@@ -12,10 +13,8 @@ IS_PRODUCTION = ENVIRONMENT == "production"
 SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = os.getenv("ALGORITHM", "HS256")
 
-if IS_PRODUCTION and not SECRET_KEY:
-    raise RuntimeError(
-        "SECRET_KEY должен быть задан через переменную окружения в продакшене."
-    )
+# Значения по умолчанию и примеры из документации, которые нельзя использовать в продакшене.
+WEAK_SECRET_VALUES = {"", "changeme", "secret", "password", "xxxxxxxx", "change_me", "your_secret_here"}
 
 MAIL_USERNAME = os.getenv("MAIL_USERNAME")
 MAIL_PASSWORD = os.getenv("MAIL_PASSWORD")
@@ -81,9 +80,12 @@ else:
 
 REDIS_HOST = os.getenv("REDIS_HOST", "redis")
 REDIS_PORT = os.getenv("REDIS_PORT", "6379")
+# Пароль Redis (requirepass). Пустая строка - без авторизации (только для разработки).
+REDIS_PASSWORD = os.getenv("REDIS_PASSWORD", "")
 
 POSTGRES_USER = os.getenv("POSTGRES_USER", "ecommerce_user")
-POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "xxxxxxxx")
+# Дефолтного пароля нет: в продакшене значение обязательно задаётся через .env.
+POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "")
 POSTGRES_DB = os.getenv("POSTGRES_DB", "ecommerce_db")
 POSTGRES_HOST = os.getenv("POSTGRES_HOST", "db")
 POSTGRES_PORT = os.getenv("POSTGRES_PORT", "5432")
@@ -94,8 +96,26 @@ DEFAULT_DB_URL = f"postgresql+asyncpg://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POS
 # Позволяем переопределить через DATABASE_URL (например, для SQLite)
 DATABASE_URL = os.getenv("DATABASE_URL", DEFAULT_DB_URL)
 
-CELERY_BROKER_URL = f"redis://{REDIS_HOST}:{REDIS_PORT}/0"
-CELERY_RESULT_BACKEND = f"redis://{REDIS_HOST}:{REDIS_PORT}/0"
+_REDIS_AUTH = f":{quote(REDIS_PASSWORD, safe='')}@" if REDIS_PASSWORD else ""
+CELERY_BROKER_URL = f"redis://{_REDIS_AUTH}{REDIS_HOST}:{REDIS_PORT}/0"
+CELERY_RESULT_BACKEND = f"redis://{_REDIS_AUTH}{REDIS_HOST}:{REDIS_PORT}/0"
+
+if IS_PRODUCTION:
+    _required_in_production = {
+        "SECRET_KEY": SECRET_KEY,
+        "SESSION_SECRET_KEY": os.getenv("SESSION_SECRET_KEY", ""),
+        "POSTGRES_PASSWORD": POSTGRES_PASSWORD,
+        "REDIS_PASSWORD": REDIS_PASSWORD,
+    }
+    _insecure = sorted(
+        name for name, value in _required_in_production.items()
+        if not value or value.strip().lower() in WEAK_SECRET_VALUES or len(value) < 16
+    )
+    if _insecure:
+        raise RuntimeError(
+            "В продакшене не заданы или слабые секреты (нужны случайные значения не короче 16 символов): "
+            + ", ".join(_insecure)
+        )
 
 FIREBASE_SERVICE_ACCOUNT_PATH = os.getenv("FIREBASE_SERVICE_ACCOUNT_PATH", "firebase-service-account.json")
 FIREBASE_APP_CHECK_ENFORCED = os.getenv("FIREBASE_APP_CHECK_ENFORCED", "false").lower() == "true"
@@ -105,7 +125,7 @@ if IS_PRODUCTION and not FIREBASE_APP_CHECK_ENFORCED:
         "FIREBASE_APP_CHECK_ENFORCED=false в продакшене: проверка Firebase App Check отключена."
     )
 
-RECAPTCHA_PROJECT_ID = os.getenv("RECAPTCHA_PROJECT_ID", "fastapi-f628e")
+RECAPTCHA_PROJECT_ID = os.getenv("RECAPTCHA_PROJECT_ID", "")
 RECAPTCHA_SITE_KEY_ANDROID = os.getenv("RECAPTCHA_SITE_KEY_ANDROID", "")
 RECAPTCHA_SITE_KEY_IOS = os.getenv("RECAPTCHA_SITE_KEY_IOS", "")
 RECAPTCHA_SITE_KEY_DEFAULT = os.getenv("RECAPTCHA_SITE_KEY_DEFAULT", "")
@@ -162,6 +182,10 @@ else:
 # Стратегия выбора диска при сохранении файла:
 # first_available (по умолчанию) | round_robin | most_free_space
 STORAGE_STRATEGY = os.getenv("STORAGE_STRATEGY", "first_available").lower()
+
+# Приватные файлы (чаты) отдаются через nginx X-Accel-Redirect (в продакшене за nginx).
+# В разработке (без nginx) файл отдаётся самим приложением, подпись проверяется в обоих случаях.
+STORAGE_ACCEL_REDIRECT = os.getenv("STORAGE_ACCEL_REDIRECT", "true" if IS_PRODUCTION else "false").lower() == "true"
 
 # --- Локальный ИИ (Ollama) ---
 # Backend обращается к Ollama напрямую (внутри того же сервера/контейнера),

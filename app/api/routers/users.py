@@ -137,15 +137,16 @@ async def get_firebase_config():
     import json
     import os
     from loguru import logger
+    from app.core.config import RECAPTCHA_PROJECT_ID
     
     # По умолчанию (fallback)
     config = {
         "apiKey": "AIzaSyAwKCJuxsxfnY6aloE5lnDn-triTVBswxE",
         "appId": "1:176773891332:android:01174694c19132ed0ffc51",
-        "projectId": "fastapi-f628e",
-        "storageBucket": "fastapi-f628e.firebasestorage.app",
+        "projectId": RECAPTCHA_PROJECT_ID,
+        "storageBucket": f"{RECAPTCHA_PROJECT_ID}.firebasestorage.app",
         "messagingSenderId": "176773891332",
-        "databaseURL": "https://fastapi-f628e-default-rtdb.firebaseio.com"
+        "databaseURL": f"https://{RECAPTCHA_PROJECT_ID}-default-rtdb.firebaseio.com"
     }
     
     # Пытаемся взять из google-services.json если он есть в корне или в mobile
@@ -760,7 +761,7 @@ async def request_phone_code(
     только как резерв, если явно включены через SMS_FALLBACK_ENABLED и
     отправка через модем не удалась.
     """
-    from app.core.config import REDIS_HOST, REDIS_PORT, IS_PRODUCTION, SMS_FALLBACK_ENABLED
+    from app.core.config import REDIS_HOST, REDIS_PORT, REDIS_PASSWORD, IS_PRODUCTION, SMS_FALLBACK_ENABLED
     from app.core.hilink_sms import send_sms as hilink_send_sms
 
     logger.info(f"[Auth] Вызван endpoint request-phone-code, получен номер телефона: {request.phone_number}")
@@ -782,7 +783,7 @@ async def request_phone_code(
 
     r = None
     try:
-        r = aioredis.Redis(host=REDIS_HOST, port=int(REDIS_PORT), db=1)
+        r = aioredis.Redis(host=REDIS_HOST, port=int(REDIS_PORT), password=REDIS_PASSWORD or None, db=1)
 
         # Rate limit: не чаще 1 SMS в 60 секунд на номер
         allowed = await r.set(rate_last_key, "1", ex=PHONE_CODE_MIN_INTERVAL_SECONDS, nx=True)
@@ -814,7 +815,7 @@ async def request_phone_code(
 
     try:
         if r is None:
-            r = aioredis.Redis(host=REDIS_HOST, port=int(REDIS_PORT), db=1)
+            r = aioredis.Redis(host=REDIS_HOST, port=int(REDIS_PORT), password=REDIS_PASSWORD or None, db=1)
         await r.setex(redis_key, PHONE_CODE_TTL_SECONDS, code)
         await r.delete(attempts_key)
         # Код не логируется в production, чтобы не раскрывать его в логах
@@ -868,7 +869,7 @@ async def verify_phone_code(
     Проверяет код подтверждения и возвращает токены доступа.
     Количество попыток ввода кода ограничено (защита от подбора).
     """
-    from app.core.config import REDIS_HOST, REDIS_PORT
+    from app.core.config import REDIS_HOST, REDIS_PORT, REDIS_PASSWORD
 
     phone = request.phone_number
     code = request.code
@@ -885,7 +886,7 @@ async def verify_phone_code(
 
     # 1. Проверяем в Redis (с лимитом попыток ввода кода)
     try:
-        r = aioredis.Redis(host=REDIS_HOST, port=int(REDIS_PORT), db=1)
+        r = aioredis.Redis(host=REDIS_HOST, port=int(REDIS_PORT), password=REDIS_PASSWORD or None, db=1)
 
         attempts = await r.incr(attempts_key)
         if attempts == 1:

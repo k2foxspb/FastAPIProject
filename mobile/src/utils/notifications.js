@@ -331,15 +331,6 @@ export async function setupCloudMessaging(onNotificationReceived = null) {
     try {
       const handler = async remoteMessage => {
         console.log('[FCM] Foreground message received!');
-        console.log('[FCM] MessageId:', remoteMessage?.messageId);
-        
-        // Добавляем алерт для отладки в режиме разработки
-        if (__DEV__) {
-          Alert.alert(
-            'FCM Foreground (DEBUG)',
-            `Title: ${remoteMessage?.data?.notif_title || remoteMessage?.notification?.title || 'No Title'}\nBody: ${remoteMessage?.data?.notif_body || remoteMessage?.notification?.body || 'No Body'}`
-          );
-        }
 
         // Передаем в коллбек (обычно это NotificationContext)
         if (onNotificationReceived) {
@@ -539,15 +530,6 @@ export async function getFcmToken() {
       }
       
       if (!token) throw e;
-    }
-    console.log('[FCM] Full Token obtained:', token ? (token.substring(0, 20) + '...') : 'NULL');
-    
-    // В режиме разработки выводим токен в алерте, чтобы его можно было скопировать для теста
-    if (__DEV__ && token) {
-      console.log('--- COPY THIS TOKEN TO test_fcm.py ---');
-      console.log(token);
-      console.log('---------------------------------------');
-      Alert.alert('FCM Token (Dev Only)', token);
     }
 
     if (token) {

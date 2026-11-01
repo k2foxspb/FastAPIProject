@@ -266,13 +266,13 @@ def _cleanup_message_files(file_path: str, message_type: str, root_dir: str):
                 for att in attachments:
                     att_path = att.get("file_path")
                     if att_path:
-                        abs_path = os.path.join(root_dir, att_path.lstrip("/"))
+                        abs_path = os.path.join(root_dir, att_path.split("?", 1)[0].lstrip("/"))
                         if os.path.exists(abs_path):
                             os.remove(abs_path)
             except Exception:
                 pass
         else:
-            abs_path = os.path.join(root_dir, file_path.lstrip("/"))
+            abs_path = os.path.join(root_dir, file_path.split("?", 1)[0].lstrip("/"))
             if os.path.exists(abs_path):
                 os.remove(abs_path)
     except Exception as e:

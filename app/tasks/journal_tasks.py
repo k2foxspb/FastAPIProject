@@ -127,7 +127,7 @@ def purge_tombstones() -> int:
 def cleanup_import_previews() -> int:
     async def cleanup_redis() -> int:
         import redis.asyncio as redis
-        client = redis.Redis(host=config.REDIS_HOST, port=int(config.REDIS_PORT), db=1,
+        client = redis.Redis(host=config.REDIS_HOST, port=int(config.REDIS_PORT), password=config.REDIS_PASSWORD or None, db=1,
                              socket_connect_timeout=0.5, socket_timeout=0.5)
         removed_count = 0
         try:

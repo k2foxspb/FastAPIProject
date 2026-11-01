@@ -73,6 +73,7 @@
   },
   "devDependencies": {
     "@babel/core": "^7.26.0",
+    "babel-plugin-transform-remove-console": "^6.9.4",
     "dotenv": "^17.4.2",
     "react-refresh": "^0.18.0"
   },

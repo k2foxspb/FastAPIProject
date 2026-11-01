@@ -59,8 +59,12 @@ def create_application() -> FastAPI:
     # вместо того чтобы полагаться на единственную примонтированную директорию.
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # /home/fast/app
 
-    from fastapi.responses import StreamingResponse
+    from fastapi.responses import StreamingResponse, Response
+    from fastapi import Query
+    from typing import Optional
+    from urllib.parse import quote
     import mimetypes
+    from app.core import config as app_config
     from app.utils import storage as storage_service
     from app.utils.storage_exceptions import FileNotFoundInStorageError, StorageError
     import posixpath
@@ -75,13 +79,35 @@ def create_application() -> FastAPI:
         return normalized == "journal" or normalized.startswith(private_media_prefixes)
 
     @app.api_route("/media/{file_path:path}", methods=["GET", "HEAD"])
-    async def serve_media(file_path: str):
+    async def serve_media(file_path: str, sig: Optional[str] = Query(None)):
         metadata = storage_service.resolve_url(file_path)
         if metadata is None and "_thumb" in file_path:
             # Фолбэк на оригинал, если миниатюра отсутствует
             metadata = storage_service.resolve_url(file_path.replace("_thumb", ""))
         if metadata is None or is_private_media(metadata.relative_path):
             raise HTTPException(status_code=404, detail="File not found")
+
+        is_private = storage_service.is_private_relative_path(metadata.relative_path)
+        if is_private and not storage_service.verify_media_signature(metadata.relative_path, sig):
+            # 404 вместо 403: не подтверждаем существование приватного файла
+            raise HTTPException(status_code=404, detail="File not found")
+
+        mime_type = metadata.mime_type or mimetypes.guess_type(file_path)[0] or "application/octet-stream"
+        headers = {"X-Content-Type-Options": "nosniff"}
+        if is_private:
+            headers["Cache-Control"] = "private, max-age=3600"
+
+        try:
+            if not storage_service.exists(metadata):
+                raise FileNotFoundInStorageError(metadata.relative_path)
+        except FileNotFoundInStorageError:
+            raise HTTPException(status_code=404, detail="File not found")
+
+        # Продакшен: отдача через nginx (internal location /protected_media/), который
+        # читает файл с диска сам. Работает для disk0 (единственный примонтированный диск).
+        if is_private and app_config.STORAGE_ACCEL_REDIRECT and metadata.disk_id == "disk0":
+            headers["X-Accel-Redirect"] = f"{storage_service.PROTECTED_MEDIA_PREFIX}{quote(metadata.relative_path, safe='/()')}"
+            return Response(status_code=200, media_type=mime_type, headers=headers)
 
         try:
             stream = storage_service.get_file_stream(metadata)
@@ -91,8 +117,7 @@ def create_application() -> FastAPI:
             logger.warning(f"Storage error while serving {file_path}: {e}")
             raise HTTPException(status_code=503, detail="Storage temporarily unavailable")
 
-        mime_type = metadata.mime_type or mimetypes.guess_type(file_path)[0] or "application/octet-stream"
-        return StreamingResponse(stream, media_type=mime_type)
+        return StreamingResponse(stream, media_type=mime_type, headers=headers)
 
     # Статика сайта (общие CSS/JS страниц документации) - /static/css/site.css, /static/js/site.js
     static_dir = os.path.join(project_root, "app", "static")

@@ -36,10 +36,30 @@ build
 
 # Runtime data / secrets not needed for image build
 .env
+.env.*
+!.env.example
 mobile/.env
+mobile/.env.*
 firebase-service-account.json
+google-services.json
+GoogleService-Info.plist
+*.keystore
+*.jks
+*.p8
+*.p12
+*.pem
+*.key
 media
 app/media
+logs
+info.log
+*.log
+.git
+.junie
+.idea
+venv
+sql_app.db
+ecommerce.db
 
 # Docker/compose files not needed inside build context
 Dockerfile*
