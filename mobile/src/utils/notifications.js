@@ -20,6 +20,7 @@ import { usersApi, chatApi, setAuthToken } from '../api';
 import { storage } from './storage';
 import { navigationRef } from '../navigation/NavigationService';
 import { displayBundledMessage, handleNotificationResponse, parseNotificationData, navigateByPushData } from './notificationUtils';
+import { JOURNAL_IOS_CATEGORIES } from '../journal/notifications/channels';
 
 // Global state to track if native module is broken during session
 let nativeMessagingBroken = false;
@@ -315,6 +316,8 @@ export async function setupCloudMessaging(onNotificationReceived = null) {
                 },
               ],
             },
+            // Категории напоминаний журнала: setNotificationCategories заменяет весь набор
+            ...JOURNAL_IOS_CATEGORIES,
           ]);
           console.log('[Notifee] iOS Categories registered');
         }

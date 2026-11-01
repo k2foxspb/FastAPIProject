@@ -6,6 +6,9 @@ import { DateField, TimeField } from '../../components/journal/DateTimeFields';
 import { deleteEvent, getEvent, saveEvent } from '../../journal/db/repos/events';
 import { describeRule, formatRule, parseRule } from '../../journal/utils/recurrence';
 import { WEEKDAYS_SHORT_RU, weekdayIndex } from '../../journal/utils/dates';
+import { getReminderFor, setReminderFor } from '../../journal/db/repos/reminders';
+import { ensureReminderPermission } from '../../journal/notifications/permissions';
+import { DEFAULT_ALL_DAY_TIME } from '../../journal/notifications/plan';
 
 const KINDS = [
   { key: 'custom', label: 'Событие', icon: 'star-outline' },
@@ -20,6 +23,17 @@ const REPEATS = [
   { key: 'weekly', label: 'По дням недели' },
   { key: 'interval', label: 'Раз в N дней' },
   { key: 'monthly', label: 'Каждый месяц' },
+];
+
+// За сколько минут до события напоминать (null - без напоминания)
+const REMINDERS = [
+  { key: null, label: 'Нет' },
+  { key: 0, label: 'В момент события' },
+  { key: 5, label: 'За 5 мин' },
+  { key: 15, label: 'За 15 мин' },
+  { key: 30, label: 'За 30 мин' },
+  { key: 60, label: 'За 1 ч' },
+  { key: 1440, label: 'За 1 день' },
 ];
 
 const COLORS = ['#6366F1', '#10B981', '#F59E0B', '#EF4444', '#3B82F6', '#EC4899', '#8B5CF6'];
@@ -62,6 +76,8 @@ const EventForm = ({ navigation, route }) => {
   const [interval, setIntervalValue] = useState('2');
   const [monthDay, setMonthDay] = useState(null);
   const [until, setUntil] = useState(null);
+  const [reminderOffset, setReminderOffset] = useState(null);
+  const [reminderTime, setReminderTime] = useState(DEFAULT_ALL_DAY_TIME);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -84,7 +100,13 @@ const EventForm = ({ navigation, route }) => {
       if (r.interval) setIntervalValue(r.interval);
       if (r.monthDay) setMonthDay(r.monthDay);
       setUntil(r.until || ev.until_date || null);
-      setLoaded(true);
+      return getReminderFor(uuid).then((rem) => {
+        if (rem) {
+          setReminderOffset(rem.enabled ? rem.offset_min || 0 : null);
+          if (rem.time_of_day) setReminderTime(rem.time_of_day);
+        }
+        setLoaded(true);
+      });
     });
   }, [uuid, navigation]);
 
@@ -103,7 +125,7 @@ const EventForm = ({ navigation, route }) => {
     }
     setSaving(true);
     try {
-      await saveEvent({
+      const eventUuid = await saveEvent({
         kind: existing?.kind === 'tracker' ? 'tracker' : kind,
         title: title.trim().slice(0, 200),
         description: description.trim() || null,
@@ -119,6 +141,11 @@ const EventForm = ({ navigation, route }) => {
         payload: existing?.payload || null,
         color,
       }, uuid);
+      await setReminderFor('event', eventUuid, reminderOffset === null ? null : {
+        offset_min: reminderOffset,
+        // Для события «весь день» напоминание приходит в заданное время
+        time_of_day: time ? null : (reminderTime || DEFAULT_ALL_DAY_TIME),
+      });
       navigation.goBack();
     } catch (e) {
       Alert.alert('Не удалось сохранить', e?.message || '');
@@ -210,6 +237,27 @@ const EventForm = ({ navigation, route }) => {
           <Field label="Повторять до">
             <DateField value={until} onChange={setUntil} allowClear placeholder="Без даты окончания" />
             <Text style={[styles.hint, { color: colors.textSecondary }]}>{describeRule(rule)}</Text>
+          </Field>
+        )}
+        <Field label="Напоминание">
+          <View style={styles.wrap}>
+            {REMINDERS.map((r) => (
+              <Chip
+                key={String(r.key)}
+                label={r.label}
+                icon={r.key === null ? 'notifications-off-outline' : undefined}
+                selected={reminderOffset === r.key}
+                onPress={() => {
+                  if (reminderOffset === null && r.key !== null) ensureReminderPermission();
+                  setReminderOffset(r.key);
+                }}
+              />
+            ))}
+          </View>
+        </Field>
+        {reminderOffset !== null && !time && (
+          <Field label="Событие на весь день - напомнить в (ЧЧ:ММ)">
+            <TimeField value={reminderTime} onChange={(v) => setReminderTime(v || DEFAULT_ALL_DAY_TIME)} placeholder={DEFAULT_ALL_DAY_TIME} />
           </Field>
         )}
         <Field label="Цвет">

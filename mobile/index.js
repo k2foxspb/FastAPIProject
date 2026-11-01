@@ -83,6 +83,17 @@ if (Platform.OS !== 'web') {
         }
         
         console.log(`[Entry] Notifee Background event (type=${type}):`, detail?.notification?.id);
+        // Напоминания журнала («Выполнено»/«Отложить»/«Пропустить»): Notifee допускает
+        // только один фоновый обработчик, поэтому они разбираются здесь же
+        if (detail?.notification?.data?.kind === 'journal_reminder') {
+          try {
+            const { handleJournalNotificationEvent } = require('./src/journal/notifications/actions');
+            await handleJournalNotificationEvent(event);
+          } catch (err) {
+            console.error('[Entry] Error in journal reminder handler:', err);
+          }
+          return;
+        }
         try {
           const { handleNotificationResponse } = require('./src/utils/notificationUtils');
           if (typeof handleNotificationResponse === 'function') {
@@ -96,6 +107,16 @@ if (Platform.OS !== 'web') {
     }
   } catch (e) {
     console.warn('[Entry] Could not register Notifee background handler:', e);
+  }
+}
+
+// Фоновая задача пересчёта окна напоминаний журнала: defineTask должен выполниться
+// на верхнем уровне до регистрации компонента (фоновый запуск идёт без UI).
+if (Platform.OS !== 'web') {
+  try {
+    require('./src/journal/notifications/backgroundTask');
+  } catch (e) {
+    console.warn('[Entry] Could not define journal background task:', e);
   }
 }
 

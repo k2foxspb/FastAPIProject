@@ -52,22 +52,27 @@ const withNotificationAndroidPlugin = (config) => {
       });
     }
 
-    // Ensure Notifee components are present (redundancy for reliability)
+    // Точные будильники для напоминаний журнала. USE_EXACT_ALARM выдаётся без запроса
+    // (APK распространяется не через Google Play); SCHEDULE_EXACT_ALARM, RECEIVE_BOOT_COMPLETED
+    // и ресиверы восстановления триггеров после перезагрузки (RebootBroadcastReceiver,
+    // NotificationAlarmReceiver, AlarmPermissionBroadcastReceiver) объявляет AAR ядра Notifee.
+    if (!manifest["uses-permission"]) manifest["uses-permission"] = [];
+    const hasPermission = (name) => manifest["uses-permission"].find((p) => p.$["android:name"] === name);
+    if (!hasPermission("android.permission.USE_EXACT_ALARM")) {
+      manifest["uses-permission"].push({ $: { "android:name": "android.permission.USE_EXACT_ALARM" } });
+    }
+
     if (!application.receiver) application.receiver = [];
     if (!application.service) application.service = [];
 
-    const hasReceiver = (name) => application.receiver.find((r) => r.$["android:name"] === name);
     const hasService = (name) => application.service.find((s) => s.$["android:name"] === name);
 
-    if (!hasReceiver("app.notifee.core.ReceiverService")) {
-      application.receiver.push({ $: { "android:name": "app.notifee.core.ReceiverService", "android:exported": "false" } });
-    }
-    if (!hasService("app.notifee.core.ForegroundService")) {
-      application.service.push({ $: { "android:name": "app.notifee.core.ForegroundService", "android:exported": "false" } });
-    }
-    if (!hasService("app.notifee.core.RebootService")) {
-      application.service.push({ $: { "android:name": "app.notifee.core.RebootService", "android:exported": "false" } });
-    }
+    // Удаляем ошибочные записи прошлых версий плагина: ReceiverService - это service, а не
+    // receiver (его объявляет Notifee), RebootService и NotifeeEventReceiver не существуют
+    // (BOOT_COMPLETED на несуществующий класс даёт ClassNotFoundException при загрузке).
+    const brokenReceivers = ["app.notifee.core.ReceiverService", "io.invertase.notifee.NotifeeEventReceiver"];
+    application.receiver = application.receiver.filter((r) => !brokenReceivers.includes(r.$["android:name"]));
+    application.service = application.service.filter((s) => s.$["android:name"] !== "app.notifee.core.RebootService");
 
     // Add ReactNativeFirebaseMessagingService for reliable background handling
     if (!hasService("io.invertase.firebase.messaging.ReactNativeFirebaseMessagingService")) {
@@ -90,46 +95,7 @@ const withNotificationAndroidPlugin = (config) => {
       });
     }
 
-    // Add Notifee Event Receiver (optional but helps for some event delivery)
-    if (!hasReceiver("io.invertase.notifee.NotifeeEventReceiver")) {
-      application.receiver.push({
-        $: {
-          "android:name": "io.invertase.notifee.NotifeeEventReceiver",
-          "android:exported": "false",
-        },
-        "intent-filter": [
-          {
-            action: [
-              {
-                $: {
-                  "android:name": "io.invertase.notifee.intent.action.PACKAGE_REPLACED",
-                },
-              },
-              {
-                $: {
-                  "android:name": "android.intent.action.BOOT_COMPLETED",
-                },
-              },
-              {
-                $: {
-                  "android:name": "android.intent.action.MY_PACKAGE_REPLACED",
-                },
-              },
-              {
-                $: {
-                  "android:name": "android.intent.action.QUICKBOOT_POWERON",
-                },
-              },
-              {
-                $: {
-                  "android:name": "com.htc.intent.action.QUICKBOOT_POWERON",
-                },
-              },
-            ],
-          },
-        ],
-      });
-    }
+    if (!application.receiver.length) delete application.receiver;
 
     return config;
   });

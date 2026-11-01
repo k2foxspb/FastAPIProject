@@ -46,6 +46,8 @@ import TrackersScreen from '../screens/journal/TrackersScreen';
 import TrackerEditScreen from '../screens/journal/TrackerEditScreen';
 import TrackerDetailScreen from '../screens/journal/TrackerDetailScreen';
 import JournalSettingsScreen from '../screens/journal/JournalSettingsScreen';
+import ReminderDiagnosticsScreen from '../screens/journal/ReminderDiagnosticsScreen';
+import BatteryHelpScreen from '../screens/journal/BatteryHelpScreen';
 import { JournalProvider } from '../context/JournalContext';
 
 
@@ -253,12 +255,12 @@ function FeedStack() {
   );
 }
 
-// Журнал жизни: локальная БД и синхронизация запускаются при первом открытии вкладки (JournalProvider).
+// Журнал жизни. JournalProvider оборачивает весь TabNavigator: локальная БД, синхронизация
+// и пересчёт точных напоминаний работают со старта приложения, а не только на вкладке.
 function JournalStack() {
   const { theme } = useTheme();
   const colors = themeConstants[theme];
   return (
-    <JournalProvider>
       <Stack.Navigator
         screenOptions={{
           headerStyle: { backgroundColor: colors.background },
@@ -276,8 +278,9 @@ function JournalStack() {
         <Stack.Screen name="TrackerEdit" component={TrackerEditScreen} options={{ title: 'Трекер' }} />
         <Stack.Screen name="TrackerDetail" component={TrackerDetailScreen} options={{ title: 'Трекер' }} />
         <Stack.Screen name="JournalSettings" component={JournalSettingsScreen} options={{ title: 'Настройки журнала' }} />
+        <Stack.Screen name="ReminderDiagnostics" component={ReminderDiagnosticsScreen} options={{ title: 'Проверка напоминаний' }} />
+        <Stack.Screen name="BatteryHelp" component={BatteryHelpScreen} options={{ title: 'Экономия батареи' }} />
       </Stack.Navigator>
-    </JournalProvider>
   );
 }
 
@@ -287,6 +290,7 @@ export default function TabNavigator() {
   const colors = themeConstants[theme];
 
   return (
+    <JournalProvider>
     <Tab.Navigator
       screenOptions={({ route }) => ({
         tabBarHideOnKeyboard: false,
@@ -370,5 +374,6 @@ export default function TabNavigator() {
       <Tab.Screen name="Journal" component={JournalStack} options={{ title: 'Журнал', headerShown: false }} />
       <Tab.Screen name="Profile" component={ProfileStack} options={{ title: 'Профиль', headerShown: false }} />
     </Tab.Navigator>
+    </JournalProvider>
   );
 }

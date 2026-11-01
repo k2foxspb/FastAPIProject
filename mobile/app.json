@@ -45,7 +45,8 @@
         }
       ],
       "expo-asset",
-      "expo-sqlite"
+      "expo-sqlite",
+      "expo-background-task"
     ],
     "name": "FastAPI",
     "slug": "fastapi",

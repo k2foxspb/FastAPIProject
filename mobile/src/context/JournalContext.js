@@ -6,6 +6,10 @@ import { closeJournalDb, openJournalDb, subscribeJournalChanges } from '../journ
 import { ensureLocalSettings, getSettings } from '../journal/db/repos/settings';
 import { startSyncEngine, stopSyncEngine, subscribeSyncState, syncNow } from '../journal/sync/syncEngine';
 import { deviceTimeZone, todayKey } from '../journal/utils/dates';
+import notifee from '@notifee/react-native';
+import { cancelAllJournalTriggers, startReminderScheduler, stopReminderScheduler } from '../journal/notifications/scheduler';
+import { applyPendingActions, handleJournalNotificationEvent } from '../journal/notifications/actions';
+import { registerJournalBackgroundTask } from '../journal/notifications/backgroundTask';
 
 // Контекст «Журнала жизни»: открывает локальную БД текущего пользователя, запускает
 // синхронизацию и сообщает экранам о любых изменениях данных (dataVersion).
@@ -27,6 +31,9 @@ export const JournalProvider = ({ children }) => {
     if (!id) {
       if (userIdRef.current) {
         stopSyncEngine();
+        stopReminderScheduler();
+        // Личные напоминания не должны приходить после выхода из аккаунта
+        await cancelAllJournalTriggers();
         await closeJournalDb();
       }
       userIdRef.current = null;
@@ -37,7 +44,11 @@ export const JournalProvider = ({ children }) => {
     if (id === userIdRef.current) return;
     try {
       setStatus('loading');
-      if (userIdRef.current) stopSyncEngine();
+      if (userIdRef.current) {
+        stopSyncEngine();
+        stopReminderScheduler();
+        await cancelAllJournalTriggers();
+      }
       await openJournalDb(id);
       userIdRef.current = id;
       setUserId(id);
@@ -45,6 +56,10 @@ export const JournalProvider = ({ children }) => {
       setStatus('ready');
       setDataVersion((v) => v + 1);
       startSyncEngine();
+      // Действия из уведомлений, которые не удалось записать в фоне
+      applyPendingActions(id).catch(() => undefined);
+      startReminderScheduler();
+      registerJournalBackgroundTask();
     } catch (e) {
       console.log('[Journal] init error', e?.message);
       setError('Не удалось открыть журнал на устройстве');
@@ -61,7 +76,23 @@ export const JournalProvider = ({ children }) => {
     return () => sub.remove();
   }, [init]);
 
-  useEffect(() => () => stopSyncEngine(), []);
+  useEffect(() => () => {
+    stopSyncEngine();
+    stopReminderScheduler();
+  }, []);
+
+  // Нажатия на напоминания и их кнопки, когда приложение открыто (фон - в index.js)
+  useEffect(() => {
+    let unsubscribe = () => {};
+    try {
+      unsubscribe = notifee.onForegroundEvent((event) => {
+        handleJournalNotificationEvent(event).catch(() => undefined);
+      });
+    } catch (e) {
+      console.log('[Journal] foreground events error', e?.message);
+    }
+    return () => unsubscribe();
+  }, []);
 
   useEffect(() => subscribeSyncState(setSyncState), []);
 

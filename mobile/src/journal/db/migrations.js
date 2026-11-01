@@ -63,6 +63,13 @@ export const MIGRATIONS = [
   );
   CREATE TABLE IF NOT EXISTS sync_meta (key TEXT PRIMARY KEY NOT NULL, value TEXT);
   `,
+  // 2 - запланированные локальные уведомления (фаза 1в): текущее окно триггеров Notifee
+  `
+  CREATE TABLE IF NOT EXISTS scheduled_triggers (
+    id TEXT PRIMARY KEY NOT NULL, reminder_uuid TEXT, fire_at INTEGER NOT NULL, title TEXT, body TEXT
+  );
+  CREATE INDEX IF NOT EXISTS ix_triggers_fire ON scheduled_triggers(fire_at);
+  `,
 ];
 
 export const runMigrations = async (db) => {

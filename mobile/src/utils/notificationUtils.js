@@ -443,6 +443,12 @@ async function waitForNavigation() {
 // Единый переход по тапу на push (Notifee и FCM fallbacks):
 // чатовые типы -> чат/группа, остальные -> колокольчик (экран уведомлений) или связанный объект.
 export function navigateByPushData(navigationRef, data) {
+  // Локальные напоминания журнала (например, запуск приложения тапом по напоминанию)
+  if (data?.kind === 'journal_reminder') {
+    const { openJournalReminder } = require('../journal/notifications/actions');
+    openJournalReminder(navigationRef, data);
+    return;
+  }
   const { type, senderId, senderName, newsId, groupId } = parseNotificationData(data);
   const route = getPushRoute(data);
 
@@ -497,6 +503,10 @@ export async function handleNotificationResponse(event) {
 
     // Игнорируем события доставки и смахивания (dismissed), чтобы не спамить в логах
     if (type === EventType.DELIVERED || type === EventType.DISMISSED) {
+      return;
+    }
+    // Напоминания журнала обрабатываются journal/notifications/actions.js
+    if (notifData.kind === 'journal_reminder') {
       return;
     }
 
