@@ -1,7 +1,8 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { getShadow } from '../utils/shadowStyles';
 import { View, Text, FlatList, StyleSheet, TouchableOpacity, RefreshControl, Image, Platform, ScrollView, Alert } from 'react-native';
 import notifee from '@notifee/react-native';
+import * as VideoThumbnails from 'expo-video-thumbnails';
 import FadeInImage from '../components/FadeInImage';
 import FadeInView from '../components/FadeInView';
 import { newsApi, feedApi } from '../api';
@@ -19,6 +20,26 @@ const newsToFeedItem = (item) => ({
   ...item,
   item_type: 'news',
 });
+
+// Превью видео в ленте: первый кадр через expo-video-thumbnails (как в CachedMedia)
+const VideoFeedThumb = ({ uri, style }) => {
+  const [thumb, setThumb] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    VideoThumbnails.getThumbnailAsync(uri, { time: 0 })
+      .then(({ uri: frame }) => { if (!cancelled) setThumb(frame); })
+      .catch((e) => console.log('[FeedScreen] video thumbnail error:', e));
+    return () => { cancelled = true; };
+  }, [uri]);
+  return (
+    <View style={[style, { backgroundColor: '#000', overflow: 'hidden' }]}>
+      {thumb ? <Image source={{ uri: thumb }} style={StyleSheet.absoluteFill} resizeMode="cover" /> : null}
+      <View style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center' }]}>
+        <Icon name="play-circle" size={28} color="#fff" />
+      </View>
+    </View>
+  );
+};
 
 export default function FeedScreen({ navigation }) {
   const { theme } = useTheme();
@@ -183,7 +204,9 @@ export default function FeedScreen({ navigation }) {
     const isAnnouncement = item.item_type === 'announcement';
     const typeBadge = getItemTypeBadge(item.item_type);
     const privacyBadge = getPrivacyBadge(item.privacy);
-    const thumbnail = item.images && item.images.length > 0 ? item.images[0].thumbnail_url : (item.image_url || item.media_url);
+    const hasImages = item.images && item.images.length > 0;
+    const videoUrl = item.media_type === 'video' && !hasImages && !item.image_url ? getFullUrl(item.media_url) : null;
+    const thumbnail = hasImages ? item.images[0].thumbnail_url : (item.image_url || (videoUrl ? null : item.media_url));
     // /feed возвращает автора как вложенный объект item.author (id/first_name/last_name/avatar_url),
     // а старый /news/ (фолбэк, пока бэкенд не готов) - плоскими полями author_first_name/...
     const authorObj = item.author || {};
@@ -272,7 +295,10 @@ export default function FeedScreen({ navigation }) {
         </View>
 
         <View style={styles.newsContentRow}>
-          {thumbnail && (
+          {videoUrl && (
+            <VideoFeedThumb uri={videoUrl} style={styles.newsThumbnail} />
+          )}
+          {!videoUrl && thumbnail && (
             <FadeInImage
               source={{ uri: getFullUrl(thumbnail) }}
               style={styles.newsThumbnail}

@@ -29,11 +29,13 @@ const CHART_HINTS = {
 
 const round = (n) => Math.round(n * 100) / 100;
 
-const LONG_PERIOD_DAYS = 30;
-const BUCKET_MINUTES = 10;
+// Для пульса: размер интервала агрегации (мин) по периоду; 1 - поминутно
+const PULSE_BUCKET_MINUTES = { 30: 30, 90: 60, 365: 120 };
 
-const chartHintOf = (kind, period) => (kind === MINUTE_KIND && period > LONG_PERIOD_DAYS
-  ? `Средние значения за интервалы по ${BUCKET_MINUTES} мин, прокрутка влево-вправо`
+const bucketOf = (kind, period) => (kind === MINUTE_KIND ? PULSE_BUCKET_MINUTES[period] || 1 : 1);
+
+const chartHintOf = (kind, period) => (bucketOf(kind, period) > 1
+  ? `Средние значения за интервалы по ${bucketOf(kind, period)} мин, прокрутка влево-вправо`
   : CHART_HINTS[kind]);
 
 const minutesOf = (time) => {
@@ -43,11 +45,11 @@ const minutesOf = (time) => {
 
 const hhmm = (total) => `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
 
-// Агрегирует минутные замеры в интервалы (среднее за интервал) - для периодов больше 30 дней
-const aggregateByInterval = (rows) => {
+// Агрегирует минутные замеры в интервалы заданной длины (среднее за интервал)
+const aggregateByInterval = (rows, bucketMinutes) => {
   const buckets = new Map();
   for (const r of rows) {
-    const slot = r.value_time ? Math.floor(minutesOf(r.value_time) / BUCKET_MINUTES) * BUCKET_MINUTES : null;
+    const slot = r.value_time ? Math.floor(minutesOf(r.value_time) / bucketMinutes) * bucketMinutes : null;
     const key = `${r.value_date}|${slot}`;
     const bucket = buckets.get(key) || { value_date: r.value_date, value_time: slot === null ? null : hhmm(slot), sum: 0, n: 0 };
     bucket.sum += Number(r.num_value);
@@ -69,12 +71,16 @@ const timeLabel = (time) => (time ? formatTime(time) : '');
 const pointLabel = (kind, value, prev) => {
   if (kind === MINUTE_KIND) {
     const dayChanged = !prev || prev.value_date !== value.value_date;
-    return dayChanged ? formatDateShort(value.value_date).slice(0, 5) : timeLabel(value.value_time);
+    const time = timeLabel(value.value_time);
+    return dayChanged ? `${formatDateShort(value.value_date).slice(0, 5)} ${time}`.trim() : time;
   }
   return formatDateShort(value.value_date).slice(0, 5);
 };
 
+const Y_AXIS_WIDTH = 48;
+
 // Прокручиваемый график: масштаб задаётся периодом, по ширине растягивается под количество точек
+// Шкала Y выводится отдельным неподвижным графиком слева, поэтому всегда видна при прокрутке
 const TrackerChart = ({ kind, points, colors, color, viewWidth, height, goal, yOffset }) => {
   const scrollRef = useRef(null);
   const count = points.length;
@@ -84,12 +90,18 @@ const TrackerChart = ({ kind, points, colors, color, viewWidth, height, goal, yO
   const spacing = Math.max(minSpacing, fitSpacing);
   const contentWidth = spacing * Math.max(count - 1, 1) + 60;
   const labelEvery = Math.max(1, Math.ceil(count / Math.max(1, Math.floor(contentWidth / 64))));
-  const data = points.map((p, i) => ({
-    value: p.value,
-    label: i % labelEvery === 0 ? p.label : '',
-    dataPointText: '',
-    frontColor: color,
-  }));
+  let lastLabel = -Infinity;
+  const data = points.map((p, i) => {
+    const gap = i - lastLabel;
+    const show = p.dayStart ? gap >= Math.ceil(labelEvery / 2) : i % labelEvery === 0 && gap >= Math.ceil(labelEvery / 2);
+    if (show) lastLabel = i;
+    return {
+      value: p.value,
+      label: show ? p.label : '',
+      dataPointText: '',
+      frontColor: color,
+    };
+  });
   const axis = {
     height,
     width: contentWidth,
@@ -104,43 +116,69 @@ const TrackerChart = ({ kind, points, colors, color, viewWidth, height, goal, yO
     xAxisLabelTextStyle: { color: colors.textSecondary, fontSize: 9, width: 56 },
   };
   const hasGoal = goal !== null && goal !== undefined;
+  const yAxisOnly = (
+    <LineChart
+      height={height}
+      width={Y_AXIS_WIDTH}
+      data={data.map((d) => ({ ...d, label: '' }))}
+      spacing={0}
+      initialSpacing={0}
+      endSpacing={0}
+      noOfSections={4}
+      hideRules
+      hideDataPoints
+      thickness={0}
+      color="transparent"
+      xAxisThickness={0}
+      yAxisColor={colors.border}
+      yAxisTextStyle={{ color: colors.textSecondary, fontSize: 10 }}
+      yAxisOffset={yOffset}
+      yAxisLabelSuffix={kind === HOUR_KIND ? ' ч' : ''}
+    />
+  );
   return (
-    <ScrollView
-      ref={scrollRef}
-      horizontal
-      showsHorizontalScrollIndicator
-      onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: false })}
-    >
-      {isBars ? (
-        <BarChart
-          {...axis}
-          data={data}
-          barWidth={Math.max(6, Math.floor(spacing * 0.6))}
-          barBorderRadius={4}
-          frontColor={color}
-        />
-      ) : (
-        <LineChart
-          {...axis}
-          data={data}
-          color={color}
-          thickness={2}
-          curved={kind !== MINUTE_KIND}
-          areaChart
-          startFillColor={color}
-          endFillColor={color}
-          startOpacity={0.25}
-          endOpacity={0.02}
-          hideDataPoints={count > 40}
-          dataPointsColor={color}
-          yAxisOffset={yOffset}
-          yAxisLabelSuffix={kind === HOUR_KIND ? ' ч' : ''}
-          showReferenceLine1={hasGoal}
-          referenceLine1Position={hasGoal ? Number(goal) - yOffset : 0}
-          referenceLine1Config={{ color: colors.success, dashWidth: 4, dashGap: 4 }}
-        />
-      )}
-    </ScrollView>
+    <View style={{ flexDirection: 'row' }}>
+      <View style={{ width: Y_AXIS_WIDTH, overflow: 'hidden' }}>{yAxisOnly}</View>
+      <ScrollView
+        ref={scrollRef}
+        horizontal
+        showsHorizontalScrollIndicator
+        onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: false })}
+      >
+        {isBars ? (
+          <BarChart
+            {...axis}
+            hideYAxisText
+            yAxisThickness={0}
+            data={data}
+            barWidth={Math.max(6, Math.floor(spacing * 0.6))}
+            barBorderRadius={4}
+            frontColor={color}
+          />
+        ) : (
+          <LineChart
+            {...axis}
+            hideYAxisText
+            yAxisThickness={0}
+            data={data}
+            color={color}
+            thickness={2}
+            curved={kind !== MINUTE_KIND}
+            areaChart
+            startFillColor={color}
+            endFillColor={color}
+            startOpacity={0.25}
+            endOpacity={0.02}
+            hideDataPoints={count > 40}
+            dataPointsColor={color}
+            yAxisOffset={yOffset}
+            showReferenceLine1={hasGoal}
+            referenceLine1Position={hasGoal ? Number(goal) - yOffset : 0}
+            referenceLine1Config={{ color: colors.success, dashWidth: 4, dashGap: 4 }}
+          />
+        )}
+      </ScrollView>
+    </View>
   );
 };
 
@@ -174,13 +212,15 @@ const TrackerDetailContent = ({ navigation, uuid }) => {
   const chart = useMemo(() => {
     if (!data || !numeric) return null;
     const raw = kind === MINUTE_KIND ? data.raw : data.daily;
-    const source = kind === MINUTE_KIND && period > LONG_PERIOD_DAYS ? aggregateByInterval(raw) : raw;
+    const bucket = bucketOf(kind, period);
+    const source = bucket > 1 ? aggregateByInterval(raw, bucket) : raw;
     if (!source.length) return null;
     const values = source.map((v) => Number(v.num_value));
     const statValues = raw.map((v) => Number(v.num_value));
     const points = source.map((v, i) => ({
       value: kind === HOUR_KIND ? values[i] / 60 : values[i],
       label: pointLabel(kind, v, source[i - 1]),
+      dayStart: kind === MINUTE_KIND && (!source[i - 1] || source[i - 1].value_date !== v.value_date),
     }));
     const sum = statValues.reduce((a, b) => a + b, 0);
     return {

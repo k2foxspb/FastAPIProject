@@ -4,6 +4,17 @@ from pydantic import BaseModel, EmailStr, Field, ConfigDict, field_validator
 from typing import Any, Optional
 
 
+DEFAULT_AVATAR_URLS = {
+    "male": "/static/avatars/default_male.svg",
+    "female": "/static/avatars/default_female.svg",
+}
+
+
+def get_default_avatar_url(gender: str | None) -> str | None:
+    """Дефолтная аватарка по полу; для пользователя без пола или с неизвестным полом - None."""
+    return DEFAULT_AVATAR_URLS.get(gender or "")
+
+
 class UserCreate(BaseModel):
     email: EmailStr = Field(description="Email пользователя")
     password: str = Field(min_length=8, description="Пароль (минимум 8 символов)")
@@ -11,12 +22,15 @@ class UserCreate(BaseModel):
     last_name: str | None = Field(default=None, description="Фамилия")
     role: str = Field(default="user", pattern="^(owner|admin|user)$",
                       description="Роль: 'owner', 'admin' или 'user'")
+    gender: str | None = Field(default=None, pattern="^(male|female)$",
+                               description="Пол: 'male' или 'female'")
 
 
 class UserUpdate(BaseModel):
     email: EmailStr | None = None
     first_name: str | None = None
     last_name: str | None = None
+    gender: str | None = Field(default=None, pattern="^(male|female)$")
 
 class ReactorInfo(BaseModel):
     id: int
@@ -388,6 +402,7 @@ class User(BaseModel):
     last_seen: Optional[str] = None
     avatar_url: Optional[str] = None
     avatar_preview_url: Optional[str] = None
+    gender: Optional[str] = None
     fcm_token: Optional[str] = None
     friendship_status: Optional[str] = None # "pending", "accepted", "requested_by_me", "requested_by_them", null
     is_banned: bool = False
@@ -417,8 +432,9 @@ class User(BaseModel):
                     "role": obj.get("role", "user"),
                     "status": obj.get("status", "offline"),
                     "last_seen": obj.get("last_seen"),
-                    "avatar_url": obj.get("avatar_url"),
-                    "avatar_preview_url": obj.get("avatar_preview_url"),
+                    "avatar_url": obj.get("avatar_url") or get_default_avatar_url(obj.get("gender")),
+                    "avatar_preview_url": obj.get("avatar_preview_url") or get_default_avatar_url(obj.get("gender")),
+                    "gender": obj.get("gender"),
                     "fcm_token": obj.get("fcm_token"),
                     "friendship_status": obj.get("friendship_status"),
                     "is_banned": obj.get("is_banned", False),
@@ -444,8 +460,9 @@ class User(BaseModel):
                 "role": str(getattr(obj, "role", "user")),
                 "status": str(getattr(obj, "status", "offline")),
                 "last_seen": getattr(obj, "last_seen", None),
-                "avatar_url": getattr(obj, "avatar_url", None),
-                "avatar_preview_url": getattr(obj, "avatar_preview_url", None),
+                "avatar_url": getattr(obj, "avatar_url", None) or get_default_avatar_url(getattr(obj, "gender", None)),
+                "avatar_preview_url": getattr(obj, "avatar_preview_url", None) or get_default_avatar_url(getattr(obj, "gender", None)),
+                "gender": getattr(obj, "gender", None),
                 "fcm_token": getattr(obj, "fcm_token", None),
                 "friendship_status": getattr(obj, "friendship_status", None),
                 "is_banned": bool(getattr(obj, "is_banned", False)),

@@ -24,7 +24,7 @@ import { useNotifications } from '../context/NotificationContext';
 import { theme as themeConstants } from '../constants/theme';
 import { getFullUrl, getAvatarUrl, formatName, formatPostDateTime } from '../utils/formatters';
 import FadeInImage from '../components/FadeInImage';
-import VideoPlayer from '../components/VideoPlayer';
+import CachedMedia from '../components/CachedMedia';
 
 // Полноценный экран публикации (пост или объявление) из ленты: показывает текст и
 // медиафайл целиком (без обрезки), а не только модалку с комментариями, плюс список
@@ -196,12 +196,12 @@ export default function PostDetailScreen({ route, navigation }) {
         {hasMedia && (
           <TouchableOpacity activeOpacity={0.9} onPress={() => setFullScreenVisible(true)}>
             {isVideoMedia ? (
-              <VideoPlayer
-                uri={getFullUrl(post.media_url)}
+              <CachedMedia
+                item={{ file_path: post.media_url, message_type: 'video' }}
                 style={{ width: '100%', height: 260, marginVertical: 6 }}
-                useNativeControls
                 shouldPlay={false}
                 resizeMode="contain"
+                onFullScreen={() => setFullScreenVisible(true)}
               />
             ) : (
               <FadeInImage
@@ -279,17 +279,18 @@ export default function PostDetailScreen({ route, navigation }) {
         >
           <StatusBar barStyle="light-content" backgroundColor="#000" />
           <View style={styles.fullScreenContainer}>
-            <View style={[styles.fullScreenTop, { paddingTop: insets.top + 10 }]}>
+            <View style={[styles.fullScreenTop, { paddingTop: Math.max(insets.top, StatusBar.currentHeight || 0) + 10 }]}>
               <TouchableOpacity style={styles.fullScreenCloseBtn} onPress={() => setFullScreenVisible(false)}>
                 <Icon name="close" size={30} color="#fff" />
               </TouchableOpacity>
             </View>
             {isVideoMedia ? (
-              <VideoPlayer
-                uri={getFullUrl(post.media_url)}
+              <CachedMedia
+                item={{ file_path: post.media_url, message_type: 'video' }}
                 style={styles.fullScreenMedia}
-                useNativeControls
                 shouldPlay
+                isMuted={false}
+                isLooping={false}
                 resizeMode="contain"
               />
             ) : (

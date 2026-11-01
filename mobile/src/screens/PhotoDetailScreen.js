@@ -22,18 +22,18 @@ import { Ionicons as Icon, MaterialIcons } from '@expo/vector-icons';
 import { getFullUrl } from '../utils/urlHelper';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
-import FullScreenVideoPlayer from '../components/FullScreenVideoPlayer';
+import CachedMedia from '../components/CachedMedia';
 
 const { width, height } = Dimensions.get('window');
 
-const VideoItem = ({ uri, style, controlsEnabled, shouldPlay }) => {
+const VideoItem = ({ filePath, style, shouldPlay }) => {
   return (
-    <FullScreenVideoPlayer
-      uri={uri} 
-      style={style} 
-      controlsEnabled={controlsEnabled} 
-      shouldPlay={shouldPlay} 
+    <CachedMedia
+      item={{ file_path: filePath, message_type: 'video' }}
+      style={style}
+      shouldPlay={shouldPlay}
       isLooping={true}
+      isMuted={false}
       resizeMode="contain"
     />
   );
@@ -319,12 +319,11 @@ export default function PhotoDetailScreen({ route, navigation }) {
             {mediaIsVideo ? (
               <View style={styles.fullPhoto}>
                 <VideoItem
-                  uri={mediaUrl}
+                  filePath={item.image_url}
                   style={[
                     styles.fullPhoto,
                     isSelected && { opacity: 0.7 }
                   ]}
-                  controlsEnabled={!selectionMode}
                   shouldPlay={currentIndex === index && !selectionMode}
                 />
                 {selectionMode && (

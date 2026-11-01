@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { View, Image, TouchableOpacity, StyleSheet, ActivityIndicator, Text } from 'react-native';
-import { MaterialIcons } from '@expo/vector-icons';
-import { cacheDirectory, getInfoAsync, createDownloadResumable, copyAsync } from 'expo-file-system/legacy';
+import { View, Image, TouchableOpacity, StyleSheet, ActivityIndicator, Text, Alert, Platform, StatusBar } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { MaterialIcons, Ionicons } from '@expo/vector-icons';
+import { cacheDirectory, getInfoAsync, createDownloadResumable, copyAsync, readAsStringAsync, writeAsStringAsync, EncodingType, StorageAccessFramework } from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
 import * as VideoThumbnails from 'expo-video-thumbnails';
 import { API_BASE_URL } from '../constants';
-import VideoPlayer from './VideoPlayer';
+import FullScreenVideoPlayer from './FullScreenVideoPlayer';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
 import { subscribe, startDownload, checkCached, getState } from '../utils/downloadManager';
@@ -46,6 +48,7 @@ const CachedMedia = ({
 
   const [localUri, setLocalUri] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   // Статичный кадр видео для превью (чтобы не показывать чёрный прямоугольник вместо
   // реального содержимого ролика). Генерируется один раз и кешируется на диске —
   // полноценный VideoPlayer при этом НЕ создаётся, поэтому проблема с OutOfMemoryError
@@ -162,6 +165,53 @@ const CachedMedia = ({
     loadMedia();
   }, [item.file_path]);
 
+  // Кнопка сохранения видео в постоянное хранилище (как для файлов в чате): доступна только
+  // когда видео уже полностью скачано в кэш.
+  const savableUri = isVideo && dlState.cached && dlState.localUri ? dlState.localUri : null;
+  const handleSaveVideo = async () => {
+    if (!savableUri || saving) return;
+    setSaving(true);
+    try {
+      if (Platform.OS === 'android') {
+        const permissions = await StorageAccessFramework.requestDirectoryPermissionsAsync();
+        if (permissions.granted) {
+          const base64 = await readAsStringAsync(savableUri, { encoding: EncodingType.Base64 });
+          const newFileUri = await StorageAccessFramework.createFileAsync(
+            permissions.directoryUri,
+            fileName,
+            'video/mp4'
+          );
+          await writeAsStringAsync(newFileUri, base64, { encoding: EncodingType.Base64 });
+          Alert.alert('Успех', 'Видео сохранено');
+        }
+      } else if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(savableUri, { mimeType: 'video/mp4' });
+      } else {
+        Alert.alert('Ошибка', 'Функция "Поделиться" недоступна');
+      }
+    } catch (e) {
+      console.error('[CachedMedia] save video error:', e);
+      Alert.alert('Ошибка', 'Не удалось сохранить видео');
+    } finally {
+      setSaving(false);
+    }
+  };
+  const insets = useSafeAreaInsets();
+  const saveButtonTop = Math.max(insets.top, StatusBar.currentHeight || 0) + 10;
+  const renderSaveButton = (top = 6, large = false) => (savableUri ? (
+    <TouchableOpacity style={large ? [styles.saveButtonLarge, { top }] : [styles.saveButton, { top }]} onPress={handleSaveVideo} disabled={saving} activeOpacity={0.8}>
+      {saving ? (
+        <ActivityIndicator size={large ? 30 : 14} color="#fff" />
+      ) : (
+        large ? (
+          <Ionicons name="save-outline" size={30} color="#fff" />
+        ) : (
+          <MaterialIcons name="save-alt" size={18} color="#fff" />
+        )
+      )}
+    </TouchableOpacity>
+  ) : null);
+
   if (loading) {
     return (
       <View style={[styles.loaderContainer, style, { backgroundColor: isVideo ? '#000' : (style?.backgroundColor || colors.surface) }]}>
@@ -228,6 +278,7 @@ const CachedMedia = ({
             <MaterialIcons name="cloud-download" size={18} color="rgba(255,255,255,0.7)" />
           )}
         </View>
+        {renderSaveButton()}
       </TouchableOpacity>
     );
   }
@@ -239,13 +290,13 @@ const CachedMedia = ({
       <View style={[styles.thumbnailOuter, style]}>
         <View style={styles.thumbnailInner}>
           {isVideoReady ? (
-            <VideoPlayer
+            <FullScreenVideoPlayer
               uri={dlState.localUri || localUri}
               isMuted={isMuted}
               isLooping={typeof isLooping === 'boolean' ? isLooping : !useNativeControls}
               shouldPlay={shouldPlay}
               style={StyleSheet.absoluteFill}
-              useNativeControls={useNativeControls}
+              controlsEnabled={!useNativeControls}
               resizeMode={resizeMode}
               onPlayerReady={onPlayerReady}
             />
@@ -257,7 +308,7 @@ const CachedMedia = ({
               <ActivityIndicator size="large" color="#fff" />
             </View>
           )}
-          {onFullScreen && (
+          {onFullScreen && useNativeControls && (
             <TouchableOpacity
               style={StyleSheet.absoluteFill}
               onPress={() => onFullScreen(dlState.localUri || localUri, item.message_type || item.type)}
@@ -276,6 +327,7 @@ const CachedMedia = ({
             )}
           </View>
         )}
+        {renderSaveButton(saveButtonTop, true)}
       </View>
     );
   }
@@ -336,6 +388,27 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.3)',
+  },
+  saveButton: {
+    position: 'absolute',
+    top: 6,
+    left: 6,
+    zIndex: 11,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  saveButtonLarge: {
+    position: 'absolute',
+    left: 12,
+    zIndex: 11,
+    width: 44,
+    height: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   statusBadge: {
     position: 'absolute',

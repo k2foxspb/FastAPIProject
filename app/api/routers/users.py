@@ -393,6 +393,7 @@ async def update_me(
     phone_number: str | None = Form(None),
     first_name: str | None = Form(None),
     last_name: str | None = Form(None),
+    gender: str | None = Form(None),
     avatar: UploadFile = File(None),
     current_user: UserModel = Depends(get_current_user),
     db: AsyncSession = Depends(get_async_db)
@@ -400,6 +401,8 @@ async def update_me(
     """
     Обновляет информацию о текущем пользователе.
     """
+    if gender is not None and gender not in ("male", "female"):
+        raise HTTPException(status_code=400, detail="Пол должен быть 'male' или 'female'")
     if email:
         # Проверка уникальности email
         if email != current_user.email:
@@ -420,6 +423,8 @@ async def update_me(
         current_user.first_name = first_name
     if last_name is not None:
         current_user.last_name = last_name
+    if gender is not None:
+        current_user.gender = gender
 
     if avatar:
         # Сохраняем аватарку (используем существующую функцию сохранения фото)
@@ -482,11 +487,15 @@ async def create_user(
     first_name: str = Form(...),
     last_name: str = Form(...),
     role: str = Form("user"),
+    gender: str | None = Form(None),
     avatar: UploadFile = File(None)
 ):
     """
     Регистрирует нового пользователя. 
     """
+    if gender is not None and gender not in ("male", "female"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="Пол должен быть 'male' или 'female'")
     print(f"DEBUG: create_user called for email: {email}")
     # Проверка существования пользователя по email
     result = await db.execute(select(UserModel).where(UserModel.email == email))
@@ -521,6 +530,7 @@ async def create_user(
         first_name=first_name,
         last_name=last_name,
         role=user_role,
+        gender=gender,
         is_active=True,
     )
 

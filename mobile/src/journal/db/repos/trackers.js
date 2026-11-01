@@ -115,10 +115,9 @@ export const formatTrackerValue = (tracker, value) => {
   if (num === null || num === undefined) return '—';
   if (type === 'bool') return Number(num) ? 'Да' : 'Нет';
   if (type === 'duration') {
-    const total = Math.round(Number(num));
-    const h = Math.floor(total / 60);
-    const m = total % 60;
-    return h ? `${h} ч ${m} мин` : `${m} мин`;
+    // Значение хранится в минутах, показываем в часах
+    const hours = Math.round((Number(num) / 60) * 10) / 10;
+    return `${String(hours).replace('.', ',')} ч`;
   }
   const formatted = String(Math.round(Number(num) * 100) / 100).replace('.', ',');
   if (type === 'scale') return `${formatted} из ${tracker.scale_max ?? ''}`.trim();

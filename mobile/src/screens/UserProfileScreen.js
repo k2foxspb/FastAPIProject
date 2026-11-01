@@ -13,7 +13,7 @@ import { formatStatus, formatName, getAvatarUrl, stripHtml, getFullUrl } from '.
 import { getRoleLabel, isAdminOrOwner } from '../constants/roles';
 import RoleBadge from '../components/RoleBadge';
 import FadeInImage from '../components/FadeInImage';
-import VideoPlayer from '../components/VideoPlayer';
+import CachedMedia from '../components/CachedMedia';
 
 // Вынесенный мемоизированный компонент для HTML-контента публикации в списке - без него
 // при каждом перерисовывании экрана RenderHTML получал новые объекты source/tagsStyles
@@ -244,12 +244,12 @@ export default function UserProfileScreen({ route, navigation }) {
 
         {hasMedia && (
           isVideoMedia ? (
-            <VideoPlayer
-              uri={getFullUrl(item.media_url)}
+            <CachedMedia
+              item={{ file_path: item.media_url, message_type: 'video' }}
               style={{ width: '100%', height: 200, marginVertical: 4 }}
-              useNativeControls
               shouldPlay={false}
               resizeMode="cover"
+              onFullScreen={() => openPost(item)}
             />
           ) : (
             <FadeInImage
