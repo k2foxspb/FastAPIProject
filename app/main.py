@@ -63,6 +63,16 @@ def create_application() -> FastAPI:
     import mimetypes
     from app.utils import storage as storage_service
     from app.utils.storage_exceptions import FileNotFoundInStorageError, StorageError
+    import posixpath
+
+    # Личные файлы (вложения журнала) через /media не отдаются - только владельцу
+    # через /api/journal/attachments/{uuid}/file.
+    private_media_prefixes = ("journal/",)
+
+    def is_private_media(relative_path: str) -> bool:
+        # lower(): на Windows пути нечувствительны к регистру ("Journal/..." - та же папка)
+        normalized = posixpath.normpath(relative_path.replace("\\", "/")).lstrip("/").lower()
+        return normalized == "journal" or normalized.startswith(private_media_prefixes)
 
     @app.api_route("/media/{file_path:path}", methods=["GET", "HEAD"])
     async def serve_media(file_path: str):
@@ -70,7 +80,7 @@ def create_application() -> FastAPI:
         if metadata is None and "_thumb" in file_path:
             # Фолбэк на оригинал, если миниатюра отсутствует
             metadata = storage_service.resolve_url(file_path.replace("_thumb", ""))
-        if metadata is None:
+        if metadata is None or is_private_media(metadata.relative_path):
             raise HTTPException(status_code=404, detail="File not found")
 
         try:

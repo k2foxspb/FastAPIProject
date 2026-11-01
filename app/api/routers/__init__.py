@@ -12,6 +12,9 @@ from app.api.routers import (
     testing,
     ai,
     feed,
+    journal_sync,
+    journal_calendar,
+    journal_attachments,
 )
 
 # Основной роутер для API v1
@@ -26,6 +29,10 @@ public_routers = [
     (ai.router, ["ai"]),
     (feed.router, ["feed"]),
     (notification_center.router, ["notifications"]),
+    # Журнал жизни (/api/journal): данные строго личные, авторизация в каждом эндпоинте
+    (journal_sync.router, ["journal"]),
+    (journal_calendar.router, ["journal"]),
+    (journal_attachments.router, ["journal"]),
 ]
 
 for router, tags in public_routers:

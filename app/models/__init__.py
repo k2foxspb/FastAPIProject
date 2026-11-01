@@ -7,6 +7,10 @@ from .users import (
 )
 from .chat import ChatMessage, FileUploadSession
 from .notifications import Notification
+from .journal import (
+    JournalSettings, JournalSyncState, JournalEvent, JournalEventOccurrence, JournalReminder,
+    JournalDiaryEntry, JournalTracker, JournalTrackerValue, JournalAttachment,
+)
 
 
 __all__ = ["News", "NewsImage", "NewsReaction", "NewsComment", "NewsCommentReaction",
@@ -16,4 +20,6 @@ __all__ = ["News", "NewsImage", "NewsReaction", "NewsComment", "NewsCommentReact
            'ProfilePost', 'ProfilePostComment', 'ProfilePostReaction',
            "ChatMessage", "FileUploadSession",
            "Notification",
+           "JournalSettings", "JournalSyncState", "JournalEvent", "JournalEventOccurrence", "JournalReminder",
+           "JournalDiaryEntry", "JournalTracker", "JournalTrackerValue", "JournalAttachment",
            ]

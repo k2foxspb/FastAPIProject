@@ -170,4 +170,25 @@ STORAGE_STRATEGY = os.getenv("STORAGE_STRATEGY", "first_available").lower()
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434").rstrip("/")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5:7b-instruct")
 
+# --- Журнал жизни (/api/journal) ---
+# Часовой пояс журнала по умолчанию (IANA), пока пользователь не задал свой.
+JOURNAL_DEFAULT_TIMEZONE = os.getenv("JOURNAL_DEFAULT_TIMEZONE", "Europe/Moscow")
+# Синхронизация: максимум изменений и байт в одной пачке push, размер страницы pull.
+JOURNAL_SYNC_MAX_CHANGES = int(os.getenv("JOURNAL_SYNC_MAX_CHANGES", "500"))
+JOURNAL_SYNC_MAX_BYTES = int(os.getenv("JOURNAL_SYNC_MAX_BYTES", str(2 * 1024 * 1024)))
+JOURNAL_SYNC_PULL_MAX_LIMIT = int(os.getenv("JOURNAL_SYNC_PULL_MAX_LIMIT", "1000"))
+# Сколько дней хранятся tombstones (мягко удалённые записи) до физического удаления.
+JOURNAL_TOMBSTONE_TTL_DAYS = int(os.getenv("JOURNAL_TOMBSTONE_TTL_DAYS", "180"))
+# Вложения (фото к записям).
+JOURNAL_ATTACHMENT_MAX_BYTES = int(os.getenv("JOURNAL_ATTACHMENT_MAX_BYTES", str(15 * 1024 * 1024)))
+JOURNAL_ATTACHMENT_MIME_TYPES = ("image/jpeg", "image/png", "image/heic", "image/heif", "image/webp")
+# Импорт банковских выписок.
+JOURNAL_IMPORT_MAX_BYTES = int(os.getenv("JOURNAL_IMPORT_MAX_BYTES", str(10 * 1024 * 1024)))
+JOURNAL_IMPORT_MAX_ROWS = int(os.getenv("JOURNAL_IMPORT_MAX_ROWS", "50000"))
+JOURNAL_IMPORT_PARSE_TIMEOUT = float(os.getenv("JOURNAL_IMPORT_PARSE_TIMEOUT", "20"))
+# Ограничения частоты запросов (на пользователя в час).
+JOURNAL_AI_RATE_LIMIT_PER_HOUR = int(os.getenv("JOURNAL_AI_RATE_LIMIT_PER_HOUR", "30"))
+JOURNAL_IMPORT_RATE_LIMIT_PER_HOUR = int(os.getenv("JOURNAL_IMPORT_RATE_LIMIT_PER_HOUR", "20"))
+JOURNAL_UPLOAD_RATE_LIMIT_PER_HOUR = int(os.getenv("JOURNAL_UPLOAD_RATE_LIMIT_PER_HOUR", "300"))
+
 

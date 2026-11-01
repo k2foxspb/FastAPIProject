@@ -1,0 +1,165 @@
+"""
+Реестр синхронизируемых сущностей журнала.
+
+Для каждой сущности описано: модель, pydantic-схема данных, ссылки на другие
+сущности (data["*_uuid"] -> FK-колонка, разрешается строго в пределах user_id),
+полиморфные ссылки (тип + uuid), порядок применения (родители раньше детей),
+допустимые операции и хуки дополнительной проверки.
+
+Новые фазы (диета, финансы, цели) регистрируют свои сущности здесь же.
+"""
+from dataclasses import dataclass, field
+from decimal import Decimal
+from typing import Any, Awaitable, Callable
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.journal import (
+    JournalAttachment, JournalDiaryEntry, JournalEvent, JournalEventOccurrence, JournalReminder,
+    JournalSettings, JournalTracker, JournalTrackerValue,
+)
+from app.schemas.journal.sync import (
+    AttachmentData, DiaryEntryData, EventData, EventOccurrenceData, ReminderData, SettingsData,
+    TrackerData, TrackerValueData,
+)
+
+# validate(db, user_id, existing, values, resolved) -> причина отказа или None
+ValidateHook = Callable[[AsyncSession, int, Any, dict, dict], Awaitable[str | None]]
+
+
+@dataclass(frozen=True)
+class RefSpec:
+    field: str      # ключ в data, например "event_uuid"
+    column: str     # FK-колонка модели, например "event_id"
+    target: str     # имя сущности-родителя в реестре
+
+
+@dataclass(frozen=True)
+class PolyRefSpec:
+    type_field: str               # колонка с типом, например "target_type"
+    uuid_field: str               # колонка с client_uuid, например "target_uuid"
+    targets: dict[str, str]       # значение типа -> имя сущности в реестре
+
+
+@dataclass
+class EntitySpec:
+    name: str
+    model: Any
+    schema: Any
+    order: int
+    refs: list[RefSpec] = field(default_factory=list)
+    poly_refs: list[PolyRefSpec] = field(default_factory=list)
+    ops: frozenset[str] = frozenset({"upsert", "delete"})
+    validate: ValidateHook | None = None
+
+
+REGISTRY: dict[str, EntitySpec] = {}
+
+
+def register(spec: EntitySpec) -> EntitySpec:
+    REGISTRY[spec.name] = spec
+    return spec
+
+
+def get_spec(name: str) -> EntitySpec | None:
+    return REGISTRY.get(name)
+
+
+def ordered_specs() -> list[EntitySpec]:
+    return sorted(REGISTRY.values(), key=lambda s: s.order)
+
+
+def children_of(name: str) -> list[tuple[EntitySpec, RefSpec]]:
+    return [(s, r) for s in REGISTRY.values() for r in s.refs if r.target == name]
+
+
+def poly_children_of(name: str) -> list[tuple[EntitySpec, PolyRefSpec, str]]:
+    result = []
+    for s in REGISTRY.values():
+        for p in s.poly_refs:
+            for type_value, target in p.targets.items():
+                if target == name:
+                    result.append((s, p, type_value))
+    return result
+
+
+# ---------------------------------------------------------------- хуки проверки
+
+async def _validate_settings(db: AsyncSession, user_id: int, existing, values: dict, resolved: dict) -> str | None:
+    if existing is not None:
+        return None
+    other = (await db.execute(
+        select(JournalSettings.id).where(JournalSettings.user_id == user_id)
+    )).first()
+    return "settings_exists" if other else None
+
+
+async def _validate_occurrence(db: AsyncSession, user_id: int, existing, values: dict, resolved: dict) -> str | None:
+    stmt = select(JournalEventOccurrence.id).where(
+        JournalEventOccurrence.user_id == user_id,
+        JournalEventOccurrence.event_id == values["event_id"],
+        JournalEventOccurrence.occurrence_date == values["occurrence_date"],
+    )
+    if existing is not None:
+        stmt = stmt.where(JournalEventOccurrence.id != existing.id)
+    other = (await db.execute(stmt)).first()
+    return "duplicate_occurrence" if other else None
+
+
+async def _validate_tracker_value(db: AsyncSession, user_id: int, existing, values: dict, resolved: dict) -> str | None:
+    tracker = resolved.get("tracker_uuid")
+    if tracker is None:
+        return None
+    num = values.get("num_value")
+    if tracker.value_type == "text":
+        if not values.get("text_value"):
+            return "invalid: text_value обязателен для текстового трекера"
+        return None
+    if num is None:
+        return "invalid: num_value обязателен"
+    if tracker.value_type == "bool" and num not in (Decimal(0), Decimal(1)):
+        return "invalid: для трекера да/нет допустимы 0 и 1"
+    if tracker.value_type == "duration" and num < 0:
+        return "invalid: длительность не может быть отрицательной"
+    if tracker.value_type == "scale":
+        lo, hi = tracker.scale_min, tracker.scale_max
+        if (lo is not None and num < Decimal(lo)) or (hi is not None and num > Decimal(hi)):
+            return "invalid: значение вне шкалы трекера"
+    return None
+
+
+# ---------------------------------------------------------------- регистрация фазы 1
+
+register(EntitySpec(
+    name="settings", model=JournalSettings, schema=SettingsData, order=0,
+    ops=frozenset({"upsert"}), validate=_validate_settings,
+))
+register(EntitySpec(name="tracker", model=JournalTracker, schema=TrackerData, order=10))
+register(EntitySpec(
+    name="event", model=JournalEvent, schema=EventData, order=20,
+    poly_refs=[PolyRefSpec("ref_type", "ref_uuid", {"tracker": "tracker"})],
+))
+register(EntitySpec(
+    name="event_occurrence", model=JournalEventOccurrence, schema=EventOccurrenceData, order=30,
+    refs=[RefSpec("event_uuid", "event_id", "event")], validate=_validate_occurrence,
+))
+register(EntitySpec(
+    name="reminder", model=JournalReminder, schema=ReminderData, order=30,
+    poly_refs=[PolyRefSpec("target_type", "target_uuid", {"event": "event", "tracker": "tracker"})],
+))
+register(EntitySpec(name="diary_entry", model=JournalDiaryEntry, schema=DiaryEntryData, order=20))
+register(EntitySpec(
+    name="tracker_value", model=JournalTrackerValue, schema=TrackerValueData, order=30,
+    refs=[RefSpec("tracker_uuid", "tracker_id", "tracker")], validate=_validate_tracker_value,
+))
+register(EntitySpec(
+    name="attachment", model=JournalAttachment, schema=AttachmentData, order=90,
+    poly_refs=[PolyRefSpec("owner_type", "owner_uuid", {
+        "diary_entry": "diary_entry", "tracker_value": "tracker_value", "event": "event",
+    })],
+    ops=frozenset({"delete"}),
+))
+
+# Допустимые типы владельцев вложений (POST /api/journal/attachments).
+ATTACHMENT_OWNER_TYPES = REGISTRY["attachment"].poly_refs[0].targets
