@@ -46,7 +46,14 @@
       ],
       "expo-asset",
       "expo-sqlite",
-      "expo-background-task"
+      "expo-background-task",
+      "react-native-health-connect",
+      [
+        "@kingstinct/react-native-healthkit",
+        {
+          "NSHealthShareUsageDescription": "Приложение читает вес, сон, шаги и воду из Здоровья, чтобы вести их в журнале. Импорт включается только по вашему решению."
+        }
+      ]
     ],
     "name": "FastAPI",
     "slug": "fastapi",

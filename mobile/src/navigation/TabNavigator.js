@@ -46,6 +46,7 @@ import TrackersScreen from '../screens/journal/TrackersScreen';
 import TrackerEditScreen from '../screens/journal/TrackerEditScreen';
 import TrackerDetailScreen from '../screens/journal/TrackerDetailScreen';
 import JournalSettingsScreen from '../screens/journal/JournalSettingsScreen';
+import HealthImportScreen from '../screens/journal/HealthImportScreen';
 import ReminderDiagnosticsScreen from '../screens/journal/ReminderDiagnosticsScreen';
 import BatteryHelpScreen from '../screens/journal/BatteryHelpScreen';
 import DietDayScreen from '../screens/journal/DietDayScreen';
@@ -304,6 +305,7 @@ function JournalStack() {
         <Stack.Screen name="TrackerEdit" component={TrackerEditScreen} options={{ title: 'Трекер' }} />
         <Stack.Screen name="TrackerDetail" component={TrackerDetailScreen} options={{ title: 'Трекер' }} />
         <Stack.Screen name="JournalSettings" component={JournalSettingsScreen} options={{ title: 'Настройки журнала' }} />
+        <Stack.Screen name="HealthImport" component={HealthImportScreen} options={{ title: 'Здоровье' }} />
         <Stack.Screen name="ReminderDiagnostics" component={ReminderDiagnosticsScreen} options={{ title: 'Проверка напоминаний' }} />
         <Stack.Screen name="BatteryHelp" component={BatteryHelpScreen} options={{ title: 'Экономия батареи' }} />
         <Stack.Screen name="DietDay" component={DietDayScreen} options={{ title: 'Питание' }} />
