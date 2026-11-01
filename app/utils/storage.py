@@ -21,8 +21,11 @@
     resolve_url(url_or_key) -> FileMetadata | None
 """
 import os
-from typing import IO, Iterator, Optional, Tuple
+import re
+import unicodedata
+from typing import IO, Any, Iterator, Optional, Tuple
 from datetime import datetime
+from urllib.parse import quote, unquote
 
 from loguru import logger
 
@@ -54,7 +57,9 @@ __all__ = [
     "InvalidPathError",
     "FileMetadata",
     "build_key",
+    "user_folder_name",
     "user_media_category",
+    "chat_media_category",
     "save_file",
     "delete",
     "read_file",
@@ -82,9 +87,65 @@ def build_key(category: str, filename_hint: str) -> str:
     return f"{category}/{name}"
 
 
-def user_media_category(user_id: int, section: str) -> str:
-    """Возвращает категорию (папку) файлов пользователя: users/<user_id>/<раздел>, например users/5/albums."""
-    return f"users/{user_id}/{section}"
+# Разделитель имён двух собеседников в названии папки личного чата: "Иван_Иванов__Пётр_Петров".
+CHAT_FOLDER_SEPARATOR = "__"
+_FOLDER_ALLOWED_EXTRA = "-_.()"
+_FOLDER_MAX_LEN = 100
+
+
+def _safe_folder_name(value: Optional[str]) -> str:
+    """
+    Делает произвольную строку (имя, фамилию, название группы) безопасным именем папки.
+    Разрешены буквы любых алфавитов (в т.ч. кириллица), цифры и символы "-_.()";
+    всё остальное (пробелы, слэши, "..", "%" и т.п.) заменяется на "_".
+    """
+    if not value:
+        return ""
+    value = unicodedata.normalize("NFC", str(value)).strip()
+    sanitized = "".join(ch if (ch.isalnum() or ch in _FOLDER_ALLOWED_EXTRA) else "_" for ch in value)
+    sanitized = sanitized.replace("..", "_")
+    sanitized = re.sub(r"_+", "_", sanitized).strip("._ ")
+    return sanitized[:_FOLDER_MAX_LEN].strip("._ ")
+
+
+def user_folder_name(user: Any) -> str:
+    """
+    Имя папки пользователя в хранилище: "Имя_Фамилия" (например "Иван_Иванов").
+    Если имя и фамилия не заполнены, используется "user_<id>", чтобы файлы не
+    попадали в общую безымянную папку.
+    """
+    first_name = getattr(user, "first_name", None) or ""
+    last_name = getattr(user, "last_name", None) or ""
+    name = _safe_folder_name(f"{first_name} {last_name}")
+    if name:
+        return name
+    user_id = getattr(user, "id", None) if not isinstance(user, int) else user
+    return f"user_{user_id}" if user_id is not None else "unknown"
+
+
+def user_media_category(user: Any, section: str) -> str:
+    """
+    Возвращает категорию (папку) файлов пользователя: users/<Имя_Фамилия>/<раздел>,
+    например users/Иван_Иванов/albums.
+    """
+    section = (section or "misc").strip("/")
+    return f"users/{user_folder_name(user)}/{section}"
+
+
+def chat_media_category(owner: Any, partner: Any = None, group_name: Optional[str] = None) -> str:
+    """
+    Возвращает папку файлов чата внутри папки пользователя-отправителя:
+      - личный чат:  users/<Имя_Фамилия>/chats/<Имя_Фамилия>__<Имя_Фамилия собеседника>;
+      - групповой:   users/<Имя_Фамилия>/chats/<Название_группы>;
+      - чат неизвестен: users/<Имя_Фамилия>/chats.
+    """
+    base = user_media_category(owner, "chats")
+    if partner is not None:
+        return f"{base}/{user_folder_name(owner)}{CHAT_FOLDER_SEPARATOR}{user_folder_name(partner)}"
+    group_folder = _safe_folder_name(group_name)
+    if group_folder:
+        return f"{base}/{group_folder}"
+    return base
 
 
 def _encode_key(metadata: FileMetadata) -> str:
@@ -123,7 +184,7 @@ def resolve_url(url_or_key: str) -> Optional[FileMetadata]:
     rel_path = url_or_key
     if rel_path.startswith(MEDIA_URL_PREFIX):
         rel_path = rel_path[len(MEDIA_URL_PREFIX):]
-    rel_path = rel_path.lstrip("/")
+    rel_path = unquote(rel_path.lstrip("/"))
 
     try:
         return _service.find_by_relative_path(rel_path)
@@ -170,7 +231,8 @@ def save_file(
         mime_type=content_type,
     )
 
-    url = f"{MEDIA_URL_PREFIX}{metadata.relative_path}"
+    # Папки пользователей могут содержать кириллицу - отдаём URL в percent-encoding.
+    url = f"{MEDIA_URL_PREFIX}{quote(metadata.relative_path, safe='/()')}"
     key = _encode_key(metadata)
     return url, key
 

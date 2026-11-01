@@ -422,7 +422,7 @@ async def update_me(
 
     if avatar:
         # Сохраняем аватарку (используем существующую функцию сохранения фото)
-        image_url, preview_url = await save_user_photo(avatar, current_user.id, "avatars")
+        image_url, preview_url = await save_user_photo(avatar, current_user, "avatars")
         current_user.avatar_url = image_url
         current_user.avatar_preview_url = preview_url
 
@@ -528,7 +528,7 @@ async def create_user(
     avatar_preview_url = None
     if avatar:
         try:
-            avatar_url, avatar_preview_url = await save_user_photo(avatar, db_user.id, "avatars")
+            avatar_url, avatar_preview_url = await save_user_photo(avatar, db_user, "avatars")
             db_user.avatar_url = avatar_url
             db_user.avatar_preview_url = avatar_preview_url
             await db.commit()
@@ -1670,12 +1670,13 @@ MEDIA_ROOT = os.getenv("MEDIA_ROOT", os.path.join(BASE_DIR, "media"))
 USER_MEDIA_ROOT = os.path.join(MEDIA_ROOT, "users")
 os.makedirs(USER_MEDIA_ROOT, exist_ok=True)
 
-async def save_user_photo(file: UploadFile, user_id: int, section: str = "photos") -> tuple[str, str]:
+async def save_user_photo(file: UploadFile, user: UserModel, section: str = "photos") -> tuple[str, str]:
     file_extension = os.path.splitext(file.filename or "")[1] or ".jpg"
     is_video = file_extension.lower() in [".mp4", ".mov", ".avi", ".mkv", ".webm"]
     original_name = f"{uuid.uuid4()}{file_extension}"
     content = await file.read()
-    user_category = storage.user_media_category(user_id, section)
+    # Папка вида users/<Имя_Фамилия>/<раздел>
+    user_category = storage.user_media_category(user, section)
 
     # Сохраняем оригинал через абстракцию хранилища
     original_url, original_fs_path = storage.save_file(
@@ -1774,7 +1775,7 @@ async def upload_photo(
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Album not found")
 
     try:
-        image_url, preview_url = await save_user_photo(file, current_user.id, "albums" if album_id else "photos")
+        image_url, preview_url = await save_user_photo(file, current_user, "albums" if album_id else "photos")
         print(f"DEBUG: Photo saved: {image_url}, {preview_url}")
     except Exception as e:
         print(f"DEBUG: Error saving photo: {e}")
@@ -1824,7 +1825,7 @@ async def bulk_upload_photos(
     db_photos = []
     for file in files:
         try:
-            image_url, preview_url = await save_user_photo(file, current_user.id, "albums" if album_id else "photos")
+            image_url, preview_url = await save_user_photo(file, current_user, "albums" if album_id else "photos")
             db_photo = UserPhotoModel(
                 user_id=current_user.id,
                 album_id=album_id,

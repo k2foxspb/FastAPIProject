@@ -14,7 +14,7 @@ import jwt
 
 from app.core.config import SECRET_KEY, ALGORITHM
 from app.api.dependencies import get_async_db
-from app.models.chat import ChatMessage, FileUploadSession, ChatMessageReaction, GroupChatMember
+from app.models.chat import ChatMessage, FileUploadSession, ChatMessageReaction, GroupChatMember, GroupChat
 from app.models.users import User as UserModel
 from app.schemas.chat import (
     ChatMessageCreate, ChatMessageResponse, DialogResponse, 
@@ -80,6 +80,32 @@ def _sender_display_name(sender) -> str:
         return "Пользователь"
     name = f"{getattr(sender, 'first_name', '') or ''} {getattr(sender, 'last_name', '') or ''}".strip()
     return name or "Пользователь"
+
+
+async def _resolve_chat_media_category(
+    db: AsyncSession,
+    owner: Optional[UserModel],
+    receiver_id=None,
+    group_id=None,
+) -> str:
+    """
+    Папка для файлов чата: users/<Имя_Фамилия>/chats/<Имя_Фамилия>__<Имя_Фамилия собеседника>
+    для личных чатов и users/<Имя_Фамилия>/chats/<Название_группы> для групповых.
+    """
+    if not owner:
+        return "chat"
+    try:
+        if receiver_id:
+            partner = await db.get(UserModel, int(receiver_id))
+            if partner:
+                return storage.chat_media_category(owner, partner=partner)
+        if group_id:
+            group = await db.get(GroupChat, int(group_id))
+            if group:
+                return storage.chat_media_category(owner, group_name=group.name)
+    except Exception as e:
+        logger.warning(f"Could not resolve chat media folder (receiver={receiver_id}, group={group_id}): {e}")
+    return storage.chat_media_category(owner)
 
 
 async def _fetch_reply_to_data(db: AsyncSession, reply_to_id) -> Optional[dict]:
@@ -1757,6 +1783,9 @@ async def bulk_delete_messages(
 @router.post("/upload")
 async def upload_chat_file(
     file: UploadFile = File(...),
+    receiver_id: Optional[int] = Form(None),
+    group_id: Optional[int] = Form(None),
+    db: AsyncSession = Depends(get_async_db),
     current_user: Optional[UserModel] = Depends(get_current_user_optional),
 ):
     # В реальном приложении здесь должна быть проверка токена
@@ -1781,7 +1810,7 @@ async def upload_chat_file(
 
     # Сохраняем оригинал через абстракцию хранилища
     base_name = str(uuid.uuid4())
-    chat_category = storage.user_media_category(current_user.id, "chat") if current_user else "chat"
+    chat_category = await _resolve_chat_media_category(db, current_user, receiver_id, group_id)
     original_url, _ = storage.save_file(
         category=chat_category,
         filename_hint=f"{base_name}{file_extension or ''}",
@@ -2144,9 +2173,23 @@ async def upload_chunk(
             
         unique_name = f"{uuid.uuid4()}{file_extension}"
         try:
+            # Определяем чат (собеседника или группу) по placeholder-сообщению для выбора папки
+            res_ph = await db.execute(
+                select(ChatMessage.receiver_id, ChatMessage.group_id).where(
+                    ChatMessage.upload_id == upload_id,
+                    ChatMessage.sender_id == user_id
+                ).limit(1)
+            )
+            ph_row = res_ph.first()
+            chat_category = await _resolve_chat_media_category(
+                db,
+                current_user,
+                ph_row.receiver_id if ph_row else None,
+                ph_row.group_id if ph_row else None,
+            )
             with open(file_path, "rb") as f_in:
                 url, _ = storage.save_file(
-                    category=storage.user_media_category(user_id, "chat"),
+                    category=chat_category,
                     filename_hint=unique_name,
                     fileobj=f_in,
                     content_type=final_content_type,

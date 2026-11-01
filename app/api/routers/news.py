@@ -93,7 +93,7 @@ ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp"}
 # Allow up to 10 MB to avoid crashes/timeouts on common mobile photos; reject bigger early
 MAX_IMAGE_SIZE = 10 * 1024 * 1024
 
-async def save_news_image(file: UploadFile, user_id: int) -> tuple[str, str]:
+async def save_news_image(file: UploadFile, user: UserModel) -> tuple[str, str]:
     if file.content_type not in ALLOWED_IMAGE_TYPES:
         raise HTTPException(400, "Only JPG, PNG or WebP images are allowed")
     content = await file.read()
@@ -103,7 +103,7 @@ async def save_news_image(file: UploadFile, user_id: int) -> tuple[str, str]:
     base_name = str(uuid.uuid4())
 
     # Save original via storage abstraction
-    news_category = storage.user_media_category(user_id, "news")
+    news_category = storage.user_media_category(user, "news")
     original_url, _ = storage.save_file(
         category=news_category,
         filename_hint=f"{base_name}{extension}",
@@ -358,7 +358,7 @@ async def create_news(
         for idx, (img_file, img_bytes) in enumerate(validated_images_data):
             try:
                 logger.info(f"NEWS_CREATE_DEBUG: Processing image {idx}")
-                image_url, thumbnail_url = await _process_validated_image(img_file, img_bytes, current_user.id)
+                image_url, thumbnail_url = await _process_validated_image(img_file, img_bytes, current_user)
 
                 if idx == 0:
                     db_news.image_url = image_url
@@ -408,11 +408,11 @@ async def create_news(
             raise e
         raise HTTPException(status_code=500, detail=str(e))
 
-async def _process_validated_image(file: UploadFile, content: bytes, user_id: int) -> tuple[str, str]:
+async def _process_validated_image(file: UploadFile, content: bytes, user: UserModel) -> tuple[str, str]:
     """Helper for create_news to save already-read image data safely."""
     extension = Path(file.filename or "").suffix.lower() or ".jpg"
     base_name = str(uuid.uuid4())
-    news_category = storage.user_media_category(user_id, "news")
+    news_category = storage.user_media_category(user, "news")
 
     # Save original
     original_url, _ = storage.save_file(
@@ -459,7 +459,7 @@ async def upload_news_media(
     current_user: UserModel = Depends(get_current_user),
 ):
     """Загружает одиночный медиафайл и возвращает его URL для вставки в текст."""
-    image_url, _ = await save_news_image(file, current_user.id)
+    image_url, _ = await save_news_image(file, current_user)
     return {"location": image_url, "url": image_url}
 
 @router.get("/{news_id}/", response_model=NewsSchema)
