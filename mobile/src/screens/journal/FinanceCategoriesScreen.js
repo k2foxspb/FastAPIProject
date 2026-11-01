@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
-import { JournalGate, PrimaryButton, Section, useColors } from '../../components/journal/common';
+import { EmptyState, JournalGate, PrimaryButton, Section, useColors } from '../../components/journal/common';
 import { useJournalQuery } from '../../context/JournalContext';
 import { listFinanceCategories, saveFinanceCategory } from '../../journal/db/repos/finance';
 
@@ -18,7 +18,11 @@ function Content() {
   return <ScrollView style={{ backgroundColor: colors.background }} contentContainerStyle={{ paddingBottom: 32 }}>
     <Section title="Категории">{(categories || []).map((category) => <View key={category.uuid} style={{ padding: 12 }}>
       <Text style={{ color: colors.text }}>{category.kind === 'expense' ? '−' : '+'} {category.name}</Text>
-    </View>)}</Section>
+    </View>)}
+      {categories && categories.length === 0 && (
+        <EmptyState icon="pricetags-outline" title="Категорий нет" subtitle="Добавьте первую категорию ниже" />
+      )}
+    </Section>
     <Section title="Новая категория"><View style={{ paddingHorizontal: 12 }}>
       <TextInput value={name} onChangeText={setName} placeholder="Название" placeholderTextColor={colors.textSecondary}
         style={{ color: colors.text, borderColor: colors.border, borderWidth: 1, borderRadius: 10, padding: 12 }} />

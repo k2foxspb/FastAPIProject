@@ -1,6 +1,6 @@
 import React, { useCallback, useState } from 'react';
 import { Alert, FlatList, Text, TouchableOpacity, View } from 'react-native';
-import { JournalGate, useColors } from '../../components/journal/common';
+import { EmptyState, JournalGate, useColors } from '../../components/journal/common';
 import { journalApi } from '../../api/journal';
 import { formatKop } from '../../journal/utils/money';
 
@@ -29,7 +29,7 @@ function Content() {
         <Text style={{ color: colors.error, fontWeight: '600' }}>Отменить импорт</Text>
       </TouchableOpacity>}
     </View>}
-    ListEmptyComponent={<Text style={{ color: colors.textSecondary, textAlign: 'center', marginTop: 30 }}>Импортов пока нет</Text>}
+    ListEmptyComponent={<EmptyState icon="cloud-upload-outline" title="Импортов пока нет" subtitle="Загрузите выписку банка, чтобы добавить операции пачкой" />}
   />;
 }
 export default function ImportBatchesScreen({ navigation }) { return <JournalGate navigation={navigation}><Content /></JournalGate>; }

@@ -47,6 +47,7 @@ import TrackerEditScreen from '../screens/journal/TrackerEditScreen';
 import TrackerDetailScreen from '../screens/journal/TrackerDetailScreen';
 import JournalSettingsScreen from '../screens/journal/JournalSettingsScreen';
 import HealthImportScreen from '../screens/journal/HealthImportScreen';
+import ShareSummaryScreen from '../screens/journal/ShareSummaryScreen';
 import ReminderDiagnosticsScreen from '../screens/journal/ReminderDiagnosticsScreen';
 import BatteryHelpScreen from '../screens/journal/BatteryHelpScreen';
 import DietDayScreen from '../screens/journal/DietDayScreen';
@@ -334,6 +335,8 @@ function JournalStack() {
         <Stack.Screen name="Export" component={ExportScreen} options={{ title: 'Экспорт' }} />
         <Stack.Screen name="BarcodeScan" component={BarcodeScanScreen} options={{ title: 'Сканировать штрихкод' }} />
         <Stack.Screen name="WeeklySummary" component={WeeklySummaryScreen} options={{ title: 'Сводка за неделю' }} />
+        <Stack.Screen name="ShareSummary" component={ShareSummaryScreen} options={{ title: 'Отправить' }} />
+        <Stack.Screen name="CreatePost" component={CreatePostScreen} options={{ title: 'Новая публикация' }} />
       </Stack.Navigator>
   );
 }

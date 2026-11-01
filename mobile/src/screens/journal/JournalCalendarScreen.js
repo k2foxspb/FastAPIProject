@@ -1,16 +1,18 @@
 import React, { useCallback, useLayoutEffect, useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { Calendar } from 'react-native-calendars';
 import { Ionicons as Icon } from '@expo/vector-icons';
 import { useJournal, useJournalQuery } from '../../context/JournalContext';
 import { HeaderButton, JournalGate, Section, SyncBadge, useColors } from '../../components/journal/common';
+import ShareButton from '../../components/journal/ShareButton';
 import DayCell from '../../components/journal/DayCell';
 import { calendarTheme } from '../../components/journal/DateTimeFields';
 import { summarizeRange } from '../../journal/db/aggregates';
 import { formatDateRu, monthBounds } from '../../journal/utils/dates';
 import { formatKop } from '../../journal/utils/money';
 import { addWater, guessMealType, listMealTypes } from '../../journal/db/repos/diet';
+import { buildMonthCalendarText } from '../../journal/share/summaryText';
 
 const QUICK_ACTIONS = [
   { key: 'expense', icon: 'remove-circle-outline', label: 'Расход' },
@@ -36,8 +38,13 @@ const CalendarContent = ({ navigation }) => {
     return result;
   }, [days]);
 
+  const [quickDay, setQuickDay] = useState(null);
   const openDay = useCallback((date) => navigation.navigate('JournalDay', { date: date.dateString }), [navigation]);
-  const renderDay = useCallback((props) => <DayCell {...props} colors={colors} onPress={openDay} />, [colors, openDay]);
+  const openQuick = useCallback((date) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => undefined);
+    setQuickDay(date.dateString);
+  }, []);
+  const renderDay = useCallback((props) => <DayCell {...props} colors={colors} onPress={openDay} onLongPress={openQuick} />, [colors, openDay, openQuick]);
 
   const totals = useMemo(() => {
     const t = { done: 0, total: 0, diary: 0, kcal: 0, expense: 0 };
@@ -53,23 +60,33 @@ const CalendarContent = ({ navigation }) => {
 
   const todaySummary = days?.[today];
 
-  const onQuick = async (key) => {
-    if (key === 'expense') navigation.navigate('TransactionEdit', { direction: 'expense', date: today });
+  const runQuick = async (key, date) => {
+    if (key === 'expense') navigation.navigate('TransactionEdit', { direction: 'expense', date });
     if (key === 'food') {
       // Приём пищи по текущему времени - добавление в 2-3 тапа
       const meal = guessMealType(await listMealTypes());
-      navigation.navigate('FoodSearch', { date: today, mealTypeUuid: meal?.uuid || null });
+      navigation.navigate('FoodSearch', { date, mealTypeUuid: meal?.uuid || null });
     }
     if (key === 'water') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
-      await addWater(today, 250);
+      await addWater(date, 250);
     }
-    if (key === 'event') navigation.navigate('EventEdit', { date: today });
-    if (key === 'diary') navigation.navigate('DiaryEdit', { date: today });
-    if (key === 'tracker') navigation.navigate('Trackers', { quickDate: today });
+    if (key === 'event') navigation.navigate('EventEdit', { date });
+    if (key === 'diary') navigation.navigate('DiaryEdit', { date });
+    if (key === 'tracker') navigation.navigate('Trackers', { quickDate: date });
+  };
+
+  const onQuick = (key) => runQuick(key, today);
+
+  const onSheetAction = (key) => {
+    const date = quickDay;
+    setQuickDay(null);
+    if (key === 'open') navigation.navigate('JournalDay', { date });
+    else runQuick(key, date);
   };
 
   return (
+    <>
     <ScrollView style={{ backgroundColor: colors.background }} contentContainerStyle={{ paddingBottom: 32 }}>
       <View style={[styles.calendarWrap, { backgroundColor: colors.card, borderColor: colors.border }]}>
         <Calendar
@@ -116,9 +133,77 @@ const CalendarContent = ({ navigation }) => {
           {totals.kcal > 0 && <Stat colors={colors} value={String(totals.kcal)} label="ккал" />}
           {totals.expense > 0 && <Stat colors={colors} value={formatKop(totals.expense, { withKopecks: false })} label="расходы" />}
         </View>
+        <ShareButton
+          navigation={navigation}
+          label="Поделиться календарём"
+          text={buildMonthCalendarText(totals, `Месяц ${String(month.month).padStart(2, '0')}.${month.year}`)}
+          style={{ marginHorizontal: 12, marginTop: 8 }}
+        />
       </Section>
 
     </ScrollView>
+      <DaySheet
+        colors={colors}
+        date={quickDay}
+        isToday={quickDay === today}
+        summary={quickDay ? days?.[quickDay] : null}
+        onClose={() => setQuickDay(null)}
+        onAction={onSheetAction}
+      />
+    </>
+  );
+};
+
+const SHEET_ACTIONS = [
+  { key: 'expense', icon: 'remove-circle-outline', label: 'Расход' },
+  { key: 'event', icon: 'add-circle-outline', label: 'Событие' },
+  { key: 'food', icon: 'restaurant-outline', label: 'Еда' },
+  { key: 'water', icon: 'water-outline', label: '+250 мл' },
+  { key: 'diary', icon: 'book-outline', label: 'Дневник' },
+  { key: 'tracker', icon: 'pulse-outline', label: 'Трекер' },
+];
+
+const DaySheet = ({ colors, date, isToday, summary, onClose, onAction }) => {
+  const s = summary || {};
+  const rows = [
+    { icon: 'checkmark-done-outline', label: 'События', value: s.events_total ? `${s.events_done}/${s.events_total}` : 'нет' },
+    { icon: 'flame-outline', label: 'Калории', value: s.kcal ? `${s.kcal} ккал` : 'нет' },
+    { icon: 'wallet-outline', label: 'Расходы', value: s.expense_kop ? formatKop(s.expense_kop) : 'нет' },
+    { icon: 'book-outline', label: 'Дневник', value: s.has_diary ? 'есть запись' : 'нет' },
+    { icon: 'pulse-outline', label: 'Трекеры', value: s.tracker_count ? String(s.tracker_count) : 'нет' },
+  ];
+  return (
+    <Modal visible={!!date} transparent animationType="fade" onRequestClose={onClose}>
+      <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={onClose} />
+      <View style={[styles.sheet, { backgroundColor: colors.card, borderColor: colors.border }]}>
+        <View style={styles.sheetHeader}>
+          <Text style={[styles.sheetTitle, { color: colors.text }]}>{date ? formatDateRu(date, { withWeekday: true }) : ''}</Text>
+          {isToday && <Text style={[styles.sheetBadge, { color: colors.primary }]}>сегодня</Text>}
+        </View>
+        {rows.map((r) => (
+          <View key={r.label} style={[styles.sheetRow, { borderBottomColor: colors.border }]}>
+            <Icon name={r.icon} size={18} color={colors.textSecondary} />
+            <Text style={[styles.sheetLabel, { color: colors.textSecondary }]}>{r.label}</Text>
+            <Text style={[styles.sheetValue, { color: colors.text }]}>{r.value}</Text>
+          </View>
+        ))}
+        <View style={styles.sheetActions}>
+          {SHEET_ACTIONS.map((a) => (
+            <TouchableOpacity
+              key={a.key}
+              style={[styles.quick, { flex: 0, width: '31%', backgroundColor: colors.background, borderColor: colors.border }]}
+              onPress={() => onAction(a.key)}
+            >
+              <Icon name={a.icon} size={20} color={colors.primary} />
+              <Text style={[styles.quickText, { color: colors.text }]}>{a.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+        <TouchableOpacity style={[styles.openButton, { backgroundColor: colors.primary }]} onPress={() => onAction('open')}>
+          <Text style={styles.openButtonText}>Открыть день</Text>
+        </TouchableOpacity>
+      </View>
+    </Modal>
   );
 };
 
@@ -159,4 +244,15 @@ const styles = StyleSheet.create({
   stat: { flex: 1, alignItems: 'center' },
   statValue: { fontSize: 18, fontWeight: '600' },
   statLabel: { fontSize: 12, marginTop: 2 },
+  backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.35)' },
+  sheet: { position: 'absolute', left: 12, right: 12, bottom: 24, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, padding: 16 },
+  sheetHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  sheetTitle: { fontSize: 17, fontWeight: '600' },
+  sheetBadge: { fontSize: 12, fontWeight: '600' },
+  sheetRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, borderBottomWidth: StyleSheet.hairlineWidth },
+  sheetLabel: { flex: 1, marginLeft: 10, fontSize: 14 },
+  sheetValue: { fontSize: 14, fontWeight: '600' },
+  sheetActions: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 12, marginHorizontal: -3 },
+  openButton: { marginTop: 12, borderRadius: 12, alignItems: 'center', paddingVertical: 12 },
+  openButtonText: { color: '#fff', fontWeight: '600', fontSize: 15 },
 });

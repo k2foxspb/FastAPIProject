@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { ScrollView, Text, TextInput, View } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import MoneyInput from '../../components/journal/MoneyInput';
-import { JournalGate, PrimaryButton, Section, useColors } from '../../components/journal/common';
+import { EmptyState, JournalGate, PrimaryButton, Section, useColors } from '../../components/journal/common';
 import { useJournal, useJournalQuery } from '../../context/JournalContext';
 import { listBudgets, listFinanceCategories, saveBudget } from '../../journal/db/repos/finance';
 import { formatKop } from '../../journal/utils/money';
@@ -27,7 +27,11 @@ function Content() {
         <Text style={{ color: colors.text, fontWeight: '600' }}>{budget.category_name}</Text>
         <Text style={{ color: colors.textSecondary, marginTop: 4 }}>{formatKop(budget.spent_kop)} из {formatKop(budget.limit_kop)}</Text>
       </View>
-    ))}</Section>
+    ))}
+      {budgets && budgets.length === 0 && (
+        <EmptyState icon="pie-chart-outline" title="Бюджетов на месяц нет" subtitle="Задайте лимит расходов ниже, чтобы видеть прогресс" />
+      )}
+    </Section>
     <Section title="Новый бюджет"><View style={{ paddingHorizontal: 12 }}>
       <Picker selectedValue={categoryUuid} onValueChange={setCategoryUuid}>
         <Picker.Item label="Все расходы" value="" />

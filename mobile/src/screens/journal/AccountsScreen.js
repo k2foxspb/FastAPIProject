@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { ScrollView, Text, TextInput, View } from 'react-native';
-import { JournalGate, PrimaryButton, Section, useColors } from '../../components/journal/common';
+import { EmptyState, JournalGate, PrimaryButton, Section, useColors } from '../../components/journal/common';
 import { useJournalQuery } from '../../context/JournalContext';
 import { listAccounts, saveAccount } from '../../journal/db/repos/finance';
 import { formatKop } from '../../journal/utils/money';
@@ -20,7 +20,11 @@ function Content() {
   return <ScrollView style={{ backgroundColor: colors.background }} contentContainerStyle={{ paddingBottom: 32 }}>
     <Section title="Мои счета">{(accounts || []).map((account) => <View key={account.uuid} style={{ padding: 12, flexDirection: 'row', justifyContent: 'space-between' }}>
       <Text style={{ color: colors.text }}>{account.name}</Text><Text style={{ color: colors.text }}>{formatKop(account.balance_kop)}</Text>
-    </View>)}</Section>
+    </View>)}
+      {accounts && accounts.length === 0 && (
+        <EmptyState icon="wallet-outline" title="Счетов пока нет" subtitle="Добавьте счёт ниже, например карту или наличные" />
+      )}
+    </Section>
     <Section title="Добавить счёт"><View style={{ paddingHorizontal: 12 }}>
       <TextInput value={name} onChangeText={setName} placeholder="Название счёта" placeholderTextColor={colors.textSecondary} style={inputStyle} />
       <MoneyInput value={openingKop} onChangeKop={setOpeningKop} style={inputStyle} placeholder="Начальный баланс, ₽" />

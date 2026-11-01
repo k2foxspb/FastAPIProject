@@ -1,7 +1,7 @@
 import React from 'react';
 import { Alert, FlatList, Text, TouchableOpacity, View } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
-import { JournalGate, useColors } from '../../components/journal/common';
+import { EmptyState, JournalGate, useColors } from '../../components/journal/common';
 import { useJournalQuery } from '../../context/JournalContext';
 import { listFinanceCategories, reviewQueue, resolveReview } from '../../journal/db/repos/finance';
 import { formatKop } from '../../journal/utils/money';
@@ -23,7 +23,7 @@ function Content() {
       </Picker>
       <TouchableOpacity onPress={() => resolveReview(item.uuid, null)}><Text style={{ color: colors.primary, padding: 6 }}>Оставить без категории</Text></TouchableOpacity>
     </View>}
-    ListEmptyComponent={<Text style={{ color: colors.textSecondary, textAlign: 'center', marginTop: 30 }}>Очередь пуста</Text>}
+    ListEmptyComponent={items ? <EmptyState icon="checkmark-done-outline" title="Очередь пуста" subtitle="Все операции с категориями, ничего разбирать не нужно" /> : null}
   />;
 }
 export default function ReviewQueueScreen({ navigation }) { return <JournalGate navigation={navigation}><Content /></JournalGate>; }

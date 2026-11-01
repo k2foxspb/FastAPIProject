@@ -1,10 +1,32 @@
 import React, { useState } from 'react';
-import { Alert, ScrollView, Text, TextInput, View } from 'react-native';
+import { Alert, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import MoneyInput from '../../components/journal/MoneyInput';
 import { Field, JournalGate, PrimaryButton, useColors } from '../../components/journal/common';
 import { useJournal, useJournalQuery } from '../../context/JournalContext';
-import { listAccounts, listFinanceCategories, getTransaction, saveTransaction } from '../../journal/db/repos/finance';
+import {
+  listAccounts, listFinanceCategories, getTransaction, saveTransaction, saveAccount, saveFinanceCategory,
+} from '../../journal/db/repos/finance';
+
+function InlineCreate({ colors, visible, onToggle, toggleTitle, value, onChangeText, placeholder, onSubmit }) {
+  return (
+    <View style={{ paddingHorizontal: 12, marginBottom: 8 }}>
+      <TouchableOpacity onPress={onToggle} style={{ paddingVertical: 6 }}>
+        <Text style={{ color: colors.primary, fontSize: 14, fontWeight: '600' }}>{toggleTitle}</Text>
+      </TouchableOpacity>
+      {visible && (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <TextInput value={value} onChangeText={onChangeText} placeholder={placeholder}
+            placeholderTextColor={colors.textSecondary}
+            style={{ flex: 1, color: colors.text, borderColor: colors.border, borderWidth: 1, borderRadius: 10, padding: 10 }} />
+          <TouchableOpacity onPress={onSubmit} style={{ backgroundColor: colors.primary, borderRadius: 10, paddingVertical: 10, paddingHorizontal: 14 }}>
+            <Text style={{ color: '#fff', fontWeight: '600' }}>Добавить</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+    </View>
+  );
+}
 
 function Content({ navigation, route }) {
   const colors = useColors();
@@ -18,6 +40,32 @@ function Content({ navigation, route }) {
   const [description, setDescription] = useState('');
   const [amountKop, setAmountKop] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [newAccountName, setNewAccountName] = useState('');
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [showAccountForm, setShowAccountForm] = useState(false);
+  const [showCategoryForm, setShowCategoryForm] = useState(false);
+
+  const createAccount = async () => {
+    const name = newAccountName.trim();
+    if (!name) return;
+    try {
+      const uuid = await saveAccount({ name, kind: 'cash', currency: 'RUB', opening_balance_kop: 0 });
+      setAccountUuid(uuid);
+      setNewAccountName('');
+      setShowAccountForm(false);
+    } catch (error) { Alert.alert('Ошибка', error?.message || 'Не удалось создать счёт'); }
+  };
+
+  const createCategory = async () => {
+    const name = newCategoryName.trim();
+    if (!name) return;
+    try {
+      const uuid = await saveFinanceCategory({ name, kind: 'expense', parent_uuid: null, icon: null, color: null, sort_order: 1000 });
+      setCategoryUuid(uuid);
+      setNewCategoryName('');
+      setShowCategoryForm(false);
+    } catch (error) { Alert.alert('Ошибка', error?.message || 'Не удалось создать категорию'); }
+  };
 
   React.useEffect(() => {
     if (!route.params?.uuid) return;
@@ -54,10 +102,32 @@ function Content({ navigation, route }) {
       <Field label="Счёт"><Picker selectedValue={accountUuid} onValueChange={setAccountUuid}>
         {(accounts || []).map((item) => <Picker.Item key={item.uuid} label={item.name} value={item.uuid} />)}
       </Picker></Field>
+      <InlineCreate
+        colors={colors}
+        visible={showAccountForm}
+        onToggle={() => setShowAccountForm((v) => !v)}
+        toggleTitle="+ Создать счёт"
+        value={newAccountName}
+        onChangeText={setNewAccountName}
+        placeholder="Название счёта"
+        onSubmit={createAccount}
+      />
       {direction === 'expense' && <Field label="Категория"><Picker selectedValue={categoryUuid} onValueChange={setCategoryUuid}>
         <Picker.Item label="Без категории" value="" />
         {(categories || []).map((item) => <Picker.Item key={item.uuid} label={item.name} value={item.uuid} />)}
       </Picker></Field>}
+      {direction === 'expense' && (
+        <InlineCreate
+          colors={colors}
+          visible={showCategoryForm}
+          onToggle={() => setShowCategoryForm((v) => !v)}
+          toggleTitle="+ Создать категорию"
+          value={newCategoryName}
+          onChangeText={setNewCategoryName}
+          placeholder="Название категории"
+          onSubmit={createCategory}
+        />
+      )}
       <Field label="Дата"><TextInput value={transactionDate} onChangeText={setTransactionDate} placeholder="ГГГГ-ММ-ДД"
         placeholderTextColor={colors.textSecondary} style={{ color: colors.text, borderColor: colors.border, borderWidth: 1, borderRadius: 10, padding: 12 }} /></Field>
       <Field label="Сумма, ₽"><MoneyInput value={amountKop} onChangeKop={setAmountKop} /></Field>

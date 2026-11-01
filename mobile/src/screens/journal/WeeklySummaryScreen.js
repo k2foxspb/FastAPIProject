@@ -6,6 +6,8 @@ import { buildPeriodAnalytics } from '../../journal/db/repos/analytics';
 import { formatKop } from '../../journal/utils/money';
 import { addDays, formatDateShort, todayKey } from '../../journal/utils/dates';
 import { useJournal } from '../../context/JournalContext';
+import { buildPeriodText } from '../../journal/share/summaryText';
+import ShareButton from '../../components/journal/ShareButton';
 
 const Content = ({ navigation }) => {
   const colors = useColors();
@@ -76,6 +78,7 @@ const Content = ({ navigation }) => {
 
       <PrimaryButton title="Подробная аналитика" onPress={() => navigation.navigate('Analytics')} />
       <PrimaryButton title="Экспорт" onPress={() => navigation.navigate('Export')} style={{ marginTop: 10 }} />
+      <ShareButton navigation={navigation} label="Отправить в сообщения" text={buildPeriodText(data, 'week')} style={{ marginTop: 10 }} />
     </ScrollView>
   );
 };

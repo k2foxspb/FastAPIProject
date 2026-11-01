@@ -1,9 +1,11 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { formatKop } from '../../journal/utils/money';
 import { accountBalances, listTransactions } from '../../journal/db/repos/finance';
-import { JournalGate, Section, useColors } from '../../components/journal/common';
+import { EmptyState, JournalGate, Section, useColors } from '../../components/journal/common';
 import { useJournalQuery } from '../../context/JournalContext';
+
+const PAGE = 20;
 
 const LINKS = [
   ['Accounts', 'Счета'], ['FinanceCategories', 'Категории'], ['Budgets', 'Бюджеты'],
@@ -15,7 +17,8 @@ const LINKS = [
 function Content({ navigation }) {
   const colors = useColors();
   const { data: accounts } = useJournalQuery(accountBalances, []);
-  const { data: transactions } = useJournalQuery(() => listTransactions({ limit: 20 }), []);
+  const [limit, setLimit] = useState(PAGE);
+  const { data: transactions } = useJournalQuery(() => listTransactions({ limit }), [limit]);
   return (
     <ScrollView style={{ backgroundColor: colors.background }} contentContainerStyle={{ paddingBottom: 32 }}>
       <Section title="Счета">
@@ -48,6 +51,14 @@ function Content({ navigation }) {
             </Text>
           </TouchableOpacity>
         ))}
+        {transactions && transactions.length === 0 && (
+          <EmptyState icon="receipt-outline" title="Операций пока нет" subtitle="Добавьте расход или доход кнопкой «＋ Расход» выше" />
+        )}
+        {transactions && transactions.length >= limit && (
+          <TouchableOpacity onPress={() => setLimit(limit + PAGE)} style={{ padding: 12, alignItems: 'center' }}>
+            <Text style={{ color: colors.primary, fontWeight: '600' }}>Показать ещё</Text>
+          </TouchableOpacity>
+        )}
       </Section>
     </ScrollView>
   );

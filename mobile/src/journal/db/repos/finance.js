@@ -74,13 +74,13 @@ export const saveTransaction = (data, uuid = null) => saveEntity('transaction', 
 export const getTransaction = (uuid) => getEntity('transaction', uuid);
 export const deleteTransaction = (uuid) => deleteEntity('transaction', uuid);
 
-export const listTransactions = async ({ from = '1970-01-01', to = '2100-12-31', limit = 500 } = {}) => {
+export const listTransactions = async ({ from = '1970-01-01', to = '2100-12-31', limit = 500, offset = 0 } = {}) => {
   const rows = await getJournalDb().getAllAsync(
     `SELECT t.*, a.name AS account_name, c.name AS category_name
      FROM transactions t LEFT JOIN accounts a ON a.uuid = t.account_uuid
      LEFT JOIN finance_categories c ON c.uuid = t.category_uuid
-     WHERE t.transaction_date BETWEEN ? AND ? ORDER BY t.transaction_date DESC, t.created_at DESC LIMIT ?`,
-    [from, to, limit],
+     WHERE t.transaction_date BETWEEN ? AND ? ORDER BY t.transaction_date DESC, t.created_at DESC LIMIT ? OFFSET ?`,
+    [from, to, limit, offset],
   );
   return rows.map((row) => ({ ...rowToObject('transaction', row), account_name: row.account_name, category_name: row.category_name }));
 };

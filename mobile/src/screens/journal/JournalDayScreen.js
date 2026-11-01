@@ -4,6 +4,7 @@ import { Ionicons as Icon } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useJournal, useJournalQuery } from '../../context/JournalContext';
 import { EmptyState, JournalGate, MOODS, SyncBadge, useColors } from '../../components/journal/common';
+import ShareButton from '../../components/journal/ShareButton';
 import TrackerValueModal from '../../components/journal/TrackerValueModal';
 import { cancelInstance, eventsInRange, setInstanceStatus } from '../../journal/db/repos/events';
 import { listDiaryByDate } from '../../journal/db/repos/diary';
@@ -13,6 +14,7 @@ import { addWater, guessMealType, loadDietDay } from '../../journal/db/repos/die
 import { formatAmount } from '../../journal/utils/nutrition';
 import { formatKop } from '../../journal/utils/money';
 import { listTransactions } from '../../journal/db/repos/finance';
+import { buildDayAchievementsText, buildDayExpensesText, buildDayPlanText } from '../../journal/share/summaryText';
 
 const KIND_ICONS = { meal: 'restaurant-outline', payment: 'card-outline', note: 'document-text-outline', tracker: 'pulse-outline', custom: 'star-outline' };
 
@@ -168,6 +170,14 @@ const DayContent = ({ navigation, date }) => {
     </View>
   );
 
+  const shareRow = (
+    <View style={styles.actions}>
+      <ShareButton variant="action" navigation={navigation} icon="list-outline" label="Поделиться планом" text={buildDayPlanText(data?.events || [], date)} />
+      <ShareButton variant="action" navigation={navigation} icon="trophy-outline" label="Достижения" text={buildDayAchievementsText(data?.events || [], data?.values || [], date)} />
+      <ShareButton variant="action" navigation={navigation} icon="wallet-outline" label="Расходы" text={buildDayExpensesText(data?.transactions || [], date)} />
+    </View>
+  );
+
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
       <SectionList
@@ -180,7 +190,7 @@ const DayContent = ({ navigation, date }) => {
         ListEmptyComponent={data ? (
           <EmptyState icon="calendar-clear-outline" title="В этот день пока пусто" subtitle="Добавьте событие, запись дневника или значение трекера" />
         ) : null}
-        ListFooterComponent={footer}
+        ListFooterComponent={<View>{footer}{shareRow}</View>}
         stickySectionHeadersEnabled={false}
         contentContainerStyle={{ paddingBottom: 32 }}
       />

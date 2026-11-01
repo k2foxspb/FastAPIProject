@@ -27,7 +27,12 @@ export default function CreatePostScreen({ navigation, route }) {
   // доступна только admin/owner) - скрываем выбор приватности и вызываем createAnnouncement.
   const isAnnouncement = !!route?.params?.isAnnouncement;
 
-  const [content, setContent] = useState('');
+  // initialText приходит из шеринга (сводка, достижения): переводим переносы строк в HTML для редактора
+  const initialText = route?.params?.initialText || '';
+  const initialHtml = initialText
+    ? initialText.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>')
+    : '';
+  const [content, setContent] = useState(initialHtml);
   const [privacy, setPrivacy] = useState('public'); // 'public' | 'friends' | 'private'
   const [images, setImages] = useState([]);
   const [loading, setLoading] = useState(false);

@@ -5,7 +5,7 @@ import { formatKopCompact } from '../../journal/utils/money';
 
 // Ячейка дня календаря с краткими итогами. Перерисовывается только при изменении
 // своих итогов (memo со сравнением значений), а не всего месяца.
-const DayCell = ({ date, state, marking, onPress, colors }) => {
+const DayCell = ({ date, state, marking, onPress, onLongPress, colors }) => {
   const s = marking?.summary;
   const isToday = state === 'today';
   const disabled = state === 'disabled';
@@ -19,6 +19,8 @@ const DayCell = ({ date, state, marking, onPress, colors }) => {
         selected && { backgroundColor: `${colors.primary}26` },
       ]}
       onPress={() => onPress?.(date)}
+      onLongPress={() => onLongPress?.(date)}
+      delayLongPress={350}
       activeOpacity={0.6}
     >
       <View style={[styles.dayCircle, isToday && { backgroundColor: colors.primary }]}>
@@ -57,6 +59,7 @@ export default memo(DayCell, (prev, next) => (
   && prev.state === next.state
   && prev.colors === next.colors
   && prev.onPress === next.onPress
+  && prev.onLongPress === next.onLongPress
   && !!prev.marking?.selected === !!next.marking?.selected
   && sameSummary(prev.marking?.summary, next.marking?.summary)
 ));
