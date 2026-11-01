@@ -148,16 +148,17 @@ export function parseNotificationData(data) {
 }
 
 // --- Helpers for Notifee ---
-export async function ensureNotificationChannel() {
+export async function ensureNotificationChannel(requestedChannel = 'messages') {
   if (Platform.OS !== 'android') return 'default';
   try {
     if (!notifee || typeof notifee.createChannel !== 'function') {
       console.log('[Notifee] createChannel not available, using default');
       return 'default';
     }
+    const isJournal = requestedChannel === 'journal';
     const channelId = await notifee.createChannel({
-      id: 'messages',
-      name: 'Сообщения',
+      id: isJournal ? 'journal' : 'messages',
+      name: isJournal ? 'Журнал' : 'Сообщения',
       importance: AndroidImportance.HIGH,
       vibration: true,
       vibrationPattern: [300, 500],
@@ -270,7 +271,8 @@ export async function displayBundledMessage(remoteMessage) {
     }
 
     const isSilent = data.silent === 'true' || data.android_channel_id === 'silent';
-    const channelId = isSilent ? await ensureSilentNotificationChannel() : await ensureNotificationChannel();
+    const channelId = isSilent ? await ensureSilentNotificationChannel()
+      : await ensureNotificationChannel(data.android_channel_id === 'journal' || type === 'journal_budget' || type === 'journal_summary' ? 'journal' : 'messages');
     console.log(`[Notifee] Using channel: ${channelId} (silent: ${isSilent})`);
     
     const groupId = senderId ? `group_sender_${senderId}` : (newsId ? `group_news_${newsId}` : 'group_general');

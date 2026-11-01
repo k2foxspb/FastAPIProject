@@ -4,6 +4,7 @@ import { rowToObject } from '../../sync/entities';
 import { deleteEntity, getEntity, saveEntity, saveLocalOnly } from '../repo';
 import { getCursor } from '../../sync/outbox';
 import { seedUuid } from '../../utils/uuid';
+import { getSettings, updateSettings } from './settings';
 
 export const FINANCE_CATEGORY_SEEDS = [
   { key: 'food', name: 'Продукты', kind: 'expense', icon: 'basket-outline' },
@@ -23,20 +24,23 @@ export const ensureLocalFinanceSeed = async (userId) => {
     db.getFirstAsync('SELECT COUNT(*) AS n FROM accounts'),
     db.getFirstAsync('SELECT COUNT(*) AS n FROM finance_categories'),
   ]);
-  if ((account?.n > 0 && categories?.n > 0) || (await getCursor()) > 0) return;
-  if (!account?.n) {
-    await saveLocalOnly('account', {
-      name: 'Наличные', kind: 'cash', currency: 'RUB', opening_balance_kop: 0, archived: false,
-    }, seedUuid(userId, 'account:cash'));
-  }
-  if (!categories?.n) {
-    for (const [index, category] of FINANCE_CATEGORY_SEEDS.entries()) {
-      await saveLocalOnly('finance_category', {
-        name: category.name, kind: category.kind, parent_uuid: null, icon: category.icon,
-        color: null, sort_order: (index + 1) * 10,
-      }, seedUuid(userId, `finance_category:${category.key}`));
+  if ((await getCursor()) === 0) {
+    if (!account?.n) {
+      await saveLocalOnly('account', {
+        name: 'Наличные', kind: 'cash', currency: 'RUB', opening_balance_kop: 0, archived: false,
+      }, seedUuid(userId, 'account:cash'));
+    }
+    if (!categories?.n) {
+      for (const [index, category] of FINANCE_CATEGORY_SEEDS.entries()) {
+        await saveLocalOnly('finance_category', {
+          name: category.name, kind: category.kind, parent_uuid: null, icon: category.icon,
+          color: null, sort_order: (index + 1) * 10,
+        }, seedUuid(userId, `finance_category:${category.key}`));
+      }
     }
   }
+  const settings = await getSettings();
+  if (settings && (settings.seed_version || 0) < 3) await updateSettings({ seed_version: 3 });
 };
 
 export const listAccounts = async () => {

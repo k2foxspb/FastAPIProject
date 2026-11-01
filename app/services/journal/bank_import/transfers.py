@@ -1,7 +1,4 @@
 """Поиск возможных пар переводов; пары только предлагаются пользователю."""
-from datetime import timedelta
-
-
 def find_transfer_candidates(items: list[dict], existing: list[dict]) -> list[dict]:
     candidates = []
     all_items = list(items) + list(existing)
@@ -16,4 +13,6 @@ def find_transfer_candidates(items: list[dict], existing: list[dict]) -> list[di
             if abs((first["transaction_date"] - second["transaction_date"]).days) > 2:
                 continue
             candidates.append({"first_uuid": first.get("client_uuid"), "second_uuid": second.get("client_uuid")})
+            if len(candidates) >= 100:
+                return candidates
     return candidates

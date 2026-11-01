@@ -4,17 +4,17 @@ import { JournalGate, PrimaryButton, Section, useColors } from '../../components
 import { useJournalQuery } from '../../context/JournalContext';
 import { listAccounts, saveAccount } from '../../journal/db/repos/finance';
 import { formatKop } from '../../journal/utils/money';
+import MoneyInput from '../../components/journal/MoneyInput';
 
 function Content() {
   const colors = useColors();
   const { data: accounts } = useJournalQuery(listAccounts, []);
   const [name, setName] = useState('');
-  const [opening, setOpening] = useState('0');
+  const [openingKop, setOpeningKop] = useState(0);
   const add = async () => {
     if (!name.trim()) return;
-    const parsed = Number(String(opening).replace(',', '.'));
-    await saveAccount({ name: name.trim(), kind: 'bank', currency: 'RUB', opening_balance_kop: Math.round((parsed || 0) * 100) });
-    setName(''); setOpening('0');
+    await saveAccount({ name: name.trim(), kind: 'bank', currency: 'RUB', opening_balance_kop: openingKop || 0 });
+    setName(''); setOpeningKop(0);
   };
   const inputStyle = { color: colors.text, borderColor: colors.border, borderWidth: 1, borderRadius: 10, padding: 12, marginVertical: 5 };
   return <ScrollView style={{ backgroundColor: colors.background }} contentContainerStyle={{ paddingBottom: 32 }}>
@@ -23,7 +23,7 @@ function Content() {
     </View>)}</Section>
     <Section title="Добавить счёт"><View style={{ paddingHorizontal: 12 }}>
       <TextInput value={name} onChangeText={setName} placeholder="Название счёта" placeholderTextColor={colors.textSecondary} style={inputStyle} />
-      <TextInput value={opening} onChangeText={setOpening} keyboardType="decimal-pad" placeholder="Начальный баланс, ₽" placeholderTextColor={colors.textSecondary} style={inputStyle} />
+      <MoneyInput value={openingKop} onChangeKop={setOpeningKop} style={inputStyle} placeholder="Начальный баланс, ₽" />
       <PrimaryButton title="Добавить счёт" onPress={add} disabled={!name.trim()} />
     </View></Section>
   </ScrollView>;

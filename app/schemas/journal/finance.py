@@ -122,7 +122,7 @@ class ImportPreviewResponse(BaseModel):
     suggested_mapping: dict[str, int | None]
     rows: list[dict[str, Any]]
     row_count: int
-    warnings: list[str] = []
+    warnings: list[str] = Field(default_factory=list)
 
 
 class ImportCommitRequest(BaseModel):

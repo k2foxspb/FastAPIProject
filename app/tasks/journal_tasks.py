@@ -32,7 +32,8 @@ async def _check_budgets(user_id: int, months: list[str]) -> int:
             try:
                 await send_fcm_notification(
                     token=token, title=notification["title"], body=notification["body"],
-                    data={**notification["data"], "type": "journal_budget", "notification_group": "journal"},
+                    data={**notification["data"], "type": "journal_budget", "notification_group": "journal",
+                          "android_channel_id": "journal"},
                     silent=False,
                 )
             except Exception:

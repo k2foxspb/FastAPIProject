@@ -62,7 +62,7 @@ async def transfer_pairs(
     rows = (await db.execute(select(JournalTransaction).where(
         JournalTransaction.user_id == current_user.id, JournalTransaction.deleted_at.is_(None),
         JournalTransaction.direction.in_(["income", "expense"]), JournalTransaction.account_id.is_not(None),
-    ))).scalars().all()
+    ).order_by(JournalTransaction.transaction_date.desc()).limit(1000))).scalars().all()
     candidates = find_transfer_candidates([], [{
         "client_uuid": row.client_uuid, "account_id": row.account_id, "transaction_date": row.transaction_date,
         "direction": row.direction, "amount_kop": row.amount_kop,

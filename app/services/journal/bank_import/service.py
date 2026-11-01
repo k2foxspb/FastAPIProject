@@ -2,7 +2,6 @@
 import asyncio
 import hashlib
 import json
-import os
 import tempfile
 import uuid
 from datetime import date, datetime
@@ -17,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core import config
 from app.models.journal import (
     JournalAccount, JournalFinanceCategory, JournalImportBatch, JournalImportProfile,
-    JournalImportRule, JournalSyncState, JournalTransaction,
+    JournalImportRule, JournalTransaction,
 )
 from app.models.journal.base import utcnow
 from app.schemas.journal.finance import ImportBatchOut, ImportCommitRequest, ImportCommitResponse, ImportPreviewResponse
@@ -148,7 +147,7 @@ def _parse_content(filename: str, content: bytes) -> tuple[str, str | None, list
 async def preview(user_id: int, filename: str, content: bytes) -> ImportPreviewResponse:
     if len(content) > config.JOURNAL_IMPORT_MAX_BYTES:
         raise ValueError("Файл превышает лимит 10 МБ")
-    safe_name = PurePath(filename or "statement.csv").name[:255]
+    safe_name = PurePath((filename or "statement.csv").replace("\\", "/")).name[:255]
     parsed = await asyncio.wait_for(asyncio.to_thread(_parse_content, safe_name, content),
                                     timeout=config.JOURNAL_IMPORT_PARSE_TIMEOUT)
     kind, delimiter, headers, rows = parsed

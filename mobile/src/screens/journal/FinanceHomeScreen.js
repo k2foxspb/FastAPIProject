@@ -8,6 +8,7 @@ import { useJournalQuery } from '../../context/JournalContext';
 const LINKS = [
   ['Accounts', 'Счета'], ['FinanceCategories', 'Категории'], ['Budgets', 'Бюджеты'],
   ['ImportPick', 'Импорт выписки'], ['ImportBatches', 'История импорта'], ['ReviewQueue', 'Разобрать'],
+  ['TransferPairs', 'Найденные переводы'],
   ['ImportRules', 'Правила импорта'], ['ExpenseAnalytics', 'Аналитика расходов'],
 ];
 

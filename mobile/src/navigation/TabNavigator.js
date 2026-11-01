@@ -67,6 +67,7 @@ import ImportBatchesScreen from '../screens/journal/ImportBatchesScreen';
 import ReviewQueueScreen from '../screens/journal/ReviewQueueScreen';
 import ImportRulesScreen from '../screens/journal/ImportRulesScreen';
 import ExpenseAnalyticsScreen from '../screens/journal/ExpenseAnalyticsScreen';
+import TransferPairsScreen from '../screens/journal/TransferPairsScreen';
 import { JournalProvider } from '../context/JournalContext';
 
 
@@ -318,6 +319,7 @@ function JournalStack() {
         <Stack.Screen name="ReviewQueue" component={ReviewQueueScreen} options={{ title: 'Разобрать операции' }} />
         <Stack.Screen name="ImportRules" component={ImportRulesScreen} options={{ title: 'Правила импорта' }} />
         <Stack.Screen name="ExpenseAnalytics" component={ExpenseAnalyticsScreen} options={{ title: 'Расходы' }} />
+        <Stack.Screen name="TransferPairs" component={TransferPairsScreen} options={{ title: 'Найденные переводы' }} />
       </Stack.Navigator>
   );
 }
