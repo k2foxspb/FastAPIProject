@@ -12,6 +12,7 @@ const VideoPlayer = ({
   useNativeControls = false,
   resizeMode = 'cover',
   onPlayerReady,
+  onError,
 }) => {
   const shouldPlayRef = useRef(shouldPlay);
   shouldPlayRef.current = shouldPlay;
@@ -121,13 +122,22 @@ const VideoPlayer = ({
   // отложенная позиция и запускается play(). confirmSourceReady идемпотентна, поэтому повторный
   // вызов (например, если позиция уже была подтверждена в resumePlayback выше) безопасен.
   useEffect(() => {
-    const sub = player.addListener('statusChange', ({ status }) => {
+    const sub = player.addListener('statusChange', ({ status, error }) => {
       if (status === 'readyToPlay' && shouldPlayRef.current) {
         confirmSourceReady();
       }
+      // Раньше ошибка воспроизведения (например, битый/несовместимый по кодеку файл
+      // в кэше) проходила совершенно незаметно - плеер просто молча не показывал видео.
+      // Логируем и пробрасываем наружу, чтобы вызывающий код мог показать понятную
+      // ошибку пользователю и предложить перекачать файл вместо того, чтобы вечно
+      // показывать чёрный экран.
+      if (status === 'error') {
+        console.log('[VideoPlayer] playback error:', uri, error);
+        if (typeof onError === 'function') onError(error);
+      }
     });
     return () => sub.remove();
-  }, [player]);
+  }, [player, uri, onError]);
 
   // onPlayerReady callback
   const playerReadyCalledRef = useRef(null);

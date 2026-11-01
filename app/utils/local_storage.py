@@ -274,8 +274,8 @@ class LocalStorageService:
             f"Файл не найден: диск={metadata.disk_id}, путь={metadata.relative_path}"
         )
 
-    def get_file_stream(self, metadata: FileMetadata, chunk_size: int = DEFAULT_CHUNK_SIZE, fallback: bool = True) -> Iterator[bytes]:
-        """Возвращает потоковый генератор чанков файла (для отдачи большого файла без загрузки в память)."""
+    def _resolve_full_path(self, metadata: FileMetadata, fallback: bool = True) -> str:
+        """Находит абсолютный путь файла на диске, с фолбэком по всем дискам хранилища."""
         full_path = None
         try:
             candidate = self._full_path(metadata.disk_id, metadata.relative_path)
@@ -293,13 +293,39 @@ class LocalStorageService:
             raise FileNotFoundInStorageError(
                 f"Файл не найден: диск={metadata.disk_id}, путь={metadata.relative_path}"
             )
+        return full_path
+
+    def get_file_size(self, metadata: FileMetadata, fallback: bool = True) -> int:
+        """Возвращает размер файла в байтах (нужен для заголовка Content-Length и Range-запросов)."""
+        full_path = self._resolve_full_path(metadata, fallback=fallback)
+        return os.path.getsize(full_path)
+
+    def get_file_stream(
+        self,
+        metadata: FileMetadata,
+        chunk_size: int = DEFAULT_CHUNK_SIZE,
+        fallback: bool = True,
+        start: int = 0,
+        end: Optional[int] = None,
+    ) -> Iterator[bytes]:
+        """
+        Возвращает потоковый генератор чанков файла (для отдачи большого файла без загрузки
+        в память). Если заданы start/end (полуинтервал [start, end)), отдаёт только этот
+        диапазон байт - используется для обработки HTTP Range-запросов при докачке файла.
+        """
+        full_path = self._resolve_full_path(metadata, fallback=fallback)
 
         def _iterate():
             with open(full_path, "rb") as f:
-                while True:
-                    chunk = f.read(chunk_size)
+                f.seek(start)
+                remaining = None if end is None else max(0, end - start)
+                while remaining is None or remaining > 0:
+                    read_size = chunk_size if remaining is None else min(chunk_size, remaining)
+                    chunk = f.read(read_size)
                     if not chunk:
                         break
+                    if remaining is not None:
+                        remaining -= len(chunk)
                     yield chunk
 
         return _iterate()

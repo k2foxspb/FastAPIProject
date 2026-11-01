@@ -131,6 +131,7 @@ export const NotificationProvider = ({ children }) => {
   const activeChatIdRef = useRef(null);
   const currentUserIdRef = useRef(null);
   const dialogsRef = useRef([]);
+  const countedMessageIdsRef = useRef(new Set());
   const appState = useRef(AppState.currentState);
   const ws = useRef(null);
   const lastToken = useRef(null);
@@ -169,9 +170,13 @@ export const NotificationProvider = ({ children }) => {
     notificationPlayerRef.current = notificationPlayer;
   }, [notificationPlayer]);
 
-  const handleNewMessage = useCallback(async (message, wrappedNotification) => {
+  const handleNewMessage = useCallback(async (message, wrappedNotification, isUpdate = false) => {
     const myId = currentUserIdRef.current;
     const isFromMe = Number(message.sender_id) === Number(myId);
+    // Одно сообщение может прийти несколько раз (chat WS, FCM, message_updated) - считаем его только один раз
+    const messageKey = message.id ? String(message.id) : null;
+    const shouldCount = !isUpdate && !(messageKey && countedMessageIdsRef.current.has(messageKey));
+    if (messageKey && shouldCount) countedMessageIdsRef.current.add(messageKey);
     
     // Сохраняем в локальный кэш
     const otherId = isFromMe ? Number(message.receiver_id) : Number(message.sender_id);
@@ -221,7 +226,7 @@ export const NotificationProvider = ({ children }) => {
           ...d,
           last_message: message.message || (message.message_type === 'media_group' ? 'Медиафайлы' : (message.message_type || 'Сообщение')),
           last_message_time: message.timestamp || message.created_at || new Date().toISOString(),
-          unread_count: (isFromMe || isActiveChat) ? d.unread_count : ((d.unread_count || 0) + 1)
+          unread_count: (isFromMe || isActiveChat || !shouldCount) ? d.unread_count : ((d.unread_count || 0) + 1)
         };
 
         const [updated] = newDialogs.splice(index, 1);
@@ -430,7 +435,7 @@ export const NotificationProvider = ({ children }) => {
             // Прокидываем событие обновления сообщения
             // Мы вызываем handleNewMessage, который внутри добавит уведомление в список notifications
             console.log(`[NotificationContext] Received message_updated via Chat WS: id=${payload.data.id}, client_id=${payload.data.client_id}`);
-            handleNewMessage(payload.data, payload);
+            handleNewMessage(payload.data, payload, true);
           } else if (msgType === 'message_deleted') {
             setNotifications(prev => [payload, ...prev].slice(0, MAX_NOTIFICATIONS));
           } else if (msgType === 'reaction_updated') {

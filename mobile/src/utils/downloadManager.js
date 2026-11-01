@@ -145,6 +145,8 @@ export async function checkCached(url, localUri, doneMarkerUri) {
 }
 
 export async function startDownload(url, localUri, doneMarkerUri) {
+  // Скачивать можно только удалённые ресурсы; локальные file:// и content:// уже на устройстве
+  if (!/^https?:\/\//i.test(url || '')) return;
   const entry = getEntry(url);
 
   // Already downloading or cached — don't start again
@@ -192,7 +194,13 @@ export async function startDownload(url, localUri, doneMarkerUri) {
 
       entry.resumable = null;
 
-      if (result && result.uri) {
+      // Сервер мог ответить не видео, а, например, страницей ошибки (404/403/500) с
+      // ненулевым телом - FileSystem при этом всё равно пишет его на диск и не бросает
+      // исключение. Без проверки статуса такой "мусорный" файл помечался бы как успешно
+      // скачанный, а потом не читался ни одним экстрактором плеера ("None of the available
+      // extractors could read the stream"). Поэтому не-2xx ответ считаем неудачей.
+      const isHttpOk = result && result.status >= 200 && result.status < 300;
+      if (result && result.uri && isHttpOk) {
         const verify = await FileSystem.getInfoAsync(result.uri);
         if (verify.exists && verify.size > 0) {
           try { await FileSystem.writeAsStringAsync(doneMarkerUri, '1'); } catch (_) {}
@@ -204,6 +212,9 @@ export async function startDownload(url, localUri, doneMarkerUri) {
         } else {
           try { await FileSystem.deleteAsync(result.uri, { idempotent: true }); } catch (_) {}
         }
+      } else if (result && result.uri) {
+        console.warn('[videoDownloadStore] download got non-OK HTTP status, discarding file:', result.status, url);
+        try { await FileSystem.deleteAsync(result.uri, { idempotent: true }); } catch (_) {}
       }
       break;
     } catch (e) {
@@ -226,6 +237,22 @@ export async function startDownload(url, localUri, doneMarkerUri) {
 
   entry.downloading = false;
   notify(url);
+}
+
+// Сбрасывает кэш файла и удаляет его с диска. Используется, когда воспроизведение
+// уже закэшированного файла падает с ошибкой (например, докачка завершилась, но
+// файл оказался битым/неполным) — чтобы можно было автоматически перекачать его заново,
+// а не вечно показывать "скачано", но нерабочее видео.
+export async function invalidateCache(url, localUri, doneMarkerUri) {
+  const entry = getEntry(url);
+  entry.cached = false;
+  entry.localUri = null;
+  entry.downloading = false;
+  entry.downloadedBytes = 0;
+  entry.totalBytes = 0;
+  notify(url);
+  try { await FileSystem.deleteAsync(localUri, { idempotent: true }); } catch (_) {}
+  try { await FileSystem.deleteAsync(doneMarkerUri, { idempotent: true }); } catch (_) {}
 }
 
 // Legacy exports for acquireExclusive/releaseExclusive (used in VideoNoteMessage/ChatScreen)

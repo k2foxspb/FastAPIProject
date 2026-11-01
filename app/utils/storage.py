@@ -67,6 +67,7 @@ __all__ = [
     "delete",
     "read_file",
     "get_file_stream",
+    "get_file_size",
     "exists",
     "resolve_url",
     "is_private_relative_path",
@@ -323,9 +324,23 @@ def read_file(file_metadata: FileMetadata, fallback: bool = True) -> bytes:
     return _service.read_file(file_metadata, fallback=fallback)
 
 
-def get_file_stream(file_metadata: FileMetadata, fallback: bool = True) -> Iterator[bytes]:
-    """Возвращает потоковый итератор по содержимому файла (для отдачи через HTTP без буферизации целиком)."""
-    return _service.get_file_stream(file_metadata, fallback=fallback)
+def get_file_stream(
+    file_metadata: FileMetadata,
+    fallback: bool = True,
+    start: int = 0,
+    end: Optional[int] = None,
+) -> Iterator[bytes]:
+    """
+    Возвращает потоковый итератор по содержимому файла (для отдачи через HTTP без
+    буферизации целиком). Если заданы start/end, отдаёт только указанный диапазон
+    байт (используется для обработки HTTP Range-запросов).
+    """
+    return _service.get_file_stream(file_metadata, fallback=fallback, start=start, end=end)
+
+
+def get_file_size(file_metadata: FileMetadata, fallback: bool = True) -> int:
+    """Возвращает размер файла в байтах (нужен для Content-Length и Range-запросов)."""
+    return _service.get_file_size(file_metadata, fallback=fallback)
 
 
 def exists(file_metadata: FileMetadata) -> bool:

@@ -160,6 +160,16 @@ export async function resetFcmToken() {
     // 3. Wait a bit for Firebase to process deletion
     await new Promise(resolve => setTimeout(resolve, 1000));
 
+    // 3.1. После unregister устройство нужно зарегистрировать обратно, иначе новый токен не выдаётся
+    try {
+      if (Platform.OS === 'android' && typeof registerDeviceForRemoteMessages === 'function') {
+        await registerDeviceForRemoteMessages(messaging);
+        console.log('[FCM] Device re-registered for remote messages');
+      }
+    } catch (e) {
+      console.log('[FCM] Re-register failed (non-critical):', e.message);
+    }
+
     // 4. Get a new one
     let newToken = null;
     try {

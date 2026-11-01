@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Image, TouchableOpacity, StyleSheet, ActivityIndicator, Text, Alert, Platform, StatusBar } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons, Ionicons } from '@expo/vector-icons';
@@ -9,7 +9,7 @@ import { API_BASE_URL } from '../constants';
 import FullScreenVideoPlayer from './FullScreenVideoPlayer';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
-import { subscribe, startDownload, checkCached, getState } from '../utils/downloadManager';
+import { subscribe, startDownload, checkCached, getState, invalidateCache } from '../utils/downloadManager';
 
 const formatBytes = (bytes) => {
   if (!bytes || bytes <= 0) return '0 КБ';
@@ -62,12 +62,24 @@ const CachedMedia = ({
       ? getState(remoteUri)
       : { downloading: false, downloadedBytes: 0, totalBytes: 0, cached: false, localUri: null }
   ));
-  // Видео с удалённого сервера (http/https) считается готовым к показу только после
-  // полной докачки на диск — это исключает проигрывание потокового URL и, как следствие,
-  // переключение источника во время просмотра. Локальные файлы (file://, content://)
-  // готовы сразу, докачка для них не требуется.
+  // Полноэкранный плеер (как и в ленте) создаётся только после того, как видео полностью
+  // оказалось в кэше - для удалённых http-файлов это и есть ожидание полной докачки,
+  // а уже локальные (file:///content://) файлы готовы сразу.
   const isRemoteHttp = /^https?:\/\//i.test(remoteUri || '');
-  const isVideoReady = !isVideo || !isRemoteHttp || (dlState.cached && !!dlState.localUri);
+  const isVideoReady = !isVideo || !isRemoteHttp || dlState.cached;
+  // Запрос на открытие полноэкранного режима, сделанный до того, как файл докачался —
+  // как только докачка завершится, откроем плеер автоматически, без повторного нажатия.
+  const pendingOpenRef = useRef(false);
+  // Если нативный плеер сообщил об ошибке воспроизведения уже закэшированного файла
+  // (чаще всего значит, что докачка завершилась, но файл на диске битый/неполный) —
+  // перекачиваем файл заново автоматически, не заставляя пользователя разбираться самому.
+  const [playbackError, setPlaybackError] = useState(false);
+  const retriedAfterErrorRef = useRef(false);
+  // Меняя этот ключ, заставляем React полностью пересоздать FullScreenVideoPlayer
+  // (и, соответственно, его внутренний нативный плеер) — нужно, когда сам плеер
+  // уже "развалился" (shared object released), а не файл в кэше битый, поэтому
+  // перекачивать файл заново не нужно, достаточно создать новый плеер.
+  const [playerInstanceKey, setPlayerInstanceKey] = useState(0);
 
   // Subscribe to global download store for this video
   useEffect(() => {
@@ -90,10 +102,55 @@ const CachedMedia = ({
 
   // Start download when fullscreen player is visible
   useEffect(() => {
-    if (isVideo && !isStatic && isParentVisible && shouldPlay && remoteUri) {
+    if (isVideo && !isStatic && isParentVisible && shouldPlay && isRemoteHttp) {
       startDownload(remoteUri, localFileUri, doneMarkerUri);
     }
   }, [remoteUri, isParentVisible, shouldPlay]);
+
+  // Как только файл, запрошенный тапом по превью, полностью окажется в кэше —
+  // открываем полноэкранный режим автоматически, без повторного нажатия.
+  useEffect(() => {
+    if (pendingOpenRef.current && dlState.cached && onFullScreen) {
+      pendingOpenRef.current = false;
+      onFullScreen(dlState.localUri || localUri, item.message_type || item.type);
+    }
+  }, [dlState.cached, dlState.localUri]);
+
+  // Сбрасываем флаг "уже пробовали перекачать после ошибки" при каждой новой успешной
+  // докачке, чтобы повторная ошибка в будущем (на новом файле) снова могла запустить retry.
+  useEffect(() => {
+    if (dlState.cached) retriedAfterErrorRef.current = false;
+  }, [dlState.cached, dlState.localUri]);
+
+  const handlePlaybackError = (err) => {
+    const errMessage = String((err && (err.message || err)) || '');
+    if (/released/i.test(errMessage)) {
+      // Файл в кэше в порядке - "развалился" сам нативный объект плеера (гонка состояний,
+      // например переключение источника/видимости ровно в момент нажатия play/pause).
+      // Перекачивать нечего, достаточно пересоздать FullScreenVideoPlayer с нуля.
+      console.log('[CachedMedia] player was released, recreating player instance:', remoteUri);
+      setPlaybackError(false);
+      setPlayerInstanceKey((k) => k + 1);
+      return;
+    }
+    if (!isRemoteHttp) {
+      // Файл и так локальный (не из кэша) — перекачивать нечего, просто сообщаем об ошибке.
+      setPlaybackError(true);
+      return;
+    }
+    if (retriedAfterErrorRef.current) {
+      // Уже пробовали перекачать однажды и снова ошибка — скорее всего файл просто
+      // несовместим (например, кодек), повторные попытки ничего не изменят.
+      setPlaybackError(true);
+      return;
+    }
+    retriedAfterErrorRef.current = true;
+    setPlaybackError(false);
+    console.log('[CachedMedia] playback error on cached file, re-downloading:', remoteUri);
+    invalidateCache(remoteUri, localFileUri, doneMarkerUri).then(() => {
+      startDownload(remoteUri, localFileUri, doneMarkerUri);
+    });
+  };
 
   // Проверяем при входе в чат (монтировании превью), скачано ли видео на телефон,
   // чтобы значок сразу показывал актуальный статус, а не "не скачано" по умолчанию
@@ -105,9 +162,13 @@ const CachedMedia = ({
   // Генерируем и кешируем статичный кадр видео для превью. Кадр берётся один раз с
   // удалённого/локального источника через expo-video-thumbnails (без запуска VideoPlayer),
   // поэтому это не приводит к OutOfMemoryError даже при большом числе видео в чате.
+  // Сначала пробуем взять кадр с удалённого URL. Если это не получилось (часто для http-потока
+  // нативный декодер не может читать файл), повторяем уже с докачанного локального файла,
+  // когда видео попадёт в кэш.
   useEffect(() => {
     if (!isVideo || !remoteUri) return;
     let cancelled = false;
+    const sourceUri = dlState.cached && dlState.localUri ? dlState.localUri : remoteUri;
 
     const loadThumbnail = async () => {
       try {
@@ -116,17 +177,21 @@ const CachedMedia = ({
           if (!cancelled) setThumbUri(thumbFileUri);
           return;
         }
-        const { uri } = await VideoThumbnails.getThumbnailAsync(remoteUri, { time: 0 });
+        const { uri } = await VideoThumbnails.getThumbnailAsync(sourceUri, { time: 0 });
         await copyAsync({ from: uri, to: thumbFileUri });
         if (!cancelled) setThumbUri(thumbFileUri);
       } catch (e) {
-        console.log('[CachedMedia] thumbnail generation error:', e);
+        if (sourceUri === remoteUri && isRemoteHttp) {
+          console.log('[CachedMedia] remote thumbnail failed, will retry after caching:', e);
+        } else {
+          console.log('[CachedMedia] thumbnail generation error:', e);
+        }
       }
     };
 
     loadThumbnail();
     return () => { cancelled = true; };
-  }, [remoteUri]);
+  }, [remoteUri, dlState.cached, dlState.localUri]);
 
   // Initial load
   useEffect(() => {
@@ -227,10 +292,10 @@ const CachedMedia = ({
         if (onFullScreen) onFullScreen(dlState.localUri || localUri, item.message_type || item.type);
         return;
       }
-      // Видео ещё не докачано полностью — не открываем плеер сразу (иначе при одновременной
-      // докачке нескольких видео это приводило к ошибке). Просто запускаем/продолжаем загрузку —
-      // плеер не открывается автоматически, после докачки пользователь должен нажать на
-      // воспроизведение ещё раз.
+      // Видео ещё не докачано полностью — как и в ленте, не открываем полноэкранный режим сразу,
+      // а запускаем/продолжаем докачку и запоминаем запрос на открытие — плеер откроется
+      // сам по завершению докачки, без повторного нажатия.
+      pendingOpenRef.current = true;
       if (remoteUri) startDownload(remoteUri, localFileUri, doneMarkerUri);
     };
 
@@ -289,9 +354,18 @@ const CachedMedia = ({
     return (
       <View style={[styles.thumbnailOuter, style]}>
         <View style={styles.thumbnailInner}>
-          {isVideoReady ? (
+          {playbackError ? (
+            // Файл закэширован, но нативный плеер не смог его воспроизвести (битый файл
+            // после докачки или несовместимый кодек) — автоматическая перекачка уже не
+            // помогла, показываем понятное сообщение вместо вечного чёрного экрана.
+            <View style={[StyleSheet.absoluteFill, styles.fullscreenWaitContainer]}>
+              <MaterialIcons name="error-outline" size={36} color="rgba(255,255,255,0.7)" />
+              <Text style={styles.playbackErrorText}>Не удалось воспроизвести видео</Text>
+            </View>
+          ) : isVideoReady ? (
             <FullScreenVideoPlayer
-              uri={dlState.localUri || localUri}
+              key={playerInstanceKey}
+              uri={dlState.cached && dlState.localUri ? dlState.localUri : remoteUri}
               isMuted={isMuted}
               isLooping={typeof isLooping === 'boolean' ? isLooping : !useNativeControls}
               shouldPlay={shouldPlay}
@@ -299,6 +373,7 @@ const CachedMedia = ({
               controlsEnabled={!useNativeControls}
               resizeMode={resizeMode}
               onPlayerReady={onPlayerReady}
+              onError={handlePlaybackError}
             />
           ) : (
             // Пока файл не докачан полностью — не создаём плеер с потоковым URL вообще, чтобы
@@ -458,6 +533,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#000',
+  },
+  playbackErrorText: {
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 13,
+    marginTop: 8,
+    textAlign: 'center',
+    paddingHorizontal: 20,
   },
   fullscreenBytesText: {
     color: '#4FC3F7',

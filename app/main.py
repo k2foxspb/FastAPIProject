@@ -68,6 +68,7 @@ def create_application() -> FastAPI:
     from app.utils import storage as storage_service
     from app.utils.storage_exceptions import FileNotFoundInStorageError, StorageError
     import posixpath
+    import re
 
     # Личные файлы (вложения журнала) через /media не отдаются - только владельцу
     # через /api/journal/attachments/{uuid}/file.
@@ -79,7 +80,7 @@ def create_application() -> FastAPI:
         return normalized == "journal" or normalized.startswith(private_media_prefixes)
 
     @app.api_route("/media/{file_path:path}", methods=["GET", "HEAD"])
-    async def serve_media(file_path: str, sig: Optional[str] = Query(None)):
+    async def serve_media(file_path: str, request: Request, sig: Optional[str] = Query(None)):
         metadata = storage_service.resolve_url(file_path)
         if metadata is None and "_thumb" in file_path:
             # Фолбэк на оригинал, если миниатюра отсутствует
@@ -93,7 +94,7 @@ def create_application() -> FastAPI:
             raise HTTPException(status_code=404, detail="File not found")
 
         mime_type = metadata.mime_type or mimetypes.guess_type(file_path)[0] or "application/octet-stream"
-        headers = {"X-Content-Type-Options": "nosniff"}
+        headers = {"X-Content-Type-Options": "nosniff", "Accept-Ranges": "bytes"}
         if is_private:
             headers["Cache-Control"] = "private, max-age=3600"
 
@@ -110,14 +111,55 @@ def create_application() -> FastAPI:
             return Response(status_code=200, media_type=mime_type, headers=headers)
 
         try:
-            stream = storage_service.get_file_stream(metadata)
+            file_size = storage_service.get_file_size(metadata)
+        except FileNotFoundInStorageError:
+            raise HTTPException(status_code=404, detail="File not found")
+
+        # Мобильный клиент докачивает большие видео через expo-file-system с помощью
+        # Range-запросов (например, после обрыва соединения). Раньше такой запрос
+        # игнорировался и всегда отдавался файл целиком с кодом 200 - клиент при этом
+        # дописывал новые данные поверх уже докачанной части или наоборот принимал
+        # ответ за "уже докачанный остаток", из-за чего на диске получался битый файл
+        # ("None of the available extractors could read the stream"). Поэтому здесь
+        # Range обрабатывается по-настоящему: 206 Partial Content с Content-Range.
+        range_header = request.headers.get("range")
+        start = 0
+        end = file_size  # exclusive
+        status_code = 200
+        if range_header:
+            range_match = re.match(r"bytes=(\d*)-(\d*)", range_header.strip())
+            if not range_match or (not range_match.group(1) and not range_match.group(2)):
+                headers["Content-Range"] = f"bytes */{file_size}"
+                raise HTTPException(status_code=416, detail="Invalid range", headers=headers)
+
+            start_str, end_str = range_match.group(1), range_match.group(2)
+            if start_str:
+                start = int(start_str)
+                end = int(end_str) + 1 if end_str else file_size
+            else:
+                # Суффиксный диапазон вида "bytes=-500" - последние 500 байт файла.
+                suffix_len = int(end_str)
+                start = max(0, file_size - suffix_len)
+                end = file_size
+
+            if start >= file_size or start > end or end > file_size:
+                headers["Content-Range"] = f"bytes */{file_size}"
+                raise HTTPException(status_code=416, detail="Invalid range", headers=headers)
+
+            status_code = 206
+            headers["Content-Range"] = f"bytes {start}-{end - 1}/{file_size}"
+
+        headers["Content-Length"] = str(max(0, end - start))
+
+        try:
+            stream = storage_service.get_file_stream(metadata, start=start, end=end)
         except FileNotFoundInStorageError:
             raise HTTPException(status_code=404, detail="File not found")
         except StorageError as e:
             logger.warning(f"Storage error while serving {file_path}: {e}")
             raise HTTPException(status_code=503, detail="Storage temporarily unavailable")
 
-        return StreamingResponse(stream, media_type=mime_type, headers=headers)
+        return StreamingResponse(stream, status_code=status_code, media_type=mime_type, headers=headers)
 
     # Статика сайта (общие CSS/JS страниц документации) - /static/css/site.css, /static/js/site.js
     static_dir = os.path.join(project_root, "app", "static")

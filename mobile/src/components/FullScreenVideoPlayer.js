@@ -24,6 +24,7 @@ export default function FullScreenVideoPlayer({
   resizeMode = 'contain',
   controlsEnabled = true,
   onPlayerReady,
+  onError,
 }) {
   const [player, setPlayer] = useState(null);
   const [showControls, setShowControls] = useState(true);
@@ -135,6 +136,11 @@ export default function FullScreenVideoPlayer({
       });
     } catch (e) {
       console.log('[FullScreenVideoPlayer] play/pause failed', e);
+      // Нативный плеер мог быть уже освобождён (гонка состояний, например переключение
+      // источника/видимости как раз во время нажатия) - кнопки навсегда перестают работать
+      // на этом экземпляре. Сообщаем наверх через тот же канал, что и для обычных ошибок
+      // воспроизведения, чтобы CachedMedia пересоздал плеер заново.
+      if (typeof onError === 'function') onError(e);
     }
   };
 
@@ -146,6 +152,7 @@ export default function FullScreenVideoPlayer({
       setPlaybackRate(nextRate);
     } catch (e) {
       console.log('[FullScreenVideoPlayer] rate toggle failed', e);
+      if (typeof onError === 'function') onError(e);
     }
   };
 
@@ -253,6 +260,7 @@ export default function FullScreenVideoPlayer({
         shouldPlay={shouldPlay}
         resizeMode={resizeMode}
         onPlayerReady={handlePlayerReady}
+        onError={onError}
       />
 
       {controlsEnabled && (
