@@ -9,9 +9,7 @@ const PAGE = 20;
 
 const LINKS = [
   ['Accounts', 'Счета'], ['FinanceCategories', 'Категории'], ['Budgets', 'Бюджеты'],
-  ['ImportPick', 'Импорт выписки'], ['ImportBatches', 'История импорта'], ['ReviewQueue', 'Разобрать'],
-  ['TransferPairs', 'Найденные переводы'],
-  ['ImportRules', 'Правила импорта'], ['ExpenseAnalytics', 'Аналитика расходов'],
+  ['ExpenseAnalytics', 'Аналитика расходов'],
 ];
 
 function Content({ navigation }) {

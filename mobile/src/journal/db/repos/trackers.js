@@ -84,6 +84,23 @@ export const listTrackerDailyValues = (trackerUuid, { from, to }) => getJournalD
   [trackerUuid, from, to],
 );
 
+// Все замеры за период по времени (для графика по минутам)
+export const listTrackerValuesInRange = (trackerUuid, { from, to }) => getJournalDb().getAllAsync(
+  `SELECT value_date, value_time, num_value FROM tracker_values
+   WHERE tracker_uuid = ? AND value_date >= ? AND value_date <= ? AND num_value IS NOT NULL
+   ORDER BY value_date, value_time IS NULL, value_time, created_at`,
+  [trackerUuid, from, to],
+);
+
+// Статистика замеров по дням (история пульса по дням)
+export const listTrackerDayStats = (trackerUuid, { from, to }) => getJournalDb().getAllAsync(
+  `SELECT value_date, AVG(num_value) AS avg_value, MIN(num_value) AS min_value,
+          MAX(num_value) AS max_value, COUNT(*) AS cnt FROM tracker_values
+   WHERE tracker_uuid = ? AND value_date >= ? AND value_date <= ? AND num_value IS NOT NULL
+   GROUP BY value_date ORDER BY value_date DESC`,
+  [trackerUuid, from, to],
+);
+
 export const saveTrackerValue = (data, uuid = null) => saveEntity('tracker_value', data, uuid);
 export const deleteTrackerValue = (uuid) => deleteEntity('tracker_value', uuid);
 

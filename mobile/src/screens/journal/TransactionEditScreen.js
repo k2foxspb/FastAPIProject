@@ -5,7 +5,7 @@ import MoneyInput from '../../components/journal/MoneyInput';
 import { Field, JournalGate, PrimaryButton, useColors } from '../../components/journal/common';
 import { useJournal, useJournalQuery } from '../../context/JournalContext';
 import {
-  listAccounts, listFinanceCategories, getTransaction, saveTransaction, saveAccount, saveFinanceCategory,
+  listAccounts, listFinanceCategories, getTransaction, saveTransaction, deleteTransaction, saveAccount, saveFinanceCategory,
 } from '../../journal/db/repos/finance';
 
 function InlineCreate({ colors, visible, onToggle, toggleTitle, value, onChangeText, placeholder, onSubmit }) {
@@ -94,6 +94,20 @@ function Content({ navigation, route }) {
     finally { setSaving(false); }
   };
 
+  const remove = () => Alert.alert('Удалить операцию?', 'Операция будет удалена со счёта.', [
+    { text: 'Отмена', style: 'cancel' },
+    {
+      text: 'Удалить',
+      style: 'destructive',
+      onPress: async () => {
+        try {
+          await deleteTransaction(route.params.uuid);
+          navigation.goBack();
+        } catch (error) { Alert.alert('Ошибка', error?.message || 'Не удалось удалить операцию'); }
+      },
+    },
+  ]);
+
   return (
     <ScrollView style={{ backgroundColor: colors.background }} contentContainerStyle={{ paddingBottom: 32 }}>
       <Field label="Тип операции"><Picker selectedValue={direction} onValueChange={setDirection}>
@@ -132,6 +146,11 @@ function Content({ navigation, route }) {
       <Field label="Описание"><TextInput value={description} onChangeText={setDescription} placeholder="Например, продукты"
         placeholderTextColor={colors.textSecondary} style={{ color: colors.text, borderColor: colors.border, borderWidth: 1, borderRadius: 10, padding: 12 }} /></Field>
       <PrimaryButton title="Сохранить операцию" onPress={save} loading={saving} />
+      {!!route.params?.uuid && (
+        <TouchableOpacity onPress={remove} style={{ margin: 16, padding: 15, alignItems: 'center', borderRadius: 12, borderWidth: 1, borderColor: colors.error }}>
+          <Text style={{ color: colors.error, fontWeight: '700' }}>Удалить операцию</Text>
+        </TouchableOpacity>
+      )}
     </ScrollView>
   );
 }

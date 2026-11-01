@@ -140,13 +140,11 @@ async def websocket_endpoint(
     user_id = None
     try:
         async with async_session_maker() as db:
-            user = await get_user_from_token(token, db)
-            if user is None:
+            user_id = await get_user_from_token(token, db)
+            if user_id is None:
                 logger.warning(f"WS Connection rejected: invalid token payload for token: {token[:20]}...")
                 await websocket.close(code=4003)
                 return
-            
-            user_id = user.id
 
             await manager.connect(websocket, user_id)
             logger.info(f"WS Connected: user_id={user_id}")

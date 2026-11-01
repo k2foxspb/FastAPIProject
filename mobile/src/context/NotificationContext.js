@@ -818,7 +818,7 @@ export const NotificationProvider = ({ children }) => {
     };
 
     ws.current.onerror = (e) => {
-      console.error('[NotificationContext] Notifications WS error event details:', {
+      console.error('[NotificationContext]  Notifications WS error event details:', {
         type: e.type,
         readyState: ws.current?.readyState,
         url: wsUrl.split('?')[0]

@@ -144,14 +144,6 @@ const SettingsContent = () => {
         </TouchableOpacity>
       </Section>
 
-      <Section title="Здоровье">
-        <TouchableOpacity style={styles.row} onPress={() => navigation.navigate('HealthImport')}>
-          <Icon name="heart-outline" size={20} color={colors.primary} />
-          <Text style={[styles.rowText, { color: colors.text }]}>Импорт из Здоровья</Text>
-          <Icon name="chevron-forward" size={18} color={colors.textSecondary} />
-        </TouchableOpacity>
-      </Section>
-
       <Section title="Напоминания">
         <TouchableOpacity style={styles.row} onPress={() => navigation.navigate('ReminderDiagnostics')}>
           <Icon name="notifications-outline" size={20} color={colors.primary} />

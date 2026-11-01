@@ -69,6 +69,9 @@ const TrackersContent = ({ navigation }) => {
         ListHeaderComponent={(
           <View style={{ paddingHorizontal: 12, paddingBottom: 8 }}>
             <PrimaryButton title={syncing ? 'Синхронизация…' : 'Синхронизировать с Здоровьем'} onPress={syncHealth} disabled={syncing} />
+            <TouchableOpacity onPress={() => navigation.navigate('HealthImport')} style={{ alignItems: 'center', paddingVertical: 10 }}>
+              <Text style={{ color: colors.primary, fontWeight: '600' }}>Импорт из Здоровья: настройки ›</Text>
+            </TouchableOpacity>
           </View>
         )}
         ListEmptyComponent={trackers ? (

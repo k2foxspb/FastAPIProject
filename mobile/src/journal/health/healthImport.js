@@ -143,6 +143,8 @@ export const runHealthImport = async () => {
   if (!(await isHealthEnabled())) return 0;
   const source = getHealthSource();
   if (!source) return 0;
+  // Клиент Health Connect / HealthKit нужно инициализировать перед чтением; после входа/выхода он не инициализирован
+  await source.init();
   const enabled = await getEnabledMetrics();
   const now = new Date();
   const fallbackStart = new Date(now.getTime() - DEFAULT_LOOKBACK_DAYS * 86400000).toISOString();
