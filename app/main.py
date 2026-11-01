@@ -129,11 +129,11 @@ def create_application() -> FastAPI:
 
     @app.get("/login")
     async def get_login(request: Request):
-        return templates.TemplateResponse("login.html", {"request": request})
+        return templates.TemplateResponse(request, "login.html")
 
     @app.get("/")
     async def get_index(request: Request):
-        return templates.TemplateResponse("index.html", {"request": request})
+        return templates.TemplateResponse(request, "index.html")
 
 
     @app.get("/logo.png")
@@ -145,19 +145,19 @@ def create_application() -> FastAPI:
 
     @app.get("/privacy-policy")
     async def get_privacy_policy(request: Request):
-        return templates.TemplateResponse("privacy_policy.html", {"request": request})
+        return templates.TemplateResponse(request, "privacy_policy.html")
 
     @app.get("/terms")
     async def get_rules(request: Request):
-        return templates.TemplateResponse("terms_of_use.html", {"request": request})
+        return templates.TemplateResponse(request, "terms_of_use.html")
 
     @app.get("/user-guide")
     async def get_user_guide(request: Request):
-        return templates.TemplateResponse("user_guide.html", {"request": request})
+        return templates.TemplateResponse(request, "user_guide.html")
 
     @app.get("/tech-docs")
     async def get_tech_docs(request: Request):
-        return templates.TemplateResponse("tech_docs.html", {"request": request})
+        return templates.TemplateResponse(request, "tech_docs.html")
 
     return app
 

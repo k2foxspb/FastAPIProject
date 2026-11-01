@@ -15,4 +15,4 @@ async def health_check():
 templates = Jinja2Templates(directory="app/templates")
 @router.get("/", response_class=HTMLResponse)
 def read_index(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
+    return templates.TemplateResponse(request, "index.html")
