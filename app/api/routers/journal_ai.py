@@ -11,10 +11,12 @@ from app.api.dependencies import get_async_db
 from app.core import config, ollama
 from app.core.rate_limit import rate_limit
 from app.models.users import User as UserModel
+from app.schemas.journal.analysis import AnalysisResponse
 from app.schemas.journal.diet import EstimateNutritionRequest, EstimateNutritionResponse
 from app.schemas.journal.finance import CategorySuggestionRequest, CategorySuggestionResponse
 from app.schemas.journal.goals import WeeklySummaryResponse
 from app.services.journal import ai as ai_service
+from app.services.journal import ai_analysis
 
 router = APIRouter(prefix="/api/journal/ai", tags=["journal"])
 
@@ -66,6 +68,28 @@ async def weekly_summary(
     except ollama.OllamaError as e:
         raise_ai_error(e)
     return WeeklySummaryResponse(date_from=date_from, date_to=date_to, summary=text)
+
+
+@router.get("/analysis", response_model=AnalysisResponse)
+async def analysis(
+    date_from: date = Query(..., alias="from"),
+    date_to: date = Query(..., alias="to"),
+    areas: str = Query("food,finance,body,trackers"),
+    current_user: UserModel = Depends(_ai_limit),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """ИИ-аналитика по сферам журнала за период. Ничего не сохраняет."""
+    if date_to < date_from:
+        raise HTTPException(status_code=422, detail="Конец периода раньше начала")
+    if (date_to - date_from).days + 1 > 366:
+        raise HTTPException(status_code=422, detail="Период аналитики не длиннее года")
+    selected = [area.strip() for area in areas.split(",") if area.strip()]
+    if not selected or any(area not in ai_analysis.AREA_TITLES for area in selected):
+        raise HTTPException(status_code=422, detail="Неизвестная сфера аналитики")
+    try:
+        return await ai_analysis.analyze(db, current_user.id, date_from, date_to, selected)
+    except ollama.OllamaError as e:
+        raise_ai_error(e)
 
 
 @router.post("/suggest-categories", response_model=CategorySuggestionResponse)

@@ -1,30 +1,65 @@
 import { formatKop } from '../utils/money';
 import { formatDateShort } from '../utils/dates';
-import { formatTrackerValue } from '../db/repos/trackers';
+import { formatTrackerValue, goalStatus } from '../db/repos/trackers';
 
 const PERIOD_TITLES = { day: 'День', week: 'Неделя', month: 'Месяц' };
 
 export const periodTitle = (period) => PERIOD_TITLES[period] || PERIOD_TITLES.day;
 
-export const buildPeriodText = (data, period) => {
+export const SHARE_SECTIONS = [
+  { key: 'food', label: 'Питание' },
+  { key: 'expenses', label: 'Расходы' },
+  { key: 'charts', label: 'Трекеры и графики' },
+];
+
+export const SHARE_DAY_SECTIONS = [
+  { key: 'plan', label: 'План' },
+  { key: 'food', label: 'Питание' },
+  { key: 'expenses', label: 'Расходы' },
+  { key: 'trackers', label: 'Трекеры' },
+];
+
+export const buildDaySummaryText = (data, date, sections) => {
+  const lines = [`Итоги за ${formatDateShort(date)}`];
+  if (sections.includes('plan')) {
+    lines.push(buildDayPlanText(data.events || [], date));
+  }
+  if (sections.includes('food') && data.diet) {
+    const t = data.diet.totals || {};
+    lines.push(`Питание: ${Math.round(t.kcal || 0)} ккал (Б ${Math.round(t.protein || 0)} г · Ж ${Math.round(t.fat || 0)} г · У ${Math.round(t.carbs || 0)} г)`);
+  }
+  if (sections.includes('expenses')) {
+    lines.push(buildDayExpensesText(data.transactions || [], date));
+  }
+  if (sections.includes('trackers')) {
+    lines.push(buildDayAchievementsText([], data.values || [], date).split('\n').slice(1).join('\n') || 'Трекеров нет');
+  }
+  return lines.join('\n\n');
+};
+
+export const buildPeriodText = (data, period, sections = SHARE_SECTIONS.map((s) => s.key)) => {
   const lines = [
     `${periodTitle(period)}: ${formatDateShort(data.start)}${data.start !== data.end ? ` - ${formatDateShort(data.end)}` : ''}`,
   ];
 
   const loggedDays = data.nutrition.filter((d) => d.kcal > 0).length;
-  if (loggedDays) {
+  if (sections.includes('food') && loggedDays) {
     const avg = data.nutritionAverages;
     lines.push(`Питание: в среднем ${avg.kcal} ккал (Б ${avg.protein} г · Ж ${avg.fat} г · У ${avg.carbs} г), дней с записями: ${loggedDays}`);
   }
 
-  if (data.expenseTotalKop) {
+  if (sections.includes('expenses') && data.expenseTotalKop) {
     lines.push(`Расходы: ${formatKop(data.expenseTotalKop)}`);
   }
 
-  data.trackers.forEach((t) => {
-    const unit = t.tracker?.unit ? ` ${t.tracker.unit}` : '';
-    lines.push(`${t.name}: ${t.first} → ${t.last}${unit}`);
-  });
+  if (sections.includes('charts')) {
+    data.trackers.forEach((t) => {
+      const unit = t.tracker?.unit ? ` ${t.tracker.unit}` : '';
+      const goal = t.tracker ? goalStatus(t.tracker, t.last) : null;
+      const goalText = goal ? ` (${goal.direction === 'not_exceed' ? 'не больше' : 'цель'} ${goal.goal}${unit}${goal.reached ? ', достигнута ✓' : ''})` : '';
+      lines.push(`${t.name}: ${t.first} → ${t.last}${unit}${goalText}`);
+    });
+  }
 
   return lines.join('\n');
 };

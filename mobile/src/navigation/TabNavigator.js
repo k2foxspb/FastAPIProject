@@ -73,6 +73,7 @@ import TransferPairsScreen from '../screens/journal/TransferPairsScreen';
 import GoalsScreen from '../screens/journal/GoalsScreen';
 import GoalEditScreen from '../screens/journal/GoalEditScreen';
 import AnalyticsScreen from '../screens/journal/AnalyticsScreen';
+import AiAnalysisScreen from '../screens/journal/AiAnalysisScreen';
 import ExportScreen from '../screens/journal/ExportScreen';
 import BarcodeScanScreen from '../screens/journal/BarcodeScanScreen';
 import WeeklySummaryScreen from '../screens/journal/WeeklySummaryScreen';
@@ -307,6 +308,7 @@ function JournalStack() {
         <Stack.Screen name="TrackerDetail" component={TrackerDetailScreen} options={{ title: 'Трекер' }} />
         <Stack.Screen name="JournalSettings" component={JournalSettingsScreen} options={{ title: 'Настройки журнала' }} />
         <Stack.Screen name="HealthImport" component={HealthImportScreen} options={{ title: 'Здоровье' }} />
+        <Stack.Screen name="AiAnalysis" component={AiAnalysisScreen} options={{ title: 'ИИ-аналитика' }} />
         <Stack.Screen name="ReminderDiagnostics" component={ReminderDiagnosticsScreen} options={{ title: 'Проверка напоминаний' }} />
         <Stack.Screen name="BatteryHelp" component={BatteryHelpScreen} options={{ title: 'Экономия батареи' }} />
         <Stack.Screen name="DietDay" component={DietDayScreen} options={{ title: 'Питание' }} />

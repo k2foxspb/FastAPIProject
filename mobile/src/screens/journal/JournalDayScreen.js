@@ -14,7 +14,7 @@ import { addWater, guessMealType, loadDietDay } from '../../journal/db/repos/die
 import { formatAmount } from '../../journal/utils/nutrition';
 import { formatKop } from '../../journal/utils/money';
 import { listTransactions } from '../../journal/db/repos/finance';
-import { buildDayAchievementsText, buildDayExpensesText, buildDayPlanText } from '../../journal/share/summaryText';
+import { SHARE_DAY_SECTIONS, buildDaySummaryText } from '../../journal/share/summaryText';
 
 const KIND_ICONS = { meal: 'restaurant-outline', payment: 'card-outline', note: 'document-text-outline', tracker: 'pulse-outline', custom: 'star-outline' };
 
@@ -172,9 +172,15 @@ const DayContent = ({ navigation, date }) => {
 
   const shareRow = (
     <View style={styles.actions}>
-      <ShareButton variant="action" navigation={navigation} icon="list-outline" label="Поделиться планом" text={buildDayPlanText(data?.events || [], date)} />
-      <ShareButton variant="action" navigation={navigation} icon="trophy-outline" label="Достижения" text={buildDayAchievementsText(data?.events || [], data?.values || [], date)} />
-      <ShareButton variant="action" navigation={navigation} icon="wallet-outline" label="Расходы" text={buildDayExpensesText(data?.transactions || [], date)} />
+      <ShareButton
+        variant="action"
+        navigation={navigation}
+        icon="share-social-outline"
+        label="Поделиться"
+        text={buildDaySummaryText(data || {}, date, SHARE_DAY_SECTIONS.map((s) => s.key))}
+        route="ShareSummary"
+        params={{ kind: 'day', date, data }}
+      />
     </View>
   );
 

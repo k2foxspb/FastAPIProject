@@ -6,7 +6,7 @@ import { storage } from '../../utils/storage';
 import { generateClientId } from '../chat/utils';
 import { useJournal } from '../../context/JournalContext';
 import { buildPeriodAnalytics } from '../../journal/db/repos/analytics';
-import { buildPeriodText } from '../../journal/share/summaryText';
+import { SHARE_SECTIONS, SHARE_DAY_SECTIONS, buildDaySummaryText, buildPeriodText } from '../../journal/share/summaryText';
 import { addDays, monthBounds, todayKey } from '../../journal/utils/dates';
 
 const PERIOD_OPTIONS = [
@@ -19,6 +19,10 @@ const Content = ({ navigation, route }) => {
   const { timezone } = useJournal();
   const [text, setText] = useState(route.params?.text || '');
   const [period, setPeriod] = useState(route.params?.period || null);
+  const [analytics, setAnalytics] = useState(null);
+  const dayParams = route.params?.kind === 'day' ? route.params : null;
+  const [daySections, setDaySections] = useState(SHARE_DAY_SECTIONS.map((s) => s.key));
+  const [sections, setSections] = useState(SHARE_SECTIONS.map((s) => s.key));
   const [building, setBuilding] = useState(false);
   const [friends, setFriends] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -39,13 +43,30 @@ const Content = ({ navigation, route }) => {
         end = today;
       }
       const data = await buildPeriodAnalytics(start, end);
-      setText(buildPeriodText(data, key));
+      setAnalytics(data);
+      setText(buildPeriodText(data, key, sections));
     } catch (e) {
       Alert.alert('Ошибка', e?.message || 'Не удалось собрать сводку');
     } finally {
       setBuilding(false);
     }
   };
+
+  const toggleSection = (key) => {
+    const next = sections.includes(key) ? sections.filter((k) => k !== key) : [...sections, key];
+    setSections(next);
+    if (analytics && period) setText(buildPeriodText(analytics, period, next));
+  };
+
+  const toggleDaySection = (key) => {
+    const next = daySections.includes(key) ? daySections.filter((k) => k !== key) : [...daySections, key];
+    setDaySections(next);
+    setText(buildDaySummaryText(dayParams.data || {}, dayParams.date, next));
+  };
+
+  useEffect(() => {
+    if (dayParams) setText(buildDaySummaryText(dayParams.data || {}, dayParams.date, daySections));
+  }, []);
 
   useEffect(() => {
     usersApi.getFriendsList()
@@ -109,6 +130,29 @@ const Content = ({ navigation, route }) => {
             </TouchableOpacity>
           ))}
         </View>
+        {(!!analytics || !!dayParams) && (
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: 16, paddingVertical: 8 }}>
+            {(dayParams ? SHARE_DAY_SECTIONS : SHARE_SECTIONS).map((s) => {
+              const on = (dayParams ? daySections : sections).includes(s.key);
+              return (
+                <TouchableOpacity
+                  key={s.key}
+                  onPress={() => (dayParams ? toggleDaySection(s.key) : toggleSection(s.key))}
+                  style={{
+                    paddingVertical: 6,
+                    paddingHorizontal: 14,
+                    borderRadius: 16,
+                    borderWidth: 1,
+                    borderColor: colors.primary,
+                    backgroundColor: on ? colors.primary : 'transparent',
+                  }}
+                >
+                  <Text style={{ color: on ? '#fff' : colors.primary, fontWeight: '600' }}>{s.label}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        )}
         {building
           ? <ActivityIndicator style={{ margin: 16 }} color={colors.primary} />
           : <Text style={{ color: colors.textSecondary, paddingHorizontal: 16, paddingVertical: 8 }}>{text || 'Выберите период'}</Text>}

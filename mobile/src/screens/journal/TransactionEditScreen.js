@@ -32,8 +32,8 @@ function Content({ navigation, route }) {
   const colors = useColors();
   const { today } = useJournal();
   const { data: accounts } = useJournalQuery(listAccounts, []);
-  const { data: categories } = useJournalQuery(() => listFinanceCategories('expense'), []);
   const [direction, setDirection] = useState(route.params?.direction || 'expense');
+  const { data: categories } = useJournalQuery(() => listFinanceCategories(direction), [direction]);
   const [accountUuid, setAccountUuid] = useState(route.params?.account_uuid || '');
   const [categoryUuid, setCategoryUuid] = useState('');
   const [transactionDate, setTransactionDate] = useState(route.params?.date || today);
@@ -60,7 +60,7 @@ function Content({ navigation, route }) {
     const name = newCategoryName.trim();
     if (!name) return;
     try {
-      const uuid = await saveFinanceCategory({ name, kind: 'expense', parent_uuid: null, icon: null, color: null, sort_order: 1000 });
+      const uuid = await saveFinanceCategory({ name, kind: direction, parent_uuid: null, icon: null, color: null, sort_order: 1000 });
       setCategoryUuid(uuid);
       setNewCategoryName('');
       setShowCategoryForm(false);
@@ -87,7 +87,7 @@ function Content({ navigation, route }) {
     }
     setSaving(true);
     try {
-      await saveTransaction({ account_uuid: accountUuid, category_uuid: direction === 'expense' ? categoryUuid : null,
+      await saveTransaction({ account_uuid: accountUuid, category_uuid: categoryUuid || null,
         transaction_date: transactionDate, direction, amount_kop: amountKop, description: description.trim(), source: 'manual' }, route.params?.uuid || null);
       navigation.goBack();
     } catch (error) { Alert.alert('Ошибка', error?.message || 'Не удалось сохранить операцию'); }
@@ -112,12 +112,11 @@ function Content({ navigation, route }) {
         placeholder="Название счёта"
         onSubmit={createAccount}
       />
-      {direction === 'expense' && <Field label="Категория"><Picker selectedValue={categoryUuid} onValueChange={setCategoryUuid}>
+      <Field label="Категория"><Picker selectedValue={categoryUuid} onValueChange={setCategoryUuid}>
         <Picker.Item label="Без категории" value="" />
         {(categories || []).map((item) => <Picker.Item key={item.uuid} label={item.name} value={item.uuid} />)}
-      </Picker></Field>}
-      {direction === 'expense' && (
-        <InlineCreate
+      </Picker></Field>
+      <InlineCreate
           colors={colors}
           visible={showCategoryForm}
           onToggle={() => setShowCategoryForm((v) => !v)}
@@ -127,7 +126,6 @@ function Content({ navigation, route }) {
           placeholder="Название категории"
           onSubmit={createCategory}
         />
-      )}
       <Field label="Дата"><TextInput value={transactionDate} onChangeText={setTransactionDate} placeholder="ГГГГ-ММ-ДД"
         placeholderTextColor={colors.textSecondary} style={{ color: colors.text, borderColor: colors.border, borderWidth: 1, borderRadius: 10, padding: 12 }} /></Field>
       <Field label="Сумма, ₽"><MoneyInput value={amountKop} onChangeKop={setAmountKop} /></Field>

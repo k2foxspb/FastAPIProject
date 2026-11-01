@@ -120,6 +120,13 @@ const SettingsContent = () => {
         </TouchableOpacity>
       </Section>
 
+      <Section title="Аналитика">
+        <TouchableOpacity style={styles.row} onPress={() => navigation.navigate('AiAnalysis')}>
+          <Icon name="sparkles-outline" size={20} color={colors.primary} />
+          <Text style={[styles.rowText, { color: colors.text }]}>ИИ-аналитика по сферам</Text>
+        </TouchableOpacity>
+      </Section>
+
       <Section title="Здоровье">
         <TouchableOpacity style={styles.row} onPress={() => navigation.navigate('HealthImport')}>
           <Icon name="heart-outline" size={20} color={colors.primary} />

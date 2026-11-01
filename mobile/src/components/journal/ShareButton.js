@@ -5,9 +5,9 @@ import { PrimaryButton, useColors } from './common';
 
 // Единая кнопка «поделиться»: открывает экран отправки сводки в личные сообщения.
 // variant: 'primary' — широкая кнопка, 'action' — компактная плитка в ряду действий.
-export const ShareButton = ({ navigation, text, label = 'Поделиться', icon = 'share-social-outline', variant = 'primary', style }) => {
+export const ShareButton = ({ navigation, text, label = 'Поделиться', icon = 'share-social-outline', variant = 'primary', style, route = 'ShareSummary', params }) => {
   const colors = useColors();
-  const onPress = () => navigation.navigate('ShareSummary', { text });
+  const onPress = () => navigation.navigate(route, params || { text });
 
   if (variant === 'action') {
     return (

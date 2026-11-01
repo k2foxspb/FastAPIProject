@@ -4,7 +4,7 @@ import { Ionicons as Icon } from '@expo/vector-icons';
 import { useJournal, useJournalQuery } from '../../context/JournalContext';
 import { EmptyState, HeaderButton, JournalGate, useColors } from '../../components/journal/common';
 import TrackerValueModal from '../../components/journal/TrackerValueModal';
-import { formatTrackerValue, listTrackers } from '../../journal/db/repos/trackers';
+import { formatTrackerValue, goalStatus, listTrackers } from '../../journal/db/repos/trackers';
 import { formatDateShort } from '../../journal/utils/dates';
 
 const TrackersContent = ({ navigation, route }) => {
@@ -14,7 +14,9 @@ const TrackersContent = ({ navigation, route }) => {
   const [quick, setQuick] = useState(null);
   const quickDate = route.params?.quickDate || today;
 
-  const renderItem = ({ item }) => (
+  const renderItem = ({ item }) => {
+    const goal = goalStatus(item, item.last_num);
+    return (
     <TouchableOpacity
       style={[styles.item, { backgroundColor: colors.card, borderColor: colors.border, opacity: item.archived ? 0.5 : 1 }]}
       onPress={() => navigation.navigate('TrackerDetail', { uuid: item.uuid })}
@@ -27,6 +29,12 @@ const TrackersContent = ({ navigation, route }) => {
         <Text style={[styles.sub, { color: colors.textSecondary }]}>
           {item.last_date ? `${formatTrackerValue(item, item)} · ${formatDateShort(item.last_date)}` : 'Нет значений'}
         </Text>
+        {goal && (
+          <Text style={[styles.sub, { color: goal.reached ? colors.success : colors.textSecondary }]}>
+            {`${goal.direction === 'not_exceed' ? 'Не больше ' : 'Цель '}${formatTrackerValue(item, { num_value: goal.goal })}`}
+            {goal.hasValue ? (goal.reached ? ' · достигнута ✓' : ' · пока не достигнута') : ''}
+          </Text>
+        )}
       </View>
       {!item.archived && (
         <TouchableOpacity hitSlop={10} onPress={() => setQuick(item)} style={[styles.add, { backgroundColor: colors.primary }]}>
@@ -34,7 +42,8 @@ const TrackersContent = ({ navigation, route }) => {
         </TouchableOpacity>
       )}
     </TouchableOpacity>
-  );
+    );
+  };
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>

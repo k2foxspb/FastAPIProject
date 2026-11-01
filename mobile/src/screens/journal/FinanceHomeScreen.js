@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { formatKop } from '../../journal/utils/money';
-import { accountBalances, listTransactions } from '../../journal/db/repos/finance';
+import { accountBalances, listBudgets, listTransactions } from '../../journal/db/repos/finance';
 import { EmptyState, JournalGate, Section, useColors } from '../../components/journal/common';
-import { useJournalQuery } from '../../context/JournalContext';
+import { useJournal, useJournalQuery } from '../../context/JournalContext';
 
 const PAGE = 20;
 
@@ -17,6 +17,9 @@ const LINKS = [
 function Content({ navigation }) {
   const colors = useColors();
   const { data: accounts } = useJournalQuery(accountBalances, []);
+  const { today } = useJournal();
+  const month = today.slice(0, 7);
+  const { data: budgets } = useJournalQuery(() => listBudgets(month), [month]);
   const [limit, setLimit] = useState(PAGE);
   const { data: transactions } = useJournalQuery(() => listTransactions({ limit }), [limit]);
   return (
@@ -41,6 +44,27 @@ function Content({ navigation }) {
           </TouchableOpacity>
         ))}
       </Section>
+      {(budgets || []).length > 0 && (
+        <Section title={`Бюджеты · ${month}`}>
+          {budgets.map((budget) => {
+            const ratio = budget.limit_kop > 0 ? budget.spent_kop / budget.limit_kop : 0;
+            const over = ratio > 1;
+            return (
+              <View key={budget.uuid} style={{ paddingHorizontal: 12, paddingVertical: 8 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                  <Text style={{ color: colors.text, fontWeight: '600' }}>{budget.category_name}</Text>
+                  <Text style={{ color: over ? colors.error : colors.textSecondary }}>
+                    {formatKop(budget.spent_kop)} / {formatKop(budget.limit_kop)}
+                  </Text>
+                </View>
+                <View style={{ height: 8, borderRadius: 4, backgroundColor: colors.border, marginTop: 6, overflow: 'hidden' }}>
+                  <View style={{ height: 8, width: `${Math.min(100, Math.round(ratio * 100))}%`, backgroundColor: over ? colors.error : colors.primary }} />
+                </View>
+              </View>
+            );
+          })}
+        </Section>
+      )}
       <Section title="Последние операции">
         {(transactions || []).map((item) => (
           <TouchableOpacity key={item.uuid} onPress={() => navigation.navigate('TransactionEdit', { uuid: item.uuid })}

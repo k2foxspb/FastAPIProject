@@ -98,3 +98,16 @@ export const formatTrackerValue = (tracker, value) => {
   if (type === 'scale') return `${formatted} из ${tracker.scale_max ?? ''}`.trim();
   return unit ? `${formatted} ${unit}` : formatted;
 };
+
+// Прогресс к цели: достигнута ли цель по последнему значению
+export const hasGoal = (tracker) => tracker.goal_value !== null && tracker.goal_value !== undefined && tracker.value_type !== 'text';
+
+export const goalStatus = (tracker, lastNum) => {
+  if (!hasGoal(tracker)) return null;
+  const goal = Number(tracker.goal_value);
+  const direction = tracker.goal_direction || 'reach';
+  const reached = direction === 'not_exceed'
+    ? lastNum !== null && lastNum !== undefined && Number(lastNum) <= goal
+    : lastNum !== null && lastNum !== undefined && Number(lastNum) >= goal;
+  return { goal, direction, reached: !!reached, hasValue: lastNum !== null && lastNum !== undefined };
+};
