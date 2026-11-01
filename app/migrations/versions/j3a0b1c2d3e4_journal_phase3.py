@@ -60,7 +60,7 @@ def upgrade() -> None:
         sa.Column("color", sa.String(20), nullable=True),
         sa.Column("sort_order", sa.Integer(), nullable=False),
         sa.ForeignKeyConstraint(["parent_id"], ["journal_finance_categories.id"], ondelete="SET NULL",
-                                name="fk_journal_finance_categories_parent_id_journal_finance_categories"),
+                                name="fk_journal_finance_categories_parent_id"),
     )
     _entity_indexes("journal_finance_categories")
 

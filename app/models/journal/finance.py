@@ -29,7 +29,9 @@ class JournalFinanceCategory(JournalEntityMixin, Base):
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     kind: Mapped[str] = mapped_column(String(10), nullable=False)
     parent_id: Mapped[int | None] = mapped_column(
-        BigIntPK, ForeignKey("journal_finance_categories.id", ondelete="SET NULL"), nullable=True
+        BigIntPK,
+        ForeignKey("journal_finance_categories.id", ondelete="SET NULL", name="fk_journal_finance_categories_parent_id"),
+        nullable=True,
     )
     icon: Mapped[str | None] = mapped_column(String(50), nullable=True)
     color: Mapped[str | None] = mapped_column(String(20), nullable=True)
