@@ -84,14 +84,14 @@
             var tint = STAR_TINTS[Math.floor(Math.random() * STAR_TINTS.length)];
             stint[s * 3] = tint[0]; stint[s * 3 + 1] = tint[1]; stint[s * 3 + 2] = tint[2];
             // Большинство звёзд тусклые, единицы яркие
-            sbri[s] = 0.2 + Math.pow(Math.random(), 4) * 0.8;
+            sbri[s] = 0.4 + Math.pow(Math.random(), 4) * 0.6;
             stw[s] = Math.random() * Math.PI * 2;
         }
         sgeo.setAttribute('position', new THREE.BufferAttribute(spos, 3));
         sgeo.setAttribute('color', new THREE.BufferAttribute(scol, 3));
         var stars = new THREE.Points(sgeo, new THREE.PointsMaterial({
-            size: 0.12, map: makeTexture(THREE, 32, [[0, 'rgba(255,255,255,1)'], [0.5, 'rgba(255,255,255,0.4)'], [1, 'rgba(255,255,255,0)']]),
-            vertexColors: true, transparent: true, opacity: 0.7, depthWrite: false
+            size: 0.07, map: makeTexture(THREE, 32, [[0, 'rgba(255,255,255,1)'], [0.35, 'rgba(255,255,255,0.9)'], [1, 'rgba(255,255,255,0)']]),
+            vertexColors: true, transparent: true, opacity: 1, depthWrite: false
         }));
         scene.add(stars);
 
