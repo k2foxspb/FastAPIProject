@@ -87,7 +87,7 @@ export default function CreatePostScreen({ navigation, route }) {
 
         const uploadRes = await usersApi.uploadProfilePostMedia(formData);
         mediaUrl = uploadRes.data?.url;
-        mediaType = uploadRes.data?.media_type || (isVideo ? 'video' : 'image');
+        mediaType = isVideo ? 'video' : (uploadRes.data?.media_type || 'image');
       }
 
       if (isAnnouncement) {

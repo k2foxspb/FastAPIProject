@@ -2,9 +2,8 @@ import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { getShadow } from '../utils/shadowStyles';
 import { View, Text, FlatList, StyleSheet, TouchableOpacity, RefreshControl, Image, Platform, ScrollView, Alert } from 'react-native';
 import notifee from '@notifee/react-native';
-import * as VideoThumbnails from 'expo-video-thumbnails';
-import { cacheDirectory, getInfoAsync, copyAsync } from 'expo-file-system/legacy';
 import FadeInImage from '../components/FadeInImage';
+import VideoFeedThumb from '../components/VideoFeedThumb';
 import FadeInView from '../components/FadeInView';
 import { newsApi, feedApi } from '../api';
 import { getFullUrl, stripHtml, formatPostDateTime } from '../utils/formatters';
@@ -14,7 +13,6 @@ import { NewsSkeleton } from '../components/SkeletonLoader';
 import { Ionicons as Icon } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useNotifications } from '../context/NotificationContext';
-import { subscribe, checkCached, getState } from '../utils/downloadManager';
 
 // Нормализует ответ старого /news/ в формат элемента ленты, чтобы рендер карточек
 // был единым, пока бэкенд может быть ещё не готов отдавать новый эндпоинт /feed.
@@ -22,63 +20,6 @@ const newsToFeedItem = (item) => ({
   ...item,
   item_type: 'news',
 });
-
-// Превью видео в ленте: та же логика, что в CachedMedia - общий кэш загрузок, кадр из кэша
-// и повтор генерации кадра с докачанного локального файла (без запуска новых загрузок)
-const VideoFeedThumb = ({ uri, style }) => {
-  const fileName = uri.split('/').pop();
-  const localFileUri = `${cacheDirectory}${fileName}`;
-  const doneMarkerUri = `${localFileUri}.done`;
-  const thumbFileUri = `${cacheDirectory}thumb_${fileName}.jpg`;
-  const isRemoteHttp = /^https?:\/\//i.test(uri || '');
-  const [thumbUri, setThumbUri] = useState(null);
-  const [dlState, setDlState] = useState(() => getState(uri));
-
-  useEffect(() => {
-    const unsub = subscribe(uri, (state) => setDlState(state));
-    return unsub;
-  }, [uri]);
-
-  useEffect(() => {
-    checkCached(uri, localFileUri, doneMarkerUri);
-  }, [uri]);
-
-  useEffect(() => {
-    let cancelled = false;
-    const sourceUri = dlState.cached && dlState.localUri ? dlState.localUri : uri;
-
-    const loadThumbnail = async () => {
-      try {
-        const info = await getInfoAsync(thumbFileUri);
-        if (info.exists) {
-          if (!cancelled) setThumbUri(thumbFileUri);
-          return;
-        }
-        const { uri: frame } = await VideoThumbnails.getThumbnailAsync(sourceUri, { time: 0 });
-        await copyAsync({ from: frame, to: thumbFileUri });
-        if (!cancelled) setThumbUri(thumbFileUri);
-      } catch (e) {
-        if (sourceUri === uri && isRemoteHttp) {
-          console.log('[FeedScreen] remote thumbnail failed, will retry after caching:', e);
-        } else {
-          console.log('[FeedScreen] video thumbnail error:', e);
-        }
-      }
-    };
-
-    loadThumbnail();
-    return () => { cancelled = true; };
-  }, [uri, dlState.cached, dlState.localUri]);
-
-  return (
-    <View style={[style, { backgroundColor: '#000', overflow: 'hidden' }]}>
-      {thumbUri ? <Image source={{ uri: thumbUri }} style={StyleSheet.absoluteFill} resizeMode="cover" /> : null}
-      <View style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center' }]}>
-        <Icon name="play-circle" size={28} color="#fff" />
-      </View>
-    </View>
-  );
-};
 
 export default function FeedScreen({ navigation }) {
   const { theme } = useTheme();

@@ -58,7 +58,9 @@ const formatTime = (secs) => {
 const getLocalCacheUri = (remoteUri) => {
   if (!remoteUri) return null;
   const seg = remoteUri.split('/');
-  const filename = seg[seg.length - 1] || 'videonote.mp4';
+  // Приватные файлы чата отдаются с подписью в query-строке (?sig=...) - без .split('?')[0]
+  // "имя файла" содержало бы "?sig=...", что ломает локальный путь на диске.
+  const filename = (seg[seg.length - 1] || 'videonote.mp4').split('?')[0];
   return FileSystem.cacheDirectory + 'vn_' + filename;
 };
 

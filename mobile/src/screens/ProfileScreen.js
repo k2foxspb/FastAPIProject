@@ -16,6 +16,7 @@ import { startAppUpdate } from '../utils/appUpdate';
 import { formatName, getFullUrl, formatPostDateTime } from '../utils/formatters';
 import { getRoleLabel } from '../constants/roles';
 import RoleBadge from '../components/RoleBadge';
+import VideoFeedThumb from '../components/VideoFeedThumb';
 import { SkeletonItem, NewsSkeleton } from '../components/SkeletonLoader';
 import { requestAllAppPermissions } from '../utils/permissions';
 
@@ -257,11 +258,18 @@ export default function ProfileScreen({ navigation }) {
         )}
 
         {hasMedia && (
-          <Image
-            source={{ uri: getFullUrl(item.media_url) }}
-            style={styles.postMedia}
-            resizeMode="cover"
-          />
+          ['mp4', 'm4v', 'mov', 'avi', 'mkv', 'webm'].includes((item.media_url.split('?')[0].split('.').pop() || '').toLowerCase()) || item.media_type === 'video' ? (
+            <VideoFeedThumb
+              uri={getFullUrl(item.media_url)}
+              style={styles.postMedia}
+            />
+          ) : (
+            <Image
+              source={{ uri: getFullUrl(item.media_url) }}
+              style={styles.postMedia}
+              resizeMode="cover"
+            />
+          )
         )}
 
         <View style={styles.postFooter}>

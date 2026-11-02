@@ -4,123 +4,67 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Подтверждение Email — Fokin</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/site.css">
     <style>
-        :root {
-            --bg-color: #0a0a0c;
-            --surface-color: #16161a;
-            --accent-color: #3b82f6;
-            --accent-hover: #2563eb;
-            --error-color: #ef4444;
-            --text-primary: #f8fafc;
-            --text-secondary: #94a3b8;
-            --border-color: #2e2e36;
-        }
-
         body {
-            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-            margin: 0;
-            background-color: var(--bg-color);
-            color: var(--text-primary);
+            min-height: 100vh;
             display: flex;
             align-items: center;
             justify-content: center;
-            min-height: 100vh;
-            line-height: 1.6;
+            padding: 20px;
+            box-sizing: border-box;
         }
 
-        .container {
-            max-width: 500px;
-            width: 90%;
+        .verify {
+            max-width: 480px;
+            width: 100%;
             text-align: center;
-            padding: 40px 20px;
-            background: var(--surface-color);
-            border-radius: 24px;
-            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
-            border: 1px solid var(--border-color);
-        }
-
-        .logo-container {
-            margin-bottom: 24px;
+            padding: 40px 28px;
+            background: var(--panel-color);
+            backdrop-filter: blur(14px);
+            border: 1px solid var(--panel-border);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-soft);
         }
 
         .logo {
-            width: 100px;
-            height: 100px;
+            width: 84px;
+            height: 84px;
             object-fit: contain;
-            border-radius: 20%;
-            filter: drop-shadow(0 0 15px rgba(59, 130, 246, 0.3));
+            border-radius: 22px;
+            margin-bottom: 18px;
+            box-shadow: 0 10px 30px -10px rgba(240, 160, 75, 0.5);
         }
 
-        .status-icon {
-            font-size: 48px;
-            margin-bottom: 16px;
-        }
+        .status-icon { font-size: 44px; margin-bottom: 12px; }
 
-        h1 {
-            font-size: 24px;
-            font-weight: 700;
-            margin: 0 0 12px;
-            letter-spacing: -0.01em;
-        }
+        h1 { font-size: 24px; margin: 0 0 12px; }
+        h1.success { color: var(--accent-color); -webkit-text-fill-color: var(--accent-color); background: none; }
+        h1.error { color: var(--burgundy); -webkit-text-fill-color: currentColor; background: none; }
+        :root[data-theme="light"] h1.error { color: #9b2c3c; }
 
-        .success { color: var(--accent-color); }
-        .error { color: var(--error-color); }
-
-        p {
+        .verify p {
             color: var(--text-secondary);
             font-size: 16px;
-            margin-bottom: 32px;
-            padding: 0 20px;
+            margin: 0 0 28px;
         }
 
-        .btn {
-            background-color: var(--accent-color);
-            color: white;
-            padding: 16px 32px;
-            border-radius: 14px;
-            text-decoration: none;
-            font-weight: 600;
-            font-size: 16px;
-            display: inline-block;
-            transition: all 0.2s ease;
-            width: 100%;
-            box-sizing: border-box;
-            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
-            border: none;
-            cursor: pointer;
-        }
+        #timer { font-weight: 700; color: var(--accent-color); }
 
-        .btn:hover {
-            background-color: var(--accent-hover);
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(59, 130, 246, 0.4);
-        }
+        .verify .btn { width: 100%; box-sizing: border-box; }
+        .verify .btn-ghost { margin-top: 12px; font-size: 14px; }
 
-        .btn-secondary {
-            background: transparent;
-            color: var(--text-secondary);
-            margin-top: 16px;
-            box-shadow: none;
-            font-size: 14px;
-        }
-
-        .btn-secondary:hover {
-            background: rgba(255, 255, 255, 0.05);
-            color: var(--text-primary);
-            box-shadow: none;
-            transform: none;
-        }
-
-        #timer {
-            font-weight: bold;
+        @media (prefers-reduced-motion: reduce) {
+            .status-dot { animation: none; }
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="logo-container">
-            <img src="/logo.png" alt="Fokin Logo" class="logo">
-        </div>
+    <main class="verify">
+        <img src="/logo.png" alt="Fokin" class="logo">
 
         <div class="status-icon">
             {% if status == 'success' %}
@@ -147,11 +91,11 @@
         </p>
 
         {% if deeplink %}
-            <a href="{{ deeplink }}" class="btn" id="open-app-btn">ОТКРЫТЬ ПРИЛОЖЕНИЕ</a>
+            <a href="{{ deeplink }}" class="btn" id="open-app-btn">Открыть приложение</a>
         {% endif %}
 
-        <a href="/" class="btn btn-secondary">Вернуться на главную</a>
-    </div>
+        <a href="/" class="btn btn-ghost">Вернуться на главную</a>
+    </main>
 
     {% if status == 'success' and deeplink %}
     <script>

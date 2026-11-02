@@ -26,7 +26,9 @@ export default function VoiceMessage({ item, currentUserId, isParentVisible = tr
   const [playbackRate, setPlaybackRate] = useState(1);
 
   const remoteUri = resolveRemoteUri(item.file_path);
-  const fileName = item.file_path.split('/').pop();
+  // Приватные файлы чата отдаются с подписью в query-строке (?sig=...) - без .split('?')[0]
+  // "имя файла" содержало бы "?sig=...", что ломает локальный путь на диске.
+  const fileName = item.file_path.split('/').pop().split('?')[0];
   const localFileUri = `${cacheDirectory}${fileName}`;
 
   const audioSource = localUri || remoteUri;

@@ -57,7 +57,9 @@ export default function FileMessage({ item, currentUserId, uploadProgress }) {
 
   const isUploading = uploadProgress !== undefined && uploadProgress !== null;
   const remoteUri = !isUploading ? resolveRemoteUri(item.file_path) : null;
-  const fileName = item.name || (item.file_path ? item.file_path.split('/').pop() : 'Без названия');
+  // Приватные файлы чата отдаются с подписью в query-строке (?sig=...) - без .split('?')[0]
+  // "имя файла" содержало бы "?sig=...", что ломает локальный путь на диске.
+  const fileName = item.name || (item.file_path ? item.file_path.split('/').pop().split('?')[0] : 'Без названия');
   const localFileUri = item.file_path && !isUploading ? `${documentDirectory}${fileName}` : item.file_path;
 
   const handleDownloadAndOpen = async () => {

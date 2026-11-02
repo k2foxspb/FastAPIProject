@@ -13,7 +13,7 @@ import { formatStatus, formatName, getAvatarUrl, stripHtml, getFullUrl } from '.
 import { getRoleLabel, isAdminOrOwner } from '../constants/roles';
 import RoleBadge from '../components/RoleBadge';
 import FadeInImage from '../components/FadeInImage';
-import CachedMedia from '../components/CachedMedia';
+import VideoFeedThumb from '../components/VideoFeedThumb';
 
 // Вынесенный мемоизированный компонент для HTML-контента публикации в списке - без него
 // при каждом перерисовывании экрана RenderHTML получал новые объекты source/tagsStyles
@@ -195,7 +195,7 @@ export default function UserProfileScreen({ route, navigation }) {
     const hasMedia = !!item.media_url;
     const isVideoMedia = hasMedia && (
       item.media_type === 'video' ||
-      (item.media_type !== 'image' && ['mp4', 'm4v', 'mov', 'avi', 'mkv', 'webm'].includes((item.media_url.split('.').pop() || '').toLowerCase()))
+      ['mp4', 'm4v', 'mov', 'avi', 'mkv', 'webm'].includes((item.media_url.split('?')[0].split('.').pop() || '').toLowerCase())
     );
 
     return (
@@ -244,12 +244,9 @@ export default function UserProfileScreen({ route, navigation }) {
 
         {hasMedia && (
           isVideoMedia ? (
-            <CachedMedia
-              item={{ file_path: item.media_url, message_type: 'video' }}
+            <VideoFeedThumb
+              uri={getFullUrl(item.media_url)}
               style={{ width: '100%', height: 200, marginVertical: 4 }}
-              shouldPlay={false}
-              resizeMode="cover"
-              onFullScreen={() => openPost(item)}
             />
           ) : (
             <FadeInImage

@@ -41,7 +41,11 @@ const CachedMedia = ({
       : item.file_path
       ? `${API_BASE_URL}${item.file_path}`
       : '';
-  const fileName = item.file_path ? item.file_path.split('/').pop() : 'unknown';
+  // Приватные файлы чата отдаются с подписью в query-строке (?sig=...), в отличие от
+  // публичных файлов ленты/постов - без .split('?')[0] "имя файла" содержало бы "?sig=...",
+  // что ломает локальный путь на диске (символ "?" недопустим в имени файла) и приводит
+  // к ошибке генерации миниатюры/проигрывания именно и только в чате.
+  const fileName = item.file_path ? item.file_path.split('/').pop().split('?')[0] : 'unknown';
   const localFileUri = `${cacheDirectory}${fileName}`;
   const doneMarkerUri = `${localFileUri}.done`;
   const thumbFileUri = `${cacheDirectory}thumb_${fileName}.jpg`;
@@ -166,23 +170,39 @@ const CachedMedia = ({
   // нативный декодер не может читать файл), повторяем уже с докачанного локального файла,
   // когда видео попадёт в кэш.
   useEffect(() => {
-    if (!isVideo || !remoteUri) return;
+    console.log('[CachedMedia][TEMP] thumb effect run:', { isVideo, remoteUri, cached: dlState.cached, sourceIsLocal: !!(dlState.cached && dlState.localUri) });
+    if (!isVideo || !remoteUri) {
+      console.log('[CachedMedia][TEMP] thumb effect skipped:', { isVideo, hasRemoteUri: !!remoteUri });
+      return;
+    }
     let cancelled = false;
     const sourceUri = dlState.cached && dlState.localUri ? dlState.localUri : remoteUri;
 
     const loadThumbnail = async () => {
       try {
         const info = await getInfoAsync(thumbFileUri);
+        console.log('[CachedMedia][TEMP] thumb file check:', { thumbFileUri, exists: info.exists });
         if (info.exists) {
           if (!cancelled) setThumbUri(thumbFileUri);
           return;
         }
+        console.log('[CachedMedia][TEMP] getThumbnailAsync start:', sourceUri);
         const { uri } = await VideoThumbnails.getThumbnailAsync(sourceUri, { time: 0 });
+        console.log('[CachedMedia][TEMP] getThumbnailAsync resolved:', uri);
         await copyAsync({ from: uri, to: thumbFileUri });
+        console.log('[CachedMedia][TEMP] thumb copied to:', thumbFileUri, 'cancelled:', cancelled);
         if (!cancelled) setThumbUri(thumbFileUri);
       } catch (e) {
+        console.log('[CachedMedia][TEMP] thumb rejected:', { sourceUri, isRemoteHttp, sameAsRemote: sourceUri === remoteUri, error: String(e && (e.message || e)) });
         if (sourceUri === remoteUri && isRemoteHttp) {
-          console.log('[CachedMedia] remote thumbnail failed, will retry after caching:', e);
+          // Извлечь кадр напрямую из удалённого http-потока часто не получается (нативный
+          // декодер не умеет читать по частям без полной докачки) - раньше на этом превью
+          // навсегда и останавливалось, миниатюра так и не появлялась, пока пользователь сам
+          // не открывал видео полноэкранно (что и запускало докачку в фон). Теперь запускаем
+          // докачку сами, чтобы эффект перезапустился на локальном файле и миниатюра
+          // появилась без необходимости открывать видео.
+          console.log('[CachedMedia] remote thumbnail failed, starting background download for retry:', e);
+          startDownload(remoteUri, localFileUri, doneMarkerUri);
         } else {
           console.log('[CachedMedia] thumbnail generation error:', e);
         }

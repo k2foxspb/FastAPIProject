@@ -1,12 +1,13 @@
+{%- set SITE_NAME = "Дневнет" -%}
 <!DOCTYPE html>
 <html lang="ru">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-    <title>Fokin System — друзья, публикации, чаты и уведомления</title>
-    <meta name="description" content="Fokin System — приложение для общения: друзья, публикации, объявления, личные и групповые чаты, колокольчик уведомлений. Документация, политика конфиденциальности и пользовательское соглашение.">
-    <meta name="keywords" content="Fokin, друзья, публикации, чаты, уведомления, политика конфиденциальности, пользовательское соглашение">
+    <title>{{ SITE_NAME }} — личный журнал и социальная сеть</title>
+    <meta name="description" content="{{ SITE_NAME }} — личный дневник, который можно сделать публичным, общение с людьми и помощь ИИ по вашим записям.">
+    <meta name="keywords" content="журнал, дневник, социальная сеть, чаты, ИИ-помощник, приватность">
     <meta name="author" content="Fokin Team">
     <meta name="robots" content="index, follow">
     <link rel="canonical" href="https://fokin.fun/">
@@ -19,20 +20,20 @@
 
     <!-- Open Graph -->
     <meta property="og:type" content="website">
-    <meta property="og:title" content="Fokin System — друзья, публикации, чаты и уведомления">
-    <meta property="og:description" content="Приложение для общения: друзья, публикации, объявления, чаты и уведомления.">
+    <meta property="og:title" content="{{ SITE_NAME }} — личный журнал и социальная сеть">
+    <meta property="og:description" content="Личный дневник, который можно сделать публичным, общение и помощь ИИ по записям.">
     <meta property="og:url" content="https://fokin.fun/">
-    <meta property="og:site_name" content="Fokin System">
+    <meta property="og:site_name" content="{{ SITE_NAME }}">
     <meta property="og:locale" content="ru_RU">
     <meta property="og:image" content="https://fokin.fun/logo.png">
 
     <!-- PWA manifest -->
     <link rel="manifest" href="/manifest.json">
-    <meta name="theme-color" content="#0ea5e9">
+    <meta name="theme-color" content="#f0a04b">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
-    <meta name="apple-mobile-web-app-title" content="Fokin">
+    <meta name="apple-mobile-web-app-title" content="{{ SITE_NAME }}">
 
     <!-- JSON-LD: Organization -->
     <script type="application/ld+json">
@@ -54,502 +55,192 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/site.css">
     <style>
-        :root {
-            --bg-color: #060b14;
-            --panel-color: rgba(15, 23, 42, 0.75);
-            --panel-border: rgba(56, 189, 248, 0.18);
-            --accent-color: #22d3ee;
-            --accent-secondary: #38bdf8;
-            --ok-color: #34d399;
-            --text-primary: #e2e8f0;
-            --text-secondary: #7c8aa5;
-            --mono-font: 'JetBrains Mono', 'Courier New', monospace;
-        }
-
-        * {
-            box-sizing: border-box;
-            -webkit-tap-highlight-color: transparent;
-        }
-
-        body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            margin: 0;
-            background-color: var(--bg-color);
-            background-image:
-                linear-gradient(rgba(56, 189, 248, 0.05) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(56, 189, 248, 0.05) 1px, transparent 1px),
-                radial-gradient(circle at 50% 0%, rgba(34, 211, 238, 0.12) 0%, transparent 55%);
-            background-size: 42px 42px, 42px 42px, 100% 100%;
-            color: var(--text-primary);
+        .home {
+            min-height: 100vh;
             display: flex;
             flex-direction: column;
             align-items: center;
-            min-height: 100vh;
-            line-height: 1.5;
-            padding: 20px;
+            padding: 20px 20px 32px;
         }
-
-        .topbar {
-            width: 100%;
-            max-width: 980px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 14px 22px;
-            margin-top: 10px;
-            background: var(--panel-color);
-            backdrop-filter: blur(10px);
-            border: 1px solid var(--panel-border);
-            border-radius: 16px;
-            font-family: var(--mono-font);
-            font-size: 13px;
-            color: var(--text-secondary);
-        }
-
-        .topbar .brand {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            color: var(--text-primary);
-            font-weight: 600;
-        }
-
-        .topbar .brand img {
-            width: 26px;
-            height: 26px;
-            border-radius: 7px;
-        }
-
-        .status-pill {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            padding: 5px 12px;
-            border-radius: 100px;
-            border: 1px solid rgba(52, 211, 153, 0.3);
-            background: rgba(52, 211, 153, 0.08);
-            color: var(--ok-color);
-        }
-
-        .status-dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background: var(--ok-color);
-            box-shadow: 0 0 8px var(--ok-color);
-            animation: pulse 1.8s ease-in-out infinite;
-        }
-
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.35; }
-        }
-
+        .topbar { margin-top: 10px; }
         .hero {
-            max-width: 980px;
             width: 100%;
+            max-width: 880px;
             text-align: center;
-            padding: 56px 20px 30px;
-            animation: fadeIn 0.8s ease-out;
+            padding: clamp(40px, 9vh, 96px) 12px 24px;
+            animation: rise 0.9s ease-out both;
         }
-
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(16px); }
-            to { opacity: 1; transform: translateY(0); }
+        @keyframes rise {
+            from { opacity: 0; transform: translateY(18px); }
+            to { opacity: 1; transform: none; }
         }
-
-        .eyebrow {
-            font-family: var(--mono-font);
-            letter-spacing: 0.18em;
-            text-transform: uppercase;
-            font-size: 12px;
-            color: var(--accent-color);
-            margin-bottom: 18px;
-        }
-
-        h1 {
-            font-size: clamp(30px, 6vw, 44px);
-            font-weight: 800;
-            margin: 0 0 16px;
-            letter-spacing: -0.03em;
-            background: linear-gradient(135deg, #fff 0%, #7c8aa5 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
-
+        .hero h1 { font-size: clamp(38px, 8vw, 64px); margin-bottom: 18px; letter-spacing: -0.03em; }
         .tagline {
-            font-size: clamp(16px, 3vw, 18px);
+            font-size: clamp(16px, 2.6vw, 19px);
             color: var(--text-secondary);
-            margin-bottom: 20px;
-            max-width: 620px;
-            margin-left: auto;
-            margin-right: auto;
+            max-width: 600px;
+            margin: 0 auto 36px;
         }
-
-        .docs-grid {
+        .benefits {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 22px;
-            max-width: 980px;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
             width: 100%;
-            padding: 0 0 60px;
-        }
-
-        .doc-card {
-            position: relative;
+            max-width: 880px;
+            margin: 0 0 40px;
             text-align: left;
-            text-decoration: none;
-            color: inherit;
+        }
+        .benefit {
             background: var(--panel-color);
             backdrop-filter: blur(12px);
             border: 1px solid var(--panel-border);
-            border-radius: 20px;
-            padding: 30px;
-            overflow: hidden;
-            transition: all 0.25s ease;
+            border-radius: var(--radius-lg);
+            padding: 22px;
+            box-shadow: var(--shadow-soft);
+            transition: transform 0.25s ease, border-color 0.25s ease;
         }
-
-        .doc-card::before {
-            content: '';
-            position: absolute;
-            inset: 0;
-            background: linear-gradient(135deg, rgba(34, 211, 238, 0.08), transparent 60%);
-            opacity: 0;
-            transition: opacity 0.25s ease;
-        }
-
-        .doc-card:hover {
-            border-color: rgba(56, 189, 248, 0.45);
-            transform: translateY(-4px);
-            box-shadow: 0 20px 40px -18px rgba(34, 211, 238, 0.35);
-        }
-
-        .doc-card:hover::before {
-            opacity: 1;
-        }
-
-        .doc-index {
-            font-family: var(--mono-font);
-            font-size: 12px;
-            color: var(--accent-color);
-            letter-spacing: 0.1em;
-            margin-bottom: 14px;
-        }
-
-        .doc-icon {
-            width: 46px;
-            height: 46px;
-            border-radius: 12px;
-            background: rgba(34, 211, 238, 0.1);
-            border: 1px solid rgba(34, 211, 238, 0.25);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin-bottom: 20px;
+        .js .benefit.reveal { transition: opacity 0.6s ease, transform 0.6s ease, border-color 0.25s ease; }
+        .benefit:hover { border-color: var(--accent-color); transform: translateY(-3px); }
+        .benefit-icon {
+            width: 40px; height: 40px; border-radius: 12px; margin-bottom: 14px;
+            display: flex; align-items: center; justify-content: center;
+            background: linear-gradient(135deg, rgba(240, 160, 75, 0.22), rgba(122, 46, 58, 0.25));
             color: var(--accent-color);
         }
-
-        .doc-title {
-            font-weight: 700;
-            font-size: 19px;
-            margin-bottom: 10px;
-            color: #fff;
-        }
-
-        .doc-desc {
-            color: var(--text-secondary);
-            font-size: 14px;
-            line-height: 1.6;
-            margin-bottom: 20px;
-        }
-
-        .doc-link {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            font-family: var(--mono-font);
-            font-size: 13px;
-            font-weight: 500;
-            color: var(--accent-secondary);
-        }
-
-        .doc-card:hover .doc-link {
-            color: var(--accent-color);
-        }
-
-        footer {
-            margin-top: auto;
-            padding: 36px 20px 24px;
-            color: var(--text-secondary);
-            font-size: 13px;
-            font-family: var(--mono-font);
-            text-align: center;
-            border-top: 1px solid var(--panel-border);
+        .benefit h2 { font-size: 17px; margin: 0 0 6px; color: var(--text-primary); }
+        .benefit p { font-size: 14px; margin: 0; }
+        .cta {
             width: 100%;
-            max-width: 980px;
-        }
-
-        footer a {
-            color: var(--text-secondary);
-            text-decoration: none;
-            margin: 0 10px;
-            transition: color 0.2s;
-        }
-
-        footer a:hover {
-            color: var(--accent-color);
-        }
-
-        .download-panel {
+            max-width: 640px;
+            margin: 0 auto;
             display: flex;
             flex-wrap: wrap;
             align-items: center;
-            justify-content: space-between;
-            gap: 18px;
-            max-width: 980px;
-            width: 100%;
-            margin: 0 0 40px;
+            justify-content: center;
+            gap: 14px;
             background: var(--panel-color);
             backdrop-filter: blur(12px);
             border: 1px solid var(--panel-border);
-            border-radius: 20px;
-            padding: 24px 30px;
-            text-align: left;
+            border-radius: var(--radius-lg);
+            padding: 26px;
+            box-shadow: var(--shadow-soft);
         }
-
-        .download-panel .download-info {
-            display: flex;
-            align-items: center;
-            gap: 16px;
-        }
-
-        .download-panel .download-icon {
-            width: 46px;
-            height: 46px;
-            border-radius: 12px;
-            background: rgba(34, 211, 238, 0.1);
-            border: 1px solid rgba(34, 211, 238, 0.25);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: var(--accent-color);
-            flex-shrink: 0;
-        }
-
-        .download-panel .download-title {
-            font-weight: 700;
-            font-size: 17px;
-            color: #fff;
-            margin-bottom: 4px;
-        }
-
-        .download-panel .download-version {
-            font-family: var(--mono-font);
-            font-size: 12px;
-            color: var(--text-secondary);
-        }
-
-        .download-btn {
-            display: inline-flex;
-            align-items: center;
-            gap: 10px;
-            background-color: var(--accent-color);
-            color: #04141c;
-            padding: 13px 24px;
-            border-radius: 14px;
-            text-decoration: none;
-            font-weight: 700;
-            font-size: 14px;
-            white-space: nowrap;
-            transition: all 0.25s ease;
-            box-shadow: 0 10px 25px -8px rgba(34, 211, 238, 0.5);
-        }
-
-        .download-btn:hover {
-            background-color: var(--accent-secondary);
-            transform: translateY(-2px);
-        }
-
-        .download-btn.is-loading,
-        .download-btn.is-disabled {
-            opacity: 0.6;
-            pointer-events: none;
-        }
-
+        .cta-meta { flex: 1 1 220px; text-align: left; }
+        .cta-title { font-weight: 700; color: var(--text-primary); font-size: 16px; }
+        .cta-version { font-family: var(--mono-font); font-size: 12px; color: var(--text-secondary); }
+        .btn-row { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
         .spinner {
-            width: 14px;
-            height: 14px;
-            border: 2px solid rgba(4, 20, 28, 0.3);
-            border-radius: 50%;
-            border-top-color: #04141c;
+            width: 14px; height: 14px; border-radius: 50%;
+            border: 2px solid rgba(42, 20, 8, 0.3); border-top-color: #2a1408;
             animation: spin 0.8s linear infinite;
         }
-
-        @keyframes spin {
-            to { transform: rotate(360deg); }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .docs-links {
+            margin-top: 40px;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 10px 18px;
+            font-size: 14px;
         }
-
+        .docs-links a { color: var(--text-secondary); text-decoration: none; transition: color 0.2s; }
+        .docs-links a:hover { color: var(--accent-color); }
+        footer {
+            margin-top: auto;
+            padding-top: 40px;
+            color: var(--text-secondary);
+            font-size: 13px;
+            font-family: var(--mono-font);
+            text-align: center;
+        }
+        footer a { color: var(--text-secondary); }
+        footer a:hover { color: var(--accent-color); }
         @media (max-width: 640px) {
-            .hero { padding-top: 36px; }
-            .topbar { flex-wrap: wrap; gap: 10px; }
-            .download-panel { flex-direction: column; align-items: stretch; text-align: center; }
-            .download-panel .download-info { justify-content: center; }
-            .download-btn { justify-content: center; }
+            .cta { flex-direction: column; text-align: center; }
+            .cta-meta { text-align: center; }
+            .btn { width: 100%; }
         }
-        .features-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-            gap: 16px;
-            max-width: 980px;
-            width: 100%;
-            margin: 28px 0 40px;
-            text-align: left;
-        }
-        .feature-card {
-            background: var(--panel-color);
-            backdrop-filter: blur(12px);
-            border: 1px solid var(--panel-border);
-            border-radius: 18px;
-            padding: 20px;
-            transition: transform 0.25s ease, border-color 0.25s ease;
-        }
-        .js .feature-card.reveal { transition: opacity 0.6s ease, transform 0.6s ease, border-color 0.25s ease; }
-        .feature-card:hover { border-color: var(--accent-color); }
-        .feature-card h3 { margin: 0 0 6px; font-size: 16px; color: var(--text-primary); }
-        .feature-card p { margin: 0; font-size: 14px; color: var(--text-secondary); }
-        .feature-card .feature-ico { font-family: var(--mono-font); color: var(--accent-color); font-size: 12px; letter-spacing: 0.12em; margin-bottom: 10px; display: block; }
     </style>
-    <link rel="stylesheet" href="/static/css/site.css">
     <script src="/static/js/site.js"></script>
+    <script src="/static/js/bg3d.js" defer></script>
     <meta name="google-site-verification" content="29HuyK0yV3eZ1XaA4VNvb3JqYKFLdkrytJH3DNJUScw">
 </head>
-<body>
-    <div class="topbar">
+<body class="home">
+    <header class="topbar">
         <div class="brand">
-            <img src="/logo.png" alt="Fokin" onerror="this.src='https://via.placeholder.com/26?text=F'">
-            Fokin System
+            <img src="/logo.png" alt="" onerror="this.style.display='none'">
+            {{ SITE_NAME }}
         </div>
-        <div class="status-pill">
-            <span class="status-dot"></span>
-            Система активна
-        </div>
-    </div>
-
-    <div class="hero">
-        <div class="eyebrow">Друзья · Публикации · Чаты · Уведомления</div>
-        <h1>Fokin System</h1>
-        <p class="tagline">Приложение для общения: добавляйте друзей, делитесь публикациями, читайте объявления и переписывайтесь в чатах.</p>
-
-        <div class="download-panel">
-            <div class="download-info">
-                <div class="download-icon">
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M12 3v12"></path>
-                        <path d="M7 10l5 5 5-5"></path>
-                        <path d="M5 21h14"></path>
-                    </svg>
-                </div>
-                <div>
-                    <div class="download-title">Приложение Fokin System</div>
-                    <div class="download-version" id="app-version-label">Проверка последней версии...</div>
-                </div>
+        <div class="topbar-actions">
+            <div class="status-pill">
+                <span class="status-dot"></span>
+                Система активна
             </div>
-            <a href="#" id="download-btn" class="download-btn is-disabled">
-                <span class="spinner"></span>
-                Загрузка
-            </a>
         </div>
+    </header>
 
-        <div class="features-grid" role="list" aria-label="Возможности приложения">
-            <div class="feature-card reveal" role="listitem"><span class="feature-ico" aria-hidden="true">01 / FRIENDS</span><h3>Друзья</h3><p>Поиск людей и заявки в друзья.</p></div>
-            <div class="feature-card reveal" role="listitem"><span class="feature-ico" aria-hidden="true">02 / POSTS</span><h3>Публикации</h3><p>Посты, фото и альбомы, реакции и комментарии.</p></div>
-            <div class="feature-card reveal" role="listitem"><span class="feature-ico" aria-hidden="true">03 / NEWS</span><h3>Объявления и новости</h3><p>Важные сообщения всегда под рукой.</p></div>
-            <div class="feature-card reveal" role="listitem"><span class="feature-ico" aria-hidden="true">04 / CHAT</span><h3>Чаты</h3><p>Личные и групповые переписки, а также ИИ-чат.</p></div>
-            <div class="feature-card reveal" role="listitem"><span class="feature-ico" aria-hidden="true">05 / BELL</span><h3>Колокольчик</h3><p>Все события в одном списке и push на телефон.</p></div>
-        </div>
+    <main class="hero">
+        <h1>{{ SITE_NAME }}</h1>
+        <p class="tagline">Личный дневник, который можно сделать публичным: делитесь мыслями, общайтесь с людьми и получайте помощь ИИ по своим записям.</p>
 
-        <div class="docs-grid">
-            <a href="/privacy-policy" class="doc-card">
-                <div class="doc-index">DOC / 01</div>
-                <div class="doc-icon">
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6l8-4z"></path>
-                    </svg>
+        <section class="benefits" aria-label="Преимущества">
+            <article class="benefit reveal">
+                <div class="benefit-icon" aria-hidden="true">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
                 </div>
-                <div class="doc-title">Политика конфиденциальности</div>
-                <div class="doc-desc">Правила сбора, обработки и защиты данных пользователей приложения.</div>
-                <span class="doc-link">
-                    Открыть документ
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                        <line x1="5" y1="12" x2="19" y2="12"></line>
-                        <polyline points="12 5 19 12 12 19"></polyline>
-                    </svg>
-                </span>
-            </a>
-
-            <a href="/terms" class="doc-card">
-                <div class="doc-index">DOC / 02</div>
-                <div class="doc-icon">
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M9 12l2 2 4-4"></path>
-                        <path d="M21 12c0 4.97-4.03 9-9 9s-9-4.03-9-9 4.03-9 9-9 9 4.03 9 9z"></path>
-                    </svg>
+                <h2>Личный журнал</h2>
+                <p>Записывайте мысли и решайте, что открыть всем.</p>
+            </article>
+            <article class="benefit reveal">
+                <div class="benefit-icon" aria-hidden="true">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"></circle><path d="M2.5 20c.8-3.2 3.3-5 6.5-5s5.7 1.8 6.5 5"></path><path d="M16 4.5a3.5 3.5 0 0 1 0 7"></path><path d="M18.5 15c1.3.8 2.2 2.3 2.5 5"></path></svg>
                 </div>
-                <div class="doc-title">Пользовательское соглашение</div>
-                <div class="doc-desc">Условия использования приложения, права и обязанности сторон.</div>
-                <span class="doc-link">
-                    Открыть документ
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                        <line x1="5" y1="12" x2="19" y2="12"></line>
-                        <polyline points="12 5 19 12 12 19"></polyline>
-                    </svg>
-                </span>
-            </a>
-
-            <a href="/user-guide" class="doc-card">
-                <div class="doc-index">DOC / 03</div>
-                <div class="doc-icon">
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
-                        <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
-                    </svg>
+                <h2>Социальная лента</h2>
+                <p>Друзья, публикации, реакции и чаты в одном месте.</p>
+            </article>
+            <article class="benefit reveal">
+                <div class="benefit-icon" aria-hidden="true">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"></path><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"></path></svg>
                 </div>
-                <div class="doc-title">Руководство пользователя</div>
-                <div class="doc-desc">Вход, друзья, публикации, объявления, чаты и уведомления. FAQ и решение проблем.</div>
-                <span class="doc-link">
-                    Открыть документ
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                        <line x1="5" y1="12" x2="19" y2="12"></line>
-                        <polyline points="12 5 19 12 12 19"></polyline>
-                    </svg>
-                </span>
-            </a>
-
-            <a href="/tech-docs" class="doc-card">
-                <div class="doc-index">DOC / 04</div>
-                <div class="doc-icon">
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <polyline points="16 18 22 12 16 6"></polyline>
-                        <polyline points="8 6 2 12 8 18"></polyline>
-                    </svg>
+                <h2>ИИ-помощник</h2>
+                <p>Подскажет идеи и поможет разобраться в ваших записях.</p>
+            </article>
+            <article class="benefit reveal">
+                <div class="benefit-icon" aria-hidden="true">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6l8-4z"></path></svg>
                 </div>
-                <div class="doc-title">Техническая документация</div>
-                <div class="doc-desc">Архитектура, push-уведомления, технологический стек и инфраструктура Docker — для разработчиков и DevOps.</div>
-                <span class="doc-link">
-                    Открыть документ
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                        <line x1="5" y1="12" x2="19" y2="12"></line>
-                        <polyline points="12 5 19 12 12 19"></polyline>
-                    </svg>
-                </span>
-            </a>
-        </div>
-    </div>
+                <h2>Приватность</h2>
+                <p>Вы сами выбираете, что видят другие. Данные не продаются.</p>
+            </article>
+        </section>
+
+        <section class="cta" aria-label="Начать пользоваться">
+            <div class="cta-meta">
+                <div class="cta-title">Начните вести журнал</div>
+                <div class="cta-version" id="app-version-label">Проверка последней версии...</div>
+            </div>
+            <div class="btn-row">
+                <a href="#" id="download-btn" class="btn is-disabled">
+                    <span class="spinner" aria-hidden="true"></span>
+                    Загрузка
+                </a>
+                <a href="/login" class="btn btn-ghost">Войти</a>
+            </div>
+        </section>
+
+        <nav class="docs-links" aria-label="Документы">
+            <a href="/user-guide">Руководство</a>
+            <a href="/tech-docs">Техдокументация</a>
+            <a href="/privacy-policy">Конфиденциальность</a>
+            <a href="/terms">Соглашение</a>
+        </nav>
+    </main>
 
     <footer>
-        <p>Made with <span style="color: var(--accent-color);">&#9733;</span> by <a href="mailto:k2foxspb@mail.ru">k2foxspb</a></p>
-        <p>&copy; 2026 Fokin System. All rights reserved.</p>
+        <p>Сделано с душой · <a href="mailto:k2foxspb@mail.ru">k2foxspb</a></p>
+        <p>&copy; 2026 {{ SITE_NAME }}</p>
     </footer>
 
     <script>
@@ -571,7 +262,7 @@
                     btn.innerHTML =
                         '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">' +
                         '<path d="M12 3v12"></path><path d="M7 10l5 5 5-5"></path><path d="M5 21h14"></path>' +
-                        '</svg> Скачать последнюю версию';
+                        '</svg> Скачать приложение';
                     label.textContent = 'Версия ' + data.version;
                 })
                 .catch(function () {

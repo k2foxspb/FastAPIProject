@@ -4,60 +4,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Техническая документация — Fokin System</title>
-    <meta name="description" content="Кратко об архитектуре Fokin System: backend на FastAPI, мобильное приложение на React Native, push-уведомления и инфраструктура.">
+    <meta name="description" content="Коротко о Fokin System: как устроен backend на FastAPI, как запустить проект и где что лежит.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/css/site.css">
     <script src="/static/js/site.js"></script>
+    <script src="/static/js/bg3d.js" defer></script>
     <style>
-        * { box-sizing: border-box; }
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: var(--bg-color);
-            background-image:
-                linear-gradient(rgba(56, 189, 248, 0.05) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(56, 189, 248, 0.05) 1px, transparent 1px),
-                radial-gradient(circle at 100% 100%, rgba(34, 211, 238, 0.1) 0%, transparent 50%);
-            background-size: 42px 42px, 42px 42px, 100% 100%;
-            color: var(--text-primary);
-            line-height: 1.6;
-            margin: 0;
-            padding: 24px 16px 60px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-        }
-        .topbar {
-            width: 100%; max-width: 1180px; display: flex; align-items: center; justify-content: space-between;
-            gap: 12px; padding: 10px 20px; margin-bottom: 24px;
-            background: var(--panel-color); backdrop-filter: blur(10px);
-            border: 1px solid var(--panel-border); border-radius: 14px;
-            font-family: var(--mono-font); font-size: 12px; color: var(--text-secondary);
-        }
-        .doc-tag { color: var(--accent-color); letter-spacing: 0.1em; }
-        .container {
-            background: var(--panel-color); backdrop-filter: blur(12px);
-            border: 1px solid var(--panel-border); border-radius: 24px; padding: 44px;
-            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
-        }
-        h1 {
-            font-size: 32px; font-weight: 800; margin: 0 0 12px; letter-spacing: -0.02em;
-            background: linear-gradient(135deg, #fff 0%, #7c8aa5 100%);
-            -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
-        }
-        html[data-theme="light"] h1 { background: linear-gradient(135deg, #0f172a 0%, #475569 100%); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
-        h2 { font-size: 20px; font-weight: 700; margin: 0 0 16px; color: var(--accent-color); font-family: var(--mono-font); }
-        h2 .num { opacity: 0.6; margin-right: 6px; }
-        p, li { color: var(--text-secondary); font-size: 16px; margin: 0 0 12px; }
-        ul { padding-left: 20px; margin: 0 0 20px; }
-        .back-link {
-            display: inline-flex; align-items: center; color: var(--text-secondary); text-decoration: none;
-            margin-bottom: 24px; font-weight: 500; font-family: var(--mono-font); font-size: 13px; transition: color 0.2s;
-        }
-        .back-link:hover { color: var(--accent-color); }
-        .date { font-size: 13px; font-family: var(--mono-font); color: var(--text-secondary); opacity: 0.8; margin-bottom: 28px; }
-        .topbar .icon-btn { font-size: 12px; }
+        .doc-section h3 { margin-top: 18px; }
     </style>
 </head>
 <body>
@@ -88,13 +43,10 @@
             <p class="sidebar-title">Разделы</p>
             <nav aria-label="Разделы">
                 <ul class="toc">
-                    <li><a href="#overview"><span class="num">01</span>Обзор</a></li>
-                    <li><a href="#backend"><span class="num">02</span>Backend</a></li>
-                    <li><a href="#push"><span class="num">03</span>Push и счётчики</a></li>
-                    <li><a href="#flow"><span class="num">04</span>Схема потока</a></li>
-                    <li><a href="#mobile"><span class="num">05</span>Мобильное приложение</a></li>
-                    <li><a href="#stack"><span class="num">06</span>Стек</a></li>
-                    <li><a href="#infra"><span class="num">07</span>Инфраструктура</a></li>
+                    <li><a href="#purpose"><span class="num">01</span>Назначение</a></li>
+                    <li><a href="#run"><span class="num">02</span>Запуск</a></li>
+                    <li><a href="#sections"><span class="num">03</span>Основные разделы</a></li>
+                    <li><a href="#faq"><span class="num">04</span>Частые вопросы</a></li>
                 </ul>
             </nav>
         </aside>
@@ -109,96 +61,54 @@
             </a>
 
             <h1>Техническая документация</h1>
-            <p class="date">Дата обновления: 31 октября 2026 г.</p>
+            <p class="date">Обновлено: 2 ноября 2026 г.</p>
 
-            <section class="doc-section reveal" id="overview">
-                <h2><span class="num">01</span>Обзор</h2>
-                <p class="lead">Fokin System — приложение для знакомств и общения: друзья, публикации, объявления, чаты и колокольчик уведомлений. Backend на FastAPI, клиент на React Native (Expo).</p>
+            <section class="doc-section reveal" id="purpose">
+                <h2><span class="num">01</span>Назначение</h2>
+                <p class="lead">Fokin System — личный журнал, который можно сделать публичным, со social-лентой, чатами и ИИ-помощником по записям. Backend написан на FastAPI, мобильный клиент — на React Native (Expo).</p>
             </section>
 
-            <section class="doc-section reveal" id="backend">
-                <h2><span class="num">02</span>Backend</h2>
-                <ul>
-                    <li><code>app/api/routers/</code>: <code>users</code> (профиль, поиск, друзья), <code>feed</code> и <code>news</code> (публикации, новости, объявления), <code>chat</code> и <code>group_chat</code> (сообщения), <code>notification_center</code> (колокольчик), <code>notifications</code> (WebSocket), <code>ai</code>, <code>admin</code>, <code>tasks</code>.</li>
-                    <li>Веб-страницы и статика отдаются из <code>app/main.py</code>. Медиа — через <code>/media/*</code>.</li>
-                </ul>
-            </section>
-
-            <section class="doc-section reveal" id="push">
-                <h2><span class="num">03</span>Push и счётчики</h2>
-                <ul>
-                    <li>Все события колокольчика создаются через <code>create_or_group_notification()</code>; однотипные события группируются по <code>group_key</code>.</li>
-                    <li>Android получает только <code>data</code>-сообщение с высоким приоритетом, его показывает Notifee с аватаркой отправителя. iOS — APNs.</li>
-                    <li>Поле <code>data.type</code> задаёт маршрут: <code>new_message</code>, <code>new_group_message</code> → счётчик сообщений; <code>friend_request</code>, <code>friend_accepted</code>, <code>announcement</code>, <code>new_post</code> и неизвестные типы → колокольчик.</li>
-                    <li>Счётчики независимы: колокольчик — <code>/notifications/unread-count</code>, сообщения — <code>unread_count</code> диалогов.</li>
-                    <li>Тихие часы отправляют push без звука (канал <code>silent</code>). Отключаемые группы задаются в настройках пользователя; объявления отключить нельзя.</li>
-                </ul>
-            </section>
-
-            <section class="doc-section reveal" id="flow">
-                <h2><span class="num">04</span>Схема потока</h2>
-                <p>Нажмите на узел, чтобы увидеть описание этапа.</p>
-                <div class="flow" data-flow>
-                    <div class="flow-nodes" role="group" aria-label="Узлы схемы доставки уведомлений">
-                        <button type="button" class="flow-node" data-info="info-event">Событие<small>роутер</small></button>
-                        <span class="flow-arrow" aria-hidden="true">→</span>
-                        <button type="button" class="flow-node" data-info="info-service">Сервис<small>notification_service</small></button>
-                        <span class="flow-arrow" aria-hidden="true">→</span>
-                        <button type="button" class="flow-node" data-info="info-db">База данных<small>колокольчик</small></button>
-                        <span class="flow-arrow" aria-hidden="true">→</span>
-                        <button type="button" class="flow-node" data-info="info-dispatch">Диспетчер<small>настройки, тихие часы</small></button>
-                        <span class="flow-arrow" aria-hidden="true">→</span>
-                        <button type="button" class="flow-node" data-info="info-ws">WebSocket<small>приложение открыто</small></button>
-                        <span class="flow-arrow" aria-hidden="true">→</span>
-                        <button type="button" class="flow-node" data-info="info-fcm">FCM / APNs<small>push</small></button>
-                        <span class="flow-arrow" aria-hidden="true">→</span>
-                        <button type="button" class="flow-node" data-info="info-client">Клиент<small>Notifee</small></button>
-                    </div>
-                    <div class="flow-detail" aria-live="polite"></div>
-                    <div hidden>
-                        <div id="info-event"><h4>Событие</h4><p>Роутер фиксирует действие: лайк, заявку в друзья, объявление, сообщение.</p></div>
-                        <div id="info-service"><h4>Сервис</h4><p><code>create_or_group_notification()</code> создаёт запись или обновляет непрочитанную с тем же <code>group_key</code>.</p></div>
-                        <div id="info-db"><h4>База данных</h4><p>Запись сохраняется до доставки, поэтому колокольчик показывает историю даже без push.</p></div>
-                        <div id="info-dispatch"><h4>Диспетчер</h4><p><code>dispatch_notification()</code> проверяет группу, токен устройства и тихие часы.</p></div>
-                        <div id="info-ws"><h4>WebSocket</h4><p>Если приложение открыто, событие приходит сразу, без опроса.</p></div>
-                        <div id="info-fcm"><h4>FCM / APNs</h4><p>Firebase Admin SDK отправляет сообщение: Android — data-only, iOS — alert + data.</p></div>
-                        <div id="info-client"><h4>Клиент</h4><p>Фоновый обработчик получает data-сообщение, Notifee показывает одно уведомление в нужном канале.</p></div>
-                    </div>
+            <section class="doc-section reveal" id="run">
+                <h2><span class="num">02</span>Запуск</h2>
+                <ol class="steps">
+                    <li>Скопируйте переменные окружения в файл <code>.env</code> и заполните свои значения. Файл в git не коммитится.</li>
+                    <li>Поднимите сервисы командой ниже. Для локального запуска используйте <code>docker-compose.yml</code>.</li>
+                    <li>Откройте сайт в браузере. Проверка работы: главная страница отвечает без ошибок.</li>
+                </ol>
+                <div class="code-block">
+                    <pre><code>docker compose -f docker-compose.yml up --build</code></pre>
+                </div>
+                <div class="note">
+                    <span class="note-title">Ollama</span>
+                    <p>Для ИИ-помощника на хосте должен работать Ollama. Адрес и модель задаются в <code>.env</code> (<code>OLLAMA_URL</code>, <code>OLLAMA_MODEL</code>).</p>
                 </div>
             </section>
 
-            <section class="doc-section reveal" id="mobile">
-                <h2><span class="num">05</span>Мобильное приложение</h2>
+            <section class="doc-section reveal" id="sections">
+                <h2><span class="num">03</span>Основные разделы</h2>
                 <ul>
-                    <li>Expo SDK 54, React Native 0.81, React Navigation 7.</li>
-                    <li>Push: <code>@react-native-firebase/messaging</code> и <code>@notifee/react-native</code>. Каналы: <code>messages</code> и <code>silent</code>.</li>
-                    <li>Переход по тапу — единая функция <code>navigateByPushData</code> по <code>data.type</code>.</li>
+                    <li><strong>API.</strong> Роутеры лежат в <code>app/api/routers/</code>: <code>users</code>, <code>feed</code>, <code>news</code>, <code>chat</code>, <code>group_chat</code>, <code>notification_center</code>, <code>notifications</code> (WebSocket), <code>ai</code>, <code>admin</code>, <code>tasks</code>.</li>
+                    <li><strong>Страницы.</strong> Шаблоны Jinja2 находятся в <code>app/templates/</code>, статика — в <code>app/static/</code>. Медиа отдаются через <code>/media/*</code>.</li>
+                    <li><strong>Уведомления.</strong> Все события колокольчика создаются через <code>create_or_group_notification()</code> и группируются по <code>group_key</code>. Тихие часы отправляют push без звука.</li>
+                    <li><strong>Счётчики.</strong> Колокольчик — <code>/notifications/unread-count</code>, сообщения — непрочитанные диалоги. Они независимы.</li>
+                    <li><strong>Мобильное приложение.</strong> Expo SDK 54, React Native 0.81. Push: Firebase Messaging и Notifee (Android), APNs (iOS).</li>
                 </ul>
             </section>
 
-            <section class="doc-section reveal" id="stack">
-                <h2><span class="num">06</span>Стек</h2>
-                <div class="table-wrap">
-                    <table>
-                        <thead><tr><th scope="col">Компонент</th><th scope="col">Версия</th></tr></thead>
-                        <tbody>
-                            <tr><td>FastAPI / Starlette</td><td>0.120.4 / 0.49.1</td></tr>
-                            <tr><td>SQLAlchemy (async) / Alembic</td><td>2.0.44 / 1.17.1</td></tr>
-                            <tr><td>Celery / Redis-py</td><td>5.6.2 / 7.1.1</td></tr>
-                            <tr><td>firebase-admin</td><td>6.6.0</td></tr>
-                            <tr><td>React Native / Expo SDK</td><td>0.81.5 / ~54.0</td></tr>
-                            <tr><td>@notifee/react-native</td><td>^9.1.8</td></tr>
-                        </tbody>
-                    </table>
-                </div>
-            </section>
-
-            <section class="doc-section reveal" id="infra">
-                <h2><span class="num">07</span>Инфраструктура</h2>
-                <ul>
-                    <li><code>docker-compose.prod.yml</code>: web (Gunicorn + FastAPI), celery_worker, PostgreSQL 15, Redis 7, nginx, certbot.</li>
-                    <li>Секреты и адреса сервисов задаются переменными окружения и в документации не приводятся.</li>
-                </ul>
+            <section class="doc-section reveal" id="faq">
+                <h2><span class="num">04</span>Частые вопросы</h2>
+                <details class="faq">
+                    <summary>Где хранятся секреты?</summary>
+                    <div class="faq-body"><p>В переменных окружения (<code>.env</code>). В шаблонах и скриптах их быть не должно.</p></div>
+                </details>
+                <details class="faq">
+                    <summary>Почему ИИ не отвечает?</summary>
+                    <div class="faq-body"><p>Проверьте, что Ollama запущен и слушает нужный адрес, а модель из <code>OLLAMA_MODEL</code> загружена.</p></div>
+                </details>
+                <details class="faq">
+                    <summary>Как поменять название сайта?</summary>
+                    <div class="faq-body"><p>Название задано в начале <code>index.html</code> в переменной <code>SITE_NAME</code>.</p></div>
+                </details>
             </section>
         </main>
     </div>

@@ -4,60 +4,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Руководство пользователя — Fokin System</title>
-    <meta name="description" content="Кратко: как найти знакомых, отправить заявку в друзья, написать сообщение и настроить уведомления в Fokin System.">
+    <meta name="description" content="Как пользоваться Fokin System: профиль, друзья, сообщения, уведомления и ответы на частые вопросы.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/css/site.css">
     <script src="/static/js/site.js"></script>
-    <style>
-        * { box-sizing: border-box; }
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: var(--bg-color);
-            background-image:
-                linear-gradient(rgba(56, 189, 248, 0.05) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(56, 189, 248, 0.05) 1px, transparent 1px),
-                radial-gradient(circle at 100% 100%, rgba(34, 211, 238, 0.1) 0%, transparent 50%);
-            background-size: 42px 42px, 42px 42px, 100% 100%;
-            color: var(--text-primary);
-            line-height: 1.6;
-            margin: 0;
-            padding: 24px 16px 60px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-        }
-        .topbar {
-            width: 100%; max-width: 1180px; display: flex; align-items: center; justify-content: space-between;
-            gap: 12px; padding: 10px 20px; margin-bottom: 24px;
-            background: var(--panel-color); backdrop-filter: blur(10px);
-            border: 1px solid var(--panel-border); border-radius: 14px;
-            font-family: var(--mono-font); font-size: 12px; color: var(--text-secondary);
-        }
-        .doc-tag { color: var(--accent-color); letter-spacing: 0.1em; }
-        .container {
-            background: var(--panel-color); backdrop-filter: blur(12px);
-            border: 1px solid var(--panel-border); border-radius: 24px; padding: 44px;
-            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
-        }
-        h1 {
-            font-size: 32px; font-weight: 800; margin: 0 0 12px; letter-spacing: -0.02em;
-            background: linear-gradient(135deg, #fff 0%, #7c8aa5 100%);
-            -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
-        }
-        html[data-theme="light"] h1 { background: linear-gradient(135deg, #0f172a 0%, #475569 100%); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
-        h2 { font-size: 20px; font-weight: 700; margin: 0 0 16px; color: var(--accent-color); font-family: var(--mono-font); }
-        h2 .num { opacity: 0.6; margin-right: 6px; }
-        p, li { color: var(--text-secondary); font-size: 16px; margin: 0 0 12px; }
-        ul, ol { padding-left: 20px; margin: 0 0 20px; }
-        .back-link {
-            display: inline-flex; align-items: center; color: var(--text-secondary); text-decoration: none;
-            margin-bottom: 24px; font-weight: 500; font-family: var(--mono-font); font-size: 13px; transition: color 0.2s;
-        }
-        .back-link:hover { color: var(--accent-color); }
-        .date { font-size: 13px; font-family: var(--mono-font); color: var(--text-secondary); opacity: 0.8; margin-bottom: 28px; }
-    </style>
+    <script src="/static/js/bg3d.js" defer></script>
 </head>
 <body>
     <a class="skip-link" href="#content">Перейти к содержимому</a>
@@ -87,11 +40,11 @@
             <p class="sidebar-title">Разделы</p>
             <nav aria-label="Разделы">
                 <ul class="toc">
-                    <li><a href="#start"><span class="num">01</span>Старт</a></li>
-                    <li><a href="#dating"><span class="num">02</span>Знакомства</a></li>
-                    <li><a href="#chats"><span class="num">03</span>Сообщения</a></li>
+                    <li><a href="#start"><span class="num">01</span>Начало</a></li>
+                    <li><a href="#journal"><span class="num">02</span>Журнал</a></li>
+                    <li><a href="#people"><span class="num">03</span>Друзья и чаты</a></li>
                     <li><a href="#notifications"><span class="num">04</span>Уведомления</a></li>
-                    <li><a href="#faq"><span class="num">05</span>FAQ</a></li>
+                    <li><a href="#faq"><span class="num">05</span>Вопросы</a></li>
                 </ul>
             </nav>
         </aside>
@@ -106,61 +59,57 @@
             </a>
 
             <h1>Руководство пользователя</h1>
-            <p class="date">Дата обновления: 31 октября 2026 г.</p>
+            <p class="date">Обновлено: 2 ноября 2026 г.</p>
 
             <section class="doc-section reveal" id="start">
-                <h2><span class="num">01</span>Старт</h2>
+                <h2><span class="num">01</span>Начало</h2>
                 <ol class="steps">
-                    <li>Установите приложение и войдите по номеру телефона (SMS-код).</li>
-                    <li>Заполните профиль: имя и фото — их видят другие пользователи.</li>
-                    <li>Разрешите уведомления — без них сообщения и заявки не придут.</li>
+                    <li>Откройте приложение и войдите в аккаунт.</li>
+                    <li>Заполните профиль: по нему вас найдут друзья.</li>
+                    <li>Разрешите уведомления, чтобы не пропускать сообщения и заявки.</li>
                 </ol>
-                <div class="note warn"><span class="note-title">Безопасность</span><p>Никому не передавайте код из SMS. Поддержка его не запрашивает.</p></div>
             </section>
 
-            <section class="doc-section reveal" id="dating">
-                <h2><span class="num">02</span>Знакомства</h2>
-                <ol class="steps">
-                    <li>Найдите людей через поиск по имени и откройте профиль.</li>
-                    <li>Отправьте заявку в друзья — так вы сможете писать друг другу и видеть публикации.</li>
-                    <li>Когда заявку примут, человек появится в списке друзей.</li>
-                    <li>Публикуйте посты и реагируйте на публикации друзей: лайки и комментарии — повод начать разговор.</li>
-                </ol>
-                <div class="note"><span class="note-title">Совет</span><p>Заполненный профиль и свежие публикации повышают шанс, что заявку примут.</p></div>
-            </section>
-
-            <section class="doc-section reveal" id="chats">
-                <h2><span class="num">03</span>Сообщения</h2>
+            <section class="doc-section reveal" id="journal">
+                <h2><span class="num">02</span>Журнал</h2>
                 <ul>
-                    <li><strong>Личные чаты.</strong> Откройте диалог с другом и напишите сообщение. Можно отправлять фото и файлы.</li>
-                    <li><strong>Групповые чаты.</strong> Создайте группу, добавьте участников и общайтесь вместе.</li>
-                    <li><strong>Счётчик.</strong> Число на вкладке «Сообщения» — это только непрочитанные сообщения.</li>
+                    <li>Ведите личный журнал: записи видны вам, пока вы не решите их опубликовать.</li>
+                    <li>Записи можно открыть для других пользователей. Публикации друзей можно лайкать и комментировать.</li>
+                    <li>ИИ-помощник работает на локальной модели и помогает разобраться в ваших записях.</li>
                 </ul>
+            </section>
+
+            <section class="doc-section reveal" id="people">
+                <h2><span class="num">03</span>Друзья и чаты</h2>
+                <ol class="steps">
+                    <li>Найдите человека через поиск и откройте его профиль.</li>
+                    <li>Отправьте заявку в друзья. После принятия можно писать друг другу.</li>
+                    <li>Личные и групповые чаты работают в разделе сообщений.</li>
+                </ol>
             </section>
 
             <section class="doc-section reveal" id="notifications">
                 <h2><span class="num">04</span>Уведомления</h2>
                 <ul>
-                    <li><strong>Колокольчик</strong> — заявки в друзья, лайки, комментарии, посты друзей, объявления.</li>
-                    <li><strong>Сообщения</strong> — новые сообщения в чатах.</li>
-                    <li>Нажмите на уведомление, чтобы перейти к событию. «Прочитать все» сбрасывает счётчик колокольчика.</li>
-                    <li>В настройках можно отключить группы уведомлений и включить тихие часы (по умолчанию 22:00–07:00). Объявления отключить нельзя.</li>
+                    <li><strong>Колокольчик</strong> — заявки в друзья, лайки, комментарии, посты друзей и объявления.</li>
+                    <li><strong>Сообщения</strong> — новые сообщения в чатах. Счётчик показывает только непрочитанные.</li>
+                    <li>В настройках можно отключить отдельные группы и включить тихие часы (по умолчанию 22:00–07:00). Объявления отключить нельзя.</li>
                 </ul>
             </section>
 
             <section class="doc-section reveal" id="faq">
-                <h2><span class="num">05</span>FAQ</h2>
+                <h2><span class="num">05</span>Вопросы</h2>
                 <details class="faq">
                     <summary>Не приходят уведомления</summary>
-                    <div class="faq-body"><p>Проверьте разрешение на уведомления в настройках телефона, группу в настройках приложения и режим «Не беспокоить». Убедитесь, что есть интернет.</p></div>
+                    <div class="faq-body"><p>Проверьте разрешение в настройках телефона, нужную группу в приложении и режим «Не беспокоить». Убедитесь, что есть интернет.</p></div>
                 </details>
                 <details class="faq">
-                    <summary>Почему нет звука?</summary>
-                    <div class="faq-body"><p>Скорее всего, включены тихие часы. Их можно отключить в настройках уведомлений.</p></div>
+                    <summary>Нет звука у уведомлений</summary>
+                    <div class="faq-body"><p>Скорее всего, включены тихие часы. Их можно выключить в настройках уведомлений.</p></div>
                 </details>
                 <details class="faq">
                     <summary>Как удалить аккаунт?</summary>
-                    <div class="faq-body"><p>Напишите в поддержку: <a href="mailto:k2foxspb@mail.ru">k2foxspb@mail.ru</a>. Подробнее — в <a href="/privacy-policy">Политике конфиденциальности</a>.</p></div>
+                    <div class="faq-body"><p>Напишите в поддержку: <a href="mailto:k2foxspb@mail.ru">k2foxspb@mail.ru</a>. Подробности — в <a href="/privacy-policy">политике конфиденциальности</a>.</p></div>
                 </details>
             </section>
         </main>
