@@ -69,20 +69,42 @@
         points.rotation.x = tilt;
         scene.add(points);
 
-        // Далёкие тусклые звёзды на фоне, для глубины
+        // Далёкие звёзды: цвет по температуре (голубоватые, белые, жёлтые, оранжевые), разная яркость и медленное мерцание
+        var STAR_TINTS = [[0.7, 0.8, 1], [0.85, 0.9, 1], [1, 1, 1], [1, 0.95, 0.85], [1, 0.82, 0.6], [1, 0.65, 0.4]];
+        var SCOUNT = 260;
         var sgeo = new THREE.BufferGeometry();
-        var spos = new Float32Array(260 * 3);
-        for (var s = 0; s < 260; s++) {
+        var spos = new Float32Array(SCOUNT * 3);
+        var scol = new Float32Array(SCOUNT * 3);
+        var stint = new Float32Array(SCOUNT * 3);
+        var sbri = new Float32Array(SCOUNT), stw = new Float32Array(SCOUNT);
+        for (var s = 0; s < SCOUNT; s++) {
             spos[s * 3] = (Math.random() - 0.5) * 60;
             spos[s * 3 + 1] = (Math.random() - 0.5) * 40;
             spos[s * 3 + 2] = -10 - Math.random() * 20;
+            var tint = STAR_TINTS[Math.floor(Math.random() * STAR_TINTS.length)];
+            stint[s * 3] = tint[0]; stint[s * 3 + 1] = tint[1]; stint[s * 3 + 2] = tint[2];
+            // Большинство звёзд тусклые, единицы яркие
+            sbri[s] = 0.2 + Math.pow(Math.random(), 4) * 0.8;
+            stw[s] = Math.random() * Math.PI * 2;
         }
         sgeo.setAttribute('position', new THREE.BufferAttribute(spos, 3));
+        sgeo.setAttribute('color', new THREE.BufferAttribute(scol, 3));
         var stars = new THREE.Points(sgeo, new THREE.PointsMaterial({
             size: 0.12, map: makeTexture(THREE, 32, [[0, 'rgba(255,255,255,1)'], [0.5, 'rgba(255,255,255,0.4)'], [1, 'rgba(255,255,255,0)']]),
-            color: 0xc8d2ff, transparent: true, opacity: 0.5, depthWrite: false
+            vertexColors: true, transparent: true, opacity: 0.7, depthWrite: false
         }));
         scene.add(stars);
+
+        // Мерцание звёзд: яркость меняется плавно и не одновременно
+        function twinkle(t) {
+            for (var s = 0; s < SCOUNT; s++) {
+                var j = s * 3;
+                var f = sbri[s] * (0.85 + 0.15 * Math.sin(t * 0.4 + stw[s]));
+                scol[j] = stint[j] * f; scol[j + 1] = stint[j + 1] * f; scol[j + 2] = stint[j + 2] * f;
+            }
+            sgeo.attributes.color.needsUpdate = true;
+        }
+        twinkle(0);
 
         // Чёрная дыра в центре: горизонт событий, аккреционный диск, светящееся кольцо и ореол
         var horizon = new THREE.Mesh(new THREE.SphereGeometry(1.5, 48, 32), new THREE.MeshBasicMaterial({ color: 0x000000 }));
@@ -117,8 +139,8 @@
             var p = geo.attributes.position.array;
             for (var k = 0; k < count; k++) {
                 var idx = k * 3;
-                var a = ang[k] + t * 0.12 / Math.sqrt(rad[k]);
-                var rr = rad[k] * (1 + Math.sin(t * 0.3 + phs[k]) * 0.03);
+                var a = ang[k] + t * 0.05 / Math.sqrt(rad[k]);
+                var rr = rad[k] * (1 + Math.sin(t * 0.15 + phs[k]) * 0.03);
                 p[idx] = Math.cos(a) * rr;
                 p[idx + 1] = Math.sin(a) * rr;
                 p[idx + 2] = hgt[k];
@@ -152,15 +174,16 @@
             lastFrame = now;
             var t = (now - t0) / 1000;
             layout(t);
-            points.rotation.z = t * 0.02;
-            var pulse = 1 + Math.sin(t * 0.7) * 0.04;
-            var tiltNow = tilt + Math.sin(t * 0.2) * 0.04;
+            points.rotation.z = t * 0.008;
+            var pulse = 1 + Math.sin(t * 0.3) * 0.04;
+            var tiltNow = tilt + Math.sin(t * 0.08) * 0.04;
             disk.rotation.x = tiltNow;
             ring.rotation.x = tiltNow;
             points.rotation.x = tiltNow;
             halo.scale.set(10 * pulse, 10 * pulse, 1);
-            camera.position.x = Math.sin(t * 0.05) * 0.8;
+            camera.position.x = Math.sin(t * 0.02) * 0.8;
             camera.lookAt(0, 0, 0);
+            twinkle(t);
             renderer.render(scene, camera);
             rafId = requestAnimationFrame(render);
             sampleFps(now);
