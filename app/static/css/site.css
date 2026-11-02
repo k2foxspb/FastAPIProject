@@ -1,7 +1,8 @@
 /* Fokin System — общие стили сайта и документации (подключаются через /static/css/site.css) */
 :root {
     --bg-color: #020409;
-    --panel-color: rgba(14, 18, 40, 0.8);
+    --panel-color: transparent;
+    --text-glow: 0 1px 2px rgba(0, 0, 0, 0.9), 0 3px 10px rgba(0, 0, 0, 0.7), 0 10px 26px rgba(0, 0, 0, 0.45);
     --panel-border: rgba(124, 156, 255, 0.2);
     --accent-color: #7c9cff;
     --accent-secondary: #6a4cc7;
@@ -23,7 +24,8 @@
 
 :root[data-theme="light"] {
     --bg-color: #f3f5ff;
-    --panel-color: rgba(252, 252, 255, 0.9);
+    --panel-color: transparent;
+    --text-glow: 0 1px 1px rgba(255, 255, 255, 0.9), 0 3px 10px rgba(255, 255, 255, 0.6);
     --panel-border: rgba(59, 76, 192, 0.16);
     --accent-color: #3b4cc0;
     --accent-secondary: #5b3fb0;
@@ -32,7 +34,7 @@
     --warn-color: #9a3412;
     --text-primary: #1c2140;
     --text-secondary: #4f5878;
-    --code-bg: rgba(248, 228, 226, 0.75);
+    --code-bg: rgba(232, 236, 255, 0.85);
     --grid-line: rgba(59, 76, 192, 0.05);
     --heading-grad: linear-gradient(135deg, #1c2140 0%, #4a5fd0 100%);
     --shadow-soft: 0 24px 50px -24px rgba(59, 76, 192, 0.25);
@@ -49,8 +51,13 @@ body {
         radial-gradient(ellipse at 90% 100%, rgba(90, 50, 160, 0.11) 0%, transparent 60%);
     background-attachment: fixed;
     color: var(--text-primary);
+    text-shadow: var(--text-glow);
     line-height: 1.6;
     margin: 0;
+}
+
+:root[data-theme="light"] .bg-canvas {
+    opacity: 0.35;
 }
 
 :root[data-theme="light"] body {
@@ -61,6 +68,7 @@ body {
 
 h1, h2, h3, h4 { color: var(--text-primary); }
 h1 {
+    text-shadow: none;
     font-size: clamp(28px, 5vw, 38px); font-weight: 800; margin: 0 0 12px; letter-spacing: -0.02em;
     background: var(--heading-grad); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
 }
@@ -218,6 +226,7 @@ ul, ol { padding-left: 20px; margin: 0 0 20px; }
 
 /* Кнопки */
 .btn {
+    text-shadow: none;
     display: inline-flex; align-items: center; justify-content: center; gap: 10px;
     background: linear-gradient(135deg, var(--accent-color), var(--accent-secondary));
     color: #fff8f5; padding: 13px 26px; border-radius: 14px; text-decoration: none;
@@ -315,7 +324,7 @@ details.faq .faq-body { padding: 0 18px 8px; }
 /* Тосты */
 .toast-region { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 400; display: flex; flex-direction: column; gap: 8px; align-items: center; pointer-events: none; }
 .toast {
-    background: var(--panel-color); color: var(--text-primary);
+    background: var(--bg-color); color: var(--text-primary);
     border: 1px solid var(--accent-color); border-radius: 12px; padding: 10px 18px;
     font-size: 14px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
     animation: toast-in 0.25s ease-out;
@@ -325,7 +334,7 @@ details.faq .faq-body { padding: 0 18px 8px; }
 /* Наверх */
 .to-top {
     position: fixed; right: 20px; bottom: 20px; width: 44px; height: 44px; z-index: 150;
-    border-radius: 50%; border: 1px solid var(--accent-color); background: var(--panel-color);
+    border-radius: 50%; border: 1px solid var(--accent-color); background: var(--bg-color);
     color: var(--accent-color); cursor: pointer;
     display: flex; align-items: center; justify-content: center;
     opacity: 0; visibility: hidden; transform: translateY(10px); transition: opacity 0.25s, transform 0.25s, visibility 0.25s;
