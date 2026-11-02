@@ -3,7 +3,7 @@
     'use strict';
 
     var THREE_URL = 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.min.js';
-    var PALETTE = [0x7c9cff, 0x6a4cc7, 0xb9c8ff, 0x3b2f8f];
+    var PALETTE = [0x7c9cff, 0x5b47b0, 0xc4d0ff, 0x2a1f5c];
 
     var reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     var isTouch = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
@@ -40,7 +40,7 @@
         renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, mobile ? 1 : 1.25));
 
         var scene = new THREE.Scene();
-        scene.fog = new THREE.FogExp2(0x050914, 0.085);
+        scene.fog = new THREE.FogExp2(0x02040a, 0.085);
         var camera = new THREE.PerspectiveCamera(55, 1, 0.1, 100);
         camera.position.z = 14;
 
@@ -64,10 +64,25 @@
         geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
         var points = new THREE.Points(geo, new THREE.PointsMaterial({
             size: 0.3, map: makeTexture(THREE, 64, [[0, 'rgba(255,255,255,1)'], [0.3, 'rgba(255,255,255,0.6)'], [1, 'rgba(255,255,255,0)']]),
-            vertexColors: true, transparent: true, opacity: 0.35, depthWrite: false, blending: THREE.AdditiveBlending
+            vertexColors: true, transparent: true, opacity: 0.28, depthWrite: false, blending: THREE.AdditiveBlending
         }));
         points.rotation.x = tilt;
         scene.add(points);
+
+        // Далёкие тусклые звёзды на фоне, для глубины
+        var sgeo = new THREE.BufferGeometry();
+        var spos = new Float32Array(260 * 3);
+        for (var s = 0; s < 260; s++) {
+            spos[s * 3] = (Math.random() - 0.5) * 60;
+            spos[s * 3 + 1] = (Math.random() - 0.5) * 40;
+            spos[s * 3 + 2] = -10 - Math.random() * 20;
+        }
+        sgeo.setAttribute('position', new THREE.BufferAttribute(spos, 3));
+        var stars = new THREE.Points(sgeo, new THREE.PointsMaterial({
+            size: 0.12, map: makeTexture(THREE, 32, [[0, 'rgba(255,255,255,1)'], [0.5, 'rgba(255,255,255,0.4)'], [1, 'rgba(255,255,255,0)']]),
+            color: 0xc8d2ff, transparent: true, opacity: 0.5, depthWrite: false
+        }));
+        scene.add(stars);
 
         // Чёрная дыра в центре: горизонт событий, аккреционный диск, светящееся кольцо и ореол
         var horizon = new THREE.Mesh(new THREE.SphereGeometry(1.5, 48, 32), new THREE.MeshBasicMaterial({ color: 0x000000 }));
@@ -91,7 +106,7 @@
         scene.add(ring);
 
         var halo = new THREE.Sprite(new THREE.SpriteMaterial({
-            map: makeTexture(THREE, 128, [[0, 'rgba(124,156,255,0.5)'], [0.4, 'rgba(106,76,199,0.18)'], [1, 'rgba(106,76,199,0)']]),
+            map: makeTexture(THREE, 128, [[0, 'rgba(124,156,255,0.3)'], [0.4, 'rgba(106,76,199,0.12)'], [1, 'rgba(106,76,199,0)']]),
             transparent: true, depthWrite: false, blending: THREE.AdditiveBlending
         }));
         halo.scale.set(10, 10, 1);
