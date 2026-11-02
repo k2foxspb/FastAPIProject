@@ -18,7 +18,6 @@ import { setAuthToken, warmUpAppCheck } from './src/api';
 import { setPlaybackAudioMode } from './src/utils/audioSettings';
 import { cleanOldCache } from './src/utils/cacheCleanup';
 import GlobalTransferIndicator from './src/components/GlobalTransferIndicator';
-import FoxlyIntro from './src/components/FoxlyIntro';
 
 function AppContent() {
   const { connect, injectExternalNotification } = useNotifications();
@@ -124,7 +123,6 @@ function AppContent() {
       <TabNavigator />
       {/* Глобальный индикатор фоновой загрузки/выгрузки медиафайлов, виден на любом экране */}
       <GlobalTransferIndicator />
-      <FoxlyIntro />
     </NavigationContainer>
   );
 }
