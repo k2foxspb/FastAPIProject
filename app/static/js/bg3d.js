@@ -37,12 +37,20 @@
         var pos = new Float32Array(count * 3);
         var col = new Float32Array(count * 3);
         var base = new Float32Array(count * 3);
+        var gR = new Float32Array(count), gA = new Float32Array(count);
+        var gZ = new Float32Array(count), gP = new Float32Array(count);
         var tmp = new THREE.Color();
         for (var i = 0; i < count; i++) {
             var x = (Math.random() - 0.5) * 34, y = (Math.random() - 0.5) * 22, z = (Math.random() - 0.5) * 22;
             pos[i * 3] = base[i * 3] = x;
             pos[i * 3 + 1] = base[i * 3 + 1] = y;
             pos[i * 3 + 2] = base[i * 3 + 2] = z;
+            // Параметры спиральной галактики, в которую частицы собираются
+            var u = Math.random();
+            gR[i] = 1.2 + Math.pow(u, 0.8) * 10;
+            gA[i] = (i % 2 ? Math.PI : 0) + gR[i] * 0.55 + (Math.random() - 0.5) * 0.5;
+            gZ[i] = (Math.random() - 0.5) * 0.8;
+            gP[i] = Math.random() * Math.PI * 2;
             tmp.setHex(PALETTE[i % PALETTE.length]);
             col[i * 3] = tmp.r; col[i * 3 + 1] = tmp.g; col[i * 3 + 2] = tmp.b;
         }
@@ -56,7 +64,7 @@
         // Мягко пульсирующая сфера-сетка
         var orb = new THREE.Mesh(
             new THREE.IcosahedronGeometry(3.2, 2),
-            new THREE.MeshBasicMaterial({ color: 0xf0a04b, wireframe: true, transparent: true, opacity: 0.12 })
+            new THREE.MeshBasicMaterial({ color: 0xef5350, wireframe: true, transparent: true, opacity: 0.12 })
         );
         scene.add(orb);
 
@@ -78,10 +86,20 @@
             if (stopped || !visible) return;
             var t = (now - t0) / 1000;
             var p = geo.attributes.position.array;
+            // Частицы то разлетаются, то собираются в галактику; цикл бесконечный
+            var gather = 0.5 + 0.5 * Math.sin(t * 0.1);
+            gather = gather * gather * (3 - 2 * gather);
             for (var k = 0; k < count; k++) {
                 var idx = k * 3;
-                p[idx + 1] = base[idx + 1] + Math.sin(t * 0.2 + k) * 0.35;
-                p[idx] = base[idx] + Math.cos(t * 0.12 + k * 0.5) * 0.25;
+                var m = Math.min(1, Math.max(0, gather + Math.sin(t * 0.3 + gP[k]) * 0.08));
+                var a = gA[k] + t * 0.1 / (0.5 + gR[k] * 0.12);
+                var gx = gR[k] * Math.cos(a);
+                var gy = gR[k] * Math.sin(a) * 0.55;
+                var gz = gZ[k];
+                var drift = 1 - m;
+                p[idx] = base[idx] + (gx - base[idx]) * m + Math.cos(t * 0.12 + k * 0.5) * 0.25 * drift;
+                p[idx + 1] = base[idx + 1] + (gy - base[idx + 1]) * m + Math.sin(t * 0.2 + k) * 0.35 * drift;
+                p[idx + 2] = base[idx + 2] + (gz - base[idx + 2]) * m;
             }
             geo.attributes.position.needsUpdate = true;
             points.rotation.y = t * 0.02;
