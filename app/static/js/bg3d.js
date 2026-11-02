@@ -2,8 +2,8 @@
 (function () {
     'use strict';
 
-    var THREE_URL = 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
-    var PALETTE = [0xef5350, 0xb3261e, 0xff8a80, 0x7a1424];
+    var THREE_URL = 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.min.js';
+    var PALETTE = [0x7c9cff, 0x6a4cc7, 0xb9c8ff, 0x3b2f8f];
 
     var reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     var isTouch = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
@@ -23,12 +23,12 @@
         document.body.insertBefore(canvas, document.body.firstChild);
 
         var mobile = isTouch || window.innerWidth < 720;
-        var count = mobile || lowPower ? 380 : 900;
+        var count = mobile || lowPower ? 180 : 420;
         var renderer = new THREE.WebGLRenderer({ canvas: canvas, alpha: true, antialias: false, powerPreference: 'low-power' });
-        renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, mobile ? 1 : 1.5));
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, mobile ? 1 : 1.25));
 
         var scene = new THREE.Scene();
-        scene.fog = new THREE.FogExp2(0x140708, 0.085);
+        scene.fog = new THREE.FogExp2(0x050914, 0.085);
         var camera = new THREE.PerspectiveCamera(55, 1, 0.1, 100);
         camera.position.z = 14;
 
@@ -56,15 +56,26 @@
         }
         geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
         geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+        // Круглая текстура для звёзд (радиальный градиент, один общий canvas)
+        var starCanvas = document.createElement('canvas');
+        starCanvas.width = starCanvas.height = 32;
+        var sctx = starCanvas.getContext('2d');
+        var grad = sctx.createRadialGradient(16, 16, 0, 16, 16, 16);
+        grad.addColorStop(0, 'rgba(255,255,255,1)');
+        grad.addColorStop(0.4, 'rgba(255,255,255,0.85)');
+        grad.addColorStop(1, 'rgba(255,255,255,0)');
+        sctx.fillStyle = grad;
+        sctx.fillRect(0, 0, 32, 32);
+        var starTex = new THREE.CanvasTexture(starCanvas);
         var points = new THREE.Points(geo, new THREE.PointsMaterial({
-            size: 0.09, vertexColors: true, transparent: true, opacity: 0.75, depthWrite: false
+            size: 0.13, map: starTex, vertexColors: true, transparent: true, opacity: 0.8, depthWrite: false
         }));
         scene.add(points);
 
         // Мягко пульсирующая сфера-сетка
         var orb = new THREE.Mesh(
-            new THREE.IcosahedronGeometry(3.2, 2),
-            new THREE.MeshBasicMaterial({ color: 0xef5350, wireframe: true, transparent: true, opacity: 0.12 })
+            new THREE.IcosahedronGeometry(3.2, 1),
+            new THREE.MeshBasicMaterial({ color: 0x7c9cff, wireframe: true, transparent: true, opacity: 0.12 })
         );
         scene.add(orb);
 
@@ -82,8 +93,15 @@
         var t0 = performance.now();
         var rafId = 0, visible = !document.hidden;
 
+        var lastFrame = 0;
         function render(now) {
             if (stopped || !visible) return;
+            // На мобильных ограничиваем частоту кадров до ~30 FPS
+            if (mobile && now - lastFrame < 33) {
+                rafId = requestAnimationFrame(render);
+                return;
+            }
+            lastFrame = now;
             var t = (now - t0) / 1000;
             var p = geo.attributes.position.array;
             // Частицы то разлетаются, то собираются в галактику; цикл бесконечный
