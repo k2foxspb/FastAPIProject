@@ -3,7 +3,7 @@
     'use strict';
 
     var THREE_URL = 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
-    var PALETTE = [0xf0a04b, 0xd9643a, 0xf6c28b, 0x9a3a46];
+    var PALETTE = [0xef5350, 0xb3261e, 0xff8a80, 0x7a1424];
 
     var reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     var isTouch = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
@@ -28,7 +28,7 @@
         renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, mobile ? 1 : 1.5));
 
         var scene = new THREE.Scene();
-        scene.fog = new THREE.FogExp2(0x1d1411, 0.085);
+        scene.fog = new THREE.FogExp2(0x140708, 0.085);
         var camera = new THREE.PerspectiveCamera(55, 1, 0.1, 100);
         camera.position.z = 14;
 
