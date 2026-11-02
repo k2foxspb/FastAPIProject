@@ -1,4 +1,5 @@
-{%- set SITE_NAME = "Дневнет" -%}
+{%- set SITE_NAME = "Foxly" -%}
+{%- set SITE_SLOGAN = "Ваш рыжий помощник" -%}
 <!DOCTYPE html>
 <html lang="ru">
 <head>
@@ -8,9 +9,9 @@
     <title>{{ SITE_NAME }} — личный журнал и социальная сеть</title>
     <meta name="description" content="{{ SITE_NAME }} — личный дневник, который можно сделать публичным, общение с людьми и помощь ИИ по вашим записям.">
     <meta name="keywords" content="журнал, дневник, социальная сеть, чаты, ИИ-помощник, приватность">
-    <meta name="author" content="Fokin Team">
+    <meta name="author" content="Foxly">
     <meta name="robots" content="index, follow">
-    <link rel="canonical" href="https://fokin.fun/">
+    <link rel="canonical" href="https://foxlyapp.ru/">
 
     <!-- Favicons -->
     <link rel="icon" type="image/png" sizes="192x192" href="/media/app/icon-192.png">
@@ -22,10 +23,10 @@
     <meta property="og:type" content="website">
     <meta property="og:title" content="{{ SITE_NAME }} — личный журнал и социальная сеть">
     <meta property="og:description" content="Личный дневник, который можно сделать публичным, общение и помощь ИИ по записям.">
-    <meta property="og:url" content="https://fokin.fun/">
+    <meta property="og:url" content="https://foxlyapp.ru/">
     <meta property="og:site_name" content="{{ SITE_NAME }}">
     <meta property="og:locale" content="ru_RU">
-    <meta property="og:image" content="https://fokin.fun/logo.png">
+    <meta property="og:image" content="https://foxlyapp.ru/logo.png">
 
     <!-- PWA manifest -->
     <link rel="manifest" href="/manifest.json">
@@ -40,9 +41,9 @@
     {
       "@context": "https://schema.org",
       "@type": "Organization",
-      "name": "Fokin",
-      "url": "https://fokin.fun",
-      "logo": "https://fokin.fun/logo.png",
+      "name": "Foxly",
+      "url": "https://foxlyapp.ru",
+      "logo": "https://foxlyapp.ru/logo.png",
       "contactPoint": {
         "@type": "ContactPoint",
         "email": "k2foxspb@mail.ru",
@@ -83,37 +84,11 @@
             max-width: 600px;
             margin: 0 auto 36px;
         }
-        .benefits {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 16px;
-            width: 100%;
-            max-width: 880px;
-            margin: 0 0 40px;
-            text-align: left;
-        }
-        .benefit {
-            background: var(--panel-color);
-            backdrop-filter: blur(12px);
-            border: 1px solid var(--panel-border);
-            border-radius: var(--radius-lg);
-            padding: 22px;
-            box-shadow: var(--shadow-soft);
-            transition: transform 0.25s ease, border-color 0.25s ease;
-        }
-        .js .benefit.reveal { transition: opacity 0.6s ease, transform 0.6s ease, border-color 0.25s ease; }
-        .benefit:hover { border-color: var(--accent-color); transform: translateY(-3px); }
-        .benefit-icon {
-            width: 40px; height: 40px; border-radius: 12px; margin-bottom: 14px;
-            display: flex; align-items: center; justify-content: center;
-            background: linear-gradient(135deg, rgba(124, 156, 255, 0.22), rgba(106, 76, 199, 0.25));
-            color: var(--accent-color);
-        }
-        .benefit h2 { font-size: 17px; margin: 0 0 6px; color: var(--text-primary); }
-        .benefit p { font-size: 14px; margin: 0; }
         .cta {
             width: 100%;
             max-width: 640px;
+            box-sizing: border-box;
+            min-width: 0;
             margin: 0 auto;
             display: flex;
             flex-wrap: wrap;
@@ -127,16 +102,24 @@
             padding: 26px;
             box-shadow: var(--shadow-soft);
         }
-        .cta-meta { flex: 1 1 220px; text-align: left; }
+        .cta-meta { flex: 1 1 220px; min-width: 0; text-align: left; }
         .cta-title { font-weight: 700; color: var(--text-primary); font-size: 16px; }
         .cta-version { font-family: var(--mono-font); font-size: 12px; color: var(--text-secondary); }
-        .btn-row { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
+        .btn-row { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; max-width: 100%; }
+        .btn-row .btn { max-width: 100%; white-space: normal; text-align: center; }
         .spinner {
             width: 14px; height: 14px; border-radius: 50%;
             border: 2px solid rgba(42, 20, 8, 0.3); border-top-color: #2a1408;
             animation: spin 0.8s linear infinite;
         }
         @keyframes spin { to { transform: rotate(360deg); } }
+        .hero-intro {
+            display: block;
+            width: 100%;
+            max-width: 480px;
+            height: auto;
+            margin: 0 auto 8px;
+        }
         .docs-links {
             margin-top: 40px;
             display: flex;
@@ -158,9 +141,15 @@
         footer a { color: var(--text-secondary); }
         footer a:hover { color: var(--accent-color); }
         @media (max-width: 640px) {
-            .cta { flex-direction: column; text-align: center; }
-            .cta-meta { text-align: center; }
-            .btn { width: 100%; }
+            .home { padding: 16px 14px 28px; }
+            .topbar { flex-wrap: wrap; justify-content: center; }
+            .hero { padding-top: 32px; }
+            .hero h1 { font-size: 36px; }
+            .cta, .btn-row, .btn-row .btn { max-width: 100%; }
+            .cta { flex-direction: column; text-align: center; padding: 20px 16px; }
+            .cta-meta { text-align: center; flex-basis: auto; width: 100%; }
+            .btn-row { flex-direction: column; width: 100%; }
+            .btn-row .btn { width: 100%; box-sizing: border-box; }
         }
     </style>
     <script src="/static/js/site.js"></script>
@@ -182,39 +171,11 @@
     </header>
 
     <main class="hero">
+        <img src="/static/img/foxly.gif" alt="Foxly" class="hero-intro" width="480" height="270">
         <h1>{{ SITE_NAME }}</h1>
+        <p class="slogan">{{ SITE_SLOGAN }}</p>
         <p class="tagline">Личный дневник, который можно сделать публичным: делитесь мыслями, общайтесь с людьми и получайте помощь ИИ по своим записям.</p>
 
-        <section class="benefits" aria-label="Преимущества">
-            <article class="benefit reveal">
-                <div class="benefit-icon" aria-hidden="true">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
-                </div>
-                <h2>Личный журнал</h2>
-                <p>Записывайте мысли и решайте, что открыть всем.</p>
-            </article>
-            <article class="benefit reveal">
-                <div class="benefit-icon" aria-hidden="true">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"></circle><path d="M2.5 20c.8-3.2 3.3-5 6.5-5s5.7 1.8 6.5 5"></path><path d="M16 4.5a3.5 3.5 0 0 1 0 7"></path><path d="M18.5 15c1.3.8 2.2 2.3 2.5 5"></path></svg>
-                </div>
-                <h2>Социальная лента</h2>
-                <p>Друзья, публикации, реакции и чаты в одном месте.</p>
-            </article>
-            <article class="benefit reveal">
-                <div class="benefit-icon" aria-hidden="true">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"></path><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"></path></svg>
-                </div>
-                <h2>ИИ-помощник</h2>
-                <p>Подскажет идеи и поможет разобраться в ваших записях.</p>
-            </article>
-            <article class="benefit reveal">
-                <div class="benefit-icon" aria-hidden="true">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6l8-4z"></path></svg>
-                </div>
-                <h2>Приватность</h2>
-                <p>Вы сами выбираете, что видят другие. Данные не продаются.</p>
-            </article>
-        </section>
 
         <section class="cta" aria-label="Начать пользоваться">
             <div class="cta-meta">

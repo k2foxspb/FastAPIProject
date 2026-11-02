@@ -11,7 +11,7 @@ from app.core.config import DOMAIN
 
 router = APIRouter(tags=["seo"])
 
-SITE_NAME = "FokinFun"
+SITE_NAME = "Foxly"
 ANDROID_PACKAGE = "com.k2foxspb.fokinfun"
 IOS_BUNDLE = "com.k2foxspb.fokinfun"
 # Замените на реальный Team ID из Apple Developer Console
@@ -78,7 +78,7 @@ async def web_manifest():
     manifest = {
         "name": SITE_NAME,
         "short_name": SITE_NAME,
-        "description": "FokinFun",
+        "description": "Foxly — Ваш рыжий помощник",
         "start_url": "/",
         "display": "standalone",
         "background_color": "#ffffff",

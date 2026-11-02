@@ -21,9 +21,9 @@ MAIL_PASSWORD = os.getenv("MAIL_PASSWORD")
 MAIL_FROM = os.getenv("MAIL_FROM") or MAIL_USERNAME
 MAIL_PORT = int(os.getenv("MAIL_PORT", "465"))
 MAIL_SERVER = os.getenv("MAIL_SERVER", "smtp.mail.ru")
-MAIL_FROM_NAME = os.getenv("MAIL_FROM_NAME", "FokinFun")
-DOMAIN = os.getenv("DOMAIN", "https://fokin.fun")
-MOBILE_DEEPLINK = os.getenv("MOBILE_DEEPLINK", "fokinfun://verify-email")
+MAIL_FROM_NAME = os.getenv("MAIL_FROM_NAME", "Foxly")
+DOMAIN = os.getenv("DOMAIN", "https://foxlyapp.ru")
+MOBILE_DEEPLINK = os.getenv("MOBILE_DEEPLINK", "foxly://verify-email")
 
 # CORS: в продакшене по умолчанию разрешаем только реальные домены,
 # в разработке - также локальные адреса. Можно переопределить через
@@ -33,6 +33,7 @@ if _cors_origins_env:
     CORS_ORIGINS = [origin.strip() for origin in _cors_origins_env.split(",") if origin.strip()]
 elif IS_PRODUCTION:
     CORS_ORIGINS = [
+        "https://foxlyapp.ru",
         "https://fokin.fun",
         "https://91.122.55.13",
     ]
@@ -42,6 +43,7 @@ else:
         "http://10.0.2.2:8081",
         "http://91.122.55.13",
         "https://91.122.55.13",
+        "https://foxlyapp.ru",
         "https://fokin.fun",
         "http://fokin.fan",
         "http://localhost",
@@ -60,6 +62,7 @@ if _allowed_hosts_env:
 elif IS_PRODUCTION:
     ALLOWED_HOSTS = [
         "91.122.55.13",
+        "foxlyapp.ru",
         "fokin.fun",
         "fokin.fan",
         "web",  # Для внутренних запросов Docker
@@ -69,6 +72,7 @@ elif IS_PRODUCTION:
 else:
     ALLOWED_HOSTS = [
         "91.122.55.13",
+        "foxlyapp.ru",
         "fokin.fun",
         "fokin.fan",
         "localhost",

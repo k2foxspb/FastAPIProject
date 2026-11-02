@@ -171,7 +171,7 @@ async def send_email(email: str, subject: str, text: str, html: str | None = Non
     message["Reply-To"] = formataddr((MAIL_FROM_NAME, MAIL_FROM or MAIL_USERNAME))
     
     # Message-ID и другие служебные заголовки
-    msg_id_domain = 'fokin.fun'
+    msg_id_domain = 'foxlyapp.ru'
     # Пытаемся извлечь домен из MAIL_USERNAME или MAIL_FROM
     if MAIL_USERNAME and '@' in MAIL_USERNAME:
         msg_id_domain = MAIL_USERNAME.split('@')[-1]

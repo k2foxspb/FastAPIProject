@@ -83,13 +83,13 @@ async def verify_email_bridge(request: Request):
     эта страница попытается открыть приложение через кастомную схему.
     """
     full_url = str(request.url)
-    # Заменяем https://fokin.fun/users/verify-email на fokinfun://verify-email
-    deeplink = full_url.replace(str(request.base_url) + "users/", "fokinfun://")
+    # Заменяем https://foxlyapp.ru/users/verify-email на foxly://verify-email
+    deeplink = full_url.replace(str(request.base_url) + "users/", "foxly://")
     
     # Если в URL нет параметров (хотя они должны быть от Firebase), 
     # убеждаемся что схема правильная
-    if "fokinfun://" not in deeplink:
-        deeplink = "fokinfun://verify-email?" + request.url.query
+    if "foxly://" not in deeplink:
+        deeplink = "foxly://verify-email?" + request.url.query
 
     html_content = f"""
     <!DOCTYPE html>
@@ -108,7 +108,7 @@ async def verify_email_bridge(request: Request):
     </head>
     <body>
         <div class="card">
-            <h2>Открываем FastAPI...</h2>
+            <h2>Открываем Foxly...</h2>
             <div class="loader"></div>
             <p>Если приложение не открылось автоматически, нажмите кнопку ниже:</p>
             <a href="{deeplink}" class="btn">Открыть приложение</a>
