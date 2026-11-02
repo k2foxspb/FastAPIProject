@@ -16,6 +16,18 @@
         } catch (e) { return false; }
     }
 
+    // Круглая радиальная текстура с заданными опорными точками градиента
+    function makeTexture(THREE, size, stops) {
+        var c = document.createElement('canvas');
+        c.width = c.height = size;
+        var g = c.getContext('2d');
+        var grad = g.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+        for (var s = 0; s < stops.length; s++) grad.addColorStop(stops[s][0], stops[s][1]);
+        g.fillStyle = grad;
+        g.fillRect(0, 0, size, size);
+        return new THREE.CanvasTexture(c);
+    }
+
     function start(THREE) {
         var canvas = document.createElement('canvas');
         canvas.className = 'bg-canvas';
@@ -32,52 +44,73 @@
         var camera = new THREE.PerspectiveCamera(55, 1, 0.1, 100);
         camera.position.z = 14;
 
-        // Дрейфующие частицы
+        // Вращающаяся туманность: светящиеся частицы в диске со спиральными рукавами
+        var tilt = 0.45;
         var geo = new THREE.BufferGeometry();
         var pos = new Float32Array(count * 3);
         var col = new Float32Array(count * 3);
-        var base = new Float32Array(count * 3);
-        var gR = new Float32Array(count), gA = new Float32Array(count);
-        var gZ = new Float32Array(count), gP = new Float32Array(count);
+        var rad = new Float32Array(count), ang = new Float32Array(count);
+        var hgt = new Float32Array(count), phs = new Float32Array(count);
         var tmp = new THREE.Color();
         for (var i = 0; i < count; i++) {
-            var x = (Math.random() - 0.5) * 34, y = (Math.random() - 0.5) * 22, z = (Math.random() - 0.5) * 22;
-            pos[i * 3] = base[i * 3] = x;
-            pos[i * 3 + 1] = base[i * 3 + 1] = y;
-            pos[i * 3 + 2] = base[i * 3 + 2] = z;
-            // Параметры спиральной галактики, в которую частицы собираются
-            var u = Math.random();
-            gR[i] = 1.2 + Math.pow(u, 0.8) * 10;
-            gA[i] = (i % 2 ? Math.PI : 0) + gR[i] * 0.55 + (Math.random() - 0.5) * 0.5;
-            gZ[i] = (Math.random() - 0.5) * 0.8;
-            gP[i] = Math.random() * Math.PI * 2;
+            rad[i] = 2.2 + Math.pow(Math.random(), 0.7) * 9;
+            ang[i] = Math.random() * Math.PI * 2 + (i % 2 ? Math.PI : 0) + rad[i] * 0.35 + (Math.random() - 0.5) * 0.6;
+            hgt[i] = (Math.random() - 0.5) * (0.4 + rad[i] * 0.1);
+            phs[i] = Math.random() * Math.PI * 2;
             tmp.setHex(PALETTE[i % PALETTE.length]);
             col[i * 3] = tmp.r; col[i * 3 + 1] = tmp.g; col[i * 3 + 2] = tmp.b;
         }
         geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
         geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
-        // Круглая текстура для звёзд (радиальный градиент, один общий canvas)
-        var starCanvas = document.createElement('canvas');
-        starCanvas.width = starCanvas.height = 32;
-        var sctx = starCanvas.getContext('2d');
-        var grad = sctx.createRadialGradient(16, 16, 0, 16, 16, 16);
-        grad.addColorStop(0, 'rgba(255,255,255,1)');
-        grad.addColorStop(0.4, 'rgba(255,255,255,0.85)');
-        grad.addColorStop(1, 'rgba(255,255,255,0)');
-        sctx.fillStyle = grad;
-        sctx.fillRect(0, 0, 32, 32);
-        var starTex = new THREE.CanvasTexture(starCanvas);
         var points = new THREE.Points(geo, new THREE.PointsMaterial({
-            size: 0.13, map: starTex, vertexColors: true, transparent: true, opacity: 0.8, depthWrite: false
+            size: 0.3, map: makeTexture(THREE, 64, [[0, 'rgba(255,255,255,1)'], [0.3, 'rgba(255,255,255,0.6)'], [1, 'rgba(255,255,255,0)']]),
+            vertexColors: true, transparent: true, opacity: 0.35, depthWrite: false, blending: THREE.AdditiveBlending
         }));
+        points.rotation.x = tilt;
         scene.add(points);
 
-        // Мягко пульсирующая сфера-сетка
-        var orb = new THREE.Mesh(
-            new THREE.IcosahedronGeometry(3.2, 1),
-            new THREE.MeshBasicMaterial({ color: 0x7c9cff, wireframe: true, transparent: true, opacity: 0.12 })
+        // Чёрная дыра в центре: горизонт событий, аккреционный диск, светящееся кольцо и ореол
+        var horizon = new THREE.Mesh(new THREE.SphereGeometry(1.5, 48, 32), new THREE.MeshBasicMaterial({ color: 0x000000 }));
+        scene.add(horizon);
+
+        var disk = new THREE.Mesh(
+            new THREE.RingGeometry(1.7, 4.2, 128),
+            new THREE.MeshBasicMaterial({
+                map: makeTexture(THREE, 256, [[0, 'rgba(0,0,0,0)'], [0.4, 'rgba(0,0,0,0)'], [0.44, 'rgba(230,236,255,0.95)'], [0.6, 'rgba(124,156,255,0.45)'], [1, 'rgba(106,76,199,0)']]),
+                transparent: true, opacity: 0.9, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending
+            })
         );
-        scene.add(orb);
+        disk.rotation.x = tilt;
+        scene.add(disk);
+
+        var ring = new THREE.Mesh(
+            new THREE.TorusGeometry(1.6, 0.03, 12, 128),
+            new THREE.MeshBasicMaterial({ color: 0xe3eaff, transparent: true, opacity: 0.9, depthWrite: false, blending: THREE.AdditiveBlending })
+        );
+        ring.rotation.x = tilt;
+        scene.add(ring);
+
+        var halo = new THREE.Sprite(new THREE.SpriteMaterial({
+            map: makeTexture(THREE, 128, [[0, 'rgba(124,156,255,0.5)'], [0.4, 'rgba(106,76,199,0.18)'], [1, 'rgba(106,76,199,0)']]),
+            transparent: true, depthWrite: false, blending: THREE.AdditiveBlending
+        }));
+        halo.scale.set(10, 10, 1);
+        scene.add(halo);
+
+        // Расчёт позиций туманности: внутренние части вращаются быстрее (дифференциальное вращение)
+        function layout(t) {
+            var p = geo.attributes.position.array;
+            for (var k = 0; k < count; k++) {
+                var idx = k * 3;
+                var a = ang[k] + t * 0.12 / Math.sqrt(rad[k]);
+                var rr = rad[k] * (1 + Math.sin(t * 0.3 + phs[k]) * 0.03);
+                p[idx] = Math.cos(a) * rr;
+                p[idx + 1] = Math.sin(a) * rr;
+                p[idx + 2] = hgt[k];
+            }
+            geo.attributes.position.needsUpdate = true;
+        }
+        layout(0);
 
         function resize() {
             var w = window.innerWidth, h = window.innerHeight;
@@ -103,27 +136,16 @@
             }
             lastFrame = now;
             var t = (now - t0) / 1000;
-            var p = geo.attributes.position.array;
-            // Частицы то разлетаются, то собираются в галактику; цикл бесконечный
-            var gather = 0.5 + 0.5 * Math.sin(t * 0.1);
-            gather = gather * gather * (3 - 2 * gather);
-            for (var k = 0; k < count; k++) {
-                var idx = k * 3;
-                var m = Math.min(1, Math.max(0, gather + Math.sin(t * 0.3 + gP[k]) * 0.08));
-                var a = gA[k] + t * 0.1 / (0.5 + gR[k] * 0.12);
-                var gx = gR[k] * Math.cos(a);
-                var gy = gR[k] * Math.sin(a) * 0.55;
-                var gz = gZ[k];
-                var drift = 1 - m;
-                p[idx] = base[idx] + (gx - base[idx]) * m + Math.cos(t * 0.12 + k * 0.5) * 0.25 * drift;
-                p[idx + 1] = base[idx + 1] + (gy - base[idx + 1]) * m + Math.sin(t * 0.2 + k) * 0.35 * drift;
-                p[idx + 2] = base[idx + 2] + (gz - base[idx + 2]) * m;
-            }
-            geo.attributes.position.needsUpdate = true;
-            points.rotation.y = t * 0.02;
-            var s = 1 + Math.sin(t * 0.9) * 0.05;
-            orb.scale.set(s, s, s);
-            orb.rotation.y = t * 0.08;
+            layout(t);
+            points.rotation.z = t * 0.02;
+            var pulse = 1 + Math.sin(t * 0.7) * 0.04;
+            var tiltNow = tilt + Math.sin(t * 0.2) * 0.04;
+            disk.rotation.x = tiltNow;
+            ring.rotation.x = tiltNow;
+            points.rotation.x = tiltNow;
+            halo.scale.set(10 * pulse, 10 * pulse, 1);
+            camera.position.x = Math.sin(t * 0.05) * 0.8;
+            camera.lookAt(0, 0, 0);
             renderer.render(scene, camera);
             rafId = requestAnimationFrame(render);
             sampleFps(now);
