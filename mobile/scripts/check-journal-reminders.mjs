@@ -96,7 +96,7 @@ check('tracker_archived', plan({
 const meal = (over = {}) => ({ uuid: 'M1', name: 'Обед', default_time: '13:00', reminder_enabled: true, ...over });
 const meals = plan({ reminders: [], events: [], mealTypes: [meal()] });
 check('meal_count_in_window', meals.length, 14);
-check('meal_first_fire', iso(meals[0]), '2025-03-01T10:00:00.000Z');
+check('meal_first_fire', iso(meals[0]), '2025-03-01T11:00:00.000Z');
 check('meal_id', meals[0].id, 'jr:meal-M1:202503011300');
 check('meal_data', [meals[0].targetType, meals[0].data.meal_type_uuid, meals[0].data.date], ['meal', 'M1', '2025-03-01']);
 check('meal_skip_logged_day', plan({

@@ -3,8 +3,8 @@
 // Напоминание события срабатывает за offset_min до каждого экземпляра события
 // (для событий «весь день» - от time_of_day напоминания, по умолчанию 09:00).
 // Напоминание трекера - в time_of_day по своему правилу (по умолчанию каждый день).
-// Напоминание приёма пищи - каждый день в default_time типа приёма пищи (reminder_enabled),
-// если за этот приём в этот день ещё нет записей о еде.
+// Напоминание приёма пищи - каждый день через MEAL_REMINDER_DELAY_MIN минут после default_time
+// типа приёма пищи (reminder_enabled), если за этот приём в этот день ещё нет записей о еде.
 // ID триггера детерминированный: jr:<reminderUuid>:<YYYYMMDDHHmm исходного экземпляра>,
 // поэтому пересчёт окна не создаёт дублей.
 import { expandEvent, iterDates } from '../utils/recurrence';
@@ -16,6 +16,7 @@ export const TRIGGER_PREFIX = 'jr:';
 export const mealReminderKey = (mealTypeUuid) => `meal-${mealTypeUuid}`;
 export const SNOOZE_SUFFIX = ':snooze';
 export const DEFAULT_ALL_DAY_TIME = '09:00';
+export const MEAL_REMINDER_DELAY_MIN = 60;
 const MINUTE = 60000;
 
 // Дата 'YYYY-MM-DD' момента ms в часовом поясе timeZone
@@ -157,16 +158,17 @@ export const planReminderTriggers = ({
       if (mealEntryKeys.has(`${meal.uuid}:${date}`)) continue;
       push({
         id: triggerId(key, date, time),
-        fireAt: localToUtc(date, time, timezone).getTime(),
+        fireAt: localToUtc(date, time, timezone).getTime() + MEAL_REMINDER_DELAY_MIN * MINUTE,
         reminderUuid: key,
         targetType: 'meal',
         title: meal.name,
-        body: `Пора поесть · ${time}. Не забудьте записать, что съели`,
+        body: `Что вы ели на ${meal.name.toLowerCase()}? Нажмите, чтобы рассказать ИИ`,
         data: {
           kind: 'journal_reminder',
           reminder_uuid: key,
           target_type: 'meal',
           meal_type_uuid: meal.uuid,
+          meal_name: meal.name,
           date,
         },
       });

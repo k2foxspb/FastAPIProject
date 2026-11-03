@@ -104,10 +104,12 @@ export const openJournalReminder = (navigationRef, data) => {
   if (!navigationRef || !data) return;
   if (data.target_type === 'tracker' && data.tracker_uuid) {
     navigationRef.navigate('Journal', { screen: 'TrackerDetail', params: { uuid: data.tracker_uuid }, initial: false });
-  } else if (data.target_type === 'meal' && data.date) {
-    // Напоминание о приёме пищи - сразу к добавлению еды за этот приём
-    navigationRef.navigate('Journal', {
-      screen: 'FoodSearch', params: { date: data.date, mealTypeUuid: data.meal_type_uuid || null }, initial: false,
+  } else if (data.target_type === 'meal') {
+    // Напоминание о приёме пищи - открываем ИИ-чат с вопросом, что съели
+    navigationRef.navigate('Messages', {
+      screen: 'AiChat',
+      params: { prompt: `Что я ел(а) на ${String(data.meal_name || 'приём пищи').toLowerCase()}? ` },
+      initial: false,
     });
   } else if (data.target_type === 'test') {
     navigationRef.navigate('Journal', { screen: 'ReminderDiagnostics', initial: false });

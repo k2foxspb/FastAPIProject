@@ -37,7 +37,7 @@ const generateMessageId = () => `${Date.now()}_${messageIdCounter++}`;
 // TODO (на будущее, не ломает текущую архитектуру):
 //  - авторизация пользователя на запросе к Ollama (сейчас запрос анонимный, backend публичный);
 //  - сохранение истории сообщений на backend вместо локального хранилища (например, для синхронизации между устройствами).
-export default function AiChatScreen({ navigation }) {
+export default function AiChatScreen({ navigation, route }) {
   const { theme } = useTheme();
   const colors = themeConstants[theme];
   const insets = useSafeAreaInsets();
@@ -54,6 +54,12 @@ export default function AiChatScreen({ navigation }) {
   const [selectedIds, setSelectedIds] = useState([]);
   const [isForwardModalVisible, setForwardModalVisible] = useState(false);
   const listRef = useRef(null);
+  const initialPrompt = route?.params?.prompt;
+
+  // Вопрос из напоминания о приёме пищи подставляется в поле ввода.
+  useEffect(() => {
+    if (initialPrompt) setInputText(initialPrompt);
+  }, [initialPrompt]);
 
   // Загрузка сохранённой истории при открытии экрана.
   useEffect(() => {
