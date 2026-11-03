@@ -9,7 +9,7 @@ const RECAPTCHA_KEYS = {
 };
 
 const siteKey = RECAPTCHA_KEYS[Platform.OS] || RECAPTCHA_KEYS.default;
-const baseUrl = 'https://fokin.fun'; // Домен вашего сайта
+const baseUrl = 'https://foxlyapp.ru'; // Домен вашего сайта
 
 const ReCaptcha = forwardRef(({ onVerify, action = 'LOGIN' }, ref) => {
   const webViewRef = useRef(null);

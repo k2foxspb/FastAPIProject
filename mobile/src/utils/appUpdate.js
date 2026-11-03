@@ -12,7 +12,7 @@ import { API_BASE_URL } from '../constants';
 const APK_MIME_TYPE = 'application/vnd.android.package-archive';
 const PROGRESS_CHANNEL_ID = 'app_update';
 const PROGRESS_NOTIFICATION_ID = 'app_update_progress';
-const FALLBACK_URL = 'https://fokin.fun';
+const FALLBACK_URL = 'https://foxlyapp.ru';
 
 let activeDownload = null;
 

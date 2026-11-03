@@ -34,7 +34,6 @@ if _cors_origins_env:
 elif IS_PRODUCTION:
     CORS_ORIGINS = [
         "https://foxlyapp.ru",
-        "https://fokin.fun",
         "https://91.122.55.13",
     ]
 else:
@@ -44,7 +43,6 @@ else:
         "http://91.122.55.13",
         "https://91.122.55.13",
         "https://foxlyapp.ru",
-        "https://fokin.fun",
         "http://fokin.fan",
         "http://localhost",
         "http://localhost:3000",
@@ -63,7 +61,6 @@ elif IS_PRODUCTION:
     ALLOWED_HOSTS = [
         "91.122.55.13",
         "foxlyapp.ru",
-        "fokin.fun",
         "fokin.fan",
         "web",  # Для внутренних запросов Docker
         "localhost",  # Для healthcheck внутри контейнера (urlopen на localhost:8000)
@@ -73,7 +70,6 @@ else:
     ALLOWED_HOSTS = [
         "91.122.55.13",
         "foxlyapp.ru",
-        "fokin.fun",
         "fokin.fan",
         "localhost",
         "127.0.0.1",

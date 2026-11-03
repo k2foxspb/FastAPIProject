@@ -78,7 +78,7 @@
         "aps-environment": "production"
       },
       "associatedDomains": [
-        "applinks:fokin.fun",
+        "applinks:foxlyapp.ru",
         "applinks:fastapi-f628e.firebaseapp.com"
       ],
       "infoPlist": {
@@ -106,47 +106,47 @@
           "data": [
             {
               "scheme": "https",
-              "host": "fokin.fun",
+              "host": "foxlyapp.ru",
               "pathPrefix": "/verify-email"
             },
             {
               "scheme": "https",
-              "host": "fokin.fun",
+              "host": "foxlyapp.ru",
               "pathPrefix": "/users/verify-email"
             },
             {
               "scheme": "https",
-              "host": "fokin.fun",
+              "host": "foxlyapp.ru",
               "pathPrefix": "/news"
             },
             {
               "scheme": "https",
-              "host": "fokin.fun",
+              "host": "foxlyapp.ru",
               "pathPrefix": "/product"
             },
             {
               "scheme": "https",
-              "host": "fokin.fun",
+              "host": "foxlyapp.ru",
               "pathPrefix": "/user"
             },
             {
               "scheme": "https",
-              "host": "fokin.fun",
+              "host": "foxlyapp.ru",
               "pathPrefix": "/chat"
             },
             {
               "scheme": "https",
-              "host": "fokin.fun",
+              "host": "foxlyapp.ru",
               "pathPrefix": "/login"
             },
             {
               "scheme": "https",
-              "host": "fokin.fun",
+              "host": "foxlyapp.ru",
               "pathPrefix": "/__/auth/links"
             },
             {
               "scheme": "https",
-              "host": "fokin.fun",
+              "host": "foxlyapp.ru",
               "pathPrefix": "/__/auth/action"
             }
           ],

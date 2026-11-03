@@ -83,7 +83,7 @@ def absolute_media_url(url: Optional[str]) -> Optional[str]:
     if not domain:
         return url
 
-    # В некоторых старых записях сохранён хост без схемы, например fokin.fun/media/...
+    # В некоторых старых записях сохранён хост без схемы, например foxlyapp.ru/media/...
     first_segment = url.split("/", 1)[0]
     if not url.startswith("/") and ("." in first_segment or ":" in first_segment):
         return f"https://{url}"
