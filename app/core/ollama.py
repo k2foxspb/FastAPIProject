@@ -54,64 +54,6 @@ class OllamaBadResponse(OllamaError):
     """Ответ не удалось разобрать (не JSON, пустой, не прошёл проверку схемы)."""
 
 
-THINK_OPEN = "<think>"
-THINK_CLOSE = "</think>"
-
-
-def _partial_tag_len(text: str, tag: str) -> int:
-    """Длина хвоста text, который может оказаться началом тега (он приедет в следующем чанке)."""
-    for size in range(min(len(tag) - 1, len(text)), 0, -1):
-        if text.endswith(tag[:size]):
-            return size
-    return 0
-
-
-class ThinkFilter:
-    """Вырезает блоки рассуждений <think>...</think> из потока, даже если теги разбиты между чанками."""
-
-    def __init__(self):
-        self._inside = False
-        self._pending = ""
-
-    def feed(self, piece: str) -> str:
-        text = self._pending + piece
-        self._pending = ""
-        out = []
-        while text:
-            if self._inside:
-                idx = text.find(THINK_CLOSE)
-                if idx == -1:
-                    keep = _partial_tag_len(text, THINK_CLOSE)
-                    self._pending = text[len(text) - keep:] if keep else ""
-                    break
-                text = text[idx + len(THINK_CLOSE):]
-                self._inside = False
-            else:
-                idx = text.find(THINK_OPEN)
-                stray = text.find(THINK_CLOSE)
-                if stray != -1 and (idx == -1 or stray < idx):
-                    # Закрывающий тег без открывающего (открывающий ушёл в промпт) - просто убираем его
-                    out.append(text[:stray])
-                    text = text[stray + len(THINK_CLOSE):]
-                    continue
-                if idx == -1:
-                    keep = max(_partial_tag_len(text, THINK_OPEN), _partial_tag_len(text, THINK_CLOSE))
-                    out.append(text[:len(text) - keep])
-                    self._pending = text[len(text) - keep:] if keep else ""
-                    break
-                out.append(text[:idx])
-                text = text[idx + len(THINK_OPEN):]
-                self._inside = True
-        return "".join(out)
-
-    def flush(self) -> str:
-        if self._inside:
-            self._pending = ""
-            return ""
-        rest, self._pending = self._pending, ""
-        return rest
-
-
 async def chat_stream(
     messages: list[dict],
     *,
@@ -125,7 +67,7 @@ async def chat_stream(
         "model": OLLAMA_MODEL,
         "messages": messages,
         "stream": True,
-        "think": False,
+
         "options": {**DEFAULT_OPTIONS, **(options or {})},
     }
     if json_mode:
@@ -134,7 +76,6 @@ async def chat_stream(
     own_client = client is None
     if own_client:
         client = httpx.AsyncClient(timeout=timeout)
-    think_filter = ThinkFilter()
     try:
         async with client.stream("POST", f"{OLLAMA_URL}/api/chat", json=body) as response:
             if response.is_error:
