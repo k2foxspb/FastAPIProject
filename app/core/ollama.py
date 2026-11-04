@@ -60,11 +60,12 @@ async def chat(
     options: dict | None = None,
     json_mode: bool = False,
 ) -> str:
-    """Один запрос /api/chat без стриминга; возвращает текст ответа ассистента."""
+    """Запрос /api/chat в потоковом режиме (stream: true); возвращает собранный текст ответа ассистента."""
     body = {
         "model": OLLAMA_MODEL,
         "messages": messages,
-        "stream": False,
+        "stream": True,
+        "think": False,
         "options": {**DEFAULT_OPTIONS, **(options or {})},
     }
     if json_mode:
@@ -74,9 +75,23 @@ async def chat(
     if own_client:
         client = httpx.AsyncClient(timeout=timeout)
     try:
-        response = await client.post(f"{OLLAMA_URL}/api/chat", json=body)
-        response.raise_for_status()
-        data = response.json()
+        async with client.stream("POST", f"{OLLAMA_URL}/api/chat", json=body) as response:
+            if response.is_error:
+                await response.aread()
+            response.raise_for_status()
+            parts = []
+            async for line in response.aiter_lines():
+                if not line.strip():
+                    continue
+                chunk = json.loads(line)
+                if not isinstance(chunk, dict):
+                    raise ValueError("неожиданный формат чанка")
+                message = chunk.get("message")
+                piece = message.get("content") if isinstance(message, dict) else None
+                if piece:
+                    parts.append(str(piece))
+                if chunk.get("done"):
+                    break
     except httpx.TimeoutException as e:
         logger.error(f"Ollama не ответила вовремя ({OLLAMA_URL}): {type(e).__name__}")
         raise OllamaTimeout("Сервис ИИ не ответил вовремя. Попробуйте позже.")
@@ -102,13 +117,12 @@ async def chat(
         if own_client:
             await client.aclose()
 
-    message = data.get("message") if isinstance(data, dict) else None
-    content = message.get("content") if isinstance(message, dict) else None
-    if not content or not str(content).strip():
+    content = "".join(parts)
+    if not content.strip():
         # Текст ответа в лог не пишем целиком - в нём могут быть данные пользователя
         logger.error("Пустой ответ от Ollama")
         raise OllamaBadResponse("Сервис ИИ вернул пустой ответ. Попробуйте переформулировать запрос.")
-    return str(content)
+    return content
 
 
 _FENCE_RE = re.compile(r"^\s*```(?:json)?\s*(.*?)\s*```\s*$", re.DOTALL | re.IGNORECASE)
