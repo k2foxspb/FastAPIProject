@@ -227,7 +227,9 @@ async def _build_ollama_messages(payload: Dict[str, Any], current_user: UserMode
 
     # Напоминание о языке в конце истории - усиливает приоритет правила "отвечай на русском"
     # для длинных диалогов, где системный промпт в начале контекста "забывается" моделью.
-    ollama_messages.append({"role": "system", "content": LANGUAGE_REMINDER})
+    # /no_think - мягкое переключение Qwen3 в режим без рассуждений. Работает независимо от версии Ollama,
+    # в отличие от параметра think: False, который старые версии игнорируют.
+    ollama_messages.append({"role": "system", "content": LANGUAGE_REMINDER + " /no_think"})
     return ollama_messages
 
 
