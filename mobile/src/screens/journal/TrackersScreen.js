@@ -36,7 +36,7 @@ const TrackersContent = ({ navigation }) => {
     const goal = goalStatus(item, item.last_num);
     return (
       <TouchableOpacity
-        style={[styles.item, { backgroundColor: colors.card, borderColor: colors.border, opacity: item.archived ? 0.5 : 1 }]}
+        style={[styles.item, { backgroundColor: 'transparent', borderColor: colors.border, opacity: item.archived ? 0.5 : 1 }]}
         onPress={() => navigation.navigate('TrackerDetail', { uuid: item.uuid })}
       >
         <View style={[styles.icon, { backgroundColor: `${item.color || colors.primary}22` }]}>

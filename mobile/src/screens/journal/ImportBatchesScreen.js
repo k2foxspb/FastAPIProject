@@ -22,7 +22,7 @@ function Content() {
   ]);
   return <FlatList style={{ backgroundColor: colors.background }} data={items} keyExtractor={(item) => item.uuid}
     contentContainerStyle={{ padding: 12 }}
-    renderItem={({ item }) => <View style={{ padding: 14, marginBottom: 8, borderRadius: 12, backgroundColor: colors.card }}>
+    renderItem={({ item }) => <View style={{ padding: 14, marginBottom: 8, borderRadius: 12, backgroundColor: 'transparent' }}>
       <Text style={{ color: colors.text, fontWeight: '600' }}>{item.filename}</Text>
       <Text style={{ color: colors.textSecondary, marginTop: 4 }}>{item.status} · операций {item.imported_count} · дублей {item.duplicate_count}</Text>
       {item.status !== 'reverted' && <TouchableOpacity onPress={() => undoImport(item)} style={{ marginTop: 12 }}>

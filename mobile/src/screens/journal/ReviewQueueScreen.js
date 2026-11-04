@@ -12,7 +12,7 @@ function Content() {
   const { data: categories } = useJournalQuery(() => listFinanceCategories('expense'), []);
   return <FlatList style={{ backgroundColor: colors.background }} data={items || []} keyExtractor={(item) => item.uuid}
     contentContainerStyle={{ padding: 12 }}
-    renderItem={({ item }) => <View style={{ padding: 12, marginBottom: 8, borderRadius: 12, backgroundColor: colors.card }}>
+    renderItem={({ item }) => <View style={{ padding: 12, marginBottom: 8, borderRadius: 12, backgroundColor: 'transparent' }}>
       <Text style={{ color: colors.text, fontWeight: '600' }}>{item.description}</Text>
       <Text style={{ color: colors.textSecondary }}>{item.transaction_date} · {formatKop(item.amount_kop)} · {item.account_name || ''}</Text>
       <Picker selectedValue="" onValueChange={(uuid) => {

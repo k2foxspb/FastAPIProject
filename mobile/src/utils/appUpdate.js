@@ -1,7 +1,7 @@
 import { Platform, Linking, Alert, ToastAndroid } from 'react-native';
 import { cacheDirectory, createDownloadResumable, getContentUriAsync, deleteAsync } from 'expo-file-system/legacy';
 import * as IntentLauncher from 'expo-intent-launcher';
-import notifee, { AndroidImportance } from '@notifee/react-native';
+import notifee, { AndroidImportance, EventType } from '@notifee/react-native';
 import { API_BASE_URL } from '../constants';
 
 // Скачивание и установка новой версии приложения (APK) по нажатию на уведомление
@@ -12,14 +12,22 @@ import { API_BASE_URL } from '../constants';
 const APK_MIME_TYPE = 'application/vnd.android.package-archive';
 const PROGRESS_CHANNEL_ID = 'app_update';
 const PROGRESS_NOTIFICATION_ID = 'app_update_progress';
+const CANCEL_ACTION_ID = 'app_update_cancel';
 const FALLBACK_URL = 'https://foxlyapp.ru';
 
 let activeDownload = null;
+let activeFileDownload = null;
+let cancelRequested = false;
 
 const resolveUrl = (path) => {
   if (!path || typeof path !== 'string') return null;
   const candidate = path.trim();
   if (!candidate) return null;
+  const legacyMatch = candidate.match(/^https?:\/\/fokin\.(fan|fun)(\/.*)?$/i);
+  if (legacyMatch) {
+    const base = API_BASE_URL.replace(/\/+$/, '');
+    return `${base}${legacyMatch[2] || ''}`;
+  }
   if (/^https?:\/\//i.test(candidate)) return candidate;
   if (candidate.startsWith('//')) return `https:${candidate}`;
   const base = API_BASE_URL.replace(/\/+$/, '');
@@ -65,6 +73,7 @@ async function showProgress(version, percent) {
         autoCancel: false,
         progress: percent >= 0 ? { max: 100, current: percent } : { indeterminate: true },
         pressAction: { id: 'default', launchActivity: 'default' },
+        actions: [{ title: 'Отменить', pressAction: { id: CANCEL_ACTION_ID } }],
       },
     });
   } catch (e) {
@@ -104,6 +113,7 @@ async function downloadAndInstallApk(url, version) {
     }
   });
 
+  activeFileDownload = download;
   try {
     // Удаляем недокачанный файл от прошлой попытки
     await deleteAsync(localUri, { idempotent: true });
@@ -121,8 +131,52 @@ async function downloadAndInstallApk(url, version) {
     });
   } catch (e) {
     await hideProgress();
+    if (cancelRequested) return;
     throw e;
+  } finally {
+    activeFileDownload = null;
   }
+}
+
+export function isAppUpdateRunning() {
+  return !!activeDownload;
+}
+
+export function formatAppSize(bytes) {
+  if (!bytes || bytes <= 0) return null;
+  if (bytes >= 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} ГБ`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} МБ`;
+}
+
+export async function getAppUpdateSize(fileUrl = null) {
+  const url = resolveUrl(fileUrl);
+  if (!url) return null;
+  try {
+    const res = await fetch(url, { method: 'HEAD' });
+    const length = Number(res.headers.get('content-length'));
+    return length > 0 ? length : null;
+  } catch (e) {
+    console.log('[AppUpdate] Failed to get size:', e?.message || e);
+    return null;
+  }
+}
+
+export async function cancelAppUpdate() {
+  if (!activeFileDownload) return false;
+  cancelRequested = true;
+  try {
+    await activeFileDownload.cancelAsync();
+  } catch (e) {
+    console.log('[AppUpdate] Cancel error:', e?.message || e);
+  }
+  return true;
+}
+
+export async function handleAppUpdateEvent(event) {
+  const { type, detail } = event || {};
+  if (type !== EventType.ACTION_PRESS || detail?.pressAction?.id !== CANCEL_ACTION_ID) return false;
+  await cancelAppUpdate();
+  return true;
 }
 
 /**
@@ -135,6 +189,7 @@ export async function startAppUpdate(fileUrl = null, version = null) {
     toast('Обновление уже загружается');
     return activeDownload;
   }
+  cancelRequested = false;
 
   activeDownload = (async () => {
     let url = resolveUrl(fileUrl);

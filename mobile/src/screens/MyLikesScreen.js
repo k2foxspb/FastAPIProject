@@ -57,7 +57,7 @@ export default function MyLikesScreen({ navigation }) {
 
     return (
       <TouchableOpacity 
-        style={[styles.newsCard, { backgroundColor: colors.card, borderColor: colors.border, borderWidth: theme === 'dark' ? 1 : 0 }]}
+        style={[styles.newsCard, { backgroundColor: 'transparent', borderColor: colors.border, borderWidth: theme === 'dark' ? 1 : 0 }]}
         onPress={() => navigation.navigate('NewsDetail', { newsId: item.id, newsItem: item })}
       >
         <View style={styles.newsRow}>

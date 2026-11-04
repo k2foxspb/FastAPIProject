@@ -39,6 +39,8 @@ import AiChatScreen from '../screens/aiChat/AiChatScreen';
 import EditNewsScreen from '../screens/EditNewsScreen';
 import JournalCalendarScreen from '../screens/journal/JournalCalendarScreen';
 import JournalDayScreen from '../screens/journal/JournalDayScreen';
+import MonthEventsScreen from '../screens/journal/MonthEventsScreen';
+import MonthKcalScreen from '../screens/journal/MonthKcalScreen';
 import EventEditScreen from '../screens/journal/EventEditScreen';
 import DiaryListScreen from '../screens/journal/DiaryListScreen';
 import DiaryEditScreen from '../screens/journal/DiaryEditScreen';
@@ -299,6 +301,8 @@ function JournalStack() {
       >
         <Stack.Screen name="JournalCalendar" component={JournalCalendarScreen} options={{ title: 'Журнал' }} />
         <Stack.Screen name="JournalDay" component={JournalDayScreen} options={{ title: 'День' }} />
+        <Stack.Screen name="MonthEvents" component={MonthEventsScreen} options={{ title: 'События за месяц' }} />
+        <Stack.Screen name="MonthKcal" component={MonthKcalScreen} options={{ title: 'Калории по дням' }} />
         <Stack.Screen name="EventEdit" component={EventEditScreen} options={{ title: 'Событие' }} />
         <Stack.Screen name="DiaryList" component={DiaryListScreen} options={{ title: 'Дневник' }} />
         <Stack.Screen name="DiaryEdit" component={DiaryEditScreen} options={{ title: 'Запись' }} />

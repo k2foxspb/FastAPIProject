@@ -12,7 +12,7 @@ export const theme = {
     success: '#10B981',
   },
   dark: {
-    background: '#0F172A',
+    background: '#000000',
     surface: '#1E293B',
     text: '#F8F9FA',
     textSecondary: '#94A3B8',

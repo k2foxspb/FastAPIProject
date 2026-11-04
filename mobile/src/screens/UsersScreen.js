@@ -20,14 +20,13 @@ export default function UsersScreen({ navigation, route }) {
   const [requests, setRequests] = useState([]);
   const [search, setSearch] = useState('');
   const [currentUserId, setCurrentUserId] = useState(currentUser?.id);
-  // Открытие сразу на вкладке "Друзья" (с заявками) - используется, например, при переходе
-  // из уведомления о заявке в друзья: navigation.navigate('Users', { screen: 'UsersMain', params: { initialTab: 'friends' } }).
-  const [activeTab, setActiveTab] = useState(route?.params?.initialTab === 'friends' ? 'friends' : 'all'); // 'all', 'friends'
+  // По умолчанию экран открывается на вкладке "Друзья" (с заявками). Вкладка "Все" доступна через initialTab: 'all'.
+  const [activeTab, setActiveTab] = useState(route?.params?.initialTab === 'all' ? 'all' : 'friends'); // 'all', 'friends'
   const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
-    if (route?.params?.initialTab === 'friends') {
-      setActiveTab('friends');
+    if (route?.params?.initialTab === 'friends' || route?.params?.initialTab === 'all') {
+      setActiveTab(route.params.initialTab);
     }
   }, [route?.params?.initialTab]);
 

@@ -145,7 +145,7 @@ export default function CreatePostScreen({ navigation, route }) {
               </View>
             ))}
             <TouchableOpacity
-              style={[styles.addImageBtn, { borderColor: colors.border, backgroundColor: colors.surface }]}
+              style={[styles.addImageBtn, { borderColor: colors.border, backgroundColor: 'transparent' }]}
               onPress={pickImages}
             >
               <Icon name="camera-outline" size={28} color={colors.primary} />

@@ -83,6 +83,12 @@ if (Platform.OS !== 'web') {
         }
         
         console.log(`[Entry] Notifee Background event (type=${type}):`, detail?.notification?.id);
+        try {
+          const { handleAppUpdateEvent } = require('./src/utils/appUpdate');
+          if (await handleAppUpdateEvent(event)) return;
+        } catch (err) {
+          console.error('[Entry] Error in app update event handler:', err);
+        }
         // Напоминания журнала («Выполнено»/«Отложить»/«Пропустить»): Notifee допускает
         // только один фоновый обработчик, поэтому они разбираются здесь же
         if (detail?.notification?.data?.kind === 'journal_reminder') {

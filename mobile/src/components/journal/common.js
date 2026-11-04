@@ -93,7 +93,7 @@ export const PendingMark = ({ visible }) => {
 export const Section = ({ title, right, children, style }) => {
   const colors = useColors();
   return (
-    <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }, style]}>
+    <View style={[styles.section, { backgroundColor: 'transparent', borderColor: colors.border }, style]}>
       {(!!title || right) && (
         <View style={styles.sectionHeader}>
           <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>{title}</Text>

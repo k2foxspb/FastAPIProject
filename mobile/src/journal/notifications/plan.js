@@ -16,7 +16,7 @@ export const TRIGGER_PREFIX = 'jr:';
 export const mealReminderKey = (mealTypeUuid) => `meal-${mealTypeUuid}`;
 export const SNOOZE_SUFFIX = ':snooze';
 export const DEFAULT_ALL_DAY_TIME = '09:00';
-export const MEAL_REMINDER_DELAY_MIN = 60;
+export const MEAL_REMINDER_DELAY_MIN = 30;
 const MINUTE = 60000;
 
 // Дата 'YYYY-MM-DD' момента ms в часовом поясе timeZone
@@ -162,7 +162,7 @@ export const planReminderTriggers = ({
         reminderUuid: key,
         targetType: 'meal',
         title: meal.name,
-        body: `Что вы ели на ${meal.name.toLowerCase()}? Нажмите, чтобы рассказать ИИ`,
+        body: `Что вы ели на ${meal.name.toLowerCase()}? Нажмите, чтобы записать в журнал`,
         data: {
           kind: 'journal_reminder',
           reminder_uuid: key,

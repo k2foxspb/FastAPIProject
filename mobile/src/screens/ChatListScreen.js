@@ -57,7 +57,7 @@ export default function ChatListScreen({ navigation }) {
       <TouchableOpacity 
         style={[styles.dialogItem, { 
           borderBottomColor: colors.border,
-          backgroundColor: colors.surface, 
+          backgroundColor: 'transparent', 
           minHeight: 80,
           width: '100%',
         }]}

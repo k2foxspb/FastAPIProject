@@ -49,7 +49,7 @@ export default function AdminScreen({ navigation }) {
         {filteredMenu.map((item, index) => (
           <TouchableOpacity
             key={index}
-            style={[styles.menuItem, { backgroundColor: colors.surface, borderColor: colors.border }]}
+            style={[styles.menuItem, { backgroundColor: 'transparent', borderColor: colors.border }]}
             onPress={() => navigation.navigate(item.screen)}
           >
             <View style={styles.menuItemLeft}>

@@ -270,7 +270,7 @@ const TrackerDetailContent = ({ navigation, uuid }) => {
     <View>
       <View style={styles.periods}>{periodChips}</View>
       {canChart && (
-        <View style={[styles.chartBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
+        <View style={[styles.chartBox, { backgroundColor: 'transparent', borderColor: colors.border }]}>
           <View style={styles.chartHeader}>
             <Text style={[styles.chartHint, { color: colors.textSecondary }]} numberOfLines={1}>{chartHintOf(kind, period)}</Text>
             <Pressable onPress={() => setFullscreen(true)} hitSlop={10}>
@@ -319,7 +319,7 @@ const TrackerDetailContent = ({ navigation, uuid }) => {
         keyExtractor={(v) => v.uuid ?? v.value_date}
         ListHeaderComponent={header}
         renderItem={({ item }) => (isPulse ? (
-          <View style={[styles.valueRow, { backgroundColor: colors.card }]}>
+          <View style={[styles.valueRow, { backgroundColor: 'transparent' }]}>
             <View style={{ flex: 1 }}>
               <Text style={{ color: colors.text, fontSize: 15 }}>{formatDateRu(item.value_date, { withYear: false })}</Text>
               <Text style={{ color: colors.textSecondary, fontSize: 13 }}>
@@ -329,7 +329,7 @@ const TrackerDetailContent = ({ navigation, uuid }) => {
             <Text style={{ color: colors.text, fontSize: 16, fontWeight: '600' }}>{format(round(item.avg_value))}</Text>
           </View>
         ) : (
-          <View style={[styles.valueRow, { backgroundColor: colors.card }]}>
+          <View style={[styles.valueRow, { backgroundColor: 'transparent' }]}>
             <View style={{ flex: 1 }}>
               <Text style={{ color: colors.text, fontSize: 15 }}>
                 {formatDateRu(item.value_date, { withYear: false })}{item.value_time ? `, ${formatTime(item.value_time)}` : ''}

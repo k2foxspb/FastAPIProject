@@ -43,7 +43,7 @@ export default function MyReviewsScreen({ navigation }) {
   };
 
   const renderReview = ({ item }) => (
-    <View style={[styles.reviewCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+    <View style={[styles.reviewCard, { backgroundColor: 'transparent', borderColor: colors.border }]}>
       <View style={styles.reviewHeader}>
         <View style={styles.reviewUserContainer}>
           <Image 

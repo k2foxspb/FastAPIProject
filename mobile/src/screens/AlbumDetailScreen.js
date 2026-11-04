@@ -362,7 +362,7 @@ export default function AlbumDetailScreen({ route, navigation }) {
           })}
           {isOwner && (
             <TouchableOpacity 
-              style={[styles.addPhotoBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
+              style={[styles.addPhotoBtn, { backgroundColor: 'transparent', borderColor: colors.border }]}
               onPress={() => navigation.navigate('UploadPhoto', { albumId: album.id })}
               onLongPress={async () => {
                 // Быстрая загрузка нескольких фото при долгом нажатии
@@ -415,7 +415,7 @@ export default function AlbumDetailScreen({ route, navigation }) {
       </View>
 
       {showComments && (
-        <View style={[styles.commentsSection, { backgroundColor: colors.surface, borderTopColor: colors.border }]}>
+        <View style={[styles.commentsSection, { backgroundColor: 'transparent', borderTopColor: colors.border }]}>
           <Text style={[styles.sectionTitle, { color: colors.text, paddingHorizontal: 0 }]}>Комментарии</Text>
           {comments.length === 0 ? (
             <Text style={[styles.emptyComments, { color: colors.textSecondary }]}>Нет комментариев</Text>

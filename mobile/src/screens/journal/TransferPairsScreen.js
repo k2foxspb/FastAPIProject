@@ -33,7 +33,7 @@ function Content() {
       const first = lookup.get(pair.first_uuid);
       const second = lookup.get(pair.second_uuid);
       if (!first || !second) return null;
-      return <View key={`${pair.first_uuid}:${pair.second_uuid}`} style={{ padding: 14, marginBottom: 10, borderRadius: 12, backgroundColor: colors.card }}>
+      return <View key={`${pair.first_uuid}:${pair.second_uuid}`} style={{ padding: 14, marginBottom: 10, borderRadius: 12, backgroundColor: 'transparent' }}>
         {[first, second].map((item) => <Text key={item.uuid} style={{ color: colors.text, marginBottom: 4 }}>
           {item.transaction_date} · {item.description} · {formatKop(item.amount_kop)}
         </Text>)}

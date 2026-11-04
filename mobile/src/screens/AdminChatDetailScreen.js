@@ -349,7 +349,7 @@ export default function AdminChatDetailScreen({ route, navigation }) {
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       {/* Панель выделения */}
       {isSelectionMode && (
-        <View style={[styles.selectionBar, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
+        <View style={[styles.selectionBar, { backgroundColor: 'transparent', borderBottomColor: colors.border }]}>
           <TouchableOpacity onPress={() => setSelectedIds([])} style={styles.selectionBarBtn}>
             <Icon name="close" size={20} color={colors.text} />
             <Text style={[styles.selectionBarText, { color: colors.text }]}>Отмена</Text>

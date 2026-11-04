@@ -108,7 +108,7 @@ const Content = ({ navigation }) => {
         keyExtractor={(m) => m.uuid}
         renderItem={({ item }) => (
           <TouchableOpacity
-            style={[styles.row, { backgroundColor: colors.card }]}
+            style={[styles.row, { backgroundColor: 'transparent' }]}
             onPress={() => setEditing({ meal: item })}
             onLongPress={() => remove(item)}
           >

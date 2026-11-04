@@ -453,7 +453,7 @@ export default function NewsDetailScreen({ route, navigation }) {
         </View>
       ) : (
         <TouchableOpacity 
-          style={[styles.stickyLoginPrompt, { backgroundColor: colors.surface, borderTopColor: colors.border, paddingBottom: Math.max(insets.bottom, 15) }]}
+          style={[styles.stickyLoginPrompt, { backgroundColor: 'transparent', borderTopColor: colors.border, paddingBottom: Math.max(insets.bottom, 15) }]}
           onPress={() => navigation.navigate('Profile')}
         >
           <Text style={{ color: colors.primary, fontWeight: 'bold' }}>Войдите, чтобы оставить комментарий</Text>

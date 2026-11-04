@@ -47,7 +47,7 @@ export default function AdminNewsScreen({ navigation }) {
   };
 
   const renderItem = ({ item }) => (
-    <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+    <View style={[styles.card, { backgroundColor: 'transparent', borderColor: colors.border }]}>
       <Text style={[styles.cardTitle, { color: colors.text }]}>{item.title}</Text>
       <Text style={[styles.cardContent, { color: colors.textSecondary }]} numberOfLines={2}>
         {item.content}

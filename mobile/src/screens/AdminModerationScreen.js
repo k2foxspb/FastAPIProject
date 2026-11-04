@@ -56,7 +56,7 @@ export default function AdminModerationScreen() {
     const title = isPost ? (item.content || 'Публикация без текста') : (item.name || item.title);
 
     return (
-      <View style={[styles.card, { backgroundColor: colors.surface, borderColor: isUrgent ? colors.error : colors.border }]}>
+      <View style={[styles.card, { backgroundColor: 'transparent', borderColor: isUrgent ? colors.error : colors.border }]}>
         <View style={styles.cardHeader}>
           <Text style={[styles.cardTitle, { color: colors.text }]} numberOfLines={isPost ? 2 : 1}>
             {title}

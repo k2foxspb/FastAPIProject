@@ -6,7 +6,7 @@ import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
 import { notificationsApi, feedApi } from '../api';
 import { useNotifications } from '../context/NotificationContext';
-import { startAppUpdate } from '../utils/appUpdate';
+import { startAppUpdate, isAppUpdateRunning, cancelAppUpdate, getAppUpdateSize, formatAppSize } from '../utils/appUpdate';
 
 // Экран со списком уведомлений (GET /notifications) - открывается нажатием на
 // колокольчик на экране "Лента". Нажатие на пункт помечает его прочитанным и
@@ -115,8 +115,20 @@ export default function NotificationsScreen({ navigation }) {
 
     try {
       if (objectType === 'app_version') {
-        // Новая версия приложения - запускаем скачивание и установку
-        startAppUpdate(item.data?.file_path, item.data?.version);
+        if (isAppUpdateRunning()) {
+          Alert.alert('Обновление загружается', 'Отменить скачивание обновления?', [
+            { text: 'Нет', style: 'cancel' },
+            { text: 'Отменить', style: 'destructive', onPress: () => cancelAppUpdate() },
+          ]);
+        } else {
+          const size = formatAppSize(await getAppUpdateSize(item.data?.file_path));
+          const versionText = item.data?.version ? ` ${item.data.version}` : '';
+          const sizeText = size ? `\nРазмер: ${size}` : '';
+          Alert.alert('Скачать приложение?', `Скачать и установить новую версию${versionText}?${sizeText}`, [
+            { text: 'Отмена', style: 'cancel' },
+            { text: 'Скачать', onPress: () => startAppUpdate(item.data?.file_path, item.data?.version) },
+          ]);
+        }
       } else if (objectType === 'profile_post' && objectId) {
         const res = await feedApi.getPost(objectId);
         navigation.navigate('PostDetail', { item: res.data });
@@ -145,7 +157,7 @@ export default function NotificationsScreen({ navigation }) {
     <TouchableOpacity
       style={[
         styles.item,
-        { backgroundColor: item.is_read ? colors.background : colors.surface, borderColor: colors.border },
+        { backgroundColor: item.is_read ? colors.background : 'transparent', borderColor: colors.border },
       ]}
       onPress={() => handlePressItem(item)}
     >

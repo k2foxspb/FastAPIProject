@@ -125,7 +125,7 @@ export default function UploadPhotoScreen({ route, navigation }) {
                 </View>
               ))}
               <TouchableOpacity 
-                style={[styles.addMoreBtn, { backgroundColor: colors.surface, borderColor: colors.border }]} 
+                style={[styles.addMoreBtn, { backgroundColor: 'transparent', borderColor: colors.border }]} 
                 onPress={pickImage}
               >
                 <Icon name="add" size={30} color={colors.textSecondary} />
@@ -134,7 +134,7 @@ export default function UploadPhotoScreen({ route, navigation }) {
           </View>
         ) : (
           <TouchableOpacity 
-            style={[styles.imagePicker, { backgroundColor: colors.surface, borderColor: colors.border }]} 
+            style={[styles.imagePicker, { backgroundColor: 'transparent', borderColor: colors.border }]} 
             onPress={pickImage}
           >
             <View style={styles.placeholder}>

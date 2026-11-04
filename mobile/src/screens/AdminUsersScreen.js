@@ -135,7 +135,7 @@ export default function AdminUsersScreen({ navigation }) {
 
   const renderUser = ({ item }) => (
     <TouchableOpacity 
-      style={[styles.userCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
+      style={[styles.userCard, { backgroundColor: 'transparent', borderColor: colors.border }]}
       onPress={() => navigation.navigate('UserProfile', { userId: item.id, isAdminView: true })}
     >
       <View style={styles.userInfo}>

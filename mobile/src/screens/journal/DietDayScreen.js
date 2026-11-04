@@ -89,7 +89,7 @@ const DietContent = ({ navigation, date }) => {
         );
       }}
       renderItem={({ item }) => (
-        <TouchableOpacity style={[styles.item, { backgroundColor: colors.card }]} onPress={() => entryMenu(item)}>
+        <TouchableOpacity style={[styles.item, { backgroundColor: 'transparent' }]} onPress={() => entryMenu(item)}>
           <View style={{ flex: 1 }}>
             <Text style={[styles.itemTitle, { color: colors.text }]} numberOfLines={2}>{item.name}</Text>
             <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 2 }}>

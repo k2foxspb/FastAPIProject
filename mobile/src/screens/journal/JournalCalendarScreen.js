@@ -1,5 +1,5 @@
 import React, { useCallback, useLayoutEffect, useMemo, useState } from 'react';
-import { Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { Calendar } from 'react-native-calendars';
 import { Ionicons as Icon } from '@expo/vector-icons';
@@ -63,9 +63,18 @@ const CalendarContent = ({ navigation }) => {
     if (key === 'expense') navigation.navigate('TransactionEdit', { direction: 'expense', date });
     if (key === 'finance') navigation.navigate('FinanceHome');
     if (key === 'food') {
-      // Приём пищи по текущему времени - добавление в 2-3 тапа
-      const meal = guessMealType(await listMealTypes());
-      navigation.navigate('FoodSearch', { date, mealTypeUuid: meal?.uuid || null });
+      Alert.alert('Еда', date, [
+        { text: 'Питание', onPress: () => navigation.navigate('DietDay', { date }) },
+        {
+          text: 'Добавить еду',
+          onPress: async () => {
+            // Приём пищи по текущему времени - добавление в 2-3 тапа
+            const meal = guessMealType(await listMealTypes());
+            navigation.navigate('FoodSearch', { date, mealTypeUuid: meal?.uuid || null });
+          },
+        },
+        { text: 'Отмена', style: 'cancel' },
+      ]);
     }
     if (key === 'water') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
@@ -88,7 +97,7 @@ const CalendarContent = ({ navigation }) => {
   return (
     <>
     <ScrollView style={{ backgroundColor: colors.background }} contentContainerStyle={{ paddingBottom: 32 }}>
-      <View style={[styles.calendarWrap, { backgroundColor: colors.card, borderColor: colors.border }]}>
+      <View style={[styles.calendarWrap, { backgroundColor: 'transparent', borderColor: colors.border }]}>
         <Calendar
           key={`${colors.card}:${settings?.week_start || 1}`}
           current={start}
@@ -97,7 +106,7 @@ const CalendarContent = ({ navigation }) => {
           dayComponent={renderDay}
           onMonthChange={(m) => setMonth({ year: m.year, month: m.month })}
           enableSwipeMonths
-          theme={calendarTheme(colors)}
+          theme={{ ...calendarTheme(colors), calendarBackground: 'transparent' }}
         />
       </View>
 
@@ -105,7 +114,7 @@ const CalendarContent = ({ navigation }) => {
         {QUICK_ACTIONS.map((a) => (
           <TouchableOpacity
             key={a.key}
-            style={[styles.quick, { backgroundColor: colors.card, borderColor: colors.border }]}
+            style={[styles.quick, { backgroundColor: 'transparent', borderColor: colors.border }]}
             onPress={() => onQuick(a.key)}
           >
             <Icon name={a.icon} size={22} color={colors.primary} />
@@ -128,11 +137,15 @@ const CalendarContent = ({ navigation }) => {
 
       <Section title="За месяц">
         <View style={styles.statsRow}>
-          <Stat colors={colors} value={`${totals.done}/${totals.total}`} label="события" />
-          <Stat colors={colors} value={String(totals.diary)} label="дней с записями" />
-          {totals.kcal > 0 && <Stat colors={colors} value={String(totals.kcal)} label="ккал" />}
-          {totals.expense > 0 && <Stat colors={colors} value={formatKop(totals.expense, { withKopecks: false })} label="расходы" />}
+          <Stat colors={colors} value={`${totals.done}/${totals.total}`} label="события" onPress={() => navigation.navigate('MonthEvents', { start, end })} />
+          <Stat colors={colors} value={String(totals.diary)} label="дней с записями" onPress={() => navigation.navigate('DiaryList')} />
+          {totals.kcal > 0 && <Stat colors={colors} value={String(totals.kcal)} label="ккал" onPress={() => navigation.navigate('MonthKcal', { start, end })} />}
+          {totals.expense > 0 && <Stat colors={colors} value={formatKop(totals.expense, { withKopecks: false })} label="расходы" onPress={() => navigation.navigate('ExpenseAnalytics')} />}
         </View>
+        <TouchableOpacity style={[styles.analyticsButton, { borderColor: colors.border }]} onPress={() => navigation.navigate('Analytics')}>
+          <Icon name="stats-chart-outline" size={18} color={colors.primary} />
+          <Text style={[styles.analyticsText, { color: colors.primary }]}>Аналитика</Text>
+        </TouchableOpacity>
         <ShareButton
           navigation={navigation}
           label="Поделиться календарём"
@@ -207,11 +220,11 @@ const DaySheet = ({ colors, date, isToday, summary, onClose, onAction }) => {
   );
 };
 
-const Stat = ({ colors, value, label }) => (
-  <View style={styles.stat}>
+const Stat = ({ colors, value, label, onPress }) => (
+  <TouchableOpacity style={styles.stat} onPress={onPress} activeOpacity={0.6}>
     <Text style={[styles.statValue, { color: colors.text }]}>{value}</Text>
     <Text style={[styles.statLabel, { color: colors.textSecondary }]}>{label}</Text>
-  </View>
+  </TouchableOpacity>
 );
 
 
@@ -244,6 +257,8 @@ const styles = StyleSheet.create({
   stat: { flex: 1, alignItems: 'center' },
   statValue: { fontSize: 18, fontWeight: '600' },
   statLabel: { fontSize: 12, marginTop: 2 },
+  analyticsButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginHorizontal: 12, marginTop: 8, paddingVertical: 10, borderWidth: StyleSheet.hairlineWidth, borderRadius: 12 },
+  analyticsText: { fontSize: 15, fontWeight: '600', marginLeft: 6 },
   backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.35)' },
   sheet: { position: 'absolute', left: 12, right: 12, bottom: 24, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, padding: 16 },
   sheetHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },

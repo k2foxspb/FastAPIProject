@@ -1,15 +1,15 @@
 import React, { useCallback, useLayoutEffect, useMemo, useState } from 'react';
-import { Alert, SectionList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Platform, SectionList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons as Icon } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useJournal, useJournalQuery } from '../../context/JournalContext';
 import { EmptyState, JournalGate, MOODS, SyncBadge, useColors } from '../../components/journal/common';
 import ShareButton from '../../components/journal/ShareButton';
-import { cancelInstance, eventsInRange, setInstanceStatus } from '../../journal/db/repos/events';
+import { cancelInstance, deleteEvent, eventsInRange, setInstanceStatus } from '../../journal/db/repos/events';
 import { listDiaryByDate } from '../../journal/db/repos/diary';
 import { formatTrackerValue, listValuesByDate } from '../../journal/db/repos/trackers';
 import { addDays, formatDateRu, formatTime } from '../../journal/utils/dates';
-import { addWater, guessMealType, loadDietDay } from '../../journal/db/repos/diet';
+import { loadDietDay } from '../../journal/db/repos/diet';
 import { formatAmount } from '../../journal/utils/nutrition';
 import { formatKop } from '../../journal/utils/money';
 import { listTransactions } from '../../journal/db/repos/finance';
@@ -60,9 +60,8 @@ const DayContent = ({ navigation, date }) => {
 
   const sections = useMemo(() => {
     if (!data) return [];
-    const hasDiet = data.diet.entries.length > 0 || data.diet.waterMl > 0;
     return [
-      { key: 'diet', title: 'Питание', data: hasDiet ? [data.diet] : [] },
+      { key: 'diet', title: 'Питание', data: [data.diet] },
       { key: 'finance', title: 'Финансы', data: data.transactions },
       { key: 'events', title: 'События', data: data.events },
       { key: 'diary', title: 'Дневник', data: data.diary },
@@ -76,22 +75,25 @@ const DayContent = ({ navigation, date }) => {
   }, []);
 
   const eventMenu = useCallback((inst) => {
+    // Android показывает не больше трёх кнопок (остальные молча отбрасываются), поэтому «Отмена» - только на iOS
     const buttons = [
       { text: 'Изменить событие', onPress: () => navigation.navigate('EventEdit', { uuid: inst.event_uuid }) },
       { text: inst.status === 'skipped' ? 'Вернуть' : 'Пропустить', onPress: () => setInstanceStatus(inst, inst.status === 'skipped' ? 'planned' : 'skipped') },
+      {
+        text: inst.recurring ? 'Удалить только это' : 'Удалить',
+        style: 'destructive',
+        onPress: () => (inst.recurring ? cancelInstance(inst) : deleteEvent(inst.event_uuid)),
+      },
     ];
-    if (inst.recurring) {
-      buttons.push({ text: 'Удалить только это', style: 'destructive', onPress: () => cancelInstance(inst) });
-    }
-    buttons.push({ text: 'Отмена', style: 'cancel' });
-    Alert.alert(inst.title, null, buttons);
+    if (Platform.OS === 'ios') buttons.push({ text: 'Отмена', style: 'cancel' });
+    Alert.alert(inst.title, null, buttons, { cancelable: true });
   }, [navigation]);
 
 
   const renderItem = ({ item, section }) => {
     if (section.key === 'diet') {
       return (
-        <TouchableOpacity style={[styles.item, { backgroundColor: colors.card }]} onPress={() => navigation.navigate('DietDay', { date })}>
+        <TouchableOpacity style={[styles.item, { backgroundColor: 'transparent' }]} onPress={() => navigation.navigate('DietDay', { date })}>
           <Icon name="restaurant-outline" size={22} color={colors.primary} />
           <View style={styles.itemBody}>
             <Text style={[styles.itemTitle, { color: colors.text }]}>
@@ -110,7 +112,7 @@ const DayContent = ({ navigation, date }) => {
       const done = item.status === 'done';
       const skipped = item.status === 'skipped';
       return (
-        <TouchableOpacity style={[styles.item, { backgroundColor: colors.card }]} onPress={() => eventMenu(item)}>
+        <TouchableOpacity style={[styles.item, { backgroundColor: 'transparent' }]} onPress={() => eventMenu(item)}>
           <TouchableOpacity onPress={() => toggleEvent(item)} hitSlop={10}>
             <Icon name={done ? 'checkmark-circle' : 'ellipse-outline'} size={26} color={done ? colors.success : colors.textSecondary} />
           </TouchableOpacity>
@@ -126,7 +128,7 @@ const DayContent = ({ navigation, date }) => {
     }
     if (section.key === 'finance') {
       return (
-        <TouchableOpacity style={[styles.item, { backgroundColor: colors.card }]} onPress={() => navigation.navigate('TransactionEdit', { uuid: item.uuid })}>
+        <TouchableOpacity style={[styles.item, { backgroundColor: 'transparent' }]} onPress={() => navigation.navigate('TransactionEdit', { uuid: item.uuid })}>
           <Icon name={item.direction === 'expense' ? 'arrow-up-circle-outline' : 'arrow-down-circle-outline'} size={22}
             color={item.direction === 'expense' ? colors.error : colors.success} />
           <View style={styles.itemBody}>
@@ -142,7 +144,7 @@ const DayContent = ({ navigation, date }) => {
     if (section.key === 'diary') {
       const mood = MOODS.find((m) => m.value === item.mood);
       return (
-        <TouchableOpacity style={[styles.item, { backgroundColor: colors.card }]} onPress={() => navigation.navigate('DiaryEdit', { uuid: item.uuid })}>
+        <TouchableOpacity style={[styles.item, { backgroundColor: 'transparent' }]} onPress={() => navigation.navigate('DiaryEdit', { uuid: item.uuid })}>
           <Icon name={mood ? mood.icon : 'book-outline'} size={22} color={mood ? mood.color : colors.primary} />
           <View style={styles.itemBody}>
             <Text style={[styles.itemTitle, { color: colors.text }]} numberOfLines={1}>{item.title || formatTime(item.entry_time) || 'Запись'}</Text>
@@ -152,7 +154,7 @@ const DayContent = ({ navigation, date }) => {
       );
     }
     return (
-      <View style={[styles.item, { backgroundColor: colors.card }]}>
+      <View style={[styles.item, { backgroundColor: 'transparent' }]}>
         <Icon name={item.tracker_icon || 'pulse-outline'} size={22} color={item.tracker_color || colors.primary} />
         <View style={styles.itemBody}>
           <Text style={[styles.itemTitle, { color: colors.text }]}>{item.tracker_name}</Text>
@@ -165,21 +167,6 @@ const DayContent = ({ navigation, date }) => {
 
   const footer = (
     <View style={styles.actions}>
-      <ActionButton
-        colors={colors}
-        icon="restaurant-outline"
-        label="Еда"
-        onPress={() => navigation.navigate('FoodSearch', { date, mealTypeUuid: guessMealType(data?.diet?.mealTypes)?.uuid || null })}
-      />
-      <ActionButton
-        colors={colors}
-        icon="water-outline"
-        label="+250 мл"
-        onPress={() => {
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
-          addWater(date, 250);
-        }}
-      />
       <ActionButton colors={colors} icon="add-circle-outline" label="Событие" onPress={() => navigation.navigate('EventEdit', { date })} />
       <ActionButton colors={colors} icon="book-outline" label="Запись" onPress={() => navigation.navigate('DiaryEdit', { date })} />
       <ActionButton colors={colors} icon="remove-circle-outline" label="Расход" onPress={() => navigation.navigate('TransactionEdit', { direction: 'expense', date })} />
@@ -222,7 +209,7 @@ const DayContent = ({ navigation, date }) => {
 };
 
 const ActionButton = ({ colors, icon, label, onPress }) => (
-  <TouchableOpacity style={[styles.action, { borderColor: colors.border, backgroundColor: colors.card }]} onPress={onPress}>
+  <TouchableOpacity style={[styles.action, { borderColor: colors.border, backgroundColor: 'transparent' }]} onPress={onPress}>
     <Icon name={icon} size={20} color={colors.primary} />
     <Text style={{ color: colors.text, marginTop: 4, fontSize: 13 }}>{label}</Text>
   </TouchableOpacity>

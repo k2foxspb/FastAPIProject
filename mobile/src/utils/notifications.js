@@ -19,6 +19,7 @@ import notifee from '@notifee/react-native';
 import { usersApi, chatApi, setAuthToken } from '../api';
 import { storage } from './storage';
 import { navigationRef } from '../navigation/NavigationService';
+import { handleAppUpdateEvent } from './appUpdate';
 import { displayBundledMessage, handleNotificationResponse, parseNotificationData, navigateByPushData } from './notificationUtils';
 import { JOURNAL_IOS_CATEGORIES } from '../journal/notifications/channels';
 
@@ -297,7 +298,9 @@ export async function setupCloudMessaging(onNotificationReceived = null) {
     try {
       if (notifee && typeof notifee.onForegroundEvent === 'function') {
         unsubscribeForeground = notifee.onForegroundEvent((event) => {
-          handleNotificationResponse(event);
+          handleAppUpdateEvent(event).then((handled) => {
+            if (!handled) handleNotificationResponse(event);
+          });
         });
       }
     } catch (e) {

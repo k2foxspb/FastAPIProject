@@ -37,7 +37,7 @@ export default function AdminChatsScreen({ navigation }) {
     
     return (
       <TouchableOpacity 
-        style={[styles.dialogItem, { borderBottomColor: colors.border, backgroundColor: colors.surface }]}
+        style={[styles.dialogItem, { borderBottomColor: colors.border, backgroundColor: 'transparent' }]}
         onPress={() => navigation.navigate('AdminChatDetail', { 
           u1: user1, 
           u2: user2 

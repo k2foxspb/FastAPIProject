@@ -64,7 +64,7 @@ export default function UserMediaScreen({ route, navigation }) {
             onPress={() => navigation.navigate('CreateAlbum')}
           >
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <View style={[styles.albumIconPlaceholder, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <View style={[styles.albumIconPlaceholder, { backgroundColor: 'transparent', borderColor: colors.border }]}>
                 <Icon name="add" size={24} color={colors.primary} />
               </View>
               <Text style={[styles.albumTitle, { color: colors.primary, marginLeft: 15 }]}>Создать альбом</Text>
@@ -98,7 +98,7 @@ export default function UserMediaScreen({ route, navigation }) {
           {isOwner && (
             <TouchableOpacity 
               onPress={() => navigation.navigate('UploadPhoto')}
-              style={[styles.gridPhoto, styles.addMediaBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
+              style={[styles.gridPhoto, styles.addMediaBtn, { backgroundColor: 'transparent', borderColor: colors.border }]}
             >
               <Icon name="camera-outline" size={32} color={colors.primary} />
             </TouchableOpacity>

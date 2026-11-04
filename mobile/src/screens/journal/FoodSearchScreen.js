@@ -244,7 +244,7 @@ const SearchContent = ({ navigation, route }) => {
       </View>
       <View style={styles.actions}>
         {actions.map((a) => (
-          <TouchableOpacity key={a.key} style={[styles.action, { backgroundColor: colors.card, borderColor: colors.border }]} onPress={a.onPress}>
+          <TouchableOpacity key={a.key} style={[styles.action, { backgroundColor: 'transparent', borderColor: colors.border }]} onPress={a.onPress}>
             <Icon name={a.icon} size={20} color={colors.primary} />
             <Text style={{ color: colors.text, fontSize: 12, marginTop: 3 }}>{a.label}</Text>
           </TouchableOpacity>
@@ -265,7 +265,7 @@ const SearchContent = ({ navigation, route }) => {
           initialNumToRender={20}
           renderItem={({ item }) => (
             <TouchableOpacity
-              style={[styles.item, { backgroundColor: colors.card }]}
+              style={[styles.item, { backgroundColor: 'transparent' }]}
               onPress={() => (manage ? editFood(item) : setPortionFood(item))}
               onLongPress={() => editFood(item)}
             >
