@@ -49,9 +49,7 @@ export function getPushRoute(data) {
   return type ? 'bell' : 'ignore';
 }
 
-// Загрузка аватарки с таймаутом: если картинка недоступна или сеть медленная,
-// возвращаем null, и уведомление показывается без аватарки (с иконкой приложения).
-const AVATAR_TIMEOUT_MS = 4000;
+// Нормализует URL аватарки без предварительной проверки доступности (HEAD/GET).
 const inFlightMessageIds = new Set();
 export async function resolveAvatarUrl(url) {
   if (typeof url !== 'string' || !url.trim()) {
@@ -71,46 +69,8 @@ export async function resolveAvatarUrl(url) {
       ? `https://${candidate}`
       : `${baseUrl}/${candidate}`;
   }
-  try {
-    const checkUrl = async (method) => {
-      const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
-      let timer;
-      const timeout = new Promise((resolve) => {
-        timer = setTimeout(() => {
-          if (controller) controller.abort();
-          resolve(null);
-        }, AVATAR_TIMEOUT_MS);
-      });
-      const check = fetch(normalizedUrl, {
-        method,
-        ...(method === 'GET' ? { headers: { Range: 'bytes=0-0' } } : {}),
-        signal: controller ? controller.signal : undefined,
-      })
-        .then((res) => {
-          if (!res?.ok) return null;
-          if (method === 'GET' && res.body?.cancel) {
-            const cancelResult = res.body.cancel();
-            if (cancelResult?.catch) cancelResult.catch(() => {});
-          }
-          return normalizedUrl;
-        })
-        .catch(() => null);
-      const result = await Promise.race([check, timeout]);
-      clearTimeout(timer);
-      return result;
-    };
-
-    let result = await checkUrl('HEAD');
-    if (!result) {
-      console.log('[Notifee] Avatar HEAD check failed; retrying with GET:', normalizedUrl);
-      result = await checkUrl('GET');
-    }
-    console.log(`[Notifee] Avatar URL ${result ? 'available' : 'unavailable'}:`, normalizedUrl);
-    return result;
-  } catch (e) {
-    console.log('[Notifee] resolveAvatarUrl error for URL:', normalizedUrl, e?.message || e);
-    return null;
-  }
+  console.log('[Notifee] Avatar URL used without check:', normalizedUrl);
+  return normalizedUrl;
 }
 
 // --- Helpers to extract info from various notification data formats ---
