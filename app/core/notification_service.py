@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.notifications import Notification
 from app.models.users import User as UserModel
 from app.core.notifications import dispatch_notification, dispatch_system_notification
+from app.schemas.users import get_default_avatar_url
 
 
 # Группы оповещений (NOTIFICATION_GROUPS), которые всегда отправляются
@@ -148,7 +149,7 @@ async def create_or_group_notification(
             if actor_id is not None:
                 actor = await db.get(UserModel, actor_id)
                 if actor is not None:
-                    sender_avatar = actor.avatar_preview_url or actor.avatar_url
+                    sender_avatar = actor.avatar_preview_url or actor.avatar_url or get_default_avatar_url(actor.gender)
                     actor_name = f"{actor.first_name or ''} {actor.last_name or ''}".strip() or actor.email
                     if actor_name:
                         push_data.setdefault("sender_name", actor_name)
