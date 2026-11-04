@@ -90,14 +90,6 @@ const importRecord = async (metric, record, trackerUuidByMetric) => {
       num_value: Math.round(kg * 100) / 100,
     });
     await markImported(externalId, metric, uuid);
-  } else if (metric === 'sleep') {
-    const minutes = Math.round((new Date(record.endTime) - new Date(record.time)) / 60000);
-    if (minutes <= 0) return false;
-    const uuid = await saveTrackerValue({
-      tracker_uuid: trackerUuidByMetric.sleep, value_date: dayOf(record.endTime), value_time: timeOf(record.time),
-      num_value: minutes,
-    });
-    await markImported(externalId, metric, uuid);
   } else if (metric === 'heart_rate') {
     const bpm = Math.round(record.value ?? 0);
     if (!bpm) return false;
@@ -138,6 +130,35 @@ const importStepsByDay = async (records, trackerUuid) => {
   return written;
 };
 
+// Сон - сумма за день по объединённым интервалам: сессии из нескольких источников не дают дублей, одна запись на день
+const importSleepByDay = async (records, trackerUuid) => {
+  const intervalsByDay = new Map();
+  for (const r of records) {
+    const day = dayOf(r.endTime);
+    if (!intervalsByDay.has(day)) intervalsByDay.set(day, []);
+    intervalsByDay.get(day).push([new Date(r.time).getTime(), new Date(r.endTime).getTime()]);
+  }
+  let written = 0;
+  for (const [day, intervals] of intervalsByDay) {
+    const merged = [];
+    for (const [start, end] of intervals.sort((a, b) => a[0] - b[0])) {
+      const last = merged[merged.length - 1];
+      if (last && start <= last[1]) last[1] = Math.max(last[1], end);
+      else merged.push([start, end]);
+    }
+    const minutes = Math.round(merged.reduce((sum, [start, end]) => sum + (end - start), 0) / 60000);
+    if (minutes <= 0) continue;
+    const externalId = `sleep:${day}`;
+    const row = await getJournalDb().getFirstAsync('SELECT local_uuid FROM health_imports WHERE external_id = ?', [externalId]);
+    const uuid = await saveTrackerValue({
+      tracker_uuid: trackerUuid, value_date: day, value_time: timeOf(new Date(merged[0][0]).toISOString()), num_value: minutes,
+    }, row?.local_uuid || null);
+    if (!row) await markImported(externalId, 'sleep', uuid);
+    written += 1;
+  }
+  return written;
+};
+
 // Инкрементальный импорт: читает только период после курсора. Возвращает число новых записей.
 export const runHealthImport = async () => {
   if (!(await isHealthEnabled())) return 0;
@@ -158,10 +179,16 @@ export const runHealthImport = async () => {
     }
     const recordType = { weight: 'Weight', sleep: 'SleepSession', steps: 'Steps', water: 'Hydration', heart_rate: 'HeartRate' }[metricKey];
     let start = (await getMeta(cursorKey(metricKey), null)) || fallbackStart;
-    if (metricKey === 'steps') start = startOfDayIso(start);
+    // Дневные метрики (шаги, сон) пересчитываются по дням и не зависят от курсора: курсор после первой синхронизации
+    // отсекал историю, поэтому читаем скользящее окно за DEFAULT_LOOKBACK_DAYS с начала дня
+    if (metricKey === 'steps' || metricKey === 'sleep') {
+      start = startOfDayIso(fallbackStart);
+    }
     const records = await source.read(recordType, start, now.toISOString());
     if (metricKey === 'steps') {
       imported += await importStepsByDay(records, trackerUuidByMetric.steps);
+    } else if (metricKey === 'sleep') {
+      imported += await importSleepByDay(records, trackerUuidByMetric.sleep);
     } else {
       for (const record of records) {
         if (await importRecord(metricKey, record, trackerUuidByMetric)) imported += 1;

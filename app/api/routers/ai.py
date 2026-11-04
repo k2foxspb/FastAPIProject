@@ -78,6 +78,10 @@ PEOPLE_SEARCH_PATTERN = re.compile(
 # Максимальное количество кандидатов, которые передаются модели в служебном сообщении.
 MATCH_CANDIDATES_LIMIT = 5
 
+# Сколько последних сообщений диалога передавать в модель. Длинная история не помещается в окно
+# контекста (num_ctx), и Ollama молча обрезает её начало, вместе с системным промптом.
+MAX_HISTORY_MESSAGES = 20
+
 # Дополнительное напоминание о языке ответа, добавляется последним сообщением перед
 # отправкой в Ollama - модели лучше следуют инструкциям, расположенным ближе к концу контекста.
 LANGUAGE_REMINDER = "Напоминание: отвечай только на русском языке, не используй китайские иероглифы и другие языки."
@@ -208,7 +212,7 @@ async def ai_chat(
     if not isinstance(messages, list):
         raise HTTPException(status_code=400, detail="Поле 'messages' должно быть массивом сообщений")
 
-    ollama_messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    history = []
     for item in messages:
         if not isinstance(item, dict):
             raise HTTPException(status_code=400, detail="Каждое сообщение должно быть объектом с полями 'role' и 'content'")
@@ -219,7 +223,9 @@ async def ai_chat(
                 status_code=400,
                 detail="Каждое сообщение должно содержать 'role' (user/assistant/system) и непустой текст 'content'",
             )
-        ollama_messages.append({"role": role, "content": content})
+        history.append({"role": role, "content": content})
+
+    ollama_messages = [{"role": "system", "content": SYSTEM_PROMPT}] + history[-MAX_HISTORY_MESSAGES:]
 
     # Если пользователь просит подобрать людей для знакомства, даём модели реальных кандидатов из базы
     last_user_text = next(

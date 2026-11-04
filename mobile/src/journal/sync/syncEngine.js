@@ -294,7 +294,8 @@ export const startSyncEngine = () => {
   });
   unsubscribers = [
     NetInfo.addEventListener((net) => {
-      const online = !!net.isConnected && net.isInternetReachable !== false;
+      // isInternetReachable проверяет внешний адрес NetInfo, а не наш сервер - ориентируемся только на подключение
+      const online = !!net.isConnected;
       const cameOnline = online && !isOnline;
       isOnline = online;
       if (cameOnline) schedule(500);

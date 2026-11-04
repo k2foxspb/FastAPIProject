@@ -17,9 +17,27 @@ const loadAndroid = () => {
     init: () => hc.initialize(),
     requestRead: (recordTypes) => hc.requestPermission(recordTypes.map((recordType) => ({ accessType: 'read', recordType }))),
     read: async (recordType, startIso, endIso) => {
-      const res = await hc.readRecords(recordType, {
-        timeRangeFilter: { operator: 'between', startTime: startIso, endTime: endIso },
-      });
+      // Шаги агрегируем по дням средствами Health Connect: записи разных приложений/часов перекрываются и не должны суммироваться дважды
+      if (recordType === 'Steps') {
+        const buckets = await hc.aggregateGroupByPeriod({
+          recordType: 'Steps',
+          timeRangeFilter: { operator: 'between', startTime: startIso, endTime: endIso },
+          timeRangeSlicer: { period: 'DAYS', length: 1 },
+        });
+        return (buckets || []).map((b) => ({ time: b.startTime, endTime: b.endTime, count: b.result?.COUNT_TOTAL ?? 0 }));
+      }
+      // Health Connect отдаёт записи страницами (до 1000 за раз) - читаем все страницы, иначе старые данные теряются
+      const records = [];
+      let pageToken;
+      do {
+        const page = await hc.readRecords(recordType, {
+          timeRangeFilter: { operator: 'between', startTime: startIso, endTime: endIso },
+          pageToken,
+        });
+        records.push(...(page.records || []));
+        pageToken = page.pageToken || undefined;
+      } while (pageToken);
+      const res = { records };
       if (recordType === 'HeartRate') {
         // Health Connect отдаёт пульс пачкой замеров внутри одной записи
         return (res.records || []).flatMap((r) => (r.samples || []).map((s) => ({
