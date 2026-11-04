@@ -57,7 +57,7 @@
       ]
     ],
     "name": "Foxly",
-    "slug": "foxly",
+    "slug": "fastapi",
     "scheme": "foxly",
     "version": "1.0.21",
     "orientation": "portrait",

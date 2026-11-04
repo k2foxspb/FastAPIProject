@@ -10,11 +10,8 @@
     function storedTheme() {
         try { return localStorage.getItem(STORAGE_KEY); } catch (e) { return null; }
     }
-    function systemTheme() {
-        return window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
-    }
     function applyTheme(theme) { root.setAttribute('data-theme', theme); }
-    applyTheme(storedTheme() || systemTheme());
+    applyTheme(storedTheme() || 'dark');
 
     function $(sel, ctx) { return (ctx || document).querySelector(sel); }
     function $$(sel, ctx) { return Array.prototype.slice.call((ctx || document).querySelectorAll(sel)); }
@@ -91,15 +88,6 @@
         });
         host.appendChild(btn);
         refresh();
-
-        // Следим за системной темой, пока пользователь не выбрал свою
-        if (window.matchMedia) {
-            var mq = window.matchMedia('(prefers-color-scheme: light)');
-            var onChange = function () {
-                if (!storedTheme()) { applyTheme(systemTheme()); refresh(); }
-            };
-            if (mq.addEventListener) mq.addEventListener('change', onChange);
-        }
     }
 
     /* ---------- Прогресс чтения и «Наверх» ---------- */
