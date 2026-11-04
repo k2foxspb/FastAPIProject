@@ -6,7 +6,7 @@ import { AppState, Platform } from 'react-native';
 import notifee, { AlarmType, TriggerType } from '@notifee/react-native';
 import { getJournalDb, getJournalUserId, serializeWrite, subscribeJournalChanges } from '../db/database';
 import { rowToObject } from '../sync/entities';
-import { getMeta, setMeta } from '../sync/outbox';
+import { getMeta, setMetaInTx } from '../sync/outbox';
 import { addDays, deviceTimeZone } from '../utils/dates';
 import { SNOOZE_SUFFIX, TRIGGER_PREFIX, dateKeyAt, planReminderTriggers } from './plan';
 import {
@@ -184,9 +184,9 @@ const runReschedule = async () => {
         [t.id, t.reminderUuid, t.fireAt, t.title, t.body],
       );
     }
-    await setMeta('reminders_device_tz', deviceTimeZone());
-    await setMeta('reminders_last_run', new Date(now).toISOString());
-    await setMeta('reminders_exact', exact ? '1' : '0');
+    await setMetaInTx('reminders_device_tz', deviceTimeZone());
+    await setMetaInTx('reminders_last_run', new Date(now).toISOString());
+    await setMetaInTx('reminders_exact', exact ? '1' : '0');
   }));
   return { scheduled: planned.size, created, cancelled: toCancel.length };
 };

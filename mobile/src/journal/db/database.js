@@ -20,7 +20,7 @@ export const openJournalDb = async (userId) => {
       current = null;
     }
     const db = await SQLite.openDatabaseAsync(`journal_u${userId}.db`);
-    await db.execAsync('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = OFF;');
+    await db.execAsync('PRAGMA busy_timeout = 10000; PRAGMA journal_mode = WAL; PRAGMA foreign_keys = OFF;');
     await runMigrations(db);
     current = { userId, db };
     return db;

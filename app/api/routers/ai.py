@@ -279,7 +279,7 @@ async def _build_ollama_messages(payload: Dict[str, Any], current_user: UserMode
     # для длинных диалогов, где системный промпт в начале контекста "забывается" моделью.
     # /no_think - мягкое переключение Qwen3 в режим без рассуждений. Работает независимо от версии Ollama,
     # в отличие от параметра think: False, который старые версии игнорируют.
-    ollama_messages.append({"role": "system", "content": LANGUAGE_REMINDER + " /no_think"})
+    ollama_messages.append({"role": "system", "content": LANGUAGE_REMINDER })
     return ollama_messages
 
 

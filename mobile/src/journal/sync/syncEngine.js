@@ -8,7 +8,7 @@ import { storage } from '../../utils/storage';
 import { ENTITIES } from './entities';
 import { getJournalDb, notifyJournalChange, serializeWrite, subscribeJournalChanges } from '../db/database';
 import { applyRemoteChange, hasPendingOutbox } from '../db/repo';
-import { MAX_ATTEMPTS, getCursor, getMeta, pendingCount, setCursor, setMeta, takeBatch } from './outbox';
+import { MAX_ATTEMPTS, getCursor, getMeta, pendingCount, setCursor, setCursorInTx, setMeta, takeBatch } from './outbox';
 import { uploadPendingAttachments } from './uploader';
 import { newUuid } from '../utils/uuid';
 
@@ -151,7 +151,7 @@ const resetForFullResync = async () => {
         [entity],
       );
     }
-    await setCursor(0);
+    await setCursorInTx(0);
   }));
 };
 
@@ -181,7 +181,7 @@ const pullAll = async () => {
           if (await hasPendingOutbox(db, change.entity, change.client_uuid)) continue;
           if (await applyRemoteChange(db, change)) changed = true;
         }
-        await setCursor(next);
+        await setCursorInTx(next);
       }));
     } else if (next !== cursor) {
       await setCursor(next);

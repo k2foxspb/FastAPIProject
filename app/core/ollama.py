@@ -67,7 +67,7 @@ async def chat_stream(
         "model": OLLAMA_MODEL,
         "messages": messages,
         "stream": True,
-        "think": True,
+        "think": False,
         "options": {**DEFAULT_OPTIONS, **(options or {})},
     }
     if json_mode:

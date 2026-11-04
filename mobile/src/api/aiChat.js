@@ -77,12 +77,17 @@ export const aiChatApi = {
       xhr.setRequestHeader('Accept', 'application/x-ndjson');
       if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
       if (appCheckToken) xhr.setRequestHeader('X-Firebase-AppCheck', appCheckToken);
-      xhr.timeout = 120000;
+      xhr.timeout = 300000;
 
       xhr.onprogress = consumeProgress;
 
       xhr.onerror = () => reject(new Error('Сетевая ошибка при получении ответа'));
-      xhr.ontimeout = () => reject(new Error('Превышено время ожидания ответа'));
+      xhr.ontimeout = () => {
+        const detail = 'ИИ отвечает слишком долго. Попробуйте ещё раз позже.';
+        const err = new Error(detail);
+        err.response = { data: { detail } };
+        reject(err);
+      };
 
       xhr.onload = () => {
         if (xhr.status === 401) {

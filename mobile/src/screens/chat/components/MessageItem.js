@@ -155,6 +155,25 @@ export default function MessageItem({
     );
   };
 
+  const timeFooter = (
+    <View style={styles.messageFooter}>
+      <Text style={[styles.messageTime, { color: colors.textSecondary }]}>
+        {formatMessageTime(item.timestamp)}
+      </Text>
+    </View>
+  );
+
+  const statusFooter = (
+    <View style={styles.messageFooter}>
+      <MaterialIcons
+        name={item.status === 'pending' ? 'schedule' : (item.is_read ? 'done-all' : 'done')}
+        size={14}
+        color={item.status === 'pending' ? colors.textSecondary : (item.is_read ? '#4CAF50' : colors.textSecondary)}
+        style={styles.statusIcon}
+      />
+    </View>
+  );
+
   return (
     <>
       {showDateSeparator && (
@@ -199,6 +218,7 @@ export default function MessageItem({
             { zIndex: (isCurrentSearchResult || isReplyHighlighted) ? 10 : 1 }
           ]}
         >
+          {!isReceived && timeFooter}
           <View 
             style={[
               styles.messageBubble, 
@@ -428,29 +448,8 @@ export default function MessageItem({
             ))}
           </View>
         )}
-        <View style={styles.messageFooter}>
-          <Text style={[
-            styles.messageTime, 
-            isReceived ? {color: colors.textSecondary} : {color: 'rgba(255,255,255,0.7)'}
-          ]}>
-            {formatMessageTime(item.timestamp)}
-          </Text>
-          {!isReceived && (
-            <MaterialIcons 
-              name={
-                item.status === 'pending' ? "schedule" : 
-                item.is_read ? "done-all" : "done"
-              } 
-              size={14} 
-              color={
-                item.status === 'pending' ? "rgba(255,255,255,0.5)" :
-                item.is_read ? "#4CAF50" : "rgba(255,255,255,0.7)"
-              } 
-              style={styles.statusIcon}
-            />
-          )}
-        </View>
       </View>
+      {isReceived ? timeFooter : statusFooter}
     </Pressable>
   </Swipeable>
       <ReactionsListModal
