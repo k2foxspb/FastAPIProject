@@ -102,21 +102,29 @@ export default function AiChatScreen({ navigation, route }) {
     setError(null);
     setIsSending(true);
 
-    try {
-      const response = await aiChatApi.sendMessage(
-        historyForRequest.map(({ role, content }) => ({ role, content }))
-      );
-      const assistantMessage = response?.data?.message;
+    // Пустое сообщение ассистента создаём сразу и дописываем текст по мере прихода потока
+    const assistantId = generateMessageId();
+    setMessages((prev) => [...prev, { id: assistantId, role: 'assistant', content: '' }]);
 
-      if (!assistantMessage?.content) {
+    const updateAssistant = (updater) => {
+      setMessages((prev) => prev.map((m) => (m.id === assistantId ? { ...m, content: updater(m.content) } : m)));
+    };
+
+    try {
+      const content = await aiChatApi.streamMessage(
+        historyForRequest.map(({ role, content }) => ({ role, content })),
+        {
+          onDelta: (piece) => updateAssistant((current) => current + piece),
+          onReset: () => updateAssistant(() => ''),
+        }
+      );
+
+      if (!content) {
         throw new Error('Пустой ответ от сервера');
       }
-
-      setMessages((prev) => [
-        ...prev,
-        { id: generateMessageId(), role: 'assistant', content: assistantMessage.content },
-      ]);
+      updateAssistant(() => content);
     } catch (e) {
+      setMessages((prev) => prev.filter((m) => m.id !== assistantId));
       const serverDetail = e?.response?.data?.detail;
       setError(
         typeof serverDetail === 'string'

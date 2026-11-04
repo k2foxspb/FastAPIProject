@@ -6,11 +6,13 @@
 какой код вернуть (чат ИИ - 500, журнал - 502/504).
 
     text = await ollama.chat(messages)
+    async for piece in ollama.chat_stream(messages):     # куски текста по мере генерации
+        ...
     answer = await ollama.chat_json(messages, MyModel)   # JSON-режим + строгая pydantic-проверка
 """
 import json
 import re
-from typing import TypeVar
+from typing import AsyncIterator, TypeVar
 
 import httpx
 from loguru import logger
@@ -52,15 +54,15 @@ class OllamaBadResponse(OllamaError):
     """Ответ не удалось разобрать (не JSON, пустой, не прошёл проверку схемы)."""
 
 
-async def chat(
+async def chat_stream(
     messages: list[dict],
     *,
     client: httpx.AsyncClient | None = None,
     timeout: float = 60.0,
     options: dict | None = None,
     json_mode: bool = False,
-) -> str:
-    """Запрос /api/chat в потоковом режиме (stream: true); возвращает собранный текст ответа ассистента."""
+) -> AsyncIterator[str]:
+    """Запрос /api/chat в потоковом режиме (stream: true); отдаёт куски текста ответа по мере поступления."""
     body = {
         "model": OLLAMA_MODEL,
         "messages": messages,
@@ -79,7 +81,6 @@ async def chat(
             if response.is_error:
                 await response.aread()
             response.raise_for_status()
-            parts = []
             async for line in response.aiter_lines():
                 if not line.strip():
                     continue
@@ -89,7 +90,7 @@ async def chat(
                 message = chunk.get("message")
                 piece = message.get("content") if isinstance(message, dict) else None
                 if piece:
-                    parts.append(str(piece))
+                    yield str(piece)
                 if chunk.get("done"):
                     break
     except httpx.TimeoutException as e:
@@ -117,6 +118,22 @@ async def chat(
         if own_client:
             await client.aclose()
 
+
+async def chat(
+    messages: list[dict],
+    *,
+    client: httpx.AsyncClient | None = None,
+    timeout: float = 60.0,
+    options: dict | None = None,
+    json_mode: bool = False,
+) -> str:
+    """Запрос /api/chat в потоковом режиме; возвращает собранный текст ответа ассистента."""
+    parts = [
+        piece
+        async for piece in chat_stream(
+            messages, client=client, timeout=timeout, options=options, json_mode=json_mode
+        )
+    ]
     content = "".join(parts)
     if not content.strip():
         # Текст ответа в лог не пишем целиком - в нём могут быть данные пользователя

@@ -81,6 +81,9 @@ const getAppCheckToken = async () => {
 // Прогрев App Check токена при старте, чтобы первый запрос не ждал аттестацию
 export const warmUpAppCheck = () => getAppCheckToken().catch(() => null);
 
+// Для запросов вне axios (потоковый чат ИИ) - тот же App Check токен, что и в интерцепторе
+export const getAppCheckHeaderToken = () => getAppCheckToken();
+
 api.interceptors.request.use(async (config) => {
   const token = await getAppCheckToken();
   if (token) {

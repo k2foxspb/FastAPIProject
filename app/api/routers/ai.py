@@ -1,8 +1,10 @@
+import json
 import re
-from typing import Any, Dict
+from typing import Any, AsyncIterator, Dict
 
 import httpx
 from fastapi import APIRouter, Body, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from loguru import logger
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -192,21 +194,8 @@ def _build_candidates_prompt(candidates: list[UserModel]) -> str:
     )
 
 
-@router.post("/chat", response_model=AiChatResponse)
-async def ai_chat(
-    payload: Dict[str, Any] = Body(...),
-    current_user: UserModel = Depends(get_current_user),
-    db: AsyncSession = Depends(get_async_db),
-):
-    """
-    Принимает историю сообщений диалога от мобильного приложения, пересылает
-    её в локальную Ollama (модель qwen2.5:7b-instruct) и возвращает ответ ассистента.
-    Если пользователь просит подобрать людей для знакомства, в контекст добавляется
-    список кандидатов из базы.
-
-    Мобильное приложение НИКОГДА не обращается к Ollama напрямую - весь трафик
-    идёт через этот backend-эндпоинт.
-    """
+async def _build_ollama_messages(payload: Dict[str, Any], current_user: UserModel, db: AsyncSession) -> list:
+    """Валидирует историю диалога и собирает сообщения для Ollama (системный промпт, кандидаты, напоминание о языке)."""
     messages = payload.get("messages")
 
     if not isinstance(messages, list):
@@ -239,6 +228,25 @@ async def ai_chat(
     # Напоминание о языке в конце истории - усиливает приоритет правила "отвечай на русском"
     # для длинных диалогов, где системный промпт в начале контекста "забывается" моделью.
     ollama_messages.append({"role": "system", "content": LANGUAGE_REMINDER})
+    return ollama_messages
+
+
+@router.post("/chat", response_model=AiChatResponse)
+async def ai_chat(
+    payload: Dict[str, Any] = Body(...),
+    current_user: UserModel = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Принимает историю сообщений диалога от мобильного приложения, пересылает
+    её в локальную Ollama (модель qwen2.5:7b-instruct) и возвращает ответ ассистента.
+    Если пользователь просит подобрать людей для знакомства, в контекст добавляется
+    список кандидатов из базы.
+
+    Мобильное приложение НИКОГДА не обращается к Ollama напрямую - весь трафик
+    идёт через этот backend-эндпоинт.
+    """
+    ollama_messages = await _build_ollama_messages(payload, current_user, db)
 
     async with httpx.AsyncClient(timeout=OLLAMA_REQUEST_TIMEOUT) as client:
         content = await _call_ollama(client, ollama_messages)
@@ -273,3 +281,61 @@ async def ai_chat(
             "content": content,
         }
     }
+
+
+def _ndjson(event: dict) -> str:
+    return json.dumps(event, ensure_ascii=False) + "\n"
+
+
+async def _stream_ai_reply(ollama_messages: list) -> AsyncIterator[str]:
+    """Отдаёт ответ ассистента как NDJSON: {"delta"} по мере генерации, {"reset"} при китайских
+    символах (клиент очищает текст), в конце {"done", "content"} с итоговым текстом."""
+    base_messages = ollama_messages
+    current_messages = base_messages
+    attempt = 0
+    while True:
+        parts = []
+        try:
+            async for piece in ollama.chat_stream(current_messages, timeout=OLLAMA_REQUEST_TIMEOUT):
+                parts.append(piece)
+                yield _ndjson({"delta": piece})
+        except ollama.OllamaError as e:
+            yield _ndjson({"error": e.message})
+            return
+
+        content = "".join(parts)
+        if not content.strip():
+            logger.error("Пустой ответ от Ollama")
+            yield _ndjson({"error": "Сервис ИИ вернул пустой ответ. Попробуйте переформулировать запрос."})
+            return
+
+        if _contains_too_much_chinese(content) and attempt < MAX_LANGUAGE_RETRIES:
+            attempt += 1
+            logger.warning(
+                f"Ответ Ollama содержит китайские символы (попытка {attempt}), повторяю запрос с усиленным напоминанием."
+            )
+            yield _ndjson({"reset": True})
+            current_messages = base_messages + [
+                {"role": "assistant", "content": content},
+                {"role": "system", "content": STRICT_LANGUAGE_REMINDER},
+            ]
+            continue
+
+        if _contains_too_much_chinese(content):
+            logger.error("Ответ Ollama так и не удалось получить без китайских символов, отдаю заглушку.")
+            final = LANGUAGE_FALLBACK_MESSAGE
+        else:
+            final = _sanitize_section_links(content)
+        yield _ndjson({"done": True, "content": final})
+        return
+
+
+@router.post("/chat/stream")
+async def ai_chat_stream(
+    payload: Dict[str, Any] = Body(...),
+    current_user: UserModel = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Потоковый вариант /chat: ответ приходит NDJSON-строками по мере генерации модели."""
+    ollama_messages = await _build_ollama_messages(payload, current_user, db)
+    return StreamingResponse(_stream_ai_reply(ollama_messages), media_type="application/x-ndjson")
