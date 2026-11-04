@@ -18,7 +18,17 @@ export default function EditProfileScreen({ route, navigation }) {
   const [phoneNumber, setPhoneNumber] = useState(user.phone_number || '');
   const [firstName, setFirstName] = useState(user.first_name || '');
   const [lastName, setLastName] = useState(user.last_name || '');
+  const [gender, setGender] = useState(user.gender || null);
   const [avatar, setAvatar] = useState(null);
+
+  const DEFAULT_AVATARS = {
+    male: '/static/avatars/male.jpg',
+    female: '/static/avatars/female.jpg',
+  };
+  const isDefaultAvatar = !user.avatar_url || user.avatar_url.startsWith('/static/avatars/');
+  const previewUri = avatar
+    ? avatar.uri
+    : getFullUrl((isDefaultAvatar && DEFAULT_AVATARS[gender]) || user.avatar_url) || 'https://via.placeholder.com/150';
   const [loading, setLoading] = useState(false);
 
   const pickImage = async () => {
@@ -42,6 +52,7 @@ export default function EditProfileScreen({ route, navigation }) {
       if (phoneNumber !== (user.phone_number || '')) formData.append('phone_number', phoneNumber);
       if (firstName !== (user.first_name || '')) formData.append('first_name', firstName);
       if (lastName !== (user.last_name || '')) formData.append('last_name', lastName);
+      if (gender && gender !== (user.gender || null)) formData.append('gender', gender);
       
       // Если данных для обновления нет, просто выходим
       if (formData._parts && formData._parts.length === 0 && !avatar) {
@@ -88,7 +99,7 @@ export default function EditProfileScreen({ route, navigation }) {
       <View style={styles.header}>
         <TouchableOpacity onPress={pickImage}>
           <Image 
-            source={{ uri: avatar ? avatar.uri : getFullUrl(user.avatar_url) || 'https://via.placeholder.com/150' }} 
+            source={{ uri: previewUri }} 
             style={styles.avatar} 
           />
           <View style={[styles.editBadge, { backgroundColor: colors.primary, borderColor: colors.background }]}>
@@ -136,6 +147,25 @@ export default function EditProfileScreen({ route, navigation }) {
           placeholder="Фамилия"
           placeholderTextColor={colors.textSecondary}
         />
+
+        <Text style={[styles.label, { color: colors.textSecondary }]}>Пол</Text>
+        <View style={styles.genderRow}>
+          {[{ value: 'male', label: 'Мужской' }, { value: 'female', label: 'Женский' }].map((item) => {
+            const selected = gender === item.value;
+            return (
+              <TouchableOpacity
+                key={item.value}
+                style={[
+                  styles.genderOption,
+                  { borderColor: colors.border, backgroundColor: selected ? colors.primary : colors.surface },
+                ]}
+                onPress={() => setGender(item.value)}
+              >
+                <Text style={{ color: selected ? '#fff' : colors.text, fontWeight: '500' }}>{item.label}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
       </View>
     </ScrollView>
     <View style={[styles.stickyFooter, { backgroundColor: colors.background, borderTopColor: colors.border, paddingBottom: Math.max(insets.bottom, 10) }]}>
@@ -172,6 +202,14 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
   },
   label: { fontSize: 14, marginBottom: 5, fontWeight: '500' },
+  genderRow: { flexDirection: 'row', gap: 10, marginBottom: 20 },
+  genderOption: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 12,
+    alignItems: 'center',
+  },
   input: {
     borderWidth: 1,
     borderRadius: 10,

@@ -122,13 +122,13 @@ const withNotificationAndroidPlugin = (config) => {
         fs.mkdirSync(drawablePath, { recursive: true });
       }
 
-      // Use the logo_white if it exists
-      const sourceIconPath = path.join(projectRoot, "assets/logo_white 192.png");
+      // Use the white logo if it exists
+      const sourceIconPath = path.join(projectRoot, "assets/white.png");
       if (fs.existsSync(sourceIconPath)) {
         fs.copyFileSync(sourceIconPath, targetIconPath);
       } else {
-        // Fallback: use logo.png if logo_white is not found
-        const fallbackPath = path.join(projectRoot, "assets/logo.png");
+        // Fallback: use black logo if white is not found
+        const fallbackPath = path.join(projectRoot, "assets/black.png");
         if (fs.existsSync(fallbackPath)) {
           fs.copyFileSync(fallbackPath, targetIconPath);
         }

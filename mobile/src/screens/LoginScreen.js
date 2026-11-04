@@ -173,7 +173,7 @@ export default function LoginScreen({navigation}) {
                 <Animated.View style={{transform: [{scale: logoScale}], alignSelf: 'center', marginBottom: 16}}>
                     <View style={styles.logoContainer}>
                         <Image
-                            source={require('../../assets/logo120.png')}
+                            source={require('../../assets/black.png')}
                             style={{width: 100, height: 100}}
                             resizeMode="contain"
                         />

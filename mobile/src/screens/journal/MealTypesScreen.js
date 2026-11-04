@@ -55,7 +55,7 @@ const MealTypeModal = ({ visible, meal, onClose, nextOrder }) => {
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.backdrop}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.backdrop}>
         <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={onClose} />
         <View style={[styles.sheet, { backgroundColor: colors.card }]}>
           <Text style={[styles.sheetTitle, { color: colors.text }]}>{meal ? 'Приём пищи' : 'Новый приём пищи'}</Text>

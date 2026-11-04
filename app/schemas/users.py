@@ -5,8 +5,8 @@ from typing import Any, Optional
 
 
 DEFAULT_AVATAR_URLS = {
-    "male": "/static/avatars/default_male.svg",
-    "female": "/static/avatars/default_female.svg",
+    "male": "/static/avatars/male.jpg",
+    "female": "/static/avatars/female.jpg",
 }
 
 

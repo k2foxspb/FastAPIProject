@@ -61,12 +61,17 @@
     "scheme": "fokinfun",
     "version": "1.0.21",
     "orientation": "portrait",
-    "icon": "./assets/logo1024.png",
-    "userInterfaceStyle": "light",
+    "icon": "./assets/black.png",
+    "userInterfaceStyle": "automatic",
     "splash": {
-      "image": "./assets/logo.png",
+      "image": "./assets/black.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#ffffff",
+      "dark": {
+        "image": "./assets/white.png",
+        "resizeMode": "contain",
+        "backgroundColor": "#000000"
+      }
     },
     "assetBundlePatterns": [
       "**/*"
@@ -93,7 +98,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/logo1024.png",
+        "foregroundImage": "./assets/black.png",
         "backgroundColor": "#ffffff"
       },
       "softwareKeyboardLayoutMode": "pan",
