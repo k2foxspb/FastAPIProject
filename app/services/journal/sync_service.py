@@ -94,6 +94,16 @@ async def find_alive(db: AsyncSession, model, user_id: int, client_uuid: str):
     )).scalar_one_or_none()
 
 
+async def is_soft_deleted(db: AsyncSession, model, user_id: int, client_uuid: str) -> bool:
+    return (await db.execute(
+        select(model.id).where(
+            model.user_id == user_id,
+            model.client_uuid == client_uuid,
+            model.deleted_at.is_not(None),
+        )
+    )).first() is not None
+
+
 async def serialize_rows(db: AsyncSession, spec: EntitySpec, rows: list) -> list[dict]:
     """Данные записей для клиента: без внутренних id, ссылки - через *_uuid."""
     ref_maps: dict[str, dict[int, str]] = {}
@@ -241,6 +251,10 @@ async def _apply_change(db: AsyncSession, user_id: int, state: JournalSyncState,
             continue
         target = await find_alive(db, get_spec(ref.target).model, user_id, ref_uuid)
         if target is None:
+            # Своя удалённая запись с ссылкой set_null (приём пищи, продукт) - ссылка обнуляется
+            if ref.on_delete == "set_null" and await is_soft_deleted(db, get_spec(ref.target).model, user_id, ref_uuid):
+                values[ref.column] = None
+                continue
             return result("rejected", f"missing_ref:{ref.field}")
         values[ref.column] = target.id
         resolved[ref.field] = target

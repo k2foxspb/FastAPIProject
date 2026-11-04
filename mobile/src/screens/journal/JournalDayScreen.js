@@ -17,12 +17,40 @@ import { SHARE_DAY_SECTIONS, buildDaySummaryText } from '../../journal/share/sum
 
 const KIND_ICONS = { meal: 'restaurant-outline', payment: 'card-outline', note: 'document-text-outline', tracker: 'pulse-outline', custom: 'star-outline' };
 
+// Пульс - среднее за день, сон - сумма за день: одна строка на трекер
+const DAILY_AGGREGATES = {
+  pulse: { mode: 'avg', unit: 'уд/мин' },
+  sleep: { mode: 'sum', unit: 'мин' },
+};
+
+const aggregateDailyValues = (values) => {
+  const result = [];
+  const groups = {};
+  values.forEach((v) => {
+    const key = v.tracker_template_key;
+    if (!DAILY_AGGREGATES[key] || v.num_value === null || v.num_value === undefined) {
+      result.push(v);
+      return;
+    }
+    if (!groups[key]) {
+      groups[key] = { row: { ...v }, nums: [] };
+      result.push(groups[key].row);
+    }
+    groups[key].nums.push(Number(v.num_value));
+  });
+  Object.entries(groups).forEach(([key, { row, nums }]) => {
+    const sum = nums.reduce((s, n) => s + n, 0);
+    row.num_value = DAILY_AGGREGATES[key].mode === 'avg' ? sum / nums.length : sum;
+  });
+  return result;
+};
+
 const loadDay = async (date) => {
   const [events, diary, values, diet, transactions] = await Promise.all([
     eventsInRange(date, date), listDiaryByDate(date), listValuesByDate(date), loadDietDay(date),
     listTransactions({ from: date, to: date }),
   ]);
-  return { events, diary, values, diet, transactions };
+  return { events, diary, values: aggregateDailyValues(values), diet, transactions };
 };
 
 const DayContent = ({ navigation, date }) => {

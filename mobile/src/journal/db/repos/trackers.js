@@ -67,7 +67,7 @@ export const listValuesByDate = async (date) => {
   const db = getJournalDb();
   const rows = await db.getAllAsync(
     `SELECT v.*, t.name AS tracker_name, t.unit AS tracker_unit, t.value_type AS tracker_value_type,
-            t.icon AS tracker_icon, t.color AS tracker_color
+            t.icon AS tracker_icon, t.color AS tracker_color, t.template_key AS tracker_template_key
      FROM tracker_values v JOIN trackers t ON t.uuid = v.tracker_uuid
      WHERE v.value_date = ?
      ORDER BY v.value_time IS NULL, v.value_time, v.created_at`,

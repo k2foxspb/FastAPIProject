@@ -179,6 +179,15 @@ async def test_other_users_refs_rejected(client, as_user):
     assert response.json()["items"] == []
 
 
+async def test_entry_with_deleted_meal_type_is_accepted(client):
+    meal_uuid = new_uuid()
+    await push(client, change("meal_type", meal_uuid, {"name": "Второй завтрак"}, at=ts(0)))
+    await push(client, change("meal_type", meal_uuid, op="delete", at=ts(10)))
+
+    result = await push(client, change("food_entry", new_uuid(), entry(meal_type_uuid=meal_uuid)))
+    assert result["results"][0]["status"] == "applied"
+
+
 # ---------------------------------------------------------------- серверные итоги
 
 async def test_calendar_and_day_count_kcal(client):
