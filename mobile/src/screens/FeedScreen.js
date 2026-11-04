@@ -201,7 +201,7 @@ export default function FeedScreen({ navigation }) {
       <TouchableOpacity
         style={[
           styles.newsCard,
-          { backgroundColor: 'transparent', borderColor: colors.border, borderWidth: theme === 'dark' ? 1 : 0, shadowOpacity: theme === 'dark' ? 0.1 : 0, elevation: theme === 'dark' ? 4 : 0 },
+          { backgroundColor: 'transparent', borderColor: colors.border, borderWidth: 1, shadowOpacity: theme === 'dark' ? 0.1 : 0, elevation: theme === 'dark' ? 4 : 0 },
           isAnnouncement && { backgroundColor: colors.primary + '14', borderColor: colors.primary, borderWidth: 1 },
         ]}
         onPress={() => {

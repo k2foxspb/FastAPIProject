@@ -5,7 +5,7 @@
     ],
     "target": {
       "namespace": "android_app",
-      "package_name": "com.k2foxspb.fokinfun",
+      "package_name": "com.k2foxspb.foxly",
       "sha256_cert_fingerprints": [
         "7c:da:d6:64:32:d5:ad:8f:cc:9e:80:c1:5c:a0:ee:ae:2c:ba:b6:76:91:5a:06:b4:03:cf:1f:51:97:cd:02:6e",
         "89:89:e8:79:85:26:06:90:32:c9:29:de:15:26:00:9c:39:6b:52:bb:00:a5:3d:c8:ba:f4:34:c4:c9:ad:aa:d8",

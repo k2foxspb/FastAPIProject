@@ -7,7 +7,7 @@ export const theme = {
     primary: '#6366F1', // Indigo
     primaryDark: '#4F46E5',
     error: '#EF4444',
-    border: '#E5E7EB',
+    border: '#CBD5E1',
     card: '#FFFFFF',
     success: '#10B981',
   },

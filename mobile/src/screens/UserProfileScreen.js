@@ -203,7 +203,7 @@ export default function UserProfileScreen({ route, navigation }) {
         key={item.id}
         activeOpacity={0.9}
         onPress={() => openPost(item)}
-        style={[styles.postCard, { backgroundColor: 'transparent', borderColor: colors.border, borderWidth: theme === 'dark' ? 1 : 0, shadowOpacity: theme === 'dark' ? 0.1 : 0, elevation: theme === 'dark' ? 3 : 0 }]}
+        style={[styles.postCard, { backgroundColor: 'transparent', borderColor: colors.border, borderWidth: 1, shadowOpacity: theme === 'dark' ? 0.1 : 0, elevation: theme === 'dark' ? 3 : 0 }]}
       >
         <View style={styles.postAuthorHeader}>
           <View style={styles.authorInfo}>

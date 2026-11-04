@@ -56,9 +56,9 @@
         }
       ]
     ],
-    "name": "FastAPI",
-    "slug": "fastapi",
-    "scheme": "fokinfun",
+    "name": "Foxly",
+    "slug": "foxly",
+    "scheme": "foxly",
     "version": "1.0.21",
     "orientation": "portrait",
     "icon": "./assets/black.png",
@@ -78,7 +78,7 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.k2foxspb.fokinfun",
+      "bundleIdentifier": "com.k2foxspb.foxly",
       "entitlements": {
         "aps-environment": "production"
       },
@@ -102,7 +102,7 @@
         "backgroundColor": "#ffffff"
       },
       "softwareKeyboardLayoutMode": "pan",
-      "package": "com.k2foxspb.fokinfun",
+      "package": "com.k2foxspb.foxly",
       "googleServicesFile": "./google-services.json",
       "intentFilters": [
         {

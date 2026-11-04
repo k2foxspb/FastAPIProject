@@ -25,7 +25,7 @@ def create_application() -> FastAPI:
 
     # Создание приложения
     app = FastAPI(
-        title="FastAPI Backend",
+        title="Foxly Backend",
         version="0.1.0",
         description="API сервиса",
         docs_url="/docs" if ENABLE_API_DOCS else None,
@@ -212,7 +212,7 @@ app = create_application()
 def create_v2_application() -> FastAPI:
     """Версия 2 API (если нужна)."""
     app_v2 = FastAPI(
-        title="FastAPI Backend",
+        title="Foxly Backend",
         version="0.2.0",
         description="API сервиса v2",
     )

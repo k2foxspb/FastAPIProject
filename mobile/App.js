@@ -39,7 +39,7 @@ function AppContent() {
   };
 
   const linking = {
-    prefixes: [Linking.createURL('/'), 'fokinfun://', 'https://foxlyapp.ru', 'https://fastapi-f628e.firebaseapp.com'],
+    prefixes: [Linking.createURL('/'), 'foxly://', 'https://foxlyapp.ru', 'https://fastapi-f628e.firebaseapp.com'],
     config: {
       screens: {
         Feed: {

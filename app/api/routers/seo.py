@@ -12,8 +12,8 @@ from app.core.config import DOMAIN
 router = APIRouter(tags=["seo"])
 
 SITE_NAME = "Foxly"
-ANDROID_PACKAGE = "com.k2foxspb.fokinfun"
-IOS_BUNDLE = "com.k2foxspb.fokinfun"
+ANDROID_PACKAGE = "com.k2foxspb.foxly"
+IOS_BUNDLE = "com.k2foxspb.foxly"
 # Замените на реальный Team ID из Apple Developer Console
 APPLE_TEAM_ID = "XXXXXXXXXX"
 
