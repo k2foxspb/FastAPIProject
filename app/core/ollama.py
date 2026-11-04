@@ -90,14 +90,9 @@ async def chat_stream(
                 message = chunk.get("message")
                 piece = message.get("content") if isinstance(message, dict) else None
                 if piece:
-                    visible = think_filter.feed(str(piece))
-                    if visible:
-                        yield visible
+                    yield str(piece)
                 if chunk.get("done"):
                     break
-            tail = think_filter.flush()
-            if tail:
-                yield tail
     except httpx.TimeoutException as e:
         logger.error(f"Ollama не ответила вовремя ({OLLAMA_URL}): {type(e).__name__}")
         raise OllamaTimeout("Сервис ИИ не ответил вовремя. Попробуйте позже.")
