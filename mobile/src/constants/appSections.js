@@ -16,6 +16,11 @@ export const APP_SECTIONS = {
   my_likes: { tab: 'Profile', screen: 'MyLikes', title: 'Понравилось' },
   my_reviews: { tab: 'Profile', screen: 'MyReviews', title: 'Мои отзывы' },
   admin: { tab: 'Profile', screen: 'Admin', title: 'Админка' },
+  journal: { tab: 'Journal', screen: 'JournalCalendar', title: 'Журнал' },
+  diary: { tab: 'Journal', screen: 'DiaryList', title: 'Дневник' },
+  trackers: { tab: 'Journal', screen: 'Trackers', title: 'Трекеры' },
+  finance: { tab: 'Journal', screen: 'FinanceHome', title: 'Финансы' },
+  ai_analysis: { tab: 'Journal', screen: 'AiAnalysis', title: 'ИИ-аналитика' },
 };
 
 // Регулярное выражение для поиска ссылок вида [Текст](app://key) в ответе ассистента.

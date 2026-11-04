@@ -1,5 +1,6 @@
 import json
 import re
+from datetime import date, timedelta
 from typing import Any, AsyncIterator, Dict
 
 import httpx
@@ -14,6 +15,7 @@ from app.core import ollama
 from app.core.auth import get_current_user
 from app.models.users import Friendship, User as UserModel
 from app.schemas.ai import AiChatResponse
+from app.services.journal import ai_analysis
 
 router = APIRouter(prefix="/api/ai", tags=["ai"])
 
@@ -33,6 +35,11 @@ APP_SECTIONS: Dict[str, str] = {
     "my_likes": "понравившиеся публикации",
     "my_reviews": "мои отзывы",
     "admin": "админка (только для администраторов)",
+    "journal": "личный журнал: календарь и события по дням",
+    "diary": "дневник (личные записи)",
+    "trackers": "трекеры (показатели, которые пользователь отслеживает)",
+    "finance": "финансы журнала: счета, операции, бюджеты",
+    "ai_analysis": "ИИ-аналитика журнала за период",
 }
 
 APP_SECTIONS_PROMPT = "Разделы приложения, на которые ты можешь ссылаться (ключ - описание):\n" + "\n".join(
@@ -46,6 +53,12 @@ SYSTEM_PROMPT = (
     'поддерживать свободный разговор. Отношения - лишь одна из возможных тем, а не главная. Не своди\n'
     'разговор к знакомствам и не давай советов о них, если пользователь сам об этом не спрашивал.\n'
     'О функциях приложения рассказывай только тогда, когда пользователь сам спрашивает, как им пользоваться.\n'
+    'О приложении: это лента новостей, объявления, пользователи, сообщения и личный журнал. В журнале есть\n'
+    'календарь и события, дневник, питание (калории, БЖУ, вода, приёмы пищи, цели), финансы (счета, операции,\n'
+    'бюджеты, импорт выписок), вес и рост, трекеры и ИИ-аналитика за период.\n'
+    'Данные журнала пользователя видишь ТОЛЬКО в служебном сообщении с данными журнала. Если такого сообщения\n'
+    'нет или данных нет, честно скажи, что не видишь записей, и предложи открыть нужный раздел.\n'
+    'Анализируя журнал, опирайся на конкретные цифры и периоды из служебных данных, давай практичные выводы.\n'
     '\n'
     'Правила:\n'
     '1. Отвечай ТОЛЬКО на русском языке. Никогда не используй китайские, японские, корейские\n'
@@ -83,6 +96,18 @@ PEOPLE_SEARCH_PATTERN = re.compile(
 
 # Максимальное количество кандидатов, которые передаются модели в служебном сообщении.
 MATCH_CANDIDATES_LIMIT = 5
+
+# Ключевые слова в последнем сообщении пользователя, означающие вопрос о журнале, трекерах или аналитике.
+JOURNAL_QUESTION_PATTERN = re.compile(
+    r"журнал|дневник|трекер|статистик|аналитик|анализ|питани|калор|кбжу|рацион|\bвес\b|вешу|весил|рост|"
+    r"финанс|расход|доход|бюджет|трат|\bвод[аеуы]\b|прогресс|динамик|сводк|отч[её]т|тренд|цел[ьи]",
+    re.IGNORECASE,
+)
+
+# Сколько последних дней журнала передавать модели и сколько символов данных допустимо,
+# чтобы не переполнить окно контекста (num_ctx).
+JOURNAL_CONTEXT_DAYS = 30
+JOURNAL_CONTEXT_MAX_CHARS = 3000
 
 # Сколько последних сообщений диалога передавать в модель. Длинная история не помещается в окно
 # контекста (num_ctx), и Ollama молча обрезает её начало, вместе с системным промптом.
@@ -198,6 +223,23 @@ def _build_candidates_prompt(candidates: list[UserModel]) -> str:
     )
 
 
+async def _build_journal_context(db: AsyncSession, user_id: int) -> str:
+    """Факты журнала пользователя за последние дни (считаются на сервере из БД), чтобы ассистент мог их анализировать."""
+    end = date.today()
+    start = end - timedelta(days=JOURNAL_CONTEXT_DAYS - 1)
+    period = f"{start.isoformat()} - {end.isoformat()}"
+    facts = await ai_analysis.collect_facts(db, user_id, start, end, list(ai_analysis.AREA_TITLES))
+    if not facts:
+        return f"Служебные данные журнала за период {period}: записей, трекеров и операций нет."
+    text = json.dumps({"period": period, **facts}, ensure_ascii=False)
+    if len(text) > JOURNAL_CONTEXT_MAX_CHARS:
+        text = text[:JOURNAL_CONTEXT_MAX_CHARS] + "...(данные обрезаны)"
+    return (
+        "Служебные данные журнала пользователя (посчитаны сервером из базы, используй только их, цифры не выдумывай): "
+        + text
+    )
+
+
 async def _build_ollama_messages(payload: Dict[str, Any], current_user: UserModel, db: AsyncSession) -> list:
     """Валидирует историю диалога и собирает сообщения для Ollama (системный промпт, кандидаты, напоминание о языке)."""
     messages = payload.get("messages")
@@ -228,6 +270,10 @@ async def _build_ollama_messages(payload: Dict[str, Any], current_user: UserMode
     if _is_people_search_request(last_user_text):
         candidates = await _find_match_candidates(db, current_user)
         ollama_messages.append({"role": "system", "content": _build_candidates_prompt(candidates)})
+
+    # Если пользователь спрашивает о журнале, трекерах или аналитике, даём модели факты журнала из базы
+    if JOURNAL_QUESTION_PATTERN.search(last_user_text):
+        ollama_messages.append({"role": "system", "content": await _build_journal_context(db, current_user.id)})
 
     # Напоминание о языке в конце истории - усиливает приоритет правила "отвечай на русском"
     # для длинных диалогов, где системный промпт в начале контекста "забывается" моделью.
