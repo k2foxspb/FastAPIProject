@@ -1,10 +1,13 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 import asyncio
+import uuid
 from app.api.dependencies import get_async_db
 from app.api.routers.chat import manager as chat_manager
 from app.api.routers.notifications import manager as notifications_manager
+from app.core.auth import hash_password
 from app.core.fcm import send_fcm_notification
 from app.models.users import User as UserModel
 from app.models.chat import ChatMessage
@@ -13,15 +16,57 @@ from datetime import datetime
 
 router = APIRouter(prefix="/test/chat", tags=["Testing Chat"])
 
+
+class TestUserCreate(BaseModel):
+    first_name: str = "Тест"
+    last_name: str = "Пользователь"
+    gender: str | None = None
+
+
+@router.post("/users")
+async def create_test_user(data: TestUserCreate, db: AsyncSession = Depends(get_async_db)):
+    """
+    Создать тестового пользователя (для тестирования чатов и уведомлений).
+    Возвращает id, который можно использовать как sender_id в /send_as.
+    """
+    suffix = uuid.uuid4().hex[:10]
+    user = UserModel(
+        email=f"test_{suffix}@test.local",
+        hashed_password=hash_password(uuid.uuid4().hex),
+        first_name=data.first_name,
+        last_name=data.last_name,
+        gender=data.gender,
+        is_active=True,
+        role="user",
+    )
+    db.add(user)
+    await db.commit()
+    await db.refresh(user)
+    return {
+        "id": user.id,
+        "email": user.email,
+        "first_name": user.first_name,
+        "last_name": user.last_name,
+        "gender": user.gender,
+    }
+
+
 @router.post("/send_as", response_model=ChatMessageResponse)
 async def send_message_as_user(
-    sender_id: int, 
-    msg_in: ChatMessageCreate, 
+    sender_id: int,
+    msg_in: ChatMessageCreate,
     db: AsyncSession = Depends(get_async_db)
 ):
     """
     Отправить сообщение от любого пользователя любому пользователю (для тестирования).
+    Отправитель должен существовать: создайте его через POST /test/chat/users.
     """
+    if await db.get(UserModel, sender_id) is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Sender {sender_id} not found. Создайте через POST /test/chat/users",
+        )
+
     new_msg = ChatMessage(
         sender_id=sender_id,
         receiver_id=msg_in.receiver_id,
@@ -36,7 +81,7 @@ async def send_message_as_user(
     db.add(new_msg)
     await db.commit()
     await db.refresh(new_msg)
-    
+
     # Пытаемся получить имя отправителя и аватарку
     res = await db.execute(select(UserModel.first_name, UserModel.last_name, UserModel.avatar_url).where(UserModel.id == sender_id))
     user_info = res.fetchone()
@@ -64,7 +109,7 @@ async def send_message_as_user(
         "data": resp_msg.model_dump(mode="json")
     }
     await chat_manager.send_personal_message(chat_event, new_msg.receiver_id)
-    
+
     # Также уведомление через notifications_manager
     await notifications_manager.send_personal_message(chat_event, user_id=new_msg.receiver_id)
 
@@ -83,7 +128,7 @@ async def send_message_as_user(
             body = f"🎤 Голосовое сообщение{format_duration(new_msg.duration)}"
         else:
             body = new_msg.message if new_msg.message else f"Тестовое сообщение ({new_msg.message_type})"
-            
+
         # Используем create_task чтобы не блокировать ответ API
         asyncio.create_task(send_fcm_notification(
             token=receiver.fcm_token,
