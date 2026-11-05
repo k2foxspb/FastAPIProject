@@ -1580,7 +1580,7 @@ async def get_dialogs(
             "email": partner.email,
             "first_name": partner.first_name,
             "last_name": partner.last_name,
-            "avatar_url": getattr(partner, 'avatar_url', None), 
+            "avatar_url": getattr(partner, 'avatar_url', None) or get_default_avatar_url(getattr(partner, 'gender', None)),
             "last_message": last_msg.message if last_msg and last_msg.message else "[Файл]",
             "last_message_time": last_msg.timestamp if last_msg and last_msg.timestamp else datetime.utcnow(),
             "unread_count": unread_count or 0,
