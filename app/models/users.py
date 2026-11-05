@@ -1,5 +1,7 @@
-from datetime import datetime
-from sqlalchemy import Boolean, Integer, String, ForeignKey, DateTime, JSON, func, UniqueConstraint
+from datetime import date, datetime
+from decimal import Decimal
+
+from sqlalchemy import Boolean, Date, Integer, Numeric, String, ForeignKey, DateTime, JSON, func, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -35,6 +37,10 @@ class User(Base):
     avatar_preview_url: Mapped[str | None] = mapped_column(String, nullable=True)
     # Пол пользователя: "male" или "female" (None - не указан). От него зависит дефолтная аватарка.
     gender: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Телесные показатели для журнала и ИИ-расчётов (переехали из настроек журнала в профиль)
+    birth_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    height_cm: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    weight_kg: Mapped[Decimal | None] = mapped_column(Numeric(5, 1), nullable=True)
     verification_code: Mapped[str | None] = mapped_column(String, nullable=True)
     fcm_token: Mapped[str | None] = mapped_column(String, nullable=True)
 

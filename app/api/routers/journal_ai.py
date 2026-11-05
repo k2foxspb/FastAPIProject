@@ -96,13 +96,23 @@ async def analysis(
 
 @router.post("/nutrition-plan", response_model=NutritionPlanResponse)
 async def nutrition_plan_advice(
-    payload: nutrition_plan.NutritionPlanInput,
+    payload: nutrition_plan.NutritionPlanRequest,
     current_user: UserModel = Depends(_ai_limit),
 ):
-    """Норма КБЖУ по анкете: формула и корректировка ИИ с советами. Ничего не сохраняет."""
-    plan = nutrition_plan.calculate_plan(payload)
+    """Норма КБЖУ по анкете профиля: формула и корректировка ИИ с советами. Ничего не сохраняет."""
+    if not (current_user.gender and current_user.birth_date and current_user.height_cm and current_user.weight_kg):
+        raise HTTPException(status_code=422, detail="Заполните пол, дату рождения, рост и вес в профиле")
+    profile = nutrition_plan.NutritionPlanInput(
+        sex=current_user.gender,
+        age=nutrition_plan.age_from_birth_date(current_user.birth_date, date.today()),
+        height_cm=current_user.height_cm,
+        weight_kg=float(current_user.weight_kg),
+        activity=payload.activity,
+        goal=payload.goal,
+    )
+    plan = nutrition_plan.calculate_plan(profile)
     try:
-        answer = await ai_service.nutrition_advice(payload, plan)
+        answer = await ai_service.nutrition_advice(profile, plan)
     except ollama.OllamaError as e:
         raise_ai_error(e)
     recommended = nutrition_plan.apply_ai_correction(

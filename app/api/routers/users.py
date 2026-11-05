@@ -66,7 +66,7 @@ from firebase_admin import auth as firebase_auth
 # cv2 imported inside save_user_photo to avoid dependency issues if not installed
 from PIL import Image
 from fastapi import UploadFile, File, Form
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 from app.utils import storage
 
@@ -394,6 +394,9 @@ async def update_me(
     first_name: str | None = Form(None),
     last_name: str | None = Form(None),
     gender: str | None = Form(None),
+    birth_date: date | None = Form(None),
+    height_cm: int | None = Form(None, ge=50, le=260),
+    weight_kg: float | None = Form(None, ge=20, le=400),
     avatar: UploadFile = File(None),
     current_user: UserModel = Depends(get_current_user),
     db: AsyncSession = Depends(get_async_db)
@@ -425,6 +428,12 @@ async def update_me(
         current_user.last_name = last_name
     if gender is not None:
         current_user.gender = gender
+    if birth_date is not None:
+        current_user.birth_date = birth_date
+    if height_cm is not None:
+        current_user.height_cm = height_cm
+    if weight_kg is not None:
+        current_user.weight_kg = Decimal(str(round(weight_kg, 1)))
 
     if avatar:
         # Сохраняем аватарку (используем существующую функцию сохранения фото)
@@ -488,6 +497,9 @@ async def create_user(
     last_name: str = Form(...),
     role: str = Form("user"),
     gender: str | None = Form(None),
+    birth_date: date | None = Form(None),
+    height_cm: int | None = Form(None, ge=50, le=260),
+    weight_kg: float | None = Form(None, ge=20, le=400),
     avatar: UploadFile = File(None)
 ):
     """
@@ -531,6 +543,9 @@ async def create_user(
         last_name=last_name,
         role=user_role,
         gender=gender,
+        birth_date=birth_date,
+        height_cm=height_cm,
+        weight_kg=Decimal(str(round(weight_kg, 1))) if weight_kg is not None else None,
         is_active=True,
     )
 

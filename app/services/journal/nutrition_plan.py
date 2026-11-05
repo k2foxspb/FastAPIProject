@@ -2,6 +2,7 @@
 Расчёт нормы калорий и БЖУ по ответам анкеты (формула Миффлина–Сан Жеора).
 Значения считаются детерминированно; ИИ используется только для текстовых советов.
 """
+from datetime import date
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Literal
 
@@ -39,6 +40,12 @@ class NutritionPlanInput(BaseModel):
     goal: Literal["lose", "maintain", "gain"]
 
 
+class NutritionPlanRequest(BaseModel):
+    """Анкета без телесных данных: пол, возраст, рост и вес берутся из профиля."""
+    activity: Literal["sedentary", "light", "moderate", "active", "very_active"]
+    goal: Literal["lose", "maintain", "gain"]
+
+
 class NutritionPlanResult(BaseModel):
     bmr_kcal: int
     tdee_kcal: int
@@ -52,6 +59,10 @@ class NutritionPlanResponse(BaseModel):
     plan: NutritionPlanResult
     recommended: NutritionPlanResult
     advice: str
+
+
+def age_from_birth_date(birth_date: date, today: date) -> int:
+    return today.year - birth_date.year - ((today.month, today.day) < (birth_date.month, birth_date.day))
 
 
 def _round_int(value: Decimal) -> int:

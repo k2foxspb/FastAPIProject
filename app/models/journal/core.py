@@ -31,8 +31,6 @@ class JournalSettings(JournalEntityMixin, Base):
     fat_g_goal: Mapped[int | None] = mapped_column(Integer, nullable=True)
     carbs_g_goal: Mapped[int | None] = mapped_column(Integer, nullable=True)
     water_ml_goal: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    height_cm: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    weight_kg: Mapped[Decimal | None] = mapped_column(Numeric(5, 1), nullable=True)
     seed_version: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
 
