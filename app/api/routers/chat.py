@@ -10,6 +10,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, UploadFi
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_, and_, func, update
 from sqlalchemy.orm import joinedload
+from sqlalchemy import inspect as sa_inspect
 import jwt
 
 from app.core.config import SECRET_KEY, ALGORITHM
@@ -174,6 +175,14 @@ def _format_chat_message_dict(
         item["sender_name"] = sender_name
     elif getattr(m, "sender", None) is not None:
         item["sender_name"] = _sender_display_name(m.sender)
+
+    loaded_sender = sa_inspect(m).dict.get("sender")
+    if loaded_sender is not None:
+        item["sender_avatar_url"] = (
+            loaded_sender.avatar_preview_url
+            or loaded_sender.avatar_url
+            or get_default_avatar_url(loaded_sender.gender)
+        )
 
     if include_upload_fields:
         item["is_uploading"] = getattr(m, "is_uploading", False)

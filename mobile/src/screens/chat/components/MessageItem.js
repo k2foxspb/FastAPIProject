@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, Pressable, Animated, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, Pressable, Animated, ActivityIndicator, Image } from 'react-native';
 import { Swipeable } from 'react-native-gesture-handler';
 import { MaterialIcons } from '@expo/vector-icons';
 import CachedMedia from '../../../components/CachedMedia';
 import VoiceMessage from '../../../components/VoiceMessage';
 import FileMessage from '../../../components/FileMessage';
 import VideoNoteMessage from '../../../components/VideoNoteMessage';
-import { formatFileSize, parseISODate, formatMessageTime, formatDateSeparator } from '../../../utils/formatters';
+import { formatFileSize, parseISODate, formatMessageTime, formatDateSeparator, getAvatarUrl } from '../../../utils/formatters';
 import { styles } from '../styles';
 import { resolveMediaUri, getReplyPreviewText } from '../utils';
 import MediaPlaceholder from './MediaPlaceholder';
@@ -219,6 +219,16 @@ export default function MessageItem({
           ]}
         >
           {!isReceived && timeFooter}
+          {isReceived && isGroupChat && (
+            <View style={{ width: 32, marginRight: 6, alignSelf: 'flex-end' }}>
+              {!isGrouped && (
+                <Image
+                  source={{ uri: getAvatarUrl(item.sender_avatar_url) }}
+                  style={{ width: 32, height: 32, borderRadius: 16 }}
+                />
+              )}
+            </View>
+          )}
           <View 
             style={[
               styles.messageBubble, 

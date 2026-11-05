@@ -123,7 +123,7 @@ const withNotificationAndroidPlugin = (config) => {
       }
 
       // Use the white logo if it exists
-      const sourceIconPath = path.join(projectRoot, "assets/white.png");
+      const sourceIconPath = path.join(projectRoot, "assets/black.png");
       if (fs.existsSync(sourceIconPath)) {
         fs.copyFileSync(sourceIconPath, targetIconPath);
       } else {
