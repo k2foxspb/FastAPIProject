@@ -12,6 +12,7 @@ from app.core.fcm import send_fcm_notification
 from app.models.users import User as UserModel
 from app.models.chat import ChatMessage
 from app.schemas.chat import ChatMessageCreate, ChatMessageResponse
+from app.schemas.users import get_default_avatar_url
 from datetime import datetime
 
 router = APIRouter(prefix="/test/chat", tags=["Testing Chat"])
@@ -20,7 +21,7 @@ router = APIRouter(prefix="/test/chat", tags=["Testing Chat"])
 class TestUserCreate(BaseModel):
     first_name: str = "Тест"
     last_name: str = "Пользователь"
-    gender: str | None = None
+    gender: str | None = "male"
 
 
 @router.post("/users")
@@ -83,10 +84,10 @@ async def send_message_as_user(
     await db.refresh(new_msg)
 
     # Пытаемся получить имя отправителя и аватарку
-    res = await db.execute(select(UserModel.first_name, UserModel.last_name, UserModel.avatar_url).where(UserModel.id == sender_id))
+    res = await db.execute(select(UserModel.first_name, UserModel.last_name, UserModel.avatar_url, UserModel.avatar_preview_url, UserModel.gender).where(UserModel.id == sender_id))
     user_info = res.fetchone()
     sender_name = f"{user_info.first_name} {user_info.last_name}" if user_info else f"User {sender_id}"
-    sender_avatar = user_info.avatar_url if user_info else None
+    sender_avatar = (user_info.avatar_preview_url or user_info.avatar_url or get_default_avatar_url(user_info.gender)) if user_info else None
 
     # Подготовка ответа
     resp_msg = ChatMessageResponse(
