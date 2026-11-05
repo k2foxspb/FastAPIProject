@@ -28,7 +28,7 @@ def create_application() -> FastAPI:
         title="Foxly Backend",
         version="0.1.0",
         description="API сервиса",
-        docs_url="/docs" ,
+        docs_url="/docs" if ENABLE_API_DOCS else None,
         redoc_url="/redoc" if ENABLE_API_DOCS else None,
         openapi_url="/openapi.json" if ENABLE_API_DOCS else None,
     )
