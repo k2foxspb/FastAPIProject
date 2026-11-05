@@ -133,6 +133,29 @@ export default function AdminUsersScreen({ navigation }) {
     );
   };
 
+  const deleteUser = (user) => {
+    Alert.alert(
+      'Удалить пользователя',
+      `Удалить ${user.email} без возможности восстановления?`,
+      [
+        { text: 'Отмена', style: 'cancel' },
+        {
+          text: 'Удалить',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await adminApi.deleteUser(user.id);
+              fetchUsers();
+            } catch (err) {
+              Alert.alert('Ошибка', err.response?.data?.detail || 'Не удалось удалить пользователя');
+            }
+          }
+        }
+      ],
+      { cancelable: true }
+    );
+  };
+
   const renderUser = ({ item }) => (
     <TouchableOpacity 
       style={[styles.userCard, { backgroundColor: 'transparent', borderColor: colors.border }]}
@@ -178,6 +201,14 @@ export default function AdminUsersScreen({ navigation }) {
               <Text style={styles.roleButtonText}>Заблокировать</Text>
             </TouchableOpacity>
           )
+        )}
+        {item.role !== 'owner' && item.id !== currentUser?.id && (
+          <TouchableOpacity
+            style={[styles.roleButton, styles.deleteButton]}
+            onPress={() => deleteUser(item)}
+          >
+            <Text style={styles.roleButtonText}>Удалить</Text>
+          </TouchableOpacity>
         )}
       </View>
     </TouchableOpacity>
@@ -267,9 +298,8 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   list: { padding: 15 },
   userCard: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: 'column',
+    alignItems: 'stretch',
     padding: 15,
     borderRadius: 10,
     marginBottom: 10,
@@ -279,11 +309,12 @@ const styles = StyleSheet.create({
   roleIcon: { marginRight: 10 },
   userEmail: { fontSize: 16, fontWeight: '500' },
   userRole: { fontSize: 12, fontWeight: 'bold', marginTop: 4 },
-  actions: { flexDirection: 'row', alignItems: 'center' },
-  roleButton: { paddingHorizontal: 15, paddingVertical: 8, borderRadius: 5, marginLeft: 8 },
+  actions: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-end', alignItems: 'center', marginTop: 10 },
+  roleButton: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 5, marginLeft: 8, marginTop: 4 },
   roleButtonText: { color: '#fff', fontWeight: 'bold' },
   banButton: { backgroundColor: '#d9534f' },
   unbanButton: { backgroundColor: '#5cb85c' },
+  deleteButton: { backgroundColor: '#8b0000' },
   banBadge: {
     flexDirection: 'row',
     alignItems: 'center',

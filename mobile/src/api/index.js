@@ -246,6 +246,7 @@ export const adminApi = {
   updateUserRole: (id, role) => api.patch(`/admin/users/${id}/role`, null, { params: { role } }),
   banUser: (id, { reason, durationHours } = {}) => api.post(`/admin/users/${id}/ban`, { reason, duration_hours: durationHours }),
   unbanUser: (id) => api.post(`/admin/users/${id}/unban`),
+  deleteUser: (id) => api.delete(`/admin/users/${id}`),
   getPendingModeration: () => api.get('/admin/moderation/pending'),
   approveObject: (model, id) => api.post(`/admin/moderation/approve/${model}/${id}`),
   rejectObject: (model, id) => api.post(`/admin/moderation/reject/${model}/${id}`),

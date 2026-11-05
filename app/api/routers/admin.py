@@ -5,11 +5,11 @@ import os
 import shutil
 import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, delete, desc
+from sqlalchemy import select, delete, desc, update
 from sqlalchemy.orm import selectinload
 from app.utils import storage
 
-from app.models.users import User as UserModel, AdminPermission as AdminPermissionModel, PhotoAlbum as PhotoAlbumModel, AppVersion as AppVersionModel, ProfilePost as ProfilePostModel
+from app.models.users import User as UserModel, AdminPermission as AdminPermissionModel, PhotoAlbum as PhotoAlbumModel, AppVersion as AppVersionModel, ProfilePost as ProfilePostModel, Friendship as FriendshipModel
 from app.models.news import News as NewsModel
 from app.models.chat import ChatMessage as ChatMessageModel, FileUploadSession
 from app.schemas.users import User as UserSchema, AdminPermissionCreate, AdminPermission as AdminPermissionSchema, AppVersionResponse, AppLogRequest, BanUserRequest
@@ -148,6 +148,47 @@ async def unban_user(
     await db.commit()
     await db.refresh(user)
     return UserSchema.model_validate(user)
+
+
+@router.delete("/users/{user_id}")
+async def delete_user(
+    user_id: int,
+    admin: UserModel = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Безвозвратно удаляет пользователя вместе с его данными.
+    Администратор не может удалить себя, владельца или другого администратора -
+    это ограничено теми же правилами, что и блокировка (см. can_moderate_user).
+    """
+    result = await db.execute(select(UserModel).where(UserModel.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    if user.id == admin.id:
+        raise HTTPException(status_code=400, detail="Cannot delete yourself")
+
+    if not can_moderate_user(admin.role, user.role):
+        raise HTTPException(status_code=403, detail="Not allowed to delete this user")
+
+    # Ссылки без каскадного удаления в БД: обнуляем или очищаем перед удалением пользователя
+    await db.execute(
+        update(ChatMessageModel)
+        .where(ChatMessageModel.forwarded_from_id == user_id)
+        .values(forwarded_from_id=None)
+    )
+    await db.execute(
+        update(FriendshipModel)
+        .where(FriendshipModel.deleted_by_id == user_id)
+        .values(deleted_by_id=None)
+    )
+    await db.execute(delete(FileUploadSession).where(FileUploadSession.user_id == user_id))
+    await db.execute(delete(NewsModel).where(NewsModel.author_id == user_id))
+
+    await db.delete(user)
+    await db.commit()
+    return {"message": f"User {user.email} deleted"}
 
 
 @router.post("/permissions", response_model=AdminPermissionSchema)
