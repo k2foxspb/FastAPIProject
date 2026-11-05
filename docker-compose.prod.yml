@@ -46,7 +46,7 @@ services:
     environment:
       <<: *common-env
       ENVIRONMENT: production
-      ENABLE_API_DOCS: ${ENABLE_API_DOCS:-false}
+      ENABLE_API_DOCS: ${ENABLE_API_DOCS}
       FIREBASE_SERVICE_ACCOUNT_PATH: /run/secrets/firebase-service-account.json
       GOOGLE_CLOUD_PROJECT: ${GOOGLE_CLOUD_PROJECT:?Задайте GOOGLE_CLOUD_PROJECT в .env}
     # Позволяет контейнеру обращаться к Ollama, запущенной на хосте,
