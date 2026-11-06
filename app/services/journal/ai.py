@@ -107,11 +107,12 @@ NUTRITION_ADVICE_SYSTEM_PROMPT = (
 
 
 class NutritionAdviceAnswer(BaseModel):
-    kcal: int = Field(ge=800, le=6000)
+    # Границы мягкие: итоговые значения ограничивает apply_ai_correction, а текст обрезается в роутере
+    kcal: int = Field(ge=0, le=10000)
     protein_pct: int = Field(ge=0, le=100)
     fat_pct: int = Field(ge=0, le=100)
     carbs_pct: int = Field(ge=0, le=100)
-    advice: str = Field(min_length=1, max_length=2000)
+    advice: str = Field(min_length=1)
 
 
 async def nutrition_advice(payload: NutritionPlanInput, plan: NutritionPlanResult) -> NutritionAdviceAnswer:

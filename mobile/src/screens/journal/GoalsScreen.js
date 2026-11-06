@@ -79,9 +79,9 @@ const Content = ({ navigation }) => {
       </TouchableOpacity>
       <TouchableOpacity
         onPress={() => navigation.navigate('NutritionGoals')}
-        style={{ marginHorizontal: 16, paddingVertical: 8, alignItems: 'center' }}
+        style={{ marginHorizontal: 16, marginBottom: 16, padding: 14, borderRadius: 10, backgroundColor: colors.primary, alignItems: 'center' }}
       >
-        <Text style={{ color: colors.primary }}>Цели питания (КБЖУ и вода)</Text>
+        <Text style={{ color: '#fff', fontWeight: '600' }}>Цели питания (КБЖУ и вода)</Text>
       </TouchableOpacity>
     </ScrollView>
   );

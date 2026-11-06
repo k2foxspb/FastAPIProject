@@ -7,19 +7,40 @@ import { usersApi } from '../api';
 import { getFullUrl } from '../utils/formatters';
 import { Ionicons as Icon } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
+import { useNotifications } from '../context/NotificationContext';
 import { theme as themeConstants } from '../constants/theme';
+
+const toDisplayDate = (iso) => {
+  if (!iso) return '';
+  const [y, m, d] = String(iso).split('-');
+  return y && m && d ? `${d}.${m}.${y}` : '';
+};
+
+const toIsoDate = (text) => {
+  const match = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(text.trim());
+  return match ? `${match[3]}-${match[2]}-${match[1]}` : null;
+};
+
+const formatDateInput = (text) => {
+  const digits = text.replace(/\D/g, '').slice(0, 8);
+  let result = digits.slice(0, 2);
+  if (digits.length > 2) result += `.${digits.slice(2, 4)}`;
+  if (digits.length > 4) result += `.${digits.slice(4)}`;
+  return result;
+};
 
 export default function EditProfileScreen({ route, navigation }) {
   const insets = useSafeAreaInsets();
   const { theme } = useTheme();
   const colors = themeConstants[theme];
+  const { loadUser } = useNotifications();
   const { user, isInitialSetup } = route.params;
   const [email, setEmail] = useState(user.email || '');
   const [phoneNumber, setPhoneNumber] = useState(user.phone_number || '');
   const [firstName, setFirstName] = useState(user.first_name || '');
   const [lastName, setLastName] = useState(user.last_name || '');
   const [gender, setGender] = useState(user.gender || null);
-  const [birthDate, setBirthDate] = useState(user.birth_date || '');
+  const [birthDate, setBirthDate] = useState(toDisplayDate(user.birth_date));
   const [heightCm, setHeightCm] = useState(user.height_cm ? String(user.height_cm) : '');
   const [weightKg, setWeightKg] = useState(user.weight_kg != null ? String(user.weight_kg) : '');
   const [avatar, setAvatar] = useState(null);
@@ -48,6 +69,11 @@ export default function EditProfileScreen({ route, navigation }) {
   };
 
   const handleSave = async () => {
+    const birthIso = birthDate.trim() ? toIsoDate(birthDate) : null;
+    if (birthDate.trim() && !birthIso) {
+      Alert.alert('Проверьте дату рождения', 'Введите дату в формате ДД.ММ.ГГГГ');
+      return;
+    }
     setLoading(true);
     try {
       const formData = new FormData();
@@ -56,7 +82,7 @@ export default function EditProfileScreen({ route, navigation }) {
       if (firstName !== (user.first_name || '')) formData.append('first_name', firstName);
       if (lastName !== (user.last_name || '')) formData.append('last_name', lastName);
       if (gender && gender !== (user.gender || null)) formData.append('gender', gender);
-      if (birthDate.trim() && birthDate.trim() !== (user.birth_date || '')) formData.append('birth_date', birthDate.trim());
+      if (birthIso && birthIso !== (user.birth_date || '')) formData.append('birth_date', birthIso);
       const h = heightCm.trim() ? Number(heightCm.replace(',', '.')) : null;
       const w = weightKg.trim() ? Number(weightKg.replace(',', '.')) : null;
       if (h !== null && h !== user.height_cm) formData.append('height_cm', String(Math.round(h)));
@@ -79,6 +105,7 @@ export default function EditProfileScreen({ route, navigation }) {
       }
 
       await usersApi.updateMe(formData);
+      await loadUser();
       Alert.alert('Успех', 'Профиль обновлен');
       
       if (isInitialSetup) {
@@ -175,16 +202,18 @@ export default function EditProfileScreen({ route, navigation }) {
           })}
         </View>
 
-        <Text style={[styles.label, { color: colors.textSecondary }]}>Дата рождения (ГГГГ-ММ-ДД)</Text>
+        <Text style={[styles.label, { color: colors.textSecondary }]}>Дата рождения (ДД.ММ.ГГГГ)</Text>
         <TextInput
           style={[styles.input, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]}
           value={birthDate}
-          onChangeText={setBirthDate}
-          placeholder="1990-01-31"
+          onChangeText={(t) => setBirthDate(formatDateInput(t))}
+          keyboardType="number-pad"
+          placeholder="31.01.1990"
+          maxLength={10}
           placeholderTextColor={colors.textSecondary}
         />
 
-        <Text style={[styles.label, { color: colors.textSecondary }]}>Рост, см</Text>
+        <Text style={[styles.label, { color: colors.textSecondary }]}>Рост, см (для анализа и рекомендаций ИИ по питанию)</Text>
         <TextInput
           style={[styles.input, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]}
           value={heightCm}
@@ -195,7 +224,7 @@ export default function EditProfileScreen({ route, navigation }) {
           maxLength={3}
         />
 
-        <Text style={[styles.label, { color: colors.textSecondary }]}>Вес, кг</Text>
+        <Text style={[styles.label, { color: colors.textSecondary }]}>Вес, кг (для анализа и рекомендаций ИИ по питанию)</Text>
         <TextInput
           style={[styles.input, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]}
           value={weightKg}

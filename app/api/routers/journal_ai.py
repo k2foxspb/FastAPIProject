@@ -113,13 +113,20 @@ async def nutrition_plan_advice(
     plan = nutrition_plan.calculate_plan(profile)
     try:
         answer = await ai_service.nutrition_advice(profile, plan)
+    except ollama.OllamaBadResponse as e:
+        # Формульная норма уже посчитана: при некорректном ответе ИИ отдаём её без корректировки
+        logger.warning(f"Journal AI nutrition plan: user={current_user.id} fallback: {e.message}")
+        return NutritionPlanResponse(
+            plan=plan, recommended=plan,
+            advice="Рекомендации ИИ сейчас недоступны. Ориентируйтесь на формульную норму и попробуйте позже.",
+        )
     except ollama.OllamaError as e:
         raise_ai_error(e)
     recommended = nutrition_plan.apply_ai_correction(
         plan, payload.goal, answer.kcal, answer.protein_pct, answer.fat_pct, answer.carbs_pct
     )
     logger.info(f"Journal AI nutrition plan: user={current_user.id}")
-    return NutritionPlanResponse(plan=plan, recommended=recommended, advice=answer.advice)
+    return NutritionPlanResponse(plan=plan, recommended=recommended, advice=answer.advice[:2000])
 
 
 @router.post("/suggest-categories", response_model=CategorySuggestionResponse)

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Alert, KeyboardAvoidingView, Platform, ScrollView, Text, TouchableOpacity } from 'react-native';
+import { Alert, KeyboardAvoidingView, Platform, ScrollView, Text } from 'react-native';
 import { useJournal } from '../../context/JournalContext';
 import { useNotifications } from '../../context/NotificationContext';
 import { Chip, Field, Input, JournalGate, PrimaryButton, Section, useColors } from '../../components/journal/common';
@@ -43,7 +43,7 @@ const FIELDS = [
 const Content = ({ navigation }) => {
   const colors = useColors();
   const { settings } = useJournal();
-  const { currentUser } = useNotifications();
+  const { currentUser, loadUser } = useNotifications();
   const [values, setValues] = useState({});
   const [saving, setSaving] = useState(false);
   const [sex, setSex] = useState(currentUser?.gender || 'male');
@@ -52,6 +52,10 @@ const Content = ({ navigation }) => {
   const [planLoading, setPlanLoading] = useState(false);
   const [advice, setAdvice] = useState('');
   const [formulaKcal, setFormulaKcal] = useState(null);
+
+  useEffect(() => {
+    loadUser();
+  }, [loadUser]);
 
   useEffect(() => {
     const next = {};
@@ -137,9 +141,7 @@ const Content = ({ navigation }) => {
             />
           </Field>
         ))}
-        <TouchableOpacity onPress={fillMacros} style={{ marginHorizontal: 16, marginTop: 12 }}>
-          <Text style={{ color: colors.primary }}>Рассчитать БЖУ из калорий (25/30/45 %)</Text>
-        </TouchableOpacity>
+        <PrimaryButton title="Рассчитать БЖУ из калорий (25/30/45 %)" onPress={fillMacros} />
         <Section title="Расчёт по анкете" style={{ marginTop: 16 }}>
           <Field label="Пол">
             <Chip label="Мужской" selected={sex === 'male'} onPress={() => setSex('male')} />
