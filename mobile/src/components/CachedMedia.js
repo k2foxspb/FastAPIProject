@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Image, TouchableOpacity, StyleSheet, ActivityIndicator, Text, Alert, Platform, StatusBar } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { MaterialIcons, Ionicons } from '@expo/vector-icons';
+import { View, Image, TouchableOpacity, StyleSheet, ActivityIndicator, Text, Alert, Platform } from 'react-native';
+import { MaterialIcons } from '@expo/vector-icons';
 import { cacheDirectory, getInfoAsync, createDownloadResumable, copyAsync, readAsStringAsync, writeAsStringAsync, EncodingType, StorageAccessFramework } from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import * as VideoThumbnails from 'expo-video-thumbnails';
@@ -281,18 +280,12 @@ const CachedMedia = ({
       setSaving(false);
     }
   };
-  const insets = useSafeAreaInsets();
-  const saveButtonTop = Math.max(insets.top, StatusBar.currentHeight || 0) + 10;
-  const renderSaveButton = (top = 6, large = false) => (savableUri ? (
-    <TouchableOpacity style={large ? [styles.saveButtonLarge, { top }] : [styles.saveButton, { top }]} onPress={handleSaveVideo} disabled={saving} activeOpacity={0.8}>
+  const renderSaveButton = () => (savableUri ? (
+    <TouchableOpacity style={styles.saveButton} onPress={handleSaveVideo} disabled={saving} activeOpacity={0.8}>
       {saving ? (
-        <ActivityIndicator size={large ? 30 : 14} color="#fff" />
+        <ActivityIndicator size={14} color="#fff" />
       ) : (
-        large ? (
-          <Ionicons name="save-outline" size={30} color="#fff" />
-        ) : (
-          <MaterialIcons name="save-alt" size={18} color="#fff" />
-        )
+        <MaterialIcons name="save-alt" size={18} color="#fff" />
       )}
     </TouchableOpacity>
   ) : null);
@@ -422,7 +415,6 @@ const CachedMedia = ({
             )}
           </View>
         )}
-        {renderSaveButton(saveButtonTop, true)}
       </View>
     );
   }
@@ -493,15 +485,6 @@ const styles = StyleSheet.create({
     height: 30,
     borderRadius: 15,
     backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  saveButtonLarge: {
-    position: 'absolute',
-    left: 12,
-    zIndex: 11,
-    width: 44,
-    height: 44,
     justifyContent: 'center',
     alignItems: 'center',
   },

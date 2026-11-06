@@ -110,10 +110,11 @@ NUTRITION_ADVICE_SYSTEM_PROMPT = (
     "а не повтор входных данных. Входные поля (sex, age, goal и т.д.) в ответе не повторяй."
 )
 
-NUTRITION_ADVICE_ATTEMPTS = 2
-NUTRITION_ADVICE_RETRY_MESSAGE = (
-    "В ответе нет поля advice с советами. Верни ТОЛЬКО JSON с полями kcal, protein_pct, fat_pct, "
-    "carbs_pct и advice, где advice - текст советов на русском по питанию."
+NUTRITION_ADVICE_TEXT_PROMPT = (
+    "Ты помощник по питанию в личном журнале. Пользователю рассчитана норма калорий и БЖУ по его данным "
+    "(рост, вес, возраст, пол, активность, цель). Напиши 3-5 коротких практических советов на русском: "
+    "как распределить питание по приёмам пищи и на что обратить внимание. Не ставь диагнозов и не давай "
+    "медицинских назначений. Ответь только текстом советов, без JSON и без повтора входных данных."
 )
 ADVICE_KEYS = ("advice", "recommendations", "tips", "text")
 
@@ -164,24 +165,19 @@ async def nutrition_advice(payload: NutritionPlanInput, plan: NutritionPlanResul
         {"role": "system", "content": NUTRITION_ADVICE_SYSTEM_PROMPT},
         {"role": "user", "content": json.dumps(facts, ensure_ascii=False)},
     ]
-    data = None
-    for attempt in range(NUTRITION_ADVICE_ATTEMPTS):
-        text = await ollama.chat(messages, timeout=AI_TIMEOUT_SEC, options={"temperature": 0.3}, json_mode=True)
-        try:
-            candidate = ollama.extract_json(text)
-        except ollama.OllamaBadResponse:
-            candidate = None
-        if isinstance(candidate, dict) and _first_value(candidate, *ADVICE_KEYS):
-            data = candidate
-            break
-        logger.warning(f"Ответ ИИ по КБЖУ без советов (попытка {attempt + 1}), ключи={sorted(candidate.keys()) if isinstance(candidate, dict) else None}")
-        messages = [
-            *messages,
-            {"role": "assistant", "content": text},
-            {"role": "user", "content": NUTRITION_ADVICE_RETRY_MESSAGE},
-        ]
-    if data is None:
+    text = await ollama.chat(messages, timeout=AI_TIMEOUT_SEC, options={"temperature": 0.3}, json_mode=True)
+    data = ollama.extract_json(text)
+    if not isinstance(data, dict):
         raise ollama.OllamaBadResponse("ИИ вернул некорректный ответ")
+    if not _first_value(data, *ADVICE_KEYS):
+        # Модель вернула числа без текста советов: отдельным запросом получаем сам текст советов от ИИ
+        logger.warning(f"Ответ ИИ по КБЖУ без советов, ключи={sorted(data.keys())}, запрашиваю текст отдельно")
+        advice_messages = [
+            {"role": "system", "content": NUTRITION_ADVICE_TEXT_PROMPT},
+            {"role": "user", "content": json.dumps({**facts, "kcal": plan.kcal}, ensure_ascii=False)},
+        ]
+        advice_text = await ollama.chat(advice_messages, timeout=AI_TIMEOUT_SEC, options={"temperature": 0.3})
+        data["advice"] = advice_text.strip()
     normalized = _normalize_nutrition_advice(data, plan)
     try:
         return NutritionAdviceAnswer.model_validate(normalized)
