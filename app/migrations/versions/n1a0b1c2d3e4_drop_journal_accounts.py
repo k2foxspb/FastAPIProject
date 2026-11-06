@@ -22,6 +22,26 @@ depends_on: Union[str, Sequence[str], None] = None
 BigIntPK = sa.BigInteger().with_variant(sa.Integer(), "sqlite")
 
 
+def _entity_columns(table: str) -> list:
+    return [
+        sa.Column("id", BigIntPK, primary_key=True, autoincrement=True),
+        sa.Column("user_id", sa.Integer(), nullable=False),
+        sa.Column("client_uuid", sa.String(36), nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("server_rev", sa.BigInteger(), nullable=False),
+        sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE", name=f"fk_{table}_user_id_users"),
+        sa.PrimaryKeyConstraint("id", name=f"pk_{table}"),
+        sa.UniqueConstraint("user_id", "client_uuid", name=f"uq_{table}_user_uuid"),
+    ]
+
+
+def _entity_indexes(table: str) -> None:
+    op.create_index(f"ix_{table}_user_id", table, ["user_id"])
+    op.create_index(f"ix_{table}_user_rev", table, ["user_id", "server_rev"])
+
+
 def upgrade() -> None:
     op.execute(
         "UPDATE journal_transactions SET deleted_at = CURRENT_TIMESTAMP, "
@@ -42,9 +62,21 @@ def upgrade() -> None:
         batch.drop_constraint("fk_journal_import_batches_account_id_journal_accounts", type_="foreignkey")
         batch.drop_column("account_id")
     op.drop_table("journal_accounts")
+    op.drop_table("journal_budgets")
 
 
 def downgrade() -> None:
+    op.create_table(
+        "journal_budgets", *_entity_columns("journal_budgets"),
+        sa.Column("category_id", BigIntPK, nullable=True),
+        sa.Column("period_month", sa.String(7), nullable=False),
+        sa.Column("limit_kop", sa.BigInteger(), nullable=False),
+        sa.Column("enabled", sa.Boolean(), nullable=False),
+        sa.ForeignKeyConstraint(["category_id"], ["journal_finance_categories.id"], ondelete="SET NULL",
+                                name="fk_journal_budgets_category_id_journal_finance_categories"),
+        sa.CheckConstraint("limit_kop > 0", name="ck_journal_budgets_limit_positive"),
+    )
+    _entity_indexes("journal_budgets")
     op.create_table(
         "journal_accounts",
         sa.Column("id", BigIntPK, primary_key=True, autoincrement=True),

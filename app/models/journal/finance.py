@@ -71,18 +71,6 @@ class JournalTransaction(JournalEntityMixin, Base):
     source: Mapped[str] = mapped_column(String(20), default="manual", nullable=False)
 
 
-class JournalBudget(JournalEntityMixin, Base):
-    __tablename__ = "journal_budgets"
-    __table_args__ = entity_table_args("journal_budgets")
-
-    category_id: Mapped[int | None] = mapped_column(
-        BigIntPK, ForeignKey("journal_finance_categories.id", ondelete="SET NULL"), nullable=True
-    )
-    period_month: Mapped[str] = mapped_column(String(7), nullable=False)
-    limit_kop: Mapped[int] = mapped_column(BigInteger, nullable=False)
-    enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
-
-
 class JournalImportProfile(JournalEntityMixin, Base):
     __tablename__ = "journal_import_profiles"
     __table_args__ = entity_table_args(

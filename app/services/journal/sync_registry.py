@@ -16,7 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.journal import (
-    JournalAttachment, JournalBudget, JournalDiaryEntry, JournalEvent,
+    JournalAttachment, JournalDiaryEntry, JournalEvent,
     JournalEventOccurrence, JournalFinanceCategory, JournalFood,
     JournalFoodEntry, JournalMealType, JournalRecipeItem, JournalReminder, JournalSettings,
     JournalTracker, JournalTrackerValue, JournalTransaction, JournalWaterEntry,
@@ -26,7 +26,7 @@ from app.models.journal import JournalGoal
 from app.schemas.journal.goals import GoalData
 from app.schemas.journal.diet import FoodData, FoodEntryData, MealTypeData, RecipeItemData, WaterEntryData
 from app.schemas.journal.finance import (
-    BudgetData, FinanceCategoryData, ImportBatchData, ImportProfileData,
+    FinanceCategoryData, ImportBatchData, ImportProfileData,
     ImportRuleData, TransactionData,
 )
 from app.schemas.journal.sync import (
@@ -180,23 +180,6 @@ async def _validate_expense_category(db: AsyncSession, user_id: int, existing, v
     return None
 
 
-def _schedule_budget_check(user_id: int, changes: list[Any]) -> None:
-    """Запускает проверку бюджетов после commit, не блокируя sync при сбое брокера."""
-    months = set()
-    for change in changes:
-        transaction_date = (change.data or {}).get("transaction_date")
-        if transaction_date:
-            months.add(str(transaction_date)[:7])
-    if not months:
-        return
-    try:
-        from app.core.celery_app import celery_app
-        celery_app.send_task("journal.check_budgets", args=[user_id, sorted(months)], retry=False)
-    except Exception:
-        from loguru import logger
-        logger.exception("Не удалось поставить проверку бюджета в очередь")
-
-
 # ---------------------------------------------------------------- регистрация фазы 1
 
 register(EntitySpec(
@@ -265,12 +248,6 @@ register(EntitySpec(
         RefSpec("category_uuid", "category_id", "finance_category", on_delete="set_null"),
     ],
     validate=_validate_transaction,
-    after_apply=_schedule_budget_check,
-))
-register(EntitySpec(
-    name="budget", model=JournalBudget, schema=BudgetData, order=30,
-    refs=[RefSpec("category_uuid", "category_id", "finance_category", on_delete="set_null")],
-    validate=_validate_expense_category,
 ))
 register(EntitySpec(
     name="import_profile", model=JournalImportProfile, schema=ImportProfileData, order=20,

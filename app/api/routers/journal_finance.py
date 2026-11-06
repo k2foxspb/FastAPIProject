@@ -1,4 +1,4 @@
-"""Аналитика, бюджеты и проверка операций."""
+"""Аналитика и проверка операций."""
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -14,12 +14,6 @@ from app.services.journal import finance
 router = APIRouter(prefix="/api/journal", tags=["journal"])
 
 
-@router.get("/finance/budgets")
-async def finance_budgets(
-    month: str = Query(..., pattern=r"^\d{4}-(0[1-9]|1[0-2])$"),
-    current_user: UserModel = Depends(get_current_user), db: AsyncSession = Depends(get_async_db),
-):
-    return {"items": await finance.budget_status(db, current_user.id, month)}
 
 
 @router.get("/finance/analytics", response_model=FinanceSummary)

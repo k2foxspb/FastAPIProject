@@ -29,13 +29,6 @@ class TransactionData(EntityData):
     source: Literal["manual", "import", "recurring"] = "manual"
 
 
-class BudgetData(EntityData):
-    category_uuid: OptUUIDStr = None
-    period_month: str = Field(pattern=r"^\d{4}-(0[1-9]|1[0-2])$")
-    limit_kop: int = Field(gt=0, le=10**13)
-    enabled: bool = True
-
-
 class ImportProfileData(EntityData):
     name: str = Field(min_length=1, max_length=100)
     file_format: Literal["csv", "tsv", "xlsx"]

@@ -158,6 +158,11 @@ export const MIGRATIONS = [
   DROP INDEX IF EXISTS ix_transactions_account_date;
   DROP TABLE IF EXISTS accounts;
   `,
+  // 8 - удаление бюджетов: локальная таблица и очередь отправки бюджетов очищаются
+  `
+  DELETE FROM outbox WHERE entity = 'budget';
+  DROP TABLE IF EXISTS budgets;
+  `,
 ];
 
 export const runMigrations = async (db) => {

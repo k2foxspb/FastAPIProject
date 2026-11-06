@@ -108,11 +108,6 @@ export const ENTITIES = {
       { field: 'category_uuid', entity: 'finance_category', onDelete: 'set_null' },
     ],
   },
-  budget: {
-    table: 'budgets',
-    fields: { category_uuid: 'text', period_month: 'text', limit_kop: 'int', enabled: 'bool' },
-    parents: [{ field: 'category_uuid', entity: 'finance_category', onDelete: 'set_null' }],
-  },
   import_rule: {
     table: 'import_rules',
     fields: { match_text: 'text', match_field: 'text', category_uuid: 'text', priority: 'int', enabled: 'bool' },

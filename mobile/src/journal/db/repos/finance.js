@@ -65,26 +65,17 @@ export const listTransactions = async ({ from = '1970-01-01', to = '2100-12-31',
   return rows.map((row) => ({ ...rowToObject('transaction', row), category_name: row.category_name }));
 };
 
-export const listBudgets = async (month) => {
+export const monthTotals = async (month) => {
   const rows = await getJournalDb().getAllAsync(
-    `SELECT b.*, c.name AS category_name FROM budgets b LEFT JOIN finance_categories c ON c.uuid = b.category_uuid
-     WHERE b.period_month = ? AND b.enabled = 1 ORDER BY c.name`, [month],
+    `SELECT direction, SUM(amount_kop) AS amount FROM transactions
+     WHERE direction IN ('income', 'expense') AND transaction_date LIKE ? GROUP BY direction`,
+    [`${month}%`],
   );
-  const allTransactions = await getJournalDb().getAllAsync(
-    'SELECT category_uuid, SUM(amount_kop) AS amount FROM transactions WHERE direction = ? AND transaction_date LIKE ? GROUP BY category_uuid',
-    ['expense', `${month}%`],
-  );
-  const spent = new Map(allTransactions.map((row) => [row.category_uuid || '', Number(row.amount) || 0]));
-  return rows.map((row) => ({
-    ...rowToObject('budget', row), category_name: row.category_name || 'Все расходы',
-    spent_kop: row.category_uuid ? spent.get(row.category_uuid) || 0 : [...spent.values()].reduce((sum, value) => sum + value, 0),
-  }));
+  const totals = Object.fromEntries(rows.map((row) => [row.direction, Math.trunc(Number(row.amount) || 0)]));
+  const income_kop = totals.income || 0;
+  const expense_kop = totals.expense || 0;
+  return { income_kop, expense_kop, net_kop: income_kop - expense_kop };
 };
-export const saveBudget = (data, uuid = null) => saveEntity('budget', {
-  category_uuid: data.category_uuid || null, period_month: data.period_month,
-  limit_kop: Math.abs(Math.trunc(Number(data.limit_kop) || 0)), enabled: data.enabled !== false,
-}, uuid);
-export const deleteBudget = (uuid) => deleteEntity('budget', uuid);
 
 export const reviewQueue = async () => {
   const rows = await getJournalDb().getAllAsync(

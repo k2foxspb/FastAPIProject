@@ -61,7 +61,6 @@ import NutritionGoalsScreen from '../screens/journal/NutritionGoalsScreen';
 import FinanceHomeScreen from '../screens/journal/FinanceHomeScreen';
 import TransactionEditScreen from '../screens/journal/TransactionEditScreen';
 import FinanceCategoriesScreen from '../screens/journal/FinanceCategoriesScreen';
-import BudgetsScreen from '../screens/journal/BudgetsScreen';
 import ImportPickScreen from '../screens/journal/ImportPickScreen';
 import ImportMappingScreen from '../screens/journal/ImportMappingScreen';
 import ImportPreviewScreen from '../screens/journal/ImportPreviewScreen';
@@ -321,7 +320,6 @@ function JournalStack() {
         <Stack.Screen name="FinanceHome" component={FinanceHomeScreen} options={{ title: 'Финансы' }} />
         <Stack.Screen name="TransactionEdit" component={TransactionEditScreen} options={{ title: 'Операция' }} />
         <Stack.Screen name="FinanceCategories" component={FinanceCategoriesScreen} options={{ title: 'Категории' }} />
-        <Stack.Screen name="Budgets" component={BudgetsScreen} options={{ title: 'Бюджеты' }} />
         <Stack.Screen name="ImportPick" component={ImportPickScreen} options={{ title: 'Импорт выписки' }} />
         <Stack.Screen name="ImportMapping" component={ImportMappingScreen} options={{ title: 'Сопоставление колонок' }} />
         <Stack.Screen name="ImportPreview" component={ImportPreviewScreen} options={{ title: 'Проверка импорта' }} />

@@ -18,7 +18,6 @@ export const journalApi = {
   // Диета: поиск по своей базе на сервере и сводка за период (итоги пересчитываются сервером)
   searchFoods: (q, page = 1, limit = 30) => api.get('/api/journal/foods/search', { params: { q, page, limit } }),
   getDietSummary: (from, to) => api.get('/api/journal/diet/summary', { params: { from, to } }),
-  getFinanceBudgets: (month) => api.get('/api/journal/finance/budgets', { params: { month } }),
   getFinanceAnalytics: (from, to) => api.get('/api/journal/finance/analytics', { params: { from, to } }),
   getFinanceReview: (limit = 100) => api.get('/api/journal/finance/review', { params: { limit } }),
   importPreview: (formData) => api.post('/api/journal/import/preview', formData, {

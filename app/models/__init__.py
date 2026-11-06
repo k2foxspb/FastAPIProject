@@ -11,7 +11,7 @@ from .journal import (
     JournalSettings, JournalSyncState, JournalEvent, JournalEventOccurrence, JournalReminder,
     JournalDiaryEntry, JournalTracker, JournalTrackerValue, JournalAttachment,
     JournalMealType, JournalFood, JournalRecipeItem, JournalFoodEntry, JournalWaterEntry,
-    JournalFinanceCategory, JournalTransaction, JournalBudget,
+    JournalFinanceCategory, JournalTransaction,
     JournalImportProfile, JournalImportRule, JournalImportBatch,
 )
 
@@ -26,6 +26,6 @@ __all__ = ["News", "NewsImage", "NewsReaction", "NewsComment", "NewsCommentReact
            "JournalSettings", "JournalSyncState", "JournalEvent", "JournalEventOccurrence", "JournalReminder",
            "JournalDiaryEntry", "JournalTracker", "JournalTrackerValue", "JournalAttachment",
             "JournalMealType", "JournalFood", "JournalRecipeItem", "JournalFoodEntry", "JournalWaterEntry",
-            "JournalFinanceCategory", "JournalTransaction", "JournalBudget",
+            "JournalFinanceCategory", "JournalTransaction",
             "JournalImportProfile", "JournalImportRule", "JournalImportBatch",
             ]

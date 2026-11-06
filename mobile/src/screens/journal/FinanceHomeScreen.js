@@ -1,14 +1,14 @@
 import React, { useState } from 'react';
 import { Alert, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { formatKop } from '../../journal/utils/money';
-import { listBudgets, listTransactions } from '../../journal/db/repos/finance';
+import { listTransactions, monthTotals } from '../../journal/db/repos/finance';
 import { EmptyState, JournalGate, Section, useColors } from '../../components/journal/common';
 import { useJournal, useJournalQuery } from '../../context/JournalContext';
 
 const PAGE = 20;
 
 const LINKS = [
-  ['FinanceCategories', 'Категории'], ['Budgets', 'Бюджеты'],
+  ['FinanceCategories', 'Категории'],
   ['ExpenseAnalytics', 'Аналитика расходов'],
 ];
 
@@ -16,13 +16,12 @@ function Content({ navigation }) {
   const colors = useColors();
   const { today } = useJournal();
   const month = today.slice(0, 7);
-  const { data: budgets } = useJournalQuery(() => listBudgets(month), [month]);
+  const { data: totals } = useJournalQuery(() => monthTotals(month), [month]);
   const [limit, setLimit] = useState(PAGE);
   const { data: transactions } = useJournalQuery(() => listTransactions({ limit }), [limit]);
   const addFinance = () => Alert.alert('Добавить', 'Что создать?', [
     { text: 'Расход', onPress: () => navigation.navigate('TransactionEdit', { direction: 'expense' }) },
     { text: 'Доход', onPress: () => navigation.navigate('TransactionEdit', { direction: 'income' }) },
-    { text: 'Бюджет', onPress: () => navigation.navigate('Budgets') },
     { text: 'Отмена', style: 'cancel' },
   ]);
   return (
@@ -39,25 +38,24 @@ function Content({ navigation }) {
           </TouchableOpacity>
         ))}
       </Section>
-      {(budgets || []).length > 0 && (
-        <Section title={`Бюджеты · ${month}`}>
-          {budgets.map((budget) => {
-            const ratio = budget.limit_kop > 0 ? budget.spent_kop / budget.limit_kop : 0;
-            const over = ratio > 1;
-            return (
-              <View key={budget.uuid} style={{ paddingHorizontal: 12, paddingVertical: 8 }}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                  <Text style={{ color: colors.text, fontWeight: '600' }}>{budget.category_name}</Text>
-                  <Text style={{ color: over ? colors.error : colors.textSecondary }}>
-                    {formatKop(budget.spent_kop)} / {formatKop(budget.limit_kop)}
-                  </Text>
-                </View>
-                <View style={{ height: 8, borderRadius: 4, backgroundColor: colors.border, marginTop: 6, overflow: 'hidden' }}>
-                  <View style={{ height: 8, width: `${Math.min(100, Math.round(ratio * 100))}%`, backgroundColor: over ? colors.error : colors.primary }} />
-                </View>
-              </View>
-            );
-          })}
+      {totals && (
+        <Section title={`Итоги · ${month}`}>
+          <View style={{ padding: 12 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4 }}>
+              <Text style={{ color: colors.text }}>Доходы</Text>
+              <Text style={{ color: colors.success }}>+{formatKop(totals.income_kop)}</Text>
+            </View>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4 }}>
+              <Text style={{ color: colors.text }}>Расходы</Text>
+              <Text style={{ color: colors.error }}>−{formatKop(totals.expense_kop)}</Text>
+            </View>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6, borderTopWidth: 0.5, borderTopColor: colors.border, marginTop: 4 }}>
+              <Text style={{ color: colors.text, fontWeight: '700' }}>Разница</Text>
+              <Text style={{ color: totals.net_kop < 0 ? colors.error : colors.success, fontWeight: '700' }}>
+                {formatKop(totals.net_kop)}
+              </Text>
+            </View>
+          </View>
         </Section>
       )}
       <Section title="Последние операции">

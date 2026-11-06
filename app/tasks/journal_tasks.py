@@ -1,4 +1,4 @@
-"""Периодические задачи журнала: бюджеты, tombstones и превью импорта."""
+"""Периодические задачи журнала: tombstones, превью импорта и сводки."""
 import asyncio
 import tempfile
 from datetime import datetime, timedelta, timezone
@@ -12,54 +12,12 @@ from sqlalchemy.pool import NullPool
 
 from app.core import config
 from app.core.celery_app import celery_app
-from app.core.fcm import send_fcm_notification
 from app.core.notification_service import create_or_group_notification
-from app.models.journal import JournalBudget, JournalSettings, JournalSyncState
-from app.models.users import User
-from app.services.journal import budgets
+from app.models.journal import JournalSettings, JournalSyncState
 from app.services.journal.sync_registry import ordered_specs
 
 _engine = create_async_engine(config.DATABASE_URL, poolclass=NullPool)
 _sessions = async_sessionmaker(_engine, expire_on_commit=False)
-
-
-async def _check_budgets(user_id: int, months: list[str]) -> int:
-    async with _sessions() as db:
-        notifications = await budgets.check_budgets(db, user_id, months)
-        user = await db.get(User, user_id)
-        token = user.fcm_token if user else None
-    if token:
-        for notification in notifications:
-            try:
-                await send_fcm_notification(
-                    token=token, title=notification["title"], body=notification["body"],
-                    data={**notification["data"], "type": "journal_budget", "notification_group": "journal",
-                          "android_channel_id": "journal"},
-                    silent=False,
-                )
-            except Exception:
-                logger.exception("Journal budget push failed")
-    return len(notifications)
-
-
-@celery_app.task(name="journal.check_budgets")
-def check_budgets(user_id: int, months: list[str]) -> int:
-    return asyncio.run(_check_budgets(user_id, months))
-
-
-@celery_app.task(name="journal.daily_budget_scan")
-def daily_budget_scan() -> int:
-    async def run() -> int:
-        month = datetime.now(timezone.utc).strftime("%Y-%m")
-        async with _sessions() as db:
-            user_ids = (await db.execute(select(JournalBudget.user_id).where(
-                JournalBudget.period_month == month, JournalBudget.deleted_at.is_(None), JournalBudget.enabled.is_(True)
-            ).distinct())).scalars().all()
-        count = 0
-        for user_id in user_ids:
-            count += await _check_budgets(user_id, [month])
-        return count
-    return asyncio.run(run())
 
 
 @celery_app.task(name="journal.weekly_summary")
@@ -157,7 +115,6 @@ def cleanup_import_previews() -> int:
 
 celery_app.conf.beat_schedule = {
     **(celery_app.conf.beat_schedule or {}),
-    "journal-daily-budget-scan": {"task": "journal.daily_budget_scan", "schedule": crontab(hour=20, minute=0)},
     "journal-purge-tombstones": {"task": "journal.purge_tombstones", "schedule": crontab(hour=2, minute=30)},
     "journal-cleanup-import-previews": {"task": "journal.cleanup_import_previews", "schedule": 900.0},
     "journal-weekly-summary": {"task": "journal.weekly_summary", "schedule": crontab(hour="*", minute=5, day_of_week=1)},

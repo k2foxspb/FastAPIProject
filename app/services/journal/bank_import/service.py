@@ -259,15 +259,6 @@ async def commit(db: AsyncSession, user_id: int, request: ImportCommitRequest) -
     await _delete_preview(user_id, request.preview_token)
     logger.info(f"Journal import committed: user={user_id} imported={len(imported)} duplicates={duplicate_count}")
 
-    if imported:
-        try:
-            from app.core.celery_app import celery_app
-            celery_app.send_task("journal.check_budgets", args=[
-                user_id, sorted({item["transaction_date"].strftime("%Y-%m") for item in imported})
-            ], retry=False)
-        except Exception:
-            logger.exception("Не удалось поставить проверку бюджетов после импорта")
-
     return ImportCommitResponse(
         batch_uuid=batch.client_uuid, imported_count=len(imported), duplicate_count=duplicate_count,
         review_count=sum(item["review_required"] for item in imported),
