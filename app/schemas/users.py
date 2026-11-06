@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from pydantic import BaseModel, EmailStr, Field, ConfigDict, field_validator
 from typing import Any, Optional
@@ -403,6 +403,9 @@ class User(BaseModel):
     avatar_url: Optional[str] = None
     avatar_preview_url: Optional[str] = None
     gender: Optional[str] = None
+    birth_date: Optional[date] = None
+    height_cm: Optional[int] = None
+    weight_kg: Optional[Decimal] = None
     fcm_token: Optional[str] = None
     friendship_status: Optional[str] = None # "pending", "accepted", "requested_by_me", "requested_by_them", null
     is_banned: bool = False
@@ -435,6 +438,9 @@ class User(BaseModel):
                     "avatar_url": obj.get("avatar_url") or get_default_avatar_url(obj.get("gender")),
                     "avatar_preview_url": obj.get("avatar_preview_url") or get_default_avatar_url(obj.get("gender")),
                     "gender": obj.get("gender"),
+                    "birth_date": obj.get("birth_date"),
+                    "height_cm": obj.get("height_cm"),
+                    "weight_kg": obj.get("weight_kg"),
                     "fcm_token": obj.get("fcm_token"),
                     "friendship_status": obj.get("friendship_status"),
                     "is_banned": obj.get("is_banned", False),
@@ -463,6 +469,9 @@ class User(BaseModel):
                 "avatar_url": getattr(obj, "avatar_url", None) or get_default_avatar_url(getattr(obj, "gender", None)),
                 "avatar_preview_url": getattr(obj, "avatar_preview_url", None) or get_default_avatar_url(getattr(obj, "gender", None)),
                 "gender": getattr(obj, "gender", None),
+                "birth_date": getattr(obj, "birth_date", None),
+                "height_cm": getattr(obj, "height_cm", None),
+                "weight_kg": getattr(obj, "weight_kg", None),
                 "fcm_token": getattr(obj, "fcm_token", None),
                 "friendship_status": getattr(obj, "friendship_status", None),
                 "is_banned": bool(getattr(obj, "is_banned", False)),

@@ -47,6 +47,7 @@ const Content = ({ navigation }) => {
 
   const { nutritionAverages: avg, goals } = data;
   const topCategories = data.expenseCategories.slice(0, 5);
+  const topIncome = data.incomeCategories.slice(0, 5);
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ paddingBottom: 40 }}>
@@ -68,13 +69,22 @@ const Content = ({ navigation }) => {
           <Stat label="Белки, г" value={`${avg.protein}${goals.nutrition.protein ? ` / ${goals.nutrition.protein}` : ''}`} />
           <Stat label="Жиры, г" value={`${avg.fat}${goals.nutrition.fat ? ` / ${goals.nutrition.fat}` : ''}`} />
           <Stat label="Углеводы, г" value={`${avg.carbs}${goals.nutrition.carbs ? ` / ${goals.nutrition.carbs}` : ''}`} />
+          <Stat label="Калории в среднем за день (весь период)" value={`${avg.periodKcal} ккал`} />
         </View>
       </Section>
 
-      <Section title="Расходы">
-        <Stat label="Всего за период" value={formatKop(data.expenseTotalKop)} />
+      <Section title="Доходы и расходы">
+        <Stat label="Доходы за период" value={formatKop(data.incomeTotalKop)} />
+        <Stat label="Расходы за период" value={formatKop(data.expenseTotalKop)} />
+        <Stat label="Разница (доход − расход)" value={formatKop(data.incomeTotalKop - data.expenseTotalKop)} />
+        {topIncome.map((c) => (
+          <View key={`i-${c.name}`} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 6 }}>
+            <Text style={{ color: colors.text }}>{c.name}</Text>
+            <Text style={{ color: colors.success }}>{formatKop(c.amount_kop)}</Text>
+          </View>
+        ))}
         {topCategories.map((c) => (
-          <View key={c.name} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 6 }}>
+          <View key={`e-${c.name}`} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 6 }}>
             <Text style={{ color: colors.text }}>{c.name}</Text>
             <Text style={{ color: colors.text }}>{formatKop(c.amount_kop)}</Text>
           </View>

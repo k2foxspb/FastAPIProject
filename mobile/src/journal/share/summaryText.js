@@ -94,7 +94,11 @@ export const buildMonthCalendarText = (totals, title) => {
   lines.push(`События: ${totals.done} из ${totals.total}`);
   lines.push(`Дней с записями в дневнике: ${totals.diary}`);
   if (totals.kcal > 0) lines.push(`Калории: ${totals.kcal} ккал`);
-  if (totals.expense > 0) lines.push(`Расходы: ${formatKop(totals.expense)}`);
+  if (totals.income > 0 || totals.expense > 0) {
+    lines.push(`Доходы: ${formatKop(totals.income)}`);
+    lines.push(`Расходы: ${formatKop(totals.expense)}`);
+    lines.push(`Разница: ${formatKop(totals.net)}`);
+  }
   return lines.join('\n');
 };
 

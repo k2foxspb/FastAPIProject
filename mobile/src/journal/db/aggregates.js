@@ -14,7 +14,7 @@ export const DAY_TOTAL_PROVIDERS = [
 ];
 
 const emptyDay = (date) => ({
-  date, kcal: 0, expense_kop: 0, has_diary: false, tracker_count: 0, events_total: 0, events_done: 0,
+  date, kcal: 0, income_kop: 0, expense_kop: 0, has_diary: false, tracker_count: 0, events_total: 0, events_done: 0,
 });
 
 export const summarizeRange = async (start, end) => {

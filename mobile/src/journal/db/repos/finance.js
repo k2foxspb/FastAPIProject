@@ -93,10 +93,17 @@ export const resolveReview = async (uuid, categoryUuid) => {
 
 export const expenseByDay = async (db, start, end) => {
   const rows = await db.getAllAsync(
-    `SELECT transaction_date AS d, SUM(amount_kop) AS amount FROM transactions
-     WHERE direction = 'expense' AND transaction_date BETWEEN ? AND ? GROUP BY transaction_date`, [start, end],
+    `SELECT transaction_date AS d, direction, SUM(amount_kop) AS amount FROM transactions
+     WHERE direction IN ('income', 'expense') AND transaction_date BETWEEN ? AND ? GROUP BY transaction_date, direction`,
+    [start, end],
   );
-  return Object.fromEntries(rows.map(({ d, amount }) => [d, { expense_kop: Math.trunc(Number(amount) || 0) }]));
+  const days = {};
+  rows.forEach(({ d, direction, amount }) => {
+    days[d] = days[d] || { income_kop: 0, expense_kop: 0 };
+    if (direction === 'income') days[d].income_kop = Math.trunc(Number(amount) || 0);
+    else days[d].expense_kop = Math.trunc(Number(amount) || 0);
+  });
+  return days;
 };
 
 export const listImportRules = async () => {

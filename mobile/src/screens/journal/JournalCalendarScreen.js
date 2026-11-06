@@ -46,15 +46,16 @@ const CalendarContent = ({ navigation }) => {
   const renderDay = useCallback((props) => <DayCell {...props} colors={colors} onPress={openDay} onLongPress={openQuick} />, [colors, openDay, openQuick]);
 
   const totals = useMemo(() => {
-    const t = { done: 0, total: 0, diary: 0, kcal: 0, expense: 0 };
+    const t = { done: 0, total: 0, diary: 0, kcal: 0, income: 0, expense: 0 };
     Object.values(days || {}).forEach((d) => {
       t.done += d.events_done;
       t.total += d.events_total;
       t.diary += d.has_diary ? 1 : 0;
       t.kcal += d.kcal;
+      t.income += d.income_kop;
       t.expense += d.expense_kop;
     });
-    return t;
+    return { ...t, net: t.income - t.expense };
   }, [days]);
 
   const todaySummary = days?.[today];
@@ -140,7 +141,7 @@ const CalendarContent = ({ navigation }) => {
           <Stat colors={colors} value={`${totals.done}/${totals.total}`} label="события" onPress={() => navigation.navigate('MonthEvents', { start, end })} />
           <Stat colors={colors} value={String(totals.diary)} label="дней с записями" onPress={() => navigation.navigate('DiaryList')} />
           {totals.kcal > 0 && <Stat colors={colors} value={String(totals.kcal)} label="ккал" onPress={() => navigation.navigate('MonthKcal', { start, end })} />}
-          {totals.expense > 0 && <Stat colors={colors} value={formatKop(totals.expense, { withKopecks: false })} label="расходы" onPress={() => navigation.navigate('ExpenseAnalytics')} />}
+          {(totals.income > 0 || totals.expense > 0) && <Stat colors={colors} value={`${totals.net < 0 ? '−' : '+'}${formatKop(Math.abs(totals.net), { withKopecks: false })}`} label="доход − расход" onPress={() => navigation.navigate('ExpenseAnalytics')} />}
         </View>
         <TouchableOpacity style={[styles.analyticsButton, { borderColor: colors.border }]} onPress={() => navigation.navigate('Analytics')}>
           <Icon name="stats-chart-outline" size={18} color={colors.primary} />
@@ -181,7 +182,9 @@ const DaySheet = ({ colors, date, isToday, summary, onClose, onAction }) => {
   const rows = [
     { icon: 'checkmark-done-outline', label: 'События', value: s.events_total ? `${s.events_done}/${s.events_total}` : 'нет' },
     { icon: 'flame-outline', label: 'Калории', value: s.kcal ? `${s.kcal} ккал` : 'нет' },
+    { icon: 'arrow-up-circle-outline', label: 'Доходы', value: s.income_kop ? formatKop(s.income_kop) : 'нет' },
     { icon: 'wallet-outline', label: 'Расходы', value: s.expense_kop ? formatKop(s.expense_kop) : 'нет' },
+    { icon: 'swap-vertical-outline', label: 'Разница', value: s.income_kop || s.expense_kop ? formatKop((s.income_kop || 0) - (s.expense_kop || 0)) : 'нет' },
     { icon: 'book-outline', label: 'Дневник', value: s.has_diary ? 'есть запись' : 'нет' },
     { icon: 'pulse-outline', label: 'Трекеры', value: s.tracker_count ? String(s.tracker_count) : 'нет' },
   ];

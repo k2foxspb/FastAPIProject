@@ -35,7 +35,11 @@ export const nutritionByDay = async (start, end) => {
 export const nutritionAverages = (days) => {
   const logged = days.filter((d) => d.kcal > 0 || d.protein > 0 || d.fat > 0 || d.carbs > 0);
   const avg = (key) => (logged.length ? round(logged.reduce((s, d) => s + d[key], 0) / logged.length, key === 'kcal' ? 0 : 1) : 0);
-  return { loggedDays: logged.length, kcal: avg('kcal'), protein: avg('protein'), fat: avg('fat'), carbs: avg('carbs') };
+  const periodKcal = days.length ? Math.round(days.reduce((s, d) => s + d.kcal, 0) / days.length) : 0;
+  return {
+    loggedDays: logged.length, kcal: avg('kcal'), protein: avg('protein'), fat: avg('fat'), carbs: avg('carbs'),
+    periodDays: days.length, periodKcal,
+  };
 };
 
 // Расходы по дням (без переводов): direction = 'expense'
@@ -49,13 +53,13 @@ export const expensesByDay = async (start, end) => {
   return daysBetween(start, end).map((date) => ({ date, expense_kop: byDay[date] || 0 }));
 };
 
-export const expensesByCategory = async (start, end) => {
+export const financeByCategory = async (start, end, direction) => {
   const rows = await getJournalDb().getAllAsync(
     `SELECT COALESCE(c.name, 'Без категории') AS name, SUM(t.amount_kop) AS amount
      FROM transactions t LEFT JOIN finance_categories c ON c.uuid = t.category_uuid
-     WHERE t.direction = 'expense' AND t.transaction_date BETWEEN ? AND ?
+     WHERE t.direction = ? AND t.transaction_date BETWEEN ? AND ?
      GROUP BY name ORDER BY amount DESC`,
-    [start, end],
+    [direction, start, end],
   );
   return rows.map((r) => ({ name: r.name, amount_kop: Math.trunc(Number(r.amount) || 0) }));
 };
@@ -103,10 +107,11 @@ export const getAnalyticsGoals = async () => {
 };
 
 export const buildPeriodAnalytics = async (start, end) => {
-  const [nutrition, expenses, expenseCategories, trackers, goals] = await Promise.all([
+  const [nutrition, expenses, expenseCategories, incomeCategories, trackers, goals] = await Promise.all([
     nutritionByDay(start, end),
     expensesByDay(start, end),
-    expensesByCategory(start, end),
+    financeByCategory(start, end, 'expense'),
+    financeByCategory(start, end, 'income'),
     trackerSeries(start, end),
     getAnalyticsGoals(),
   ]);
@@ -118,6 +123,8 @@ export const buildPeriodAnalytics = async (start, end) => {
     expenses,
     expenseTotalKop: expenses.reduce((s, d) => s + d.expense_kop, 0),
     expenseCategories,
+    incomeTotalKop: incomeCategories.reduce((s, c) => s + c.amount_kop, 0),
+    incomeCategories,
     trackers,
     goals,
   };

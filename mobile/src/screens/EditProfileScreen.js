@@ -19,6 +19,9 @@ export default function EditProfileScreen({ route, navigation }) {
   const [firstName, setFirstName] = useState(user.first_name || '');
   const [lastName, setLastName] = useState(user.last_name || '');
   const [gender, setGender] = useState(user.gender || null);
+  const [birthDate, setBirthDate] = useState(user.birth_date || '');
+  const [heightCm, setHeightCm] = useState(user.height_cm ? String(user.height_cm) : '');
+  const [weightKg, setWeightKg] = useState(user.weight_kg != null ? String(user.weight_kg) : '');
   const [avatar, setAvatar] = useState(null);
 
   const DEFAULT_AVATARS = {
@@ -53,6 +56,11 @@ export default function EditProfileScreen({ route, navigation }) {
       if (firstName !== (user.first_name || '')) formData.append('first_name', firstName);
       if (lastName !== (user.last_name || '')) formData.append('last_name', lastName);
       if (gender && gender !== (user.gender || null)) formData.append('gender', gender);
+      if (birthDate.trim() && birthDate.trim() !== (user.birth_date || '')) formData.append('birth_date', birthDate.trim());
+      const h = heightCm.trim() ? Number(heightCm.replace(',', '.')) : null;
+      const w = weightKg.trim() ? Number(weightKg.replace(',', '.')) : null;
+      if (h !== null && h !== user.height_cm) formData.append('height_cm', String(Math.round(h)));
+      if (w !== null && w !== Number(user.weight_kg)) formData.append('weight_kg', String(w));
       
       // Если данных для обновления нет, просто выходим
       if (formData._parts && formData._parts.length === 0 && !avatar) {
@@ -166,6 +174,36 @@ export default function EditProfileScreen({ route, navigation }) {
             );
           })}
         </View>
+
+        <Text style={[styles.label, { color: colors.textSecondary }]}>Дата рождения (ГГГГ-ММ-ДД)</Text>
+        <TextInput
+          style={[styles.input, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]}
+          value={birthDate}
+          onChangeText={setBirthDate}
+          placeholder="1990-01-31"
+          placeholderTextColor={colors.textSecondary}
+        />
+
+        <Text style={[styles.label, { color: colors.textSecondary }]}>Рост, см</Text>
+        <TextInput
+          style={[styles.input, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]}
+          value={heightCm}
+          onChangeText={(t) => setHeightCm(t.replace(/\D/g, ''))}
+          keyboardType="number-pad"
+          placeholder="175"
+          placeholderTextColor={colors.textSecondary}
+          maxLength={3}
+        />
+
+        <Text style={[styles.label, { color: colors.textSecondary }]}>Вес, кг</Text>
+        <TextInput
+          style={[styles.input, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]}
+          value={weightKg}
+          onChangeText={setWeightKg}
+          keyboardType="decimal-pad"
+          placeholder="70.5"
+          placeholderTextColor={colors.textSecondary}
+        />
       </View>
     </ScrollView>
     <View style={[styles.stickyFooter, { backgroundColor: colors.background, borderTopColor: colors.border, paddingBottom: Math.max(insets.bottom, 10) }]}>

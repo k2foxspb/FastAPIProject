@@ -31,8 +31,6 @@ export const updateSettings = async (changes) => {
     fat_g_goal: current.fat_g_goal,
     carbs_g_goal: current.carbs_g_goal,
     water_ml_goal: current.water_ml_goal,
-    height_cm: current.height_cm,
-    weight_kg: current.weight_kg,
     seed_version: current.seed_version || 0,
     ...changes,
   };
