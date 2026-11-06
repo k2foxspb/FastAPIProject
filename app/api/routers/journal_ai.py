@@ -118,7 +118,7 @@ async def nutrition_plan_advice(
         logger.warning(f"Journal AI nutrition plan: user={current_user.id} fallback: {e.message}")
         return NutritionPlanResponse(
             plan=plan, recommended=plan,
-            advice="Рекомендации ИИ сейчас недоступны. Ориентируйтесь на формульную норму и попробуйте позже.",
+            advice="ИИ не смог подготовить корректировку. Показана формульная норма - её можно поправить вручную и сохранить.",
         )
     except ollama.OllamaError as e:
         raise_ai_error(e)

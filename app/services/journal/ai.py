@@ -6,7 +6,8 @@
 from datetime import date
 from decimal import Decimal
 
-from pydantic import BaseModel, Field
+from loguru import logger
+from pydantic import BaseModel, Field, ValidationError, field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -114,6 +115,25 @@ class NutritionAdviceAnswer(BaseModel):
     carbs_pct: int = Field(ge=0, le=100)
     advice: str = Field(min_length=1)
 
+    @field_validator("kcal", "protein_pct", "fat_pct", "carbs_pct", mode="before")
+    @classmethod
+    def _coerce_number(cls, value):
+        # Модель часто отдаёт числа строкой или с дробной частью ("2100", "2100.0", "30 %")
+        if isinstance(value, str):
+            digits = "".join(ch for ch in value if ch.isdigit() or ch == ".")
+            value = float(digits) if digits else value
+        if isinstance(value, float):
+            value = round(value)
+        return value
+
+    @field_validator("advice", mode="before")
+    @classmethod
+    def _coerce_advice(cls, value):
+        # Советы иногда приходят списком пунктов, а не одной строкой
+        if isinstance(value, list):
+            return "\n".join(str(item).strip() for item in value if str(item).strip())
+        return value
+
 
 async def nutrition_advice(payload: NutritionPlanInput, plan: NutritionPlanResult) -> NutritionAdviceAnswer:
     """ИИ-корректировка формульной нормы КБЖУ и текстовые рекомендации."""
@@ -133,8 +153,57 @@ async def nutrition_advice(payload: NutritionPlanInput, plan: NutritionPlanResul
         {"role": "system", "content": NUTRITION_ADVICE_SYSTEM_PROMPT},
         {"role": "user", "content": str(facts)},
     ]
-    answer = await ollama.chat_json(messages, NutritionAdviceAnswer, timeout=AI_TIMEOUT_SEC, options={"temperature": 0.3})
-    return answer
+    text = await ollama.chat(messages, timeout=AI_TIMEOUT_SEC, options={"temperature": 0.3}, json_mode=True)
+    data = ollama.extract_json(text)
+    if not isinstance(data, dict):
+        raise ollama.OllamaBadResponse("ИИ вернул некорректный ответ")
+    normalized = _normalize_nutrition_advice(data, plan)
+    try:
+        return NutritionAdviceAnswer.model_validate(normalized)
+    except ValidationError as e:
+        logger.warning(f"Ответ ИИ по КБЖУ не прошёл проверку: {e.error_count()} ошибок, ключи={sorted(data.keys())}")
+        raise ollama.OllamaBadResponse("ИИ вернул некорректный ответ")
+
+
+def _to_number(value) -> float | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        cleaned = "".join(ch for ch in value.replace(",", ".") if ch.isdigit() or ch == ".")
+        try:
+            return float(cleaned) if cleaned else None
+        except ValueError:
+            return None
+    return None
+
+
+def _first_value(data: dict, *keys):
+    for key in keys:
+        if data.get(key) not in (None, ""):
+            return data[key]
+    return None
+
+
+def _normalize_nutrition_advice(data: dict, plan: NutritionPlanResult) -> dict:
+    """Принимает близкие варианты ключей и типов от модели; недостающие проценты берёт из формулы."""
+    kcal = _to_number(_first_value(data, "kcal", "calories", "kcal_goal"))
+    kcal = round(kcal) if kcal is not None else plan.kcal
+    percents = {}
+    for name, keys, grams, factor in (
+        ("protein_pct", ("protein_pct", "protein_percent"), plan.protein_g, 4),
+        ("fat_pct", ("fat_pct", "fat_percent"), plan.fat_g, 9),
+        ("carbs_pct", ("carbs_pct", "carbs_percent"), plan.carbs_g, 4),
+    ):
+        value = _to_number(_first_value(data, *keys))
+        if value is None:
+            value = round(grams * factor * 100 / plan.kcal) if plan.kcal else 0
+        percents[name] = max(0, min(100, round(value)))
+    advice = _first_value(data, "advice", "recommendations", "tips", "text")
+    if isinstance(advice, list):
+        advice = "\n".join(str(item).strip() for item in advice if str(item).strip())
+    return {"kcal": max(0, kcal), **percents, "advice": str(advice).strip() if advice else ""}
 
 
 class CategoryAnswerItem(BaseModel):

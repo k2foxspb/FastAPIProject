@@ -1,5 +1,5 @@
 import React, { useCallback, useLayoutEffect, useMemo, useState } from 'react';
-import { Alert, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { Calendar } from 'react-native-calendars';
 import { Ionicons as Icon } from '@expo/vector-icons';
@@ -11,15 +11,14 @@ import { calendarTheme } from '../../components/journal/DateTimeFields';
 import { summarizeRange } from '../../journal/db/aggregates';
 import { formatDateRu, monthBounds } from '../../journal/utils/dates';
 import { formatKop } from '../../journal/utils/money';
-import { addWater, guessMealType, listMealTypes } from '../../journal/db/repos/diet';
+import { addWater } from '../../journal/db/repos/diet';
 import { buildMonthCalendarText } from '../../journal/share/summaryText';
 
 const QUICK_ACTIONS = [
   { key: 'finance', icon: 'wallet-outline', label: 'Финансы' },
-  { key: 'food', icon: 'restaurant-outline', label: 'Еда' },
+  { key: 'food', icon: 'restaurant-outline', label: 'Питание' },
   { key: 'event', icon: 'add-circle-outline', label: 'Событие' },
   { key: 'diary', icon: 'book-outline', label: 'Дневник' },
-  { key: 'tracker', icon: 'pulse-outline', label: 'Трекер' },
 ];
 
 const CalendarContent = ({ navigation }) => {
@@ -63,20 +62,7 @@ const CalendarContent = ({ navigation }) => {
   const runQuick = async (key, date) => {
     if (key === 'expense') navigation.navigate('TransactionEdit', { direction: 'expense', date });
     if (key === 'finance') navigation.navigate('FinanceHome');
-    if (key === 'food') {
-      Alert.alert('Еда', date, [
-        { text: 'Питание', onPress: () => navigation.navigate('DietDay', { date }) },
-        {
-          text: 'Добавить еду',
-          onPress: async () => {
-            // Приём пищи по текущему времени - добавление в 2-3 тапа
-            const meal = guessMealType(await listMealTypes());
-            navigation.navigate('FoodSearch', { date, mealTypeUuid: meal?.uuid || null });
-          },
-        },
-        { text: 'Отмена', style: 'cancel' },
-      ]);
-    }
+    if (key === 'food') navigation.navigate('DietDay', { date });
     if (key === 'water') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
       await addWater(date, 250);
@@ -171,7 +157,7 @@ const CalendarContent = ({ navigation }) => {
 const SHEET_ACTIONS = [
   { key: 'expense', icon: 'remove-circle-outline', label: 'Расход' },
   { key: 'event', icon: 'add-circle-outline', label: 'Событие' },
-  { key: 'food', icon: 'restaurant-outline', label: 'Еда' },
+  { key: 'food', icon: 'restaurant-outline', label: 'Питание' },
   { key: 'water', icon: 'water-outline', label: '+250 мл' },
   { key: 'diary', icon: 'book-outline', label: 'Дневник' },
   { key: 'tracker', icon: 'pulse-outline', label: 'Трекер' },

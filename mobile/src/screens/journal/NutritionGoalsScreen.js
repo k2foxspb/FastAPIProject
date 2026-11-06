@@ -63,18 +63,6 @@ const Content = ({ navigation }) => {
     setValues(next);
   }, [settings]);
 
-  // Подсказка: БЖУ из калорий в пропорции 25/30/45 % (1 г белка и углеводов - 4 ккал, жира - 9 ккал)
-  const fillMacros = () => {
-    const kcal = parseInt(values.kcal_goal, 10);
-    if (!kcal) return Alert.alert('Сначала укажите калории');
-    setValues((v) => ({
-      ...v,
-      protein_g_goal: String(Math.round((kcal * 0.25) / 4)),
-      fat_g_goal: String(Math.round((kcal * 0.3) / 9)),
-      carbs_g_goal: String(Math.round((kcal * 0.45) / 4)),
-    }));
-  };
-
   const calculatePlan = async () => {
     const ageNum = ageFromBirthDate(currentUser?.birth_date);
     const height = currentUser?.height_cm;
@@ -141,7 +129,6 @@ const Content = ({ navigation }) => {
             />
           </Field>
         ))}
-        <PrimaryButton title="Рассчитать БЖУ из калорий (25/30/45 %)" onPress={fillMacros} />
         <Section title="Расчёт по анкете" style={{ marginTop: 16 }}>
           <Field label="Пол">
             <Chip label="Мужской" selected={sex === 'male'} onPress={() => setSex('male')} />
