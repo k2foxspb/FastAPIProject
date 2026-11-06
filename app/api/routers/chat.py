@@ -482,15 +482,16 @@ async def websocket_chat_endpoint(
                             or_(
                                 and_(ChatMessage.sender_id == user_id, ChatMessage.receiver_id == int(other_user_id)),
                                 and_(ChatMessage.sender_id == int(other_user_id), ChatMessage.receiver_id == user_id)
-                            ),
-                            or_(
-                                func.lower(ChatMessage.message).contains(query),
-                                func.lower(ChatMessage.file_path).contains(query)
                             )
                         ).order_by(ChatMessage.timestamp.desc())
                         
                         result = await db.execute(stmt)
-                        found_messages = result.scalars().all()
+                        # Текст сообщений зашифрован в БД, поэтому фильтруем по расшифрованному тексту в Python
+                        found_messages = [
+                            m for m in result.scalars().all()
+                            if (m.message and query in m.message.lower())
+                            or (m.file_path and query in m.file_path.lower())
+                        ]
                         
                         processed_results = []
                         for m in found_messages:

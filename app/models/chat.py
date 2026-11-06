@@ -1,8 +1,20 @@
 from sqlalchemy import Integer, String, ForeignKey, DateTime, Boolean, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.types import TypeDecorator
 from datetime import datetime
 
 from app.database import Base
+from app.core.message_crypto import encrypt_text, decrypt_text
+
+class EncryptedText(TypeDecorator):
+    impl = String
+    cache_ok = True
+
+    def process_bind_param(self, value, dialect):
+        return encrypt_text(value)
+
+    def process_result_value(self, value, dialect):
+        return decrypt_text(value)
 
 class ChatMessage(Base):
     __tablename__ = "chat_messages"
@@ -12,7 +24,7 @@ class ChatMessage(Base):
     # Для личных сообщений заполнен receiver_id, для групповых - group_id (одно из двух)
     receiver_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True)
     group_id: Mapped[int] = mapped_column(Integer, ForeignKey("group_chats.id", ondelete="CASCADE"), nullable=True)
-    message: Mapped[str] = mapped_column(String, nullable=True)
+    message: Mapped[str] = mapped_column(EncryptedText, nullable=True)
     file_path: Mapped[str] = mapped_column(String, nullable=True)
     message_type: Mapped[str] = mapped_column(String, default="text") # text, image, file
     client_id: Mapped[str] = mapped_column(String, nullable=True) # Для оптимистичных обновлений
@@ -28,7 +40,7 @@ class ChatMessage(Base):
     forwarded_from_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
     forwarded_from_name: Mapped[str] = mapped_column(String, nullable=True)
     # Комментарий, добавленный при пересылке (отображается в том же пузыре, что и пересланное сообщение)
-    comment: Mapped[str] = mapped_column(String, nullable=True)
+    comment: Mapped[str] = mapped_column(EncryptedText, nullable=True)
 
     sender = relationship("User", foreign_keys=[sender_id])
     receiver = relationship("User", foreign_keys=[receiver_id])
