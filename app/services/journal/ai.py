@@ -7,6 +7,7 @@ import json
 import re
 from datetime import date
 from decimal import Decimal
+from typing import AsyncIterator
 
 from loguru import logger
 from pydantic import BaseModel, Field, ValidationError, field_validator
@@ -100,21 +101,16 @@ async def weekly_summary(db: AsyncSession, user_id: int, date_from: date, date_t
 
 
 NUTRITION_ADVICE_SYSTEM_PROMPT = (
-    "Ты помощник по питанию в личном журнале. Пользователю рассчитана формульная норма калорий "
-    "(kcal) и БЖУ по его данным. Скорректируй калории не более чем на 15% от kcal с учётом цели и "
-    "активности и предложи распределение БЖУ в процентах от калорий (белки 10-35, жиры 20-35, "
-    "углеводы 40-65, сумма 100). Напиши 3-5 коротких практических советов на русском: как распределить "
-    "питание по приёмам пищи и на что обратить внимание. Не ставь диагнозов и не давай медицинских назначений. "
-    "Ответь ТОЛЬКО JSON в формате: {\"kcal\": число, \"protein_pct\": число, \"fat_pct\": число, \"carbs_pct\": число, \"advice\": \"текст\"}.\n"
-    "Поле advice обязательно: это связный текст советов на русском (3-5 предложений или пунктов), "
-    "а не повтор входных данных. Входные поля (sex, age, goal и т.д.) в ответе не повторяй."
+    "Ты помощник по питанию. По формульной норме (kcal, protein_g, fat_g, carbs_g) и данным пользователя "
+    "скорректируй калории не более чем на 15% с учётом цели и активности и дай распределение БЖУ в процентах "
+    "от калорий (белки 10-35, жиры 20-35, углеводы 40-65, сумма 100). "
+    "Ответь ТОЛЬКО JSON: {\"kcal\": число, \"protein_pct\": число, \"fat_pct\": число, \"carbs_pct\": число}."
 )
 
 NUTRITION_ADVICE_TEXT_PROMPT = (
-    "Ты помощник по питанию в личном журнале. Пользователю рассчитана норма калорий и БЖУ по его данным "
-    "(рост, вес, возраст, пол, активность, цель). Напиши 3-5 коротких практических советов на русском: "
-    "как распределить питание по приёмам пищи и на что обратить внимание. Не ставь диагнозов и не давай "
-    "медицинских назначений. Ответь только текстом советов, без JSON и без повтора входных данных."
+    "Ты помощник по питанию. Дай 3-4 коротких практических совета на русском, как распределить питание "
+    "по приёмам пищи с учётом цели и активности. Не ставь диагнозов и не давай медицинских назначений. "
+    "Ответь только текстом советов, без JSON и без повтора входных данных."
 )
 ADVICE_KEYS = ("advice", "recommendations", "tips", "text")
 
@@ -125,7 +121,7 @@ class NutritionAdviceAnswer(BaseModel):
     protein_pct: int = Field(ge=0, le=100)
     fat_pct: int = Field(ge=0, le=100)
     carbs_pct: int = Field(ge=0, le=100)
-    advice: str = Field(min_length=1)
+    advice: str = ""
 
     @field_validator("kcal", "protein_pct", "fat_pct", "carbs_pct", mode="before")
     @classmethod
@@ -147,9 +143,8 @@ class NutritionAdviceAnswer(BaseModel):
         return value
 
 
-async def nutrition_advice(payload: NutritionPlanInput, plan: NutritionPlanResult) -> NutritionAdviceAnswer:
-    """ИИ-корректировка формульной нормы КБЖУ и текстовые рекомендации."""
-    facts = {
+def _nutrition_facts(payload: NutritionPlanInput, plan: NutritionPlanResult) -> dict:
+    return {
         "sex": payload.sex,
         "age": payload.age,
         "height_cm": payload.height_cm,
@@ -161,29 +156,34 @@ async def nutrition_advice(payload: NutritionPlanInput, plan: NutritionPlanResul
         "fat_g": plan.fat_g,
         "carbs_g": plan.carbs_g,
     }
+
+
+async def nutrition_numbers(payload: NutritionPlanInput, plan: NutritionPlanResult) -> NutritionAdviceAnswer:
+    """ИИ-корректировка формульной нормы КБЖУ (только числа, советы идут отдельным потоком)."""
     messages = [
         {"role": "system", "content": NUTRITION_ADVICE_SYSTEM_PROMPT},
-        {"role": "user", "content": json.dumps(facts, ensure_ascii=False)},
+        {"role": "user", "content": json.dumps(_nutrition_facts(payload, plan), ensure_ascii=False)},
     ]
     text = await ollama.chat(messages, timeout=AI_TIMEOUT_SEC, options={"temperature": 0.3}, json_mode=True)
     data = ollama.extract_json(text)
     if not isinstance(data, dict):
         raise ollama.OllamaBadResponse("ИИ вернул некорректный ответ")
-    if not _first_value(data, *ADVICE_KEYS):
-        # Модель вернула числа без текста советов: отдельным запросом получаем сам текст советов от ИИ
-        logger.warning(f"Ответ ИИ по КБЖУ без советов, ключи={sorted(data.keys())}, запрашиваю текст отдельно")
-        advice_messages = [
-            {"role": "system", "content": NUTRITION_ADVICE_TEXT_PROMPT},
-            {"role": "user", "content": json.dumps({**facts, "kcal": plan.kcal}, ensure_ascii=False)},
-        ]
-        advice_text = await ollama.chat(advice_messages, timeout=AI_TIMEOUT_SEC, options={"temperature": 0.3})
-        data["advice"] = advice_text.strip()
     normalized = _normalize_nutrition_advice(data, plan)
     try:
         return NutritionAdviceAnswer.model_validate(normalized)
     except ValidationError as e:
         logger.warning(f"Ответ ИИ по КБЖУ не прошёл проверку: {e.error_count()} ошибок, ключи={sorted(data.keys())}")
         raise ollama.OllamaBadResponse("ИИ вернул некорректный ответ")
+
+
+async def nutrition_advice_stream(payload: NutritionPlanInput, plan: NutritionPlanResult) -> AsyncIterator[str]:
+    """Текст советов по питанию от ИИ отдаётся кусками по мере генерации."""
+    messages = [
+        {"role": "system", "content": NUTRITION_ADVICE_TEXT_PROMPT},
+        {"role": "user", "content": json.dumps(_nutrition_facts(payload, plan), ensure_ascii=False)},
+    ]
+    async for piece in ollama.chat_stream(messages, timeout=AI_TIMEOUT_SEC, options={"temperature": 0.3}):
+        yield piece
 
 
 def _to_number(value) -> float | None:

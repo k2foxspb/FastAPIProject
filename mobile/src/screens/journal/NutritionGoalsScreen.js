@@ -4,7 +4,8 @@ import { useJournal } from '../../context/JournalContext';
 import { useNotifications } from '../../context/NotificationContext';
 import { Chip, Field, Input, JournalGate, PrimaryButton, Section, useColors } from '../../components/journal/common';
 import { updateSettings } from '../../journal/db/repos/settings';
-import { journalAiErrorMessage, journalApi } from '../../api/journal';
+import { journalAiErrorMessage } from '../../api/journal';
+import { streamNutritionPlan } from '../../api/aiChat';
 
 const LIMITS = { kcal_goal: 20000, protein_g_goal: 2000, fat_g_goal: 2000, carbs_g_goal: 5000, water_ml_goal: 20000 };
 
@@ -72,19 +73,25 @@ const Content = ({ navigation }) => {
     }
     if (!ageNum || ageNum < 14 || ageNum > 100) return Alert.alert('Проверьте дату рождения', 'Возраст из профиля должен быть от 14 до 100 лет');
     setPlanLoading(true);
+    setAdvice('');
     try {
-      const { data } = await journalApi.nutritionPlan({
-        sex, age: ageNum, height_cm: height, weight_kg: Number(weight), activity, goal,
-      });
-      setValues((v) => ({
-        ...v,
-        kcal_goal: String(data.recommended.kcal),
-        protein_g_goal: String(data.recommended.protein_g),
-        fat_g_goal: String(data.recommended.fat_g),
-        carbs_g_goal: String(data.recommended.carbs_g),
-      }));
-      setFormulaKcal(data.plan.kcal);
-      setAdvice(data.advice);
+      const finalAdvice = await streamNutritionPlan(
+        { sex, age: ageNum, height_cm: height, weight_kg: Number(weight), activity, goal },
+        {
+          onNumbers: ({ plan, recommended }) => {
+            setValues((v) => ({
+              ...v,
+              kcal_goal: String(recommended.kcal),
+              protein_g_goal: String(recommended.protein_g),
+              fat_g_goal: String(recommended.fat_g),
+              carbs_g_goal: String(recommended.carbs_g),
+            }));
+            setFormulaKcal(plan.kcal);
+          },
+          onDelta: (piece) => setAdvice((text) => text + piece),
+        },
+      );
+      setAdvice(finalAdvice);
     } catch (e) {
       Alert.alert('Не удалось рассчитать', journalAiErrorMessage(e));
     } finally {

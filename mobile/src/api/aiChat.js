@@ -133,4 +133,97 @@ export const aiChatApi = {
   },
 };
 
+/**
+ * Расчёт КБЖУ с ИИ: onNumbers получает формульную норму и корректировку сразу,
+ * onDelta - куски текста советов по мере генерации. Возвращает итоговый текст советов.
+ * При 401 ошибка с err.response.status = 401 - вызывающий код может откатиться на обычный запрос.
+ * @returns {Promise<string>}
+ */
+export const streamNutritionPlan = async (body, { onNumbers, onDelta } = {}) => {
+  const token = await storage.getAccessToken();
+  const appCheckToken = await getAppCheckHeaderToken();
+
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    let processed = 0;
+    let buffer = '';
+    let finalAdvice = null;
+    let streamError = null;
+
+    const handleEvents = (events) => {
+      for (const event of events) {
+        if (event.error) {
+          streamError = event.error;
+        } else if (event.plan) {
+          onNumbers?.(event);
+        } else if (typeof event.delta === 'string') {
+          onDelta?.(event.delta);
+        } else if (event.done) {
+          finalAdvice = event.advice || '';
+        }
+      }
+    };
+
+    const consumeProgress = () => {
+      const text = xhr.responseText || '';
+      const chunk = text.slice(processed);
+      processed = text.length;
+      buffer += chunk;
+      const { events, rest } = parseNdjson(buffer);
+      buffer = rest;
+      handleEvents(events);
+    };
+
+    xhr.open('POST', `${API_BASE_URL}/api/journal/ai/nutrition-plan/stream`);
+    xhr.setRequestHeader('Content-Type', 'application/json');
+    xhr.setRequestHeader('Accept', 'application/x-ndjson');
+    if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+    if (appCheckToken) xhr.setRequestHeader('X-Firebase-AppCheck', appCheckToken);
+    xhr.timeout = 120000;
+
+    xhr.onprogress = consumeProgress;
+
+    xhr.onerror = () => reject(new Error('Сетевая ошибка при получении ответа'));
+    xhr.ontimeout = () => {
+      const detail = 'ИИ отвечает слишком долго. Попробуйте ещё раз позже.';
+      const err = new Error(detail);
+      err.response = { data: { detail } };
+      reject(err);
+    };
+
+    xhr.onload = () => {
+      if (xhr.status < 200 || xhr.status >= 300) {
+        let detail = null;
+        try {
+          detail = JSON.parse(xhr.responseText)?.detail;
+        } catch {
+          // Тело ошибки не JSON - используем общий текст ниже
+        }
+        const err = new Error(typeof detail === 'string' ? detail : 'Ошибка сервиса ИИ');
+        err.response = { status: xhr.status, data: { detail } };
+        reject(err);
+        return;
+      }
+      consumeProgress();
+      if (buffer.trim()) {
+        handleEvents(parseNdjson(buffer + '\n').events);
+        buffer = '';
+      }
+      if (streamError) {
+        const err = new Error(streamError);
+        err.response = { status: xhr.status, data: { detail: streamError } };
+        reject(err);
+        return;
+      }
+      if (finalAdvice === null) {
+        reject(new Error('Пустой ответ от сервера'));
+        return;
+      }
+      resolve(finalAdvice);
+    };
+
+    xhr.send(JSON.stringify(body));
+  });
+};
+
 export default aiChatApi;

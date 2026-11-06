@@ -1,8 +1,10 @@
 """ИИ «Журнала жизни» (Ollama через backend): оценка КБЖУ по тексту."""
+import json
 from datetime import date
-from typing import NoReturn
+from typing import AsyncIterator, NoReturn
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -94,12 +96,12 @@ async def analysis(
         raise_ai_error(e)
 
 
-@router.post("/nutrition-plan", response_model=NutritionPlanResponse)
-async def nutrition_plan_advice(
-    payload: nutrition_plan.NutritionPlanRequest,
-    current_user: UserModel = Depends(_ai_limit),
-):
-    """Норма КБЖУ по анкете профиля: формула и корректировка ИИ с советами. Ничего не сохраняет."""
+NUTRITION_FALLBACK_TEXT = "ИИ не смог подготовить корректировку. Показана формульная норма - её можно поправить вручную и сохранить."
+
+
+def _nutrition_profile(
+    current_user: UserModel, payload: nutrition_plan.NutritionPlanRequest
+) -> tuple[nutrition_plan.NutritionPlanInput, nutrition_plan.NutritionPlanResult]:
     if not (current_user.gender and current_user.birth_date and current_user.height_cm and current_user.weight_kg):
         raise HTTPException(status_code=422, detail="Заполните пол, дату рождения, рост и вес в профиле")
     profile = nutrition_plan.NutritionPlanInput(
@@ -110,23 +112,89 @@ async def nutrition_plan_advice(
         activity=payload.activity,
         goal=payload.goal,
     )
-    plan = nutrition_plan.calculate_plan(profile)
+    return profile, nutrition_plan.calculate_plan(profile)
+
+
+async def _collect_nutrition_advice(profile: nutrition_plan.NutritionPlanInput, plan: nutrition_plan.NutritionPlanResult) -> str:
+    parts = []
     try:
-        answer = await ai_service.nutrition_advice(profile, plan)
+        async for piece in ai_service.nutrition_advice_stream(profile, plan):
+            parts.append(piece)
+    except ollama.OllamaError as e:
+        logger.warning(f"Journal AI nutrition advice: {e.message}")
+    return "".join(parts).strip()[:2000]
+
+
+@router.post("/nutrition-plan", response_model=NutritionPlanResponse)
+async def nutrition_plan_advice(
+    payload: nutrition_plan.NutritionPlanRequest,
+    current_user: UserModel = Depends(_ai_limit),
+):
+    """Норма КБЖУ по анкете профиля: формула и корректировка ИИ с советами. Ничего не сохраняет."""
+    profile, plan = _nutrition_profile(current_user, payload)
+    try:
+        answer = await ai_service.nutrition_numbers(profile, plan)
     except ollama.OllamaBadResponse as e:
         # Формульная норма уже посчитана: при некорректном ответе ИИ отдаём её без корректировки
         logger.warning(f"Journal AI nutrition plan: user={current_user.id} fallback: {e.message}")
-        return NutritionPlanResponse(
-            plan=plan, recommended=plan,
-            advice="ИИ не смог подготовить корректировку. Показана формульная норма - её можно поправить вручную и сохранить.",
-        )
+        return NutritionPlanResponse(plan=plan, recommended=plan, advice=NUTRITION_FALLBACK_TEXT)
     except ollama.OllamaError as e:
         raise_ai_error(e)
     recommended = nutrition_plan.apply_ai_correction(
         plan, payload.goal, answer.kcal, answer.protein_pct, answer.fat_pct, answer.carbs_pct
     )
+    advice = await _collect_nutrition_advice(profile, plan)
     logger.info(f"Journal AI nutrition plan: user={current_user.id}")
-    return NutritionPlanResponse(plan=plan, recommended=recommended, advice=answer.advice[:2000])
+    return NutritionPlanResponse(plan=plan, recommended=recommended, advice=advice)
+
+
+def _ndjson(event: dict) -> str:
+    return json.dumps(event, ensure_ascii=False) + "\n"
+
+
+async def _stream_nutrition_plan(
+    profile: nutrition_plan.NutritionPlanInput,
+    plan: nutrition_plan.NutritionPlanResult,
+    goal: str,
+    user_id: int,
+) -> AsyncIterator[str]:
+    """NDJSON: сначала {"plan", "recommended"} с числами, затем {"delta"} по мере генерации советов, в конце {"done", "advice"}."""
+    try:
+        answer = await ai_service.nutrition_numbers(profile, plan)
+    except ollama.OllamaBadResponse as e:
+        logger.warning(f"Journal AI nutrition plan: user={user_id} fallback: {e.message}")
+        yield _ndjson({"plan": plan.model_dump(), "recommended": plan.model_dump(), "fallback": True})
+        yield _ndjson({"done": True, "advice": NUTRITION_FALLBACK_TEXT})
+        return
+    except ollama.OllamaError as e:
+        yield _ndjson({"error": e.message})
+        return
+    recommended = nutrition_plan.apply_ai_correction(
+        plan, goal, answer.kcal, answer.protein_pct, answer.fat_pct, answer.carbs_pct
+    )
+    yield _ndjson({"plan": plan.model_dump(), "recommended": recommended.model_dump()})
+    parts = []
+    try:
+        async for piece in ai_service.nutrition_advice_stream(profile, plan):
+            parts.append(piece)
+            yield _ndjson({"delta": piece})
+    except ollama.OllamaError as e:
+        logger.warning(f"Journal AI nutrition advice: {e.message}")
+    logger.info(f"Journal AI nutrition plan: user={user_id} stream")
+    yield _ndjson({"done": True, "advice": "".join(parts).strip()[:2000]})
+
+
+@router.post("/nutrition-plan/stream")
+async def nutrition_plan_advice_stream(
+    payload: nutrition_plan.NutritionPlanRequest,
+    current_user: UserModel = Depends(_ai_limit),
+):
+    """То же, что /nutrition-plan, но советы ИИ приходят потоком (NDJSON). Ничего не сохраняет."""
+    profile, plan = _nutrition_profile(current_user, payload)
+    return StreamingResponse(
+        _stream_nutrition_plan(profile, plan, payload.goal, current_user.id),
+        media_type="application/x-ndjson",
+    )
 
 
 @router.post("/suggest-categories", response_model=CategorySuggestionResponse)
