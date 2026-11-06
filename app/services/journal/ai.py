@@ -3,6 +3,7 @@
 пользователь подтверждает или правит их перед сохранением, поэтому здесь
 ничего не записывается в БД.
 """
+import json
 import re
 from datetime import date
 from decimal import Decimal
@@ -104,8 +105,17 @@ NUTRITION_ADVICE_SYSTEM_PROMPT = (
     "активности и предложи распределение БЖУ в процентах от калорий (белки 10-35, жиры 20-35, "
     "углеводы 40-65, сумма 100). Напиши 3-5 коротких практических советов на русском: как распределить "
     "питание по приёмам пищи и на что обратить внимание. Не ставь диагнозов и не давай медицинских назначений. "
-    "Ответь ТОЛЬКО JSON в формате: {\"kcal\": число, \"protein_pct\": число, \"fat_pct\": число, \"carbs_pct\": число, \"advice\": \"текст\"}."
+    "Ответь ТОЛЬКО JSON в формате: {\"kcal\": число, \"protein_pct\": число, \"fat_pct\": число, \"carbs_pct\": число, \"advice\": \"текст\"}.\n"
+    "Поле advice обязательно: это связный текст советов на русском (3-5 предложений или пунктов), "
+    "а не повтор входных данных. Входные поля (sex, age, goal и т.д.) в ответе не повторяй."
 )
+
+NUTRITION_ADVICE_ATTEMPTS = 2
+NUTRITION_ADVICE_RETRY_MESSAGE = (
+    "В ответе нет поля advice с советами. Верни ТОЛЬКО JSON с полями kcal, protein_pct, fat_pct, "
+    "carbs_pct и advice, где advice - текст советов на русском по питанию."
+)
+ADVICE_KEYS = ("advice", "recommendations", "tips", "text")
 
 
 class NutritionAdviceAnswer(BaseModel):
@@ -152,11 +162,25 @@ async def nutrition_advice(payload: NutritionPlanInput, plan: NutritionPlanResul
     }
     messages = [
         {"role": "system", "content": NUTRITION_ADVICE_SYSTEM_PROMPT},
-        {"role": "user", "content": str(facts)},
+        {"role": "user", "content": json.dumps(facts, ensure_ascii=False)},
     ]
-    text = await ollama.chat(messages, timeout=AI_TIMEOUT_SEC, options={"temperature": 0.3}, json_mode=True)
-    data = ollama.extract_json(text)
-    if not isinstance(data, dict):
+    data = None
+    for attempt in range(NUTRITION_ADVICE_ATTEMPTS):
+        text = await ollama.chat(messages, timeout=AI_TIMEOUT_SEC, options={"temperature": 0.3}, json_mode=True)
+        try:
+            candidate = ollama.extract_json(text)
+        except ollama.OllamaBadResponse:
+            candidate = None
+        if isinstance(candidate, dict) and _first_value(candidate, *ADVICE_KEYS):
+            data = candidate
+            break
+        logger.warning(f"Ответ ИИ по КБЖУ без советов (попытка {attempt + 1}), ключи={sorted(candidate.keys()) if isinstance(candidate, dict) else None}")
+        messages = [
+            *messages,
+            {"role": "assistant", "content": text},
+            {"role": "user", "content": NUTRITION_ADVICE_RETRY_MESSAGE},
+        ]
+    if data is None:
         raise ollama.OllamaBadResponse("ИИ вернул некорректный ответ")
     normalized = _normalize_nutrition_advice(data, plan)
     try:
@@ -164,12 +188,6 @@ async def nutrition_advice(payload: NutritionPlanInput, plan: NutritionPlanResul
     except ValidationError as e:
         logger.warning(f"Ответ ИИ по КБЖУ не прошёл проверку: {e.error_count()} ошибок, ключи={sorted(data.keys())}")
         raise ollama.OllamaBadResponse("ИИ вернул некорректный ответ")
-
-
-NUTRITION_ADVICE_FALLBACK = (
-    "Распределяйте питание на 3-4 приёма пищи в течение дня, включайте белок в каждый приём. "
-    "Следите за водой и овощами, ограничивайте сладкое и алкоголь."
-)
 
 
 def _to_number(value) -> float | None:
@@ -205,11 +223,11 @@ def _normalize_nutrition_advice(data: dict, plan: NutritionPlanResult) -> dict:
         if value is None:
             value = round(grams * factor * 100 / plan.kcal) if plan.kcal else 0
         percents[name] = max(0, min(100, round(value)))
-    advice = _first_value(data, "advice", "recommendations", "tips", "text")
+    advice = _first_value(data, *ADVICE_KEYS)
     if isinstance(advice, list):
         advice = "\n".join(str(item).strip() for item in advice if str(item).strip())
     advice = str(advice).strip() if advice else ""
-    return {"kcal": max(0, kcal), **percents, "advice": advice or NUTRITION_ADVICE_FALLBACK}
+    return {"kcal": max(0, kcal), **percents, "advice": advice}
 
 
 class CategoryAnswerItem(BaseModel):
