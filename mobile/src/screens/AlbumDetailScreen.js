@@ -270,8 +270,8 @@ export default function AlbumDetailScreen({ route, navigation }) {
               ))}
             </View>
             <View style={styles.buttonRow}>
-              <TouchableOpacity style={[styles.btn, { backgroundColor: colors.primary }]} onPress={handleUpdate}>
-                <Text style={styles.btnText}>Сохранить</Text>
+              <TouchableOpacity style={[styles.btn, { backgroundColor: 'transparent', borderWidth: 1, borderColor: colors.primary }]} onPress={handleUpdate}>
+                <Text style={[styles.btnText, { color: colors.primary }]}>Сохранить</Text>
               </TouchableOpacity>
               <TouchableOpacity style={[styles.btn, { backgroundColor: colors.textSecondary }]} onPress={() => setIsEditing(false)}>
                 <Text style={styles.btnText}>Отмена</Text>

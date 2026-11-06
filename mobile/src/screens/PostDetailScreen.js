@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -12,6 +12,7 @@ import {
   Dimensions,
   Modal,
   StatusBar,
+  Keyboard,
 } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -46,6 +47,22 @@ export default function PostDetailScreen({ route, navigation }) {
   const [fullScreenVisible, setFullScreenVisible] = useState(false);
 
   const isAnnouncement = post?.item_type === 'announcement';
+  const scrollRef = useRef(null);
+
+  const scrollToEnd = useCallback(() => {
+    scrollRef.current?.scrollToEnd({ animated: true });
+  }, []);
+
+  useEffect(() => {
+    if (comments.length === 0) return;
+    const timer = setTimeout(scrollToEnd, 50);
+    return () => clearTimeout(timer);
+  }, [comments.length, scrollToEnd]);
+
+  useEffect(() => {
+    const sub = Keyboard.addListener('keyboardDidShow', scrollToEnd);
+    return () => sub.remove();
+  }, [scrollToEnd]);
 
   // Мемоизируем props для RenderHTML - без этого при каждом вводе текста комментария
   // (обновление state на каждое нажатие клавиши) создавались новые объекты source/tagsStyles,
@@ -158,7 +175,11 @@ export default function PostDetailScreen({ route, navigation }) {
         </Text>
         <View style={styles.headerBackBtn} />
       </View>
-      <ScrollView style={[styles.container, { backgroundColor: colors.background }]}>
+      <ScrollView
+        ref={scrollRef}
+        style={[styles.container, { backgroundColor: colors.background }]}
+        keyboardShouldPersistTaps="handled"
+      >
         <View style={styles.authorHeader}>
           <TouchableOpacity
             style={styles.authorInfo}
@@ -311,6 +332,7 @@ export default function PostDetailScreen({ route, navigation }) {
           placeholderTextColor={colors.textSecondary}
           value={newCommentText}
           onChangeText={setNewCommentText}
+          onFocus={scrollToEnd}
         />
         <TouchableOpacity
           style={[styles.sendCommentBtn, { backgroundColor: colors.primary }]}

@@ -327,27 +327,6 @@ export default function FeedScreen({ navigation }) {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      {/* Action Header: создание поста / объявления (только admin/owner) */}
-      <View style={[styles.actionHeader, { borderBottomColor: colors.border }]}>
-        <TouchableOpacity
-          style={[styles.proposeBtn, { backgroundColor: colors.primary }]}
-          onPress={() => navigation.navigate('CreatePost')}
-        >
-          <Icon name="add" size={16} color="#fff" />
-          <Text style={styles.proposeBtnText}>Новая публикация</Text>
-        </TouchableOpacity>
-
-        {isAdminOrOwner && (
-          <TouchableOpacity
-            style={[styles.actionBtn, { borderColor: colors.primary }]}
-            onPress={() => navigation.navigate('CreatePost', { isAnnouncement: true })}
-          >
-            <Icon name="megaphone-outline" size={16} color={colors.primary} />
-            <Text style={[styles.actionBtnText, { color: colors.primary }]}>Объявление</Text>
-          </TouchableOpacity>
-        )}
-      </View>
-
       {loading && !refreshing ? (
         <ScrollView style={styles.listContent}>
           <NewsSkeleton />
@@ -380,14 +359,6 @@ export default function FeedScreen({ navigation }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  actionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-  },
   bellIconWrapper: {
     width: 34,
     height: 34,
@@ -409,23 +380,6 @@ const styles = StyleSheet.create({
   },
   bellBadgeText: { color: '#fff', fontSize: 9, fontWeight: 'bold', includeFontPadding: false, textAlignVertical: 'center', textAlign: 'center' },
   headerRightActions: { flexDirection: 'row', alignItems: 'center' },
-  actionBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 16,
-    borderWidth: 1,
-  },
-  actionBtnText: { fontSize: 12, fontWeight: '600', marginLeft: 4 },
-  proposeBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 16,
-  },
-  proposeBtnText: { color: '#fff', fontSize: 12, fontWeight: 'bold', marginLeft: 4 },
   listContent: { padding: 12 },
   newsCard: { borderRadius: 12, marginBottom: 14, overflow: 'hidden', borderWidth: 1, position: 'relative', ...getShadow('#000', { width: 0, height: 2 }, 0.1, 4, 4) },
   statusBadgeContainer: { position: 'absolute', top: 8, right: 8, flexDirection: 'row', zIndex: 10, elevation: 10 },

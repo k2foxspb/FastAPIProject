@@ -19,8 +19,8 @@ function InlineCreate({ colors, visible, onToggle, toggleTitle, value, onChangeT
           <TextInput value={value} onChangeText={onChangeText} placeholder={placeholder}
             placeholderTextColor={colors.textSecondary}
             style={{ flex: 1, color: colors.text, borderColor: colors.border, borderWidth: 1, borderRadius: 10, padding: 10 }} />
-          <TouchableOpacity onPress={onSubmit} style={{ backgroundColor: colors.primary, borderRadius: 10, paddingVertical: 10, paddingHorizontal: 14 }}>
-            <Text style={{ color: '#fff', fontWeight: '600' }}>Добавить</Text>
+          <TouchableOpacity onPress={onSubmit} style={{ borderWidth: 1, borderColor: colors.primary, borderRadius: 10, paddingVertical: 10, paddingHorizontal: 14 }}>
+            <Text style={{ color: colors.primary, fontWeight: '600' }}>Добавить</Text>
           </TouchableOpacity>
         </View>
       )}

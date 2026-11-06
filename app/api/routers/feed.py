@@ -158,6 +158,8 @@ async def get_feed(
         if not _can_see_hidden(p):
             continue
         friendship_status = await _friendship(p.user_id)
+        if p.post_type != "announcement" and friendship_status not in ("accepted", "self"):
+            continue
         if can_view_content(p.user_id, current_user_id, p.privacy, friendship_status):
             post_items.append(_post_to_feed_item(p, current_user_id))
 

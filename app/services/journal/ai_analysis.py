@@ -6,7 +6,7 @@
 import json
 from datetime import date
 
-from pydantic import BaseModel, Field
+from loguru import logger
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -33,14 +33,34 @@ ANALYSIS_SYSTEM_PROMPT = (
 )
 
 
-class AnalysisAnswerSection(BaseModel):
-    area: str = Field(max_length=20)
-    summary: str = Field(min_length=1, max_length=800)
-    recommendations: list[str] = Field(default_factory=list, max_length=3)
+MAX_SUMMARY_LEN = 800
+MAX_RECOMMENDATIONS = 3
+MAX_RECOMMENDATION_LEN = 300
+ANALYSIS_UNAVAILABLE_MESSAGE = "ИИ не смог сформулировать вывод по данным за период. Попробуйте повторить позже."
 
 
-class AnalysisAnswer(BaseModel):
-    sections: list[AnalysisAnswerSection] = Field(max_length=4)
+def _parse_answer(text: str) -> list[dict]:
+    # Разбор терпимый: лишние секции и рекомендации отбрасываются или обрезаются, а не ломают весь ответ
+    value = ollama.extract_json(text)
+    if isinstance(value, list):
+        value = {"sections": value}
+    if not isinstance(value, dict) or not isinstance(value.get("sections"), list):
+        raise ollama.OllamaBadResponse("ИИ вернул некорректный ответ")
+    sections = []
+    for item in value["sections"]:
+        if not isinstance(item, dict):
+            continue
+        area = str(item.get("area", "")).strip()
+        summary = str(item.get("summary", "")).strip()[:MAX_SUMMARY_LEN]
+        raw_recs = item.get("recommendations") or []
+        if isinstance(raw_recs, str):
+            raw_recs = [raw_recs]
+        if not isinstance(raw_recs, list):
+            raw_recs = []
+        recommendations = [str(r).strip()[:MAX_RECOMMENDATION_LEN] for r in raw_recs if str(r).strip()]
+        if area in AREA_TITLES and summary:
+            sections.append({"area": area, "summary": summary, "recommendations": recommendations[:MAX_RECOMMENDATIONS]})
+    return sections
 
 
 def _food_facts(diet) -> dict | None:
@@ -175,10 +195,17 @@ async def analyze(db: AsyncSession, user_id: int, start: date, end: date, areas:
         {"role": "user", "content": json.dumps({"period": f"{start.isoformat()} - {end.isoformat()}", **facts},
                                                ensure_ascii=False)},
     ]
-    answer = await ollama.chat_json(messages, AnalysisAnswer, timeout=AI_TIMEOUT_SEC, options={"temperature": 0.3})
+    text = await ollama.chat(messages, timeout=AI_TIMEOUT_SEC, options={"temperature": 0.3}, json_mode=True)
+    try:
+        parsed = _parse_answer(text)
+    except ollama.OllamaBadResponse as e:
+        logger.warning(f"Journal AI analysis: некорректный ответ модели: {e.message}")
+        return AnalysisResponse(date_from=start, date_to=end, message=ANALYSIS_UNAVAILABLE_MESSAGE)
     sections = [
-        AnalysisSection(area=item.area, title=AREA_TITLES[item.area], summary=item.summary,
-                        recommendations=item.recommendations)
-        for item in answer.sections if item.area in facts
+        AnalysisSection(area=item["area"], title=AREA_TITLES[item["area"]], summary=item["summary"],
+                        recommendations=item["recommendations"])
+        for item in parsed if item["area"] in facts
     ]
+    if not sections:
+        return AnalysisResponse(date_from=start, date_to=end, message=ANALYSIS_UNAVAILABLE_MESSAGE)
     return AnalysisResponse(date_from=start, date_to=end, sections=sections)

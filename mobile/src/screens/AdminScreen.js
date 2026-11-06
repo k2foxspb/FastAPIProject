@@ -28,6 +28,7 @@ export default function AdminScreen({ navigation }) {
   const adminMenu = [
     { title: 'Пользователи', icon: 'people-outline', screen: 'AdminUsers' },
     { title: 'Модерация', icon: 'shield-outline', screen: 'AdminModeration' },
+    { title: 'Объявление', icon: 'megaphone-outline', screen: 'CreatePost', params: { isAnnouncement: true } },
     { title: 'Чаты пользователей', icon: 'chatbubbles-outline', screen: 'AdminChats', ownerOnly: true },
     { title: 'Загрузить новую версию приложения', icon: 'cloud-upload-outline', screen: 'AdminAppUpload', ownerOnly: true },
     { title: 'Логи', icon: 'document-text-outline', screen: 'AdminLogs', ownerOnly: true },
@@ -50,7 +51,7 @@ export default function AdminScreen({ navigation }) {
           <TouchableOpacity
             key={index}
             style={[styles.menuItem, { backgroundColor: 'transparent', borderColor: colors.border }]}
-            onPress={() => navigation.navigate(item.screen)}
+            onPress={() => navigation.navigate(item.screen, item.params)}
           >
             <View style={styles.menuItemLeft}>
               <Icon name={item.icon} size={24} color={colors.primary} />

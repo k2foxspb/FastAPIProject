@@ -19,6 +19,7 @@ const QUICK_ACTIONS = [
   { key: 'food', icon: 'restaurant-outline', label: 'Питание' },
   { key: 'event', icon: 'add-circle-outline', label: 'Событие' },
   { key: 'diary', icon: 'book-outline', label: 'Дневник' },
+  { key: 'tracker', icon: 'pulse-outline', label: 'Трекеры' },
 ];
 
 const CalendarContent = ({ navigation }) => {
@@ -201,8 +202,8 @@ const DaySheet = ({ colors, date, isToday, summary, onClose, onAction }) => {
             </TouchableOpacity>
           ))}
         </View>
-        <TouchableOpacity style={[styles.openButton, { backgroundColor: colors.primary }]} onPress={() => onAction('open')}>
-          <Text style={styles.openButtonText}>Открыть день</Text>
+        <TouchableOpacity style={[styles.openButton, { backgroundColor: 'transparent', borderWidth: 1, borderColor: colors.primary }]} onPress={() => onAction('open')}>
+          <Text style={[styles.openButtonText, { color: colors.primary }]}>Открыть день</Text>
         </TouchableOpacity>
       </View>
     </Modal>

@@ -156,19 +156,6 @@ const SettingsContent = () => {
         <View style={{ height: 12 }} />
       </Section>
 
-      <Section title="Рост и вес">
-        <Text style={[styles.note, { color: colors.textSecondary }]}>
-          Нужны для расчёта нормы калорий и БЖУ в целях по питанию.
-        </Text>
-        <Field label="Рост, см">
-          <Input value={heightCm} onChangeText={setHeightCm} keyboardType="number-pad" placeholder="175" onEndEditing={saveBodyMetrics} />
-        </Field>
-        <Field label="Вес, кг">
-          <Input value={weightKg} onChangeText={setWeightKg} keyboardType="decimal-pad" placeholder="70.5" onEndEditing={saveBodyMetrics} />
-        </Field>
-        <View style={{ height: 12 }} />
-      </Section>
-
       <Section title="Первый день недели">
         <View style={[styles.wrap, { paddingHorizontal: 12, paddingTop: 4 }]}>
           <Chip label="Понедельник" selected={(settings?.week_start || 1) === 1} onPress={() => updateSettings({ week_start: 1 })} />

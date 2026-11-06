@@ -159,12 +159,12 @@ export default function CreatePostScreen({ navigation, route }) {
             <TouchableOpacity
               style={[
                 styles.privacyChip,
-                { borderColor: colors.border, backgroundColor: privacy === 'public' ? colors.primary : colors.surface },
+                { borderColor: privacy === 'public' ? colors.primary : colors.border, backgroundColor: 'transparent' },
               ]}
               onPress={() => setPrivacy('public')}
             >
-              <Icon name="globe-outline" size={16} color={privacy === 'public' ? '#fff' : colors.text} />
-              <Text style={[styles.privacyChipText, { color: privacy === 'public' ? '#fff' : colors.text }]}>
+              <Icon name="globe-outline" size={16} color={privacy === 'public' ? colors.primary : colors.text} />
+              <Text style={[styles.privacyChipText, { color: privacy === 'public' ? colors.primary : colors.text }]}>
                 Все
               </Text>
             </TouchableOpacity>
@@ -172,12 +172,12 @@ export default function CreatePostScreen({ navigation, route }) {
             <TouchableOpacity
               style={[
                 styles.privacyChip,
-                { borderColor: colors.border, backgroundColor: privacy === 'friends' ? colors.primary : colors.surface },
+                { borderColor: privacy === 'friends' ? colors.primary : colors.border, backgroundColor: 'transparent' },
               ]}
               onPress={() => setPrivacy('friends')}
             >
-              <Icon name="people-outline" size={16} color={privacy === 'friends' ? '#fff' : colors.text} />
-              <Text style={[styles.privacyChipText, { color: privacy === 'friends' ? '#fff' : colors.text }]}>
+              <Icon name="people-outline" size={16} color={privacy === 'friends' ? colors.primary : colors.text} />
+              <Text style={[styles.privacyChipText, { color: privacy === 'friends' ? colors.primary : colors.text }]}>
                 Друзья
               </Text>
             </TouchableOpacity>
@@ -185,12 +185,12 @@ export default function CreatePostScreen({ navigation, route }) {
             <TouchableOpacity
               style={[
                 styles.privacyChip,
-                { borderColor: colors.border, backgroundColor: privacy === 'private' ? colors.primary : colors.surface },
+                { borderColor: privacy === 'private' ? colors.primary : colors.border, backgroundColor: 'transparent' },
               ]}
               onPress={() => setPrivacy('private')}
             >
-              <Icon name="lock-closed-outline" size={16} color={privacy === 'private' ? '#fff' : colors.text} />
-              <Text style={[styles.privacyChipText, { color: privacy === 'private' ? '#fff' : colors.text }]}>
+              <Icon name="lock-closed-outline" size={16} color={privacy === 'private' ? colors.primary : colors.text} />
+              <Text style={[styles.privacyChipText, { color: privacy === 'private' ? colors.primary : colors.text }]}>
                 Только я
               </Text>
             </TouchableOpacity>
@@ -198,7 +198,7 @@ export default function CreatePostScreen({ navigation, route }) {
 
           {/* Текст публикации с редактором */}
           <Text style={[styles.label, { color: colors.text }]}>{isAnnouncement ? 'Текст объявления' : 'Текст публикации'}</Text>
-          <View style={[styles.editorContainer, { borderColor: colors.border, backgroundColor: colors.card }]}>
+          <View style={[styles.editorContainer, { borderColor: colors.border, backgroundColor: 'transparent' }]}>
             <RichToolbar
               editor={richText}
               actions={[
@@ -213,7 +213,7 @@ export default function CreatePostScreen({ navigation, route }) {
               iconTint={colors.text}
               selectedIconTint={colors.primary}
               style={{
-                backgroundColor: colors.background,
+                backgroundColor: 'transparent',
                 borderBottomWidth: 1,
                 borderBottomColor: colors.border,
               }}
@@ -224,7 +224,7 @@ export default function CreatePostScreen({ navigation, route }) {
               onChange={setContent}
               placeholder="Что у вас нового?..."
               editorStyle={{
-                backgroundColor: colors.card,
+                backgroundColor: 'transparent',
                 color: colors.text,
                 placeholderColor: colors.textSecondary,
                 contentCSSText: 'font-size: 16px;',
@@ -247,14 +247,14 @@ export default function CreatePostScreen({ navigation, route }) {
         ]}
       >
         <TouchableOpacity
-          style={[styles.saveButton, { backgroundColor: colors.primary }]}
+          style={[styles.saveButton, { backgroundColor: 'transparent', borderWidth: 1, borderColor: colors.primary }]}
           onPress={handleSave}
           disabled={loading}
         >
           {loading ? (
-            <ActivityIndicator color="#fff" />
+            <ActivityIndicator color={colors.primary} />
           ) : (
-            <Text style={styles.saveButtonText}>{isAnnouncement ? 'Опубликовать объявление' : 'Опубликовать'}</Text>
+            <Text style={[styles.saveButtonText, { color: colors.primary }]}>{isAnnouncement ? 'Опубликовать объявление' : 'Опубликовать'}</Text>
           )}
         </TouchableOpacity>
       </View>
@@ -309,5 +309,5 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
   },
   saveButton: { padding: 15, borderRadius: 8, alignItems: 'center' },
-  saveButtonText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
+  saveButtonText: { fontSize: 16, fontWeight: 'bold' },
 });

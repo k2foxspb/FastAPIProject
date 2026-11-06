@@ -44,13 +44,14 @@ const DietContent = ({ navigation, date }) => {
 
   const header = (
     <>
-      <Section title="Итоги дня" right={(
-        <TouchableOpacity onPress={() => navigation.navigate('NutritionGoals')} hitSlop={8}>
-          <Text style={{ color: colors.primary, fontSize: 13 }}>Цели</Text>
-        </TouchableOpacity>
-      )}
-      >
+      <Section title="Итоги дня">
         <NutritionSummary totals={data.totals} settings={settings} />
+        <TouchableOpacity
+          onPress={() => navigation.navigate('NutritionGoals')}
+          style={[styles.goalsBtn, { borderColor: colors.primary }]}
+        >
+          <Text style={[styles.goalsBtnText, { color: colors.primary }]}>Цели</Text>
+        </TouchableOpacity>
         {!settings?.kcal_goal && (
           <TouchableOpacity onPress={() => navigation.navigate('NutritionGoals')} style={styles.hint}>
             <Text style={{ color: colors.textSecondary, fontSize: 13 }}>Задайте цели по калориям и БЖУ, чтобы видеть прогресс</Text>
@@ -143,6 +144,8 @@ export default function DietDayScreen({ navigation, route }) {
 
 const styles = StyleSheet.create({
   hint: { paddingHorizontal: 12, paddingTop: 6 },
+  goalsBtn: { marginHorizontal: 12, marginTop: 10, padding: 14, borderRadius: 10, borderWidth: 1, alignItems: 'center' },
+  goalsBtnText: { fontSize: 16, fontWeight: '600' },
   mealHeader: { flexDirection: 'row', alignItems: 'center', marginHorizontal: 16, marginTop: 18, marginBottom: 6 },
   mealTitle: { fontSize: 16, fontWeight: '600' },
   addBtn: { width: 30, height: 30, borderRadius: 15, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },

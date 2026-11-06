@@ -1,5 +1,5 @@
 import React from 'react';
-import { ActivityIndicator, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Ionicons as Icon } from '@expo/vector-icons';
 import { useTheme } from '../../context/ThemeContext';
 import { theme as themeConstants } from '../../constants/theme';
@@ -18,9 +18,12 @@ export const EmptyState = ({ icon = 'document-text-outline', title, subtitle, ac
       {!!title && <Text style={[styles.emptyTitle, { color: colors.text }]}>{title}</Text>}
       {!!subtitle && <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>{subtitle}</Text>}
       {!!actionLabel && (
-        <TouchableOpacity style={[styles.emptyButton, { backgroundColor: colors.primary }]} onPress={onAction}>
-          <Text style={styles.emptyButtonText}>{actionLabel}</Text>
-        </TouchableOpacity>
+        <Pressable
+          onPress={onAction}
+          style={({ pressed }) => [styles.emptyButton, { borderColor: colors.primary, backgroundColor: pressed ? `${colors.primary}22` : 'transparent' }]}
+        >
+          <Text style={[styles.emptyButtonText, { color: colors.primary }]}>{actionLabel}</Text>
+        </Pressable>
       )}
     </View>
   );
@@ -122,7 +125,7 @@ export const Input = React.forwardRef((props, ref) => {
       ref={ref}
       placeholderTextColor={colors.textSecondary}
       {...props}
-      style={[styles.input, { color: colors.text, borderColor: colors.border, backgroundColor: colors.surface }, props.style]}
+      style={[styles.input, { color: colors.text, borderColor: colors.border, backgroundColor: 'transparent' }, props.style]}
     />
   );
 });
@@ -143,14 +146,15 @@ export const Chip = ({ label, selected, onPress, color, icon }) => {
 
 export const PrimaryButton = ({ title, onPress, disabled, danger, style, loading }) => {
   const colors = useColors();
+  const accent = danger ? colors.error : colors.primary;
   return (
-    <TouchableOpacity
+    <Pressable
       onPress={onPress}
       disabled={disabled || loading}
-      style={[styles.button, { backgroundColor: danger ? colors.error : colors.primary, opacity: disabled ? 0.5 : 1 }, style]}
+      style={({ pressed }) => [styles.button, { borderColor: accent, backgroundColor: pressed ? `${accent}22` : 'transparent', opacity: disabled ? 0.5 : 1 }, style]}
     >
-      {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>{title}</Text>}
-    </TouchableOpacity>
+      {loading ? <ActivityIndicator color={accent} /> : <Text style={[styles.buttonText, { color: accent }]}>{title}</Text>}
+    </Pressable>
   );
 };
 
@@ -176,8 +180,8 @@ const styles = StyleSheet.create({
   empty: { alignItems: 'center', justifyContent: 'center', padding: 32 },
   emptyTitle: { fontSize: 17, fontWeight: '600', marginTop: 12, textAlign: 'center' },
   emptySubtitle: { fontSize: 14, marginTop: 6, textAlign: 'center' },
-  emptyButton: { marginTop: 16, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 10 },
-  emptyButtonText: { color: '#fff', fontWeight: '600' },
+  emptyButton: { marginTop: 16, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 10, borderWidth: 1 },
+  emptyButtonText: { fontWeight: '600' },
   badge: { paddingHorizontal: 8, justifyContent: 'center' },
   badgeDot: { position: 'absolute', top: -4, right: 0, minWidth: 16, height: 16, borderRadius: 8, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3 },
   badgeDotText: { color: '#fff', fontSize: 10, fontWeight: '700' },
@@ -188,6 +192,6 @@ const styles = StyleSheet.create({
   fieldLabel: { fontSize: 13, marginBottom: 6 },
   input: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 16 },
   chip: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 16, paddingHorizontal: 12, paddingVertical: 6, marginRight: 8, marginBottom: 8 },
-  button: { borderRadius: 12, paddingVertical: 14, alignItems: 'center', marginHorizontal: 16, marginTop: 20 },
-  buttonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  button: { borderRadius: 12, borderWidth: 1, paddingVertical: 14, alignItems: 'center', marginHorizontal: 16, marginTop: 20 },
+  buttonText: { fontSize: 16, fontWeight: '600' },
 });

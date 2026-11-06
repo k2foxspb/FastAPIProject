@@ -297,8 +297,8 @@ export default function UserProfileScreen({ route, navigation }) {
   if (error || !user) return (
     <View style={[styles.center, { backgroundColor: colors.background }]}>
       <Text style={[styles.errorText, { color: colors.error }]}>{error || 'Пользователь не найден'}</Text>
-      <TouchableOpacity style={[styles.retryBtn, { backgroundColor: colors.primary }]} onPress={fetchUser}>
-        <Text style={styles.retryText}>Повторить</Text>
+      <TouchableOpacity style={[styles.retryBtn, { backgroundColor: 'transparent', borderWidth: 1, borderColor: colors.primary }]} onPress={fetchUser}>
+        <Text style={[styles.retryText, { color: colors.primary }]}>Повторить</Text>
       </TouchableOpacity>
     </View>
   );
@@ -345,11 +345,11 @@ export default function UserProfileScreen({ route, navigation }) {
           </TouchableOpacity>
 
           <TouchableOpacity 
-            style={[styles.actionBtn, { backgroundColor: colors.primary }]}
+            style={[styles.actionBtn, { borderColor: colors.primary, borderWidth: 1 }]}
             onPress={() => navigation.navigate('Messages', { screen: 'Chat', params: { userId: user.id, userName: formatName(user) }, initial: false })}
           >
-            <Icon name="chatbubble-ellipses-outline" size={18} color="#fff" />
-            <Text style={[styles.actionBtnText, { color: '#fff' }]}>Написать</Text>
+            <Icon name="chatbubble-ellipses-outline" size={18} color={colors.primary} />
+            <Text style={[styles.actionBtnText, { color: colors.primary }]}>Написать</Text>
           </TouchableOpacity>
         </View>
 
