@@ -5,35 +5,8 @@ from datetime import date
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.journal import JournalAccount, JournalBudget, JournalFinanceCategory, JournalTransaction
-from app.schemas.journal.finance import AccountBalance, CategoryTotal, FinanceSummary, ReviewQueueResponse
-
-
-async def account_balances(db: AsyncSession, user_id: int) -> list[AccountBalance]:
-    accounts = (await db.execute(select(JournalAccount).where(
-        JournalAccount.user_id == user_id, JournalAccount.deleted_at.is_(None), JournalAccount.archived.is_(False)
-    ).order_by(JournalAccount.created_at))).scalars().all()
-    result = []
-    for account in accounts:
-        transactions = (await db.execute(select(JournalTransaction.direction, JournalTransaction.amount_kop).where(
-            JournalTransaction.user_id == user_id,
-            JournalTransaction.deleted_at.is_(None),
-            JournalTransaction.direction == "income",
-            JournalTransaction.account_id == account.id,
-        ))).all()
-        incoming_transfer = await db.scalar(select(func.coalesce(func.sum(JournalTransaction.amount_kop), 0)).where(
-            JournalTransaction.user_id == user_id, JournalTransaction.deleted_at.is_(None),
-            JournalTransaction.direction == "transfer", JournalTransaction.to_account_id == account.id,
-        )) or 0
-        outgoing = await db.scalar(select(func.coalesce(func.sum(JournalTransaction.amount_kop), 0)).where(
-            JournalTransaction.user_id == user_id, JournalTransaction.deleted_at.is_(None),
-            JournalTransaction.account_id == account.id,
-            JournalTransaction.direction.in_(["expense", "transfer"]),
-        )) or 0
-        incoming = sum(amount for _, amount in transactions) + int(incoming_transfer)
-        result.append(AccountBalance(account_uuid=account.client_uuid,
-                                     balance_kop=account.opening_balance_kop + incoming - int(outgoing)))
-    return result
+from app.models.journal import JournalBudget, JournalFinanceCategory, JournalTransaction
+from app.schemas.journal.finance import CategoryTotal, FinanceSummary, ReviewQueueResponse
 
 
 async def expense_by_day(db: AsyncSession, user_id: int, start: date, end: date) -> dict[date, dict[str, int]]:
@@ -69,8 +42,7 @@ async def finance_summary(db: AsyncSession, user_id: int, start: date, end: date
             values[1] += 1
         month = row.transaction_date.strftime("%Y-%m")
         totals = months.setdefault(month, {"income_kop": 0, "expense_kop": 0})
-        if row.direction in ("income", "expense"):
-            totals[f"{row.direction}_kop"] += int(row.amount_kop)
+        totals[f"{row.direction}_kop"] += int(row.amount_kop)
 
     return FinanceSummary(
         date_from=start, date_to=end, income_kop=income, expense_kop=expense, net_kop=income - expense,
@@ -81,9 +53,9 @@ async def finance_summary(db: AsyncSession, user_id: int, start: date, end: date
 
 
 async def review_queue(db: AsyncSession, user_id: int, limit: int = 100) -> ReviewQueueResponse:
-    rows = (await db.execute(select(JournalTransaction, JournalAccount.name, JournalFinanceCategory.name).outerjoin(
-        JournalAccount, JournalAccount.id == JournalTransaction.account_id
-    ).outerjoin(JournalFinanceCategory, JournalFinanceCategory.id == JournalTransaction.category_id).where(
+    rows = (await db.execute(select(JournalTransaction, JournalFinanceCategory.name).outerjoin(
+        JournalFinanceCategory, JournalFinanceCategory.id == JournalTransaction.category_id
+    ).where(
         JournalTransaction.user_id == user_id, JournalTransaction.deleted_at.is_(None),
         JournalTransaction.review_required.is_(True),
     ).order_by(JournalTransaction.transaction_date.desc(), JournalTransaction.created_at.desc()).limit(limit))).all()
@@ -91,8 +63,8 @@ async def review_queue(db: AsyncSession, user_id: int, limit: int = 100) -> Revi
         "uuid": transaction.client_uuid, "transaction_date": transaction.transaction_date,
         "direction": transaction.direction, "amount_kop": transaction.amount_kop,
         "description": transaction.description, "merchant": transaction.merchant,
-        "account_name": account_name, "category_name": category_name,
-    } for transaction, account_name, category_name in rows]
+        "category_name": category_name,
+    } for transaction, category_name in rows]
     total = await db.scalar(select(func.count(JournalTransaction.id)).where(
         JournalTransaction.user_id == user_id, JournalTransaction.deleted_at.is_(None),
         JournalTransaction.review_required.is_(True),

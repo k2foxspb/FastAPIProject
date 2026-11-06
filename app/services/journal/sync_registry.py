@@ -16,7 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.journal import (
-    JournalAccount, JournalAttachment, JournalBudget, JournalDiaryEntry, JournalEvent,
+    JournalAttachment, JournalBudget, JournalDiaryEntry, JournalEvent,
     JournalEventOccurrence, JournalFinanceCategory, JournalFood,
     JournalFoodEntry, JournalMealType, JournalRecipeItem, JournalReminder, JournalSettings,
     JournalTracker, JournalTrackerValue, JournalTransaction, JournalWaterEntry,
@@ -26,7 +26,7 @@ from app.models.journal import JournalGoal
 from app.schemas.journal.goals import GoalData
 from app.schemas.journal.diet import FoodData, FoodEntryData, MealTypeData, RecipeItemData, WaterEntryData
 from app.schemas.journal.finance import (
-    AccountData, BudgetData, FinanceCategoryData, ImportBatchData, ImportProfileData,
+    BudgetData, FinanceCategoryData, ImportBatchData, ImportProfileData,
     ImportRuleData, TransactionData,
 )
 from app.schemas.journal.sync import (
@@ -156,15 +156,6 @@ async def _validate_recipe_item(db: AsyncSession, user_id: int, existing, values
 
 
 async def _validate_transaction(db: AsyncSession, user_id: int, existing, values: dict, resolved: dict) -> str | None:
-    if existing is None and values.get("account_id") is None:
-        return "invalid: операция должна быть привязана к счёту"
-    if values.get("direction") == "transfer":
-        if values.get("to_account_id") is None or values.get("to_account_id") == values.get("account_id"):
-            return "invalid: перевод требует два разных счёта"
-        if values.get("category_id") is not None:
-            return "invalid: перевод не может иметь категорию"
-    elif values.get("to_account_id") is not None:
-        return "invalid: счёт-получатель допустим только для перевода"
     category = resolved.get("category_uuid")
     if category is not None and category.kind != values.get("direction"):
         return "invalid: категория не соответствует типу операции"
@@ -215,7 +206,7 @@ register(EntitySpec(
 register(EntitySpec(name="tracker", model=JournalTracker, schema=TrackerData, order=10))
 register(EntitySpec(
     name="event", model=JournalEvent, schema=EventData, order=20,
-    poly_refs=[PolyRefSpec("ref_type", "ref_uuid", {"tracker": "tracker", "account": "account"})],
+    poly_refs=[PolyRefSpec("ref_type", "ref_uuid", {"tracker": "tracker"})],
 ))
 register(EntitySpec(
     name="event_occurrence", model=JournalEventOccurrence, schema=EventOccurrenceData, order=30,
@@ -263,7 +254,6 @@ register(EntitySpec(
 
 # ---------------------------------------------------------------- регистрация фазы 3 (финансы и импорт)
 
-register(EntitySpec(name="account", model=JournalAccount, schema=AccountData, order=10))
 register(EntitySpec(
     name="finance_category", model=JournalFinanceCategory, schema=FinanceCategoryData, order=10,
     refs=[RefSpec("parent_uuid", "parent_id", "finance_category", on_delete="set_null")],
@@ -272,8 +262,6 @@ register(EntitySpec(
 register(EntitySpec(
     name="transaction", model=JournalTransaction, schema=TransactionData, order=30,
     refs=[
-        RefSpec("account_uuid", "account_id", "account", on_delete="set_null"),
-        RefSpec("to_account_uuid", "to_account_id", "account", on_delete="set_null"),
         RefSpec("category_uuid", "category_id", "finance_category", on_delete="set_null"),
     ],
     validate=_validate_transaction,
@@ -295,7 +283,6 @@ register(EntitySpec(
 register(EntitySpec(
     name="import_batch", model=JournalImportBatch, schema=ImportBatchData, order=40,
     refs=[
-        RefSpec("account_uuid", "account_id", "account", on_delete="set_null"),
         RefSpec("profile_uuid", "profile_id", "import_profile", on_delete="set_null"),
     ],
     ops=frozenset(),

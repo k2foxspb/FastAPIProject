@@ -5,7 +5,7 @@ import MoneyInput from '../../components/journal/MoneyInput';
 import { Field, JournalGate, PrimaryButton, useColors } from '../../components/journal/common';
 import { useJournal, useJournalQuery } from '../../context/JournalContext';
 import {
-  listAccounts, listFinanceCategories, getTransaction, saveTransaction, deleteTransaction, saveAccount, saveFinanceCategory,
+  listFinanceCategories, getTransaction, saveTransaction, deleteTransaction, saveFinanceCategory,
 } from '../../journal/db/repos/finance';
 
 function InlineCreate({ colors, visible, onToggle, toggleTitle, value, onChangeText, placeholder, onSubmit }) {
@@ -31,30 +31,16 @@ function InlineCreate({ colors, visible, onToggle, toggleTitle, value, onChangeT
 function Content({ navigation, route }) {
   const colors = useColors();
   const { today } = useJournal();
-  const { data: accounts } = useJournalQuery(listAccounts, []);
   const [direction, setDirection] = useState(route.params?.direction || 'expense');
   const { data: categories } = useJournalQuery(() => listFinanceCategories(direction), [direction]);
-  const [accountUuid, setAccountUuid] = useState(route.params?.account_uuid || '');
   const [categoryUuid, setCategoryUuid] = useState('');
   const [transactionDate, setTransactionDate] = useState(route.params?.date || today);
   const [description, setDescription] = useState('');
   const [amountKop, setAmountKop] = useState(null);
   const [saving, setSaving] = useState(false);
-  const [newAccountName, setNewAccountName] = useState('');
   const [newCategoryName, setNewCategoryName] = useState('');
-  const [showAccountForm, setShowAccountForm] = useState(false);
   const [showCategoryForm, setShowCategoryForm] = useState(false);
 
-  const createAccount = async () => {
-    const name = newAccountName.trim();
-    if (!name) return;
-    try {
-      const uuid = await saveAccount({ name, kind: 'cash', currency: 'RUB', opening_balance_kop: 0 });
-      setAccountUuid(uuid);
-      setNewAccountName('');
-      setShowAccountForm(false);
-    } catch (error) { Alert.alert('Ошибка', error?.message || 'Не удалось создать счёт'); }
-  };
 
   const createCategory = async () => {
     const name = newCategoryName.trim();
@@ -72,7 +58,6 @@ function Content({ navigation, route }) {
     getTransaction(route.params.uuid).then((item) => {
       if (!item) return;
       setDirection(item.direction);
-      setAccountUuid(item.account_uuid || '');
       setCategoryUuid(item.category_uuid || '');
       setTransactionDate(item.transaction_date);
       setDescription(item.description || '');
@@ -81,20 +66,20 @@ function Content({ navigation, route }) {
   }, [route.params?.uuid]);
 
   const save = async () => {
-    if (!accountUuid || !description.trim() || !amountKop) {
-      Alert.alert('Проверьте операцию', 'Выберите счёт и укажите описание и сумму.');
+    if (!description.trim() || !amountKop) {
+      Alert.alert('Проверьте операцию', 'Укажите описание и сумму.');
       return;
     }
     setSaving(true);
     try {
-      await saveTransaction({ account_uuid: accountUuid, category_uuid: categoryUuid || null,
+      await saveTransaction({ category_uuid: categoryUuid || null,
         transaction_date: transactionDate, direction, amount_kop: amountKop, description: description.trim(), source: 'manual' }, route.params?.uuid || null);
       navigation.goBack();
     } catch (error) { Alert.alert('Ошибка', error?.message || 'Не удалось сохранить операцию'); }
     finally { setSaving(false); }
   };
 
-  const remove = () => Alert.alert('Удалить операцию?', 'Операция будет удалена со счёта.', [
+  const remove = () => Alert.alert('Удалить операцию?', 'Операция будет удалена.', [
     { text: 'Отмена', style: 'cancel' },
     {
       text: 'Удалить',
@@ -113,19 +98,6 @@ function Content({ navigation, route }) {
       <Field label="Тип операции"><Picker selectedValue={direction} onValueChange={setDirection}>
         <Picker.Item label="Расход" value="expense" /><Picker.Item label="Доход" value="income" />
       </Picker></Field>
-      <Field label="Счёт"><Picker selectedValue={accountUuid} onValueChange={setAccountUuid}>
-        {(accounts || []).map((item) => <Picker.Item key={item.uuid} label={item.name} value={item.uuid} />)}
-      </Picker></Field>
-      <InlineCreate
-        colors={colors}
-        visible={showAccountForm}
-        onToggle={() => setShowAccountForm((v) => !v)}
-        toggleTitle="+ Создать счёт"
-        value={newAccountName}
-        onChangeText={setNewAccountName}
-        placeholder="Название счёта"
-        onSubmit={createAccount}
-      />
       <Field label="Категория"><Picker selectedValue={categoryUuid} onValueChange={setCategoryUuid}>
         <Picker.Item label="Без категории" value="" />
         {(categories || []).map((item) => <Picker.Item key={item.uuid} label={item.name} value={item.uuid} />)}

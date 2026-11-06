@@ -14,7 +14,7 @@ function Content() {
     contentContainerStyle={{ padding: 12 }}
     renderItem={({ item }) => <View style={{ padding: 12, marginBottom: 8, borderRadius: 12, backgroundColor: 'transparent' }}>
       <Text style={{ color: colors.text, fontWeight: '600' }}>{item.description}</Text>
-      <Text style={{ color: colors.textSecondary }}>{item.transaction_date} · {formatKop(item.amount_kop)} · {item.account_name || ''}</Text>
+      <Text style={{ color: colors.textSecondary }}>{item.transaction_date} · {formatKop(item.amount_kop)}</Text>
       <Picker selectedValue="" onValueChange={(uuid) => {
         if (uuid) resolveReview(item.uuid, uuid).catch((error) => Alert.alert('Ошибка', error?.message || 'Не удалось сохранить'));
       }}>

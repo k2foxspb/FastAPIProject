@@ -7,14 +7,6 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from app.schemas.journal.common import EntityData, JDate, OptStr, OptUUIDStr, UUIDStr
 
 
-class AccountData(EntityData):
-    name: str = Field(min_length=1, max_length=100)
-    kind: Literal["cash", "bank", "card", "savings"] = "cash"
-    currency: Literal["RUB"] = "RUB"
-    opening_balance_kop: int = Field(default=0, ge=-10**13, le=10**13)
-    archived: bool = False
-
-
 class FinanceCategoryData(EntityData):
     name: str = Field(min_length=1, max_length=100)
     kind: Literal["expense", "income"]
@@ -25,30 +17,16 @@ class FinanceCategoryData(EntityData):
 
 
 class TransactionData(EntityData):
-    account_uuid: OptUUIDStr = None
-    to_account_uuid: OptUUIDStr = None
     category_uuid: OptUUIDStr = None
     transaction_date: JDate
-    direction: Literal["expense", "income", "transfer"]
+    direction: Literal["expense", "income"]
     amount_kop: int = Field(gt=0, le=10**13)
     description: str = Field(default="", max_length=255)
     merchant: OptStr = Field(default=None, max_length=255)
     note: OptStr = Field(default=None, max_length=5000)
     external_id: OptStr = Field(default=None, max_length=255)
-    transfer_pair_uuid: OptUUIDStr = None
     review_required: bool = False
     source: Literal["manual", "import", "recurring"] = "manual"
-
-    @model_validator(mode="after")
-    def validate_transfer(self):
-        if self.direction == "transfer":
-            if not self.to_account_uuid or self.to_account_uuid == self.account_uuid:
-                raise ValueError("Для перевода нужны два разных счёта")
-            if self.category_uuid:
-                raise ValueError("У перевода не может быть категории расходов")
-        elif self.to_account_uuid or self.transfer_pair_uuid:
-            raise ValueError("Счёт-получатель и пара допустимы только для перевода")
-        return self
 
 
 class BudgetData(EntityData):
@@ -76,7 +54,6 @@ class ImportRuleData(EntityData):
 
 
 class ImportBatchData(EntityData):
-    account_uuid: OptUUIDStr = None
     profile_uuid: OptUUIDStr = None
     filename: str = Field(min_length=1, max_length=255)
     content_fingerprint: str = Field(min_length=32, max_length=64)
@@ -86,9 +63,6 @@ class ImportBatchData(EntityData):
     reverted_at: datetime | None = None
 
 
-class AccountBalance(BaseModel):
-    account_uuid: str
-    balance_kop: int
 
 
 class CategoryTotal(BaseModel):
@@ -127,7 +101,6 @@ class ImportPreviewResponse(BaseModel):
 
 class ImportCommitRequest(BaseModel):
     preview_token: str
-    account_uuid: UUIDStr
     mapping: dict[str, int] = Field(max_length=20)
     date_format: str | None = Field(default=None, max_length=40)
     profile_name: str | None = Field(default=None, max_length=100)
@@ -138,7 +111,6 @@ class ImportCommitResponse(BaseModel):
     imported_count: int
     duplicate_count: int
     review_count: int
-    transfer_suggestions: list[dict[str, Any]]
 
 
 class ImportBatchOut(BaseModel):
@@ -172,8 +144,3 @@ class CategorySuggestion(BaseModel):
 
 class CategorySuggestionResponse(BaseModel):
     suggestions: list[CategorySuggestion]
-
-
-class TransferPairMergeRequest(BaseModel):
-    first_uuid: UUIDStr
-    second_uuid: UUIDStr

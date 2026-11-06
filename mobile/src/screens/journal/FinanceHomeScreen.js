@@ -1,20 +1,19 @@
 import React, { useState } from 'react';
 import { Alert, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { formatKop } from '../../journal/utils/money';
-import { accountBalances, listBudgets, listTransactions } from '../../journal/db/repos/finance';
+import { listBudgets, listTransactions } from '../../journal/db/repos/finance';
 import { EmptyState, JournalGate, Section, useColors } from '../../components/journal/common';
 import { useJournal, useJournalQuery } from '../../context/JournalContext';
 
 const PAGE = 20;
 
 const LINKS = [
-  ['Accounts', 'Счета'], ['FinanceCategories', 'Категории'], ['Budgets', 'Бюджеты'],
+  ['FinanceCategories', 'Категории'], ['Budgets', 'Бюджеты'],
   ['ExpenseAnalytics', 'Аналитика расходов'],
 ];
 
 function Content({ navigation }) {
   const colors = useColors();
-  const { data: accounts } = useJournalQuery(accountBalances, []);
   const { today } = useJournal();
   const month = today.slice(0, 7);
   const { data: budgets } = useJournalQuery(() => listBudgets(month), [month]);
@@ -28,14 +27,6 @@ function Content({ navigation }) {
   ]);
   return (
     <ScrollView style={{ backgroundColor: colors.background }} contentContainerStyle={{ paddingBottom: 32 }}>
-      <Section title="Счета">
-        {(accounts || []).map((account) => (
-          <View key={account.uuid} style={{ padding: 12, flexDirection: 'row', justifyContent: 'space-between' }}>
-            <Text style={{ color: colors.text }}>{account.name}</Text>
-            <Text style={{ color: colors.text, fontWeight: '600' }}>{formatKop(account.balance_kop)}</Text>
-          </View>
-        ))}
-      </Section>
       <TouchableOpacity onPress={addFinance}
         style={{ margin: 16, padding: 15, alignItems: 'center', borderRadius: 12, backgroundColor: colors.primary }}>
         <Text style={{ color: '#fff', fontWeight: '700' }}>＋ Добавить</Text>

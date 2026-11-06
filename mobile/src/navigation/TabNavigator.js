@@ -60,7 +60,6 @@ import MealTypesScreen from '../screens/journal/MealTypesScreen';
 import NutritionGoalsScreen from '../screens/journal/NutritionGoalsScreen';
 import FinanceHomeScreen from '../screens/journal/FinanceHomeScreen';
 import TransactionEditScreen from '../screens/journal/TransactionEditScreen';
-import AccountsScreen from '../screens/journal/AccountsScreen';
 import FinanceCategoriesScreen from '../screens/journal/FinanceCategoriesScreen';
 import BudgetsScreen from '../screens/journal/BudgetsScreen';
 import ImportPickScreen from '../screens/journal/ImportPickScreen';
@@ -70,7 +69,6 @@ import ImportBatchesScreen from '../screens/journal/ImportBatchesScreen';
 import ReviewQueueScreen from '../screens/journal/ReviewQueueScreen';
 import ImportRulesScreen from '../screens/journal/ImportRulesScreen';
 import ExpenseAnalyticsScreen from '../screens/journal/ExpenseAnalyticsScreen';
-import TransferPairsScreen from '../screens/journal/TransferPairsScreen';
 import GoalsScreen from '../screens/journal/GoalsScreen';
 import GoalEditScreen from '../screens/journal/GoalEditScreen';
 import AnalyticsScreen from '../screens/journal/AnalyticsScreen';
@@ -322,7 +320,6 @@ function JournalStack() {
         <Stack.Screen name="NutritionGoals" component={NutritionGoalsScreen} options={{ title: 'Цели питания' }} />
         <Stack.Screen name="FinanceHome" component={FinanceHomeScreen} options={{ title: 'Финансы' }} />
         <Stack.Screen name="TransactionEdit" component={TransactionEditScreen} options={{ title: 'Операция' }} />
-        <Stack.Screen name="Accounts" component={AccountsScreen} options={{ title: 'Счета' }} />
         <Stack.Screen name="FinanceCategories" component={FinanceCategoriesScreen} options={{ title: 'Категории' }} />
         <Stack.Screen name="Budgets" component={BudgetsScreen} options={{ title: 'Бюджеты' }} />
         <Stack.Screen name="ImportPick" component={ImportPickScreen} options={{ title: 'Импорт выписки' }} />
@@ -332,7 +329,6 @@ function JournalStack() {
         <Stack.Screen name="ReviewQueue" component={ReviewQueueScreen} options={{ title: 'Разобрать операции' }} />
         <Stack.Screen name="ImportRules" component={ImportRulesScreen} options={{ title: 'Правила импорта' }} />
         <Stack.Screen name="ExpenseAnalytics" component={ExpenseAnalyticsScreen} options={{ title: 'Расходы' }} />
-        <Stack.Screen name="TransferPairs" component={TransferPairsScreen} options={{ title: 'Найденные переводы' }} />
         <Stack.Screen name="Goals" component={GoalsScreen} options={{ title: 'Цели' }} />
         <Stack.Screen name="GoalEdit" component={GoalEditScreen} options={{ title: 'Цель' }} />
         <Stack.Screen name="Analytics" component={AnalyticsScreen} options={{ title: 'Аналитика' }} />

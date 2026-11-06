@@ -151,6 +151,13 @@ export const MIGRATIONS = [
   ALTER TABLE settings ADD COLUMN height_cm INTEGER;
   ALTER TABLE settings ADD COLUMN weight_kg REAL;
   `,
+  // 7 - удаление счетов: переводы не поддерживаются, локальные данные счетов очищаются
+  `
+  DELETE FROM transactions WHERE direction = 'transfer';
+  DELETE FROM outbox WHERE entity = 'account';
+  DROP INDEX IF EXISTS ix_transactions_account_date;
+  DROP TABLE IF EXISTS accounts;
+  `,
 ];
 
 export const runMigrations = async (db) => {

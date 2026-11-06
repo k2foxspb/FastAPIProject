@@ -399,7 +399,6 @@ api.interceptors.request.use(
 
 api.interceptors.response.use(
   response => {
-    console.log(`[API Success]: ${response.config.method?.toUpperCase()} ${response.config.url} - ${response.status}`);
     return response;
   },
   async error => {

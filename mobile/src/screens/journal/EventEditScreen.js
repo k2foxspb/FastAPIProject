@@ -1,7 +1,6 @@
 import React, { useEffect, useLayoutEffect, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Picker } from '@react-native-picker/picker';
-import { useJournal, useJournalQuery } from '../../context/JournalContext';
+import { useJournal } from '../../context/JournalContext';
 import { Chip, Field, HeaderButton, Input, JournalGate, PrimaryButton, useColors } from '../../components/journal/common';
 import { DateField, TimeField } from '../../components/journal/DateTimeFields';
 import { deleteEvent, getEvent, saveEvent } from '../../journal/db/repos/events';
@@ -10,7 +9,6 @@ import { WEEKDAYS_SHORT_RU, weekdayIndex } from '../../journal/utils/dates';
 import { getReminderFor, setReminderFor } from '../../journal/db/repos/reminders';
 import { ensureReminderPermission } from '../../journal/notifications/permissions';
 import { DEFAULT_ALL_DAY_TIME } from '../../journal/notifications/plan';
-import { listAccounts } from '../../journal/db/repos/finance';
 
 const KINDS = [
   { key: 'custom', label: 'Событие', icon: 'star-outline' },
@@ -64,14 +62,12 @@ const repeatFromRule = (rrule) => {
 const EventForm = ({ navigation, route }) => {
   const colors = useColors();
   const { today, timezone } = useJournal();
-  const { data: accounts } = useJournalQuery(listAccounts, []);
   const uuid = route.params?.uuid || null;
   const [loaded, setLoaded] = useState(!uuid);
   const [existing, setExisting] = useState(null);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [kind, setKind] = useState('custom');
-  const [accountUuid, setAccountUuid] = useState('');
   const [date, setDate] = useState(route.params?.date || today);
   const [time, setTime] = useState(null);
   const [color, setColor] = useState(null);
@@ -95,7 +91,6 @@ const EventForm = ({ navigation, route }) => {
       setTitle(ev.title);
       setDescription(ev.description || '');
       setKind(ev.kind === 'tracker' ? 'custom' : ev.kind);
-      setAccountUuid(ev.ref_type === 'account' ? ev.ref_uuid || '' : '');
       setDate(ev.start_date);
       setTime(ev.start_time);
       setColor(ev.color);
@@ -141,8 +136,8 @@ const EventForm = ({ navigation, route }) => {
         rrule: rule,
         until_date: rule ? until : null,
         status: existing?.status || 'planned',
-        ref_type: kind === 'payment' ? (accountUuid ? 'account' : null) : (existing?.ref_type === 'tracker' ? 'tracker' : null),
-        ref_uuid: kind === 'payment' ? (accountUuid || null) : (existing?.ref_type === 'tracker' ? existing.ref_uuid : null),
+        ref_type: existing?.ref_type === 'tracker' ? 'tracker' : null,
+        ref_uuid: existing?.ref_type === 'tracker' ? existing.ref_uuid : null,
         payload: existing?.payload || null,
         color,
       }, uuid);
@@ -203,14 +198,6 @@ const EventForm = ({ navigation, route }) => {
             <View style={styles.wrap}>
               {KINDS.map((k) => <Chip key={k.key} label={k.label} icon={k.icon} selected={kind === k.key} onPress={() => setKind(k.key)} />)}
             </View>
-          </Field>
-        )}
-        {kind === 'payment' && (
-          <Field label="Счёт для повторяющегося платежа">
-            <Picker selectedValue={accountUuid} onValueChange={setAccountUuid}>
-              <Picker.Item label="Не связывать со счётом" value="" />
-              {(accounts || []).map((account) => <Picker.Item key={account.uuid} label={account.name} value={account.uuid} />)}
-            </Picker>
           </Field>
         )}
         <Field label="Дата">

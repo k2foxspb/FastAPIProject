@@ -92,10 +92,6 @@ export const ENTITIES = {
     fields: { entry_date: 'text', entry_time: 'time', amount_ml: 'int' },
   },
   // ---- фаза 3: финансы и импорт выписок
-  account: {
-    table: 'accounts',
-    fields: { name: 'text', kind: 'text', currency: 'text', opening_balance_kop: 'int', archived: 'bool' },
-  },
   finance_category: {
     table: 'finance_categories',
     fields: { name: 'text', kind: 'text', parent_uuid: 'text', icon: 'text', color: 'text', sort_order: 'int' },
@@ -104,13 +100,11 @@ export const ENTITIES = {
   transaction: {
     table: 'transactions',
     fields: {
-      account_uuid: 'text', to_account_uuid: 'text', category_uuid: 'text', transaction_date: 'text',
+      category_uuid: 'text', transaction_date: 'text',
       direction: 'text', amount_kop: 'int', description: 'text', merchant: 'text', note: 'text', external_id: 'text',
-      transfer_pair_uuid: 'text', review_required: 'bool', source: 'text',
+      review_required: 'bool', source: 'text',
     },
     parents: [
-      { field: 'account_uuid', entity: 'account', onDelete: 'set_null' },
-      { field: 'to_account_uuid', entity: 'account', onDelete: 'set_null' },
       { field: 'category_uuid', entity: 'finance_category', onDelete: 'set_null' },
     ],
   },
@@ -131,11 +125,10 @@ export const ENTITIES = {
   import_batch: {
     table: 'import_batches',
     fields: {
-      account_uuid: 'text', profile_uuid: 'text', filename: 'text', content_fingerprint: 'text', status: 'text',
+      profile_uuid: 'text', filename: 'text', content_fingerprint: 'text', status: 'text',
       imported_count: 'int', duplicate_count: 'int', reverted_at: 'text',
     },
     parents: [
-      { field: 'account_uuid', entity: 'account', onDelete: 'set_null' },
       { field: 'profile_uuid', entity: 'import_profile', onDelete: 'set_null' },
     ],
     pushUpsert: false,

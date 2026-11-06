@@ -13,12 +13,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import config
-from app.models.journal import JournalAccount, JournalFinanceCategory, JournalMealType, JournalSettings
+from app.models.journal import JournalFinanceCategory, JournalMealType, JournalSettings
 from app.models.journal.base import utcnow
 
 # Пространство имён UUIDv5 журнала.
 NS_JOURNAL = uuid.UUID("6f2c1a3e-8d4b-4f7a-9c1e-2b5d7e9f0a13")
-# 1 - настройки; 2 - типы приёмов пищи; 3 - финансовые категории и счёт
+# 1 - настройки; 2 - типы приёмов пищи; 3 - финансовые категории
 SEED_VERSION = 3
 
 # Стартовые типы приёмов пищи (ключ UUIDv5 - "meal_type:<key>"); напоминания выключены,
@@ -127,19 +127,6 @@ async def ensure_seed(db: AsyncSession, user_id: int, only_upgrade: bool = False
                 created_at=now, updated_at=now, server_rev=next_rev(state),
             ))
 
-        cash_uuid = seed_uuid(user_id, "account:cash")
-        cash_exists = (await db.execute(
-            select(JournalAccount.id).where(
-                JournalAccount.user_id == user_id, JournalAccount.client_uuid == cash_uuid
-            )
-        )).first()
-        if not cash_exists:
-            db.add(JournalAccount(
-                user_id=user_id, client_uuid=cash_uuid, name="Наличные", kind="cash", currency="RUB",
-                opening_balance_kop=0, archived=False, created_at=now, updated_at=now,
-                server_rev=next_rev(state),
-            ))
-
     if existing is None:
         db.add(JournalSettings(
             user_id=user_id,
@@ -152,7 +139,7 @@ async def ensure_seed(db: AsyncSession, user_id: int, only_upgrade: bool = False
             server_rev=next_rev(state),
         ))
     else:
-        # Будущие фазы досоздают свои стартовые наборы выше (категории, счёт) по номеру версии.
+        # Будущие фазы досоздают свои стартовые наборы выше (категории и т.д.) по номеру версии.
         existing.seed_version = SEED_VERSION
         existing.updated_at = now
         existing.server_rev = next_rev(state)

@@ -20,16 +20,8 @@ export const FINANCE_CATEGORY_SEEDS = [
 
 export const ensureLocalFinanceSeed = async (userId) => {
   const db = getJournalDb();
-  const [account, categories] = await Promise.all([
-    db.getFirstAsync('SELECT COUNT(*) AS n FROM accounts'),
-    db.getFirstAsync('SELECT COUNT(*) AS n FROM finance_categories'),
-  ]);
+  const categories = await db.getFirstAsync('SELECT COUNT(*) AS n FROM finance_categories');
   if ((await getCursor()) === 0) {
-    if (!account?.n) {
-      await saveLocalOnly('account', {
-        name: 'Наличные', kind: 'cash', currency: 'RUB', opening_balance_kop: 0, archived: false,
-      }, seedUuid(userId, 'account:cash'));
-    }
     if (!categories?.n) {
       for (const [index, category] of FINANCE_CATEGORY_SEEDS.entries()) {
         await saveLocalOnly('finance_category', {
@@ -40,19 +32,8 @@ export const ensureLocalFinanceSeed = async (userId) => {
     }
   }
   const settings = await getSettings();
-  if (settings && (settings.seed_version || 0) < 3) await updateSettings({ seed_version: 3 });
+  if (settings && (settings.seed_version || 0) < 4) await updateSettings({ seed_version: 4 });
 };
-
-export const listAccounts = async () => {
-  const rows = await getJournalDb().getAllAsync('SELECT * FROM accounts WHERE archived = 0 ORDER BY created_at');
-  return rows.map((row) => rowToObject('account', row));
-};
-
-export const saveAccount = (data, uuid = null) => saveEntity('account', {
-  name: String(data.name || '').trim(), kind: data.kind || 'cash', currency: data.currency || 'RUB',
-  opening_balance_kop: Math.trunc(Number(data.opening_balance_kop) || 0), archived: !!data.archived,
-}, uuid);
-export const deleteAccount = (uuid) => deleteEntity('account', uuid);
 
 export const listFinanceCategories = async (kind = null) => {
   const rows = await getJournalDb().getAllAsync(
@@ -64,11 +45,10 @@ export const saveFinanceCategory = (data, uuid = null) => saveEntity('finance_ca
 export const deleteFinanceCategory = (uuid) => deleteEntity('finance_category', uuid);
 
 export const saveTransaction = (data, uuid = null) => saveEntity('transaction', {
-  account_uuid: data.account_uuid || null, to_account_uuid: data.to_account_uuid || null,
   category_uuid: data.category_uuid || null, transaction_date: data.transaction_date,
   direction: data.direction || 'expense', amount_kop: Math.abs(Math.trunc(Number(data.amount_kop) || 0)),
   description: String(data.description || '').trim(), merchant: data.merchant || null, note: data.note || null,
-  external_id: data.external_id || null, transfer_pair_uuid: data.transfer_pair_uuid || null,
+  external_id: data.external_id || null,
   review_required: !!data.review_required, source: data.source || 'manual',
 }, uuid);
 export const getTransaction = (uuid) => getEntity('transaction', uuid);
@@ -76,29 +56,13 @@ export const deleteTransaction = (uuid) => deleteEntity('transaction', uuid);
 
 export const listTransactions = async ({ from = '1970-01-01', to = '2100-12-31', limit = 500, offset = 0 } = {}) => {
   const rows = await getJournalDb().getAllAsync(
-    `SELECT t.*, a.name AS account_name, c.name AS category_name
-     FROM transactions t LEFT JOIN accounts a ON a.uuid = t.account_uuid
+    `SELECT t.*, c.name AS category_name
+     FROM transactions t
      LEFT JOIN finance_categories c ON c.uuid = t.category_uuid
      WHERE t.transaction_date BETWEEN ? AND ? ORDER BY t.transaction_date DESC, t.created_at DESC LIMIT ? OFFSET ?`,
     [from, to, limit, offset],
   );
-  return rows.map((row) => ({ ...rowToObject('transaction', row), account_name: row.account_name, category_name: row.category_name }));
-};
-
-export const accountBalances = async () => {
-  const accounts = await listAccounts();
-  const rows = await getJournalDb().getAllAsync('SELECT * FROM transactions');
-  return accounts.map((account) => {
-    let balance = Number(account.opening_balance_kop) || 0;
-    rows.forEach((row) => {
-      const amount = Number(row.amount_kop) || 0;
-      if (row.direction === 'income' && row.account_uuid === account.uuid) balance += amount;
-      if (row.direction === 'expense' && row.account_uuid === account.uuid) balance -= amount;
-      if (row.direction === 'transfer' && row.account_uuid === account.uuid) balance -= amount;
-      if (row.direction === 'transfer' && row.to_account_uuid === account.uuid) balance += amount;
-    });
-    return { ...account, balance_kop: balance };
-  });
+  return rows.map((row) => ({ ...rowToObject('transaction', row), category_name: row.category_name }));
 };
 
 export const listBudgets = async (month) => {
@@ -124,11 +88,11 @@ export const deleteBudget = (uuid) => deleteEntity('budget', uuid);
 
 export const reviewQueue = async () => {
   const rows = await getJournalDb().getAllAsync(
-    `SELECT t.*, a.name AS account_name, c.name AS category_name FROM transactions t
-     LEFT JOIN accounts a ON a.uuid = t.account_uuid LEFT JOIN finance_categories c ON c.uuid = t.category_uuid
+    `SELECT t.*, c.name AS category_name FROM transactions t
+     LEFT JOIN finance_categories c ON c.uuid = t.category_uuid
      WHERE t.review_required = 1 ORDER BY t.transaction_date DESC, t.created_at DESC`,
   );
-  return rows.map((row) => ({ ...rowToObject('transaction', row), account_name: row.account_name, category_name: row.category_name }));
+  return rows.map((row) => ({ ...rowToObject('transaction', row), category_name: row.category_name }));
 };
 export const resolveReview = async (uuid, categoryUuid) => {
   const transaction = await getTransaction(uuid);

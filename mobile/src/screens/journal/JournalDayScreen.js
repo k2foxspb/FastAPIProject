@@ -133,7 +133,7 @@ const DayContent = ({ navigation, date }) => {
             color={item.direction === 'expense' ? colors.error : colors.success} />
           <View style={styles.itemBody}>
             <Text style={[styles.itemTitle, { color: colors.text }]} numberOfLines={1}>{item.description}</Text>
-            <Text style={[styles.itemSub, { color: colors.textSecondary }]}>{item.category_name || item.account_name || 'Операция'}</Text>
+            <Text style={[styles.itemSub, { color: colors.textSecondary }]}>{item.category_name || 'Операция'}</Text>
           </View>
           <Text style={{ color: item.direction === 'expense' ? colors.error : colors.success }}>
             {item.direction === 'expense' ? '−' : '+'}{formatKop(item.amount_kop)}

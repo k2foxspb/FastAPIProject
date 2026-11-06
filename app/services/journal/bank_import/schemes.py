@@ -36,8 +36,6 @@ def normalize_row(row: list, mapping: dict, date_format: str | None = None) -> d
             direction = "income"
         elif any(word in kind for word in ("спис", "расход", "debit", "expense", "покуп")):
             direction = "expense"
-        elif any(word in kind for word in ("перевод", "transfer")):
-            direction = "transfer"
     if amount_kop <= 0:
         raise ValueError("Сумма должна быть больше нуля")
     return {

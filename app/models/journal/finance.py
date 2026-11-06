@@ -11,17 +11,6 @@ from app.database import Base
 from app.models.journal.base import BigIntPK, JournalEntityMixin, entity_table_args
 
 
-class JournalAccount(JournalEntityMixin, Base):
-    __tablename__ = "journal_accounts"
-    __table_args__ = entity_table_args("journal_accounts")
-
-    name: Mapped[str] = mapped_column(String(100), nullable=False)
-    kind: Mapped[str] = mapped_column(String(20), default="cash", nullable=False)
-    currency: Mapped[str] = mapped_column(String(3), default="RUB", nullable=False)
-    opening_balance_kop: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
-    archived: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-
-
 class JournalFinanceCategory(JournalEntityMixin, Base):
     __tablename__ = "journal_finance_categories"
     __table_args__ = entity_table_args("journal_finance_categories")
@@ -44,9 +33,6 @@ class JournalImportBatch(JournalEntityMixin, Base):
         "journal_import_batches", Index("ix_journal_import_batches_user_created", "user_id", "created_at")
     )
 
-    account_id: Mapped[int | None] = mapped_column(
-        BigIntPK, ForeignKey("journal_accounts.id", ondelete="SET NULL"), nullable=True
-    )
     profile_id: Mapped[int | None] = mapped_column(
         BigIntPK, ForeignKey("journal_import_profiles.id", ondelete="SET NULL"), nullable=True
     )
@@ -63,18 +49,11 @@ class JournalTransaction(JournalEntityMixin, Base):
     __table_args__ = entity_table_args(
         "journal_transactions",
         CheckConstraint("amount_kop > 0", name="amount_positive"),
-        CheckConstraint("direction IN ('expense', 'income', 'transfer')", name="direction_valid"),
+        CheckConstraint("direction IN ('expense', 'income')", name="direction_valid"),
         Index("ix_journal_transactions_user_date", "user_id", "transaction_date"),
-        Index("ix_journal_transactions_account_date", "account_id", "transaction_date"),
         Index("ix_journal_transactions_import_batch", "import_batch_id"),
     )
 
-    account_id: Mapped[int | None] = mapped_column(
-        BigIntPK, ForeignKey("journal_accounts.id", ondelete="SET NULL"), nullable=True
-    )
-    to_account_id: Mapped[int | None] = mapped_column(
-        BigIntPK, ForeignKey("journal_accounts.id", ondelete="SET NULL"), nullable=True
-    )
     category_id: Mapped[int | None] = mapped_column(
         BigIntPK, ForeignKey("journal_finance_categories.id", ondelete="SET NULL"), nullable=True
     )
@@ -88,7 +67,6 @@ class JournalTransaction(JournalEntityMixin, Base):
     merchant: Mapped[str | None] = mapped_column(String(255), nullable=True)
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
     external_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    transfer_pair_uuid: Mapped[str | None] = mapped_column(String(36), nullable=True)
     review_required: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     source: Mapped[str] = mapped_column(String(20), default="manual", nullable=False)
 

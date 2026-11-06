@@ -6,17 +6,16 @@ import { formatKop } from '../../journal/utils/money';
 
 function Content({ navigation, route }) {
   const colors = useColors();
-  const { preview, accountUuid, mapping } = route.params || {};
+  const { preview, mapping } = route.params || {};
   const [loading, setLoading] = useState(false);
   const commit = async () => {
     setLoading(true);
     try {
       const response = await journalApi.importCommit({
-        preview_token: preview.preview_token, account_uuid: accountUuid, mapping,
+        preview_token: preview.preview_token, mapping,
       });
       const result = response.data;
-      const pairs = result.transfer_suggestions?.length || 0;
-      Alert.alert('Импорт завершён', `Добавлено: ${result.imported_count}; дублей: ${result.duplicate_count}; разобрать: ${result.review_count}${pairs ? `; возможных переводов: ${pairs}` : ''}`);
+      Alert.alert('Импорт завершён', `Добавлено: ${result.imported_count}; дублей: ${result.duplicate_count}; разобрать: ${result.review_count}`);
       navigation.navigate('ImportBatches');
     } catch (error) {
       Alert.alert('Импорт не выполнен', error?.response?.data?.detail || 'Проверьте сопоставление колонок.');

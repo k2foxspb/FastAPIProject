@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import config
 from app.models.journal import (
-    JournalAccount, JournalFinanceCategory, JournalImportBatch, JournalImportProfile,
+    JournalFinanceCategory, JournalImportBatch, JournalImportProfile,
     JournalImportRule, JournalTransaction,
 )
 from app.models.journal.base import utcnow
@@ -25,7 +25,6 @@ from app.services.journal.bank_import.header import find_header, fingerprint, su
 from app.services.journal.bank_import.mapping import normalize_rows, validate_mapping
 from app.services.journal.bank_import.rules import match_rule
 from app.services.journal.bank_import.sniff import file_format, parse_delimited, sniff_delimiter
-from app.services.journal.bank_import.transfers import find_transfer_candidates
 from app.services.journal.sync_service import lock_state, next_rev
 
 PREVIEW_TTL_SECONDS = 30 * 60
@@ -175,24 +174,17 @@ async def commit(db: AsyncSession, user_id: int, request: ImportCommitRequest) -
     payload = await _load_preview(user_id, request.preview_token)
     mapping = validate_mapping(request.mapping, payload["headers"])
     normalized = normalize_rows(payload["rows"], mapping, request.date_format)
-    account = await db.scalar(select(JournalAccount).where(
-        JournalAccount.user_id == user_id, JournalAccount.client_uuid == request.account_uuid,
-        JournalAccount.deleted_at.is_(None),
-    ))
-    if account is None:
-        raise ImportNotFound
 
     duplicates: set[str] = set()
     existing = (await db.execute(select(JournalTransaction).where(
-        JournalTransaction.user_id == user_id, JournalTransaction.account_id == account.id,
-        JournalTransaction.deleted_at.is_(None),
+        JournalTransaction.user_id == user_id, JournalTransaction.deleted_at.is_(None),
     ))).scalars().all()
     for transaction in existing:
         key = transaction_fingerprint({
             "transaction_date": transaction.transaction_date, "direction": transaction.direction,
             "amount_kop": transaction.amount_kop, "description": transaction.description,
             "merchant": transaction.merchant,
-        }, account.client_uuid)
+        })
         duplicates.add(key)
 
     rules = (await db.execute(select(JournalImportRule).where(
@@ -205,7 +197,7 @@ async def commit(db: AsyncSession, user_id: int, request: ImportCommitRequest) -
     valid_rows = []
     duplicate_count = 0
     for item in normalized:
-        key = transaction_fingerprint(item, account.client_uuid)
+        key = transaction_fingerprint(item)
         if key in duplicates:
             duplicate_count += 1
             continue
@@ -241,7 +233,7 @@ async def commit(db: AsyncSession, user_id: int, request: ImportCommitRequest) -
         profile.server_rev = next_rev(state)
 
     batch = JournalImportBatch(
-        user_id=user_id, client_uuid=str(uuid.uuid4()), account_id=account.id, profile_id=None,
+        user_id=user_id, client_uuid=str(uuid.uuid4()), profile_id=None,
         filename=payload["filename"], content_fingerprint=payload["content_fingerprint"],
         status="committed", imported_count=len(valid_rows), duplicate_count=duplicate_count,
         created_at=now, updated_at=now, server_rev=next_rev(state),
@@ -253,7 +245,7 @@ async def commit(db: AsyncSession, user_id: int, request: ImportCommitRequest) -
     imported = []
     for item in valid_rows:
         transaction = JournalTransaction(
-            user_id=user_id, client_uuid=str(uuid.uuid4()), account_id=account.id,
+            user_id=user_id, client_uuid=str(uuid.uuid4()),
             transaction_date=item["transaction_date"], direction=item["direction"],
             amount_kop=item["amount_kop"], description=item["description"], merchant=item["merchant"],
             external_id=item["external_id"], category_id=item["category_id"], import_batch_id=batch.id,
@@ -262,7 +254,6 @@ async def commit(db: AsyncSession, user_id: int, request: ImportCommitRequest) -
         )
         db.add(transaction)
         item["client_uuid"] = transaction.client_uuid
-        item["account_id"] = account.id
         imported.append(item)
     await db.commit()
     await _delete_preview(user_id, request.preview_token)
@@ -277,19 +268,9 @@ async def commit(db: AsyncSession, user_id: int, request: ImportCommitRequest) -
         except Exception:
             logger.exception("Не удалось поставить проверку бюджетов после импорта")
 
-    # Предложения о переводах не меняют операции до явного подтверждения пользователя.
-    other_transactions = (await db.execute(select(JournalTransaction).where(
-        JournalTransaction.user_id == user_id, JournalTransaction.deleted_at.is_(None),
-        JournalTransaction.account_id != account.id,
-        JournalTransaction.direction.in_(["income", "expense"]),
-    ))).scalars().all()
-    candidates = find_transfer_candidates(imported, [{
-        "client_uuid": row.client_uuid, "account_id": row.account_id, "transaction_date": row.transaction_date,
-        "direction": row.direction, "amount_kop": row.amount_kop,
-    } for row in other_transactions])
     return ImportCommitResponse(
         batch_uuid=batch.client_uuid, imported_count=len(imported), duplicate_count=duplicate_count,
-        review_count=sum(item["review_required"] for item in imported), transfer_suggestions=candidates,
+        review_count=sum(item["review_required"] for item in imported),
     )
 
 
