@@ -34,7 +34,6 @@ export const PUSH_TYPE_ROUTES = {
   photo_reaction: 'bell',
   photo_comment: 'bell',
   photo_comment_reaction: 'bell',
-  journal_budget: 'bell',
   journal_summary: 'bell',
   system: 'bell',
 };
@@ -232,7 +231,7 @@ export async function displayBundledMessage(remoteMessage) {
 
     const isSilent = data.silent === 'true' || data.android_channel_id === 'silent';
     const channelId = isSilent ? await ensureSilentNotificationChannel()
-      : await ensureNotificationChannel(data.android_channel_id === 'journal' || type === 'journal_budget' || type === 'journal_summary' ? 'journal' : 'messages');
+      : await ensureNotificationChannel(data.android_channel_id === 'journal' || type === 'journal_summary' ? 'journal' : 'messages');
     console.log(`[Notifee] Using channel: ${channelId} (silent: ${isSilent})`);
     
     const groupId = senderId ? `group_sender_${senderId}` : (newsId ? `group_news_${newsId}` : 'group_general');
@@ -418,10 +417,6 @@ export function navigateByPushData(navigationRef, data) {
 
   // Новая версия приложения: сразу запускаем скачивание и установку обновления
   const rawType = data?.type || data?.msg_type;
-  if (rawType === 'journal_budget' || rawType === 'journal_summary') {
-    navigationRef.navigate('Journal', { screen: 'Budgets' });
-    return;
-  }
   if (rawType === 'app_update') {
     const { startAppUpdate } = require('./appUpdate');
     startAppUpdate(data?.file_path, data?.version);
