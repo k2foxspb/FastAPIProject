@@ -3,6 +3,7 @@
 пользователь подтверждает или правит их перед сохранением, поэтому здесь
 ничего не записывается в БД.
 """
+import re
 from datetime import date
 from decimal import Decimal
 
@@ -165,17 +166,21 @@ async def nutrition_advice(payload: NutritionPlanInput, plan: NutritionPlanResul
         raise ollama.OllamaBadResponse("ИИ вернул некорректный ответ")
 
 
+NUTRITION_ADVICE_FALLBACK = (
+    "Распределяйте питание на 3-4 приёма пищи в течение дня, включайте белок в каждый приём. "
+    "Следите за водой и овощами, ограничивайте сладкое и алкоголь."
+)
+
+
 def _to_number(value) -> float | None:
     if isinstance(value, bool):
         return None
     if isinstance(value, (int, float)):
         return float(value)
     if isinstance(value, str):
-        cleaned = "".join(ch for ch in value.replace(",", ".") if ch.isdigit() or ch == ".")
-        try:
-            return float(cleaned) if cleaned else None
-        except ValueError:
-            return None
+        # Берём первое число: "1800-2000" -> 1800, "30 %" -> 30
+        match = re.search(r"\d+(?:[.,]\d+)?", value)
+        return float(match.group(0).replace(",", ".")) if match else None
     return None
 
 
@@ -203,7 +208,8 @@ def _normalize_nutrition_advice(data: dict, plan: NutritionPlanResult) -> dict:
     advice = _first_value(data, "advice", "recommendations", "tips", "text")
     if isinstance(advice, list):
         advice = "\n".join(str(item).strip() for item in advice if str(item).strip())
-    return {"kcal": max(0, kcal), **percents, "advice": str(advice).strip() if advice else ""}
+    advice = str(advice).strip() if advice else ""
+    return {"kcal": max(0, kcal), **percents, "advice": advice or NUTRITION_ADVICE_FALLBACK}
 
 
 class CategoryAnswerItem(BaseModel):
