@@ -54,6 +54,56 @@ class OllamaBadResponse(OllamaError):
     """Ответ не удалось разобрать (не JSON, пустой, не прошёл проверку схемы)."""
 
 
+_THINK_OPEN = "<think>"
+_THINK_CLOSE = "</think>"
+
+
+def _partial_tag_len(buf: str, tag: str) -> int:
+    """Длина хвоста буфера, который может оказаться началом тега (тег пришёл по частям)."""
+    for size in range(min(len(tag) - 1, len(buf)), 0, -1):
+        if buf.endswith(tag[:size]):
+            return size
+    return 0
+
+
+class ReasoningFilter:
+    """Убирает из потока рассуждения модели в блоках <think>...</think>, даже если теги пришли по частям."""
+
+    def __init__(self):
+        self._buf = ""
+        self._inside = False
+
+    def feed(self, piece: str) -> str:
+        self._buf += piece
+        out = []
+        while True:
+            if self._inside:
+                idx = self._buf.find(_THINK_CLOSE)
+                if idx == -1:
+                    keep = _partial_tag_len(self._buf, _THINK_CLOSE)
+                    self._buf = self._buf[len(self._buf) - keep:]
+                    break
+                self._buf = self._buf[idx + len(_THINK_CLOSE):]
+                self._inside = False
+            else:
+                idx = self._buf.find(_THINK_OPEN)
+                if idx == -1:
+                    keep = _partial_tag_len(self._buf, _THINK_OPEN)
+                    out.append(self._buf[:len(self._buf) - keep])
+                    self._buf = self._buf[len(self._buf) - keep:]
+                    break
+                out.append(self._buf[:idx])
+                self._buf = self._buf[idx + len(_THINK_OPEN):]
+                self._inside = True
+        return "".join(out)
+
+    def flush(self) -> str:
+        tail = "" if self._inside else self._buf
+        self._buf = ""
+        self._inside = False
+        return tail
+
+
 async def chat_stream(
     messages: list[dict],
     *,
@@ -81,6 +131,7 @@ async def chat_stream(
             if response.is_error:
                 await response.aread()
             response.raise_for_status()
+            reasoning = ReasoningFilter()
             async for line in response.aiter_lines():
                 if not line.strip():
                     continue
@@ -90,9 +141,14 @@ async def chat_stream(
                 message = chunk.get("message")
                 piece = message.get("content") if isinstance(message, dict) else None
                 if piece:
-                    yield str(piece)
+                    visible = reasoning.feed(str(piece))
+                    if visible:
+                        yield visible
                 if chunk.get("done"):
                     break
+            tail = reasoning.flush()
+            if tail:
+                yield tail
     except httpx.TimeoutException as e:
         logger.error(f"Ollama не ответила вовремя ({OLLAMA_URL}): {type(e).__name__}")
         raise OllamaTimeout("Сервис ИИ не ответил вовремя. Попробуйте позже.")
