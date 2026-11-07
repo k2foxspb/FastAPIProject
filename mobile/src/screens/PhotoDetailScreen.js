@@ -26,12 +26,13 @@ import CachedMedia from '../components/CachedMedia';
 
 const { width, height } = Dimensions.get('window');
 
-const VideoItem = ({ filePath, style, shouldPlay }) => {
+const VideoItem = ({ filePath, style, shouldPlay, onTap }) => {
   return (
     <CachedMedia
       item={{ file_path: filePath, message_type: 'video' }}
       style={style}
       shouldPlay={shouldPlay}
+      onVideoTap={onTap}
       isLooping={true}
       isMuted={false}
       resizeMode="contain"
@@ -54,6 +55,7 @@ export default function PhotoDetailScreen({ route, navigation }) {
   const [newComment, setNewComment] = useState('');
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
   const [showComments, setShowComments] = useState(false);
+  const [isMediaFullscreen, setIsMediaFullscreen] = useState(false);
   const flatListRef = useRef(null);
 
   const fetchAlbumPhotos = useCallback(async () => {
@@ -238,6 +240,19 @@ export default function PhotoDetailScreen({ route, navigation }) {
     setShowDescription(!showDescription);
   };
 
+  // Тап по видео: 1-й — полноэкранный режим (скрыть интерфейс), 2-й — описание и комментарии как у фото, 3-й — скрыть описание
+  const handleVideoTap = () => {
+    if (selectionMode) return;
+    if (isMediaFullscreen) {
+      setIsMediaFullscreen(false);
+      setShowDescription(true);
+    } else if (showDescription) {
+      setShowDescription(false);
+    } else {
+      setIsMediaFullscreen(true);
+    }
+  };
+
   const toggleSelection = (id) => {
     setSelectedIds(prev => 
       prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
@@ -325,6 +340,7 @@ export default function PhotoDetailScreen({ route, navigation }) {
                     isSelected && { opacity: 0.7 }
                   ]}
                   shouldPlay={currentIndex === index && !selectionMode}
+                  onTap={handleVideoTap}
                 />
                 {selectionMode && (
                   <TouchableOpacity 
@@ -366,6 +382,8 @@ export default function PhotoDetailScreen({ route, navigation }) {
     );
   };
 
+  const hideChrome = isMediaFullscreen && isVideo(photos[currentIndex]?.image_url);
+
   if (loading) {
     return (
       <View style={[styles.container, styles.center]}>
@@ -376,7 +394,7 @@ export default function PhotoDetailScreen({ route, navigation }) {
 
   return (
     <View style={[styles.container, { flex: 1, backgroundColor: '#000' }]}>
-      <StatusBar hidden={!showDescription} />
+      <StatusBar hidden={!showDescription || hideChrome} />
       
       <FlatList
         ref={flatListRef}
@@ -397,6 +415,7 @@ export default function PhotoDetailScreen({ route, navigation }) {
           const newIndex = Math.round(e.nativeEvent.contentOffset.x / width);
           if (newIndex !== currentIndex) {
             setCurrentIndex(newIndex);
+            setIsMediaFullscreen(false);
             // Fetch detailed info for the new photo and load its comments
             const photo = photos[newIndex];
             if (photo) {
@@ -427,7 +446,8 @@ export default function PhotoDetailScreen({ route, navigation }) {
         <View style={[
           styles.header, 
           (showDescription || selectionMode) ? { backgroundColor: 'rgba(0,0,0,0.8)' } : { backgroundColor: 'transparent' },
-          { zIndex: 50, paddingTop: insets.top + 10 }
+          { zIndex: 50, paddingTop: insets.top + 10 },
+          hideChrome && { display: 'none' }
         ]}>
           <TouchableOpacity 
             style={styles.backButton} 
@@ -463,7 +483,7 @@ export default function PhotoDetailScreen({ route, navigation }) {
         <View style={{ flex: 1 }} pointerEvents="box-none" />
 
         {/* Описание и реакции (показываются по тапу) */}
-        {showDescription && photos[currentIndex] && (
+        {showDescription && !hideChrome && photos[currentIndex] && (
           <View 
             style={[styles.descriptionContainer, { backgroundColor: 'rgba(0,0,0,0.85)' }]}
           >
@@ -575,7 +595,7 @@ export default function PhotoDetailScreen({ route, navigation }) {
           </View>
         )}
 
-        {showDescription && showComments && photos[currentIndex] && (
+        {showDescription && showComments && !hideChrome && photos[currentIndex] && (
           <View style={[styles.commentInputContainer, { backgroundColor: 'rgba(0,0,0,0.9)', paddingBottom: Math.max(insets.bottom, 10) }]}>
             <TextInput
               style={styles.commentInput}

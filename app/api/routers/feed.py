@@ -20,7 +20,7 @@ from app.models.users import (
     ProfilePostComment as ProfilePostCommentModel,
     Friendship as FriendshipModel,
 )
-from app.schemas.users import ProfilePostCreate
+from app.schemas.users import ProfilePostCreate, get_default_avatar_url
 
 router = APIRouter(prefix="/feed", tags=["feed"])
 
@@ -32,7 +32,7 @@ def _author_info(user: UserModel | None) -> dict:
         "id": user.id,
         "first_name": user.first_name,
         "last_name": user.last_name,
-        "avatar_url": user.avatar_url,
+        "avatar_url": user.avatar_url or get_default_avatar_url(user.gender),
     }
 
 

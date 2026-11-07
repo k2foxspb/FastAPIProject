@@ -19,6 +19,7 @@ const formatBytes = (bytes) => {
 const CachedMedia = ({
   item,
   onFullScreen,
+  onVideoTap,
   style,
   resizeMode = 'cover',
   useNativeControls = false,
@@ -387,6 +388,7 @@ const CachedMedia = ({
               resizeMode={resizeMode}
               onPlayerReady={onPlayerReady}
               onError={handlePlaybackError}
+              onTap={onVideoTap}
             />
           ) : (
             // Пока файл не докачан полностью — не создаём плеер с потоковым URL вообще, чтобы

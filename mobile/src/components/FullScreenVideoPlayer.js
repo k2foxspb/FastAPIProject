@@ -25,6 +25,7 @@ export default function FullScreenVideoPlayer({
   controlsEnabled = true,
   onPlayerReady,
   onError,
+  onTap,
 }) {
   const [player, setPlayer] = useState(null);
   const [showControls, setShowControls] = useState(true);
@@ -117,6 +118,11 @@ export default function FullScreenVideoPlayer({
   }, [player]);
 
   const toggleControls = () => setShowControls((prev) => !prev);
+
+  const handleTap = () => {
+    toggleControls();
+    if (typeof onTap === 'function') onTap();
+  };
 
   const handlePlayPause = () => {
     if (!player) return;
@@ -265,7 +271,7 @@ export default function FullScreenVideoPlayer({
 
       {controlsEnabled && (
         <>
-          <Pressable style={StyleSheet.absoluteFill} onPress={toggleControls}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={handleTap}>
             {showControls && (
               <View style={styles.centerButtonContainer}>
                 <TouchableOpacity style={styles.centerPlayButton} onPress={handlePlayPause}>

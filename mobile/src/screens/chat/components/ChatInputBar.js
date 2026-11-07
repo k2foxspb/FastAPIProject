@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, Animated, Vibration, Platform, StyleSheet } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, Animated, Vibration, Platform, StyleSheet, Alert } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { styles } from '../styles';
 import { formatRecordingTime, getReplyPreviewText } from '../utils';
@@ -52,6 +52,14 @@ export default function ChatInputBar({
 
   const insertEmoji = (emoji) => {
     onChangeText((inputText || '') + emoji);
+  };
+
+  const handleAttach = () => {
+    Alert.alert('Добавить вложение', null, [
+      { text: 'Файл', onPress: onPickDocument },
+      { text: 'Фото или видео', onPress: onPickMedia },
+      { text: 'Отмена', style: 'cancel' },
+    ]);
   };
 
   return (
@@ -135,18 +143,11 @@ export default function ChatInputBar({
           {!isRecording && (
             <View style={{ flexDirection: 'row' }}>
               <TouchableOpacity 
-                onPress={onPickDocument} 
+                onPress={handleAttach} 
                 style={styles.attachButton}
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
-                <MaterialIcons name="insert-drive-file" size={24} color={colors.primary} />
-              </TouchableOpacity>
-              <TouchableOpacity 
-                onPress={onPickMedia} 
-                style={styles.attachButton}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              >
-                <MaterialIcons name="image" size={24} color={colors.primary} />
+                <MaterialIcons name="attach-file" size={24} color={colors.primary} />
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => setShowEmojiPicker((value) => !value)}
