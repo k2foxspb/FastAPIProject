@@ -1486,7 +1486,8 @@ async def get_chat_history(
     seen_client_ids = {} # client_id -> index in unique_messages
     
     for item in messages:
-        cid = item.get("client_id")
+        # client_id схлопываем только для своих сообщений: у чужих он не уникален (например, при тестовой отправке)
+        cid = item.get("client_id") if item.get("sender_id") == user_id else None
         if cid:
             if cid in seen_client_ids:
                 idx = seen_client_ids[cid]

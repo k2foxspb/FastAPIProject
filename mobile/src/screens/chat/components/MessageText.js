@@ -1,13 +1,17 @@
 import React from 'react';
 import { Text } from 'react-native';
 import { styles } from '../styles';
+import { isEmojiOnly } from '../utils';
 
-// Текст сообщения с подсветкой совпадений при активном поиске
+// Текст сообщения с подсветкой совпадений при активном поиске; сообщение из одних эмодзи выводится крупнее
 export default function MessageText({ message, isReceived, searchQuery, isSearching, colors }) {
+  const emojiOnly = isEmojiOnly(message);
+
   if (!searchQuery || !isSearching || !message) {
     return (
       <Text style={[
         styles.messageText,
+        emojiOnly && styles.emojiOnlyText,
         isReceived ? { color: colors.text } : { color: '#fff' }
       ]}>
         {message}
@@ -19,6 +23,7 @@ export default function MessageText({ message, isReceived, searchQuery, isSearch
   return (
     <Text style={[
       styles.messageText,
+      emojiOnly && styles.emojiOnlyText,
       isReceived ? { color: colors.text } : { color: '#fff' }
     ]}>
       {parts.map((part, i) => (

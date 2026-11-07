@@ -187,6 +187,7 @@ export const styles = StyleSheet.create({
     elevation: 1 
   },
   messageText: { fontSize: 13, lineHeight: 18 },
+  emojiOnlyText: { fontSize: 36, lineHeight: 44 },
   messageFooter: {
     flexDirection: 'row',
     alignItems: 'center',

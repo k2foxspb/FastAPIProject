@@ -116,3 +116,8 @@ export const formatBytesRu = (bytes) => (
 export const isVideoMedia = (mediaItem) => (
   mediaItem?.type === 'video' || mediaItem?.message_type === 'video'
 );
+
+const EMOJI_ONLY_REGEX = /^(?:[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2300}-\u{23FF}\u{2B00}-\u{2BFF}\u{2190}-\u{21FF}\u{00A9}\u{00AE}\u{203C}\u{2049}\u{2122}\u{2139}\u{3030}\u{303D}\u{3297}\u{3299}\u{FE0F}\u{200D}\u{20E3}\s])+$/u;
+
+// Проверка, что текст состоит только из эмодзи (и пробелов между ними)
+export const isEmojiOnly = (text) => !!text && EMOJI_ONLY_REGEX.test(text.trim());

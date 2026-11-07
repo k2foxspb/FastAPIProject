@@ -114,7 +114,8 @@ export default function useChatHistory({
             }
 
             // Дедупликация по client_id
-            if (data.client_id) {
+            // client_id дедуплицируем только для своих сообщений: у чужих он не уникален (например, при тестовой отправке)
+            if (data.client_id && msgSenderId === myIdNum) {
               const existingIndex = prev.findIndex(m => m.client_id === data.client_id);
               if (existingIndex !== -1) {
                 const existing = prev[existingIndex];
@@ -296,6 +297,8 @@ export default function useChatHistory({
             // Финальная дедупликация (на случай гонок или дубликатов от сервера)
             // Приоритет отдаем сообщениям из БД (payload.data), при этом среди них
             // предпочитаем завершенные сообщения плейсхолдерам с тем же client_id
+            // client_id учитываем только для своих сообщений: у чужих он не уникален (например, при тестовой отправке)
+            const ownClientId = (m) => (m.client_id && Number(m.sender_id) === Number(currentUserId)) ? String(m.client_id) : null;
             const uniqueMessages = [];
             const seenIds = new Set();
             const seenClientIds = new Map(); // cid -> { index in filteredServerData, is_uploading }
@@ -306,7 +309,7 @@ export default function useChatHistory({
             
             payload.data.forEach(m => {
               const mid = (m.id && !String(m.id).startsWith('c_')) ? String(m.id) : null;
-              const cid = m.client_id ? String(m.client_id) : null;
+              const cid = ownClientId(m);
               
               if (mid && seenIds.has(mid)) return;
               
@@ -334,13 +337,13 @@ export default function useChatHistory({
             const finalSeenClientIds = new Set();
             filteredServerData.forEach(m => {
               if (m.id && !String(m.id).startsWith('c_')) finalSeenIds.add(String(m.id));
-              if (m.client_id) finalSeenClientIds.add(String(m.client_id));
+              if (ownClientId(m)) finalSeenClientIds.add(ownClientId(m));
             });
             
             // 3. Добавляем в результат в правильном порядке: сначала пендинги, потом нотификации, потом историю
             // При этом фильтруем пендинги и нотификации, если они уже есть в истории (по id или client_id)
             const filterUnseen = (m) => {
-              const cid = m.client_id ? String(m.client_id) : null;
+              const cid = ownClientId(m);
               const mid = (m.id && !String(m.id).startsWith('c_')) ? String(m.id) : null;
               if (mid && finalSeenIds.has(mid)) return false;
               if (cid && finalSeenClientIds.has(cid)) return false;
