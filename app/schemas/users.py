@@ -663,7 +663,9 @@ class ProfilePostCommentResponse(BaseModel):
         if user is not None:
             item.first_name = getattr(user, "first_name", None)
             item.last_name = getattr(user, "last_name", None)
-            item.avatar_url = getattr(user, "avatar_url", None)
+            item.avatar_url = getattr(user, "avatar_url", None) or get_default_avatar_url(getattr(user, "gender", None))
+            if item.user is not None:
+                item.user.avatar_url = item.avatar_url
         return item
 
 
@@ -711,7 +713,9 @@ class ProfilePostResponse(BaseModel):
         if user is not None:
             item.first_name = getattr(user, "first_name", None)
             item.last_name = getattr(user, "last_name", None)
-            item.avatar_url = getattr(user, "avatar_url", None)
+            item.avatar_url = getattr(user, "avatar_url", None) or get_default_avatar_url(getattr(user, "gender", None))
+            if item.user is not None:
+                item.user.avatar_url = item.avatar_url
         return item
 
 

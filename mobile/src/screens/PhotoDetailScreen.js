@@ -26,13 +26,14 @@ import CachedMedia from '../components/CachedMedia';
 
 const { width, height } = Dimensions.get('window');
 
-const VideoItem = ({ filePath, style, shouldPlay, onTap }) => {
+const VideoItem = ({ filePath, style, shouldPlay, onTap, controlsVisible }) => {
   return (
     <CachedMedia
       item={{ file_path: filePath, message_type: 'video' }}
       style={style}
       shouldPlay={shouldPlay}
       onVideoTap={onTap}
+      videoControlsVisible={controlsVisible}
       isLooping={true}
       isMuted={false}
       resizeMode="contain"
@@ -240,17 +241,11 @@ export default function PhotoDetailScreen({ route, navigation }) {
     setShowDescription(!showDescription);
   };
 
-  // Тап по видео: 1-й — полноэкранный режим (скрыть интерфейс), 2-й — описание и комментарии как у фото, 3-й — скрыть описание
+  // Тап по видео переключает два состояния: всё скрыто (шторки и кнопка play) и всё видно (шторки с описанием и комментариями, кнопка play)
   const handleVideoTap = () => {
     if (selectionMode) return;
-    if (isMediaFullscreen) {
-      setIsMediaFullscreen(false);
-      setShowDescription(true);
-    } else if (showDescription) {
-      setShowDescription(false);
-    } else {
-      setIsMediaFullscreen(true);
-    }
+    if (isMediaFullscreen) setShowDescription(true);
+    setIsMediaFullscreen(!isMediaFullscreen);
   };
 
   const toggleSelection = (id) => {
@@ -341,6 +336,7 @@ export default function PhotoDetailScreen({ route, navigation }) {
                   ]}
                   shouldPlay={currentIndex === index && !selectionMode}
                   onTap={handleVideoTap}
+                  controlsVisible={!hideChrome}
                 />
                 {selectionMode && (
                   <TouchableOpacity 
@@ -382,7 +378,16 @@ export default function PhotoDetailScreen({ route, navigation }) {
     );
   };
 
-  const hideChrome = isMediaFullscreen && isVideo(photos[currentIndex]?.image_url);
+  const currentIsVideo = isVideo(photos[currentIndex]?.image_url);
+  const hideChrome = isMediaFullscreen && currentIsVideo;
+
+  // Видео открывается сразу в состоянии «всё видно», чтобы первый тап скрывал интерфейс
+  useEffect(() => {
+    if (currentIsVideo) {
+      setIsMediaFullscreen(false);
+      setShowDescription(true);
+    }
+  }, [currentIndex, currentIsVideo]);
 
   if (loading) {
     return (

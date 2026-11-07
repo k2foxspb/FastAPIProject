@@ -89,6 +89,7 @@ export default function FullScreenMediaViewer({
                 style={styles.fullScreenVideo}
                 resizeMode="contain"
                 useNativeControls={false}
+                controlsEnabled={false}
                 isLooping={false}
                 shouldPlay={currentMediaIndex === index}
                 isMuted={false}

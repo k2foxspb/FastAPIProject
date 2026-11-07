@@ -26,9 +26,11 @@ export default function FullScreenVideoPlayer({
   onPlayerReady,
   onError,
   onTap,
+  controlsVisible,
 }) {
   const [player, setPlayer] = useState(null);
-  const [showControls, setShowControls] = useState(true);
+  const [localShowControls, setLocalShowControls] = useState(true);
+  const showControls = controlsVisible ?? localShowControls;
   const [position, setPosition] = useState(0);
   const [duration, setDuration] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -117,10 +119,10 @@ export default function FullScreenVideoPlayer({
     return () => cleanupSubscriptions();
   }, [player]);
 
-  const toggleControls = () => setShowControls((prev) => !prev);
+  const toggleControls = () => setLocalShowControls((prev) => !prev);
 
   const handleTap = () => {
-    toggleControls();
+    if (controlsVisible === undefined) toggleControls();
     if (typeof onTap === 'function') onTap();
   };
 

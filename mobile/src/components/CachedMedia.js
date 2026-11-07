@@ -20,6 +20,8 @@ const CachedMedia = ({
   item,
   onFullScreen,
   onVideoTap,
+  videoControlsVisible,
+  controlsEnabled,
   style,
   resizeMode = 'cover',
   useNativeControls = false,
@@ -329,11 +331,6 @@ const CachedMedia = ({
         ) : (
           <View style={[StyleSheet.absoluteFill, styles.thumbnailPlaceholder]} />
         )}
-        <View style={styles.playOverlay}>
-          <View style={styles.playButtonCircle}>
-            <MaterialIcons name="play-arrow" size={32} color="#fff" />
-          </View>
-        </View>
         <View style={styles.statusBadge} pointerEvents="none">
           {cached && !downloading ? (
             <MaterialIcons name="download-done" size={18} color="#4CAF50" />
@@ -384,11 +381,12 @@ const CachedMedia = ({
               isLooping={typeof isLooping === 'boolean' ? isLooping : !useNativeControls}
               shouldPlay={shouldPlay}
               style={StyleSheet.absoluteFill}
-              controlsEnabled={!useNativeControls}
+              controlsEnabled={controlsEnabled ?? !useNativeControls}
               resizeMode={resizeMode}
               onPlayerReady={onPlayerReady}
               onError={handlePlaybackError}
               onTap={onVideoTap}
+              controlsVisible={videoControlsVisible}
             />
           ) : (
             // Пока файл не докачан полностью — не создаём плеер с потоковым URL вообще, чтобы
