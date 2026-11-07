@@ -108,19 +108,6 @@ const SettingsContent = () => {
         </Section>
       )}
 
-      <Section title="Питание">
-        <TouchableOpacity style={styles.row} onPress={() => navigation.navigate('NutritionGoals')}>
-          <Icon name="flag-outline" size={20} color={colors.primary} />
-          <Text style={[styles.rowText, { color: colors.text }]}>Цели по КБЖУ и воде</Text>
-          <Icon name="chevron-forward" size={18} color={colors.textSecondary} />
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.row} onPress={() => navigation.navigate('MealTypes')}>
-          <Icon name="restaurant-outline" size={20} color={colors.primary} />
-          <Text style={[styles.rowText, { color: colors.text }]}>Приёмы пищи и напоминания</Text>
-          <Icon name="chevron-forward" size={18} color={colors.textSecondary} />
-        </TouchableOpacity>
-      </Section>
-
       <Section title="Аналитика">
         <TouchableOpacity style={styles.row} onPress={() => navigation.navigate('AiAnalysis')}>
           <Icon name="sparkles-outline" size={20} color={colors.primary} />

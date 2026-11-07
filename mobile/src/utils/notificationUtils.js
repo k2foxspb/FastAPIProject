@@ -451,6 +451,10 @@ export function navigateByPushData(navigationRef, data) {
   navigationRef.navigate('Feed');
 }
 
+// Ответ из шторки может прийти сразу в несколько обработчиков (фон, передний план,
+// getInitialNotification при холодном старте) с одним и тем же notification.id: отправляем один раз
+const handledReplyNotificationIds = new Set();
+
 export async function handleNotificationResponse(event) {
   try {
     const { navigationRef } = require('../navigation/NavigationService');
@@ -478,7 +482,26 @@ export async function handleNotificationResponse(event) {
     // Если это нажатие на кнопку "Ответить"
     if (actionId === 'reply') {
       console.log(`[Notifee] Processing reply action for sender ${senderId}. Input length: ${input?.length}`);
-      
+
+      if (notification?.id) {
+        // В памяти - для одного JS-контекста; в storage - для фонового (headless) и холодного запуска
+        if (handledReplyNotificationIds.has(notification.id)) {
+          console.log(`[Notifee] Reply for notification ${notification.id} already handled, skipping duplicate`);
+          return;
+        }
+        const replyKey = `handled_reply_${notification.id}`;
+        if (await storage.getItem(replyKey)) {
+          console.log(`[Notifee] Reply for notification ${notification.id} already handled (storage), skipping duplicate`);
+          return;
+        }
+        handledReplyNotificationIds.add(notification.id);
+        await storage.saveItem(replyKey, 'true');
+        setTimeout(async () => {
+          handledReplyNotificationIds.delete(notification.id);
+          try { await storage.removeItem(replyKey); } catch (_) {}
+        }, 60000);
+      }
+
       if (senderId && input) {
         const token = await storage.getAccessToken();
         if (!token) {

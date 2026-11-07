@@ -4,8 +4,8 @@ import { Chip, Field, Input, JournalGate, PrimaryButton, Section, useColors } fr
 import { listTrackers, getTracker, saveTracker } from '../../journal/db/repos/trackers';
 
 const DIRECTIONS = [
-  { key: 'down', label: 'Не выше' },
-  { key: 'up', label: 'Не ниже' },
+  { key: 'not_exceed', label: 'Не выше' },
+  { key: 'reach', label: 'Не ниже' },
 ];
 
 const Content = ({ navigation, route }) => {
@@ -14,7 +14,7 @@ const Content = ({ navigation, route }) => {
   const [trackers, setTrackers] = useState([]);
   const [trackerUuid, setTrackerUuid] = useState(initialUuid);
   const [goalValue, setGoalValue] = useState('');
-  const [direction, setDirection] = useState('down');
+  const [direction, setDirection] = useState('not_exceed');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -35,7 +35,7 @@ const Content = ({ navigation, route }) => {
     setTrackerUuid(uuid);
     const t = await getTracker(uuid);
     setGoalValue(t?.goal_value !== null && t?.goal_value !== undefined ? String(t.goal_value) : '');
-    setDirection(t?.goal_direction || 'down');
+    setDirection(t?.goal_direction || 'not_exceed');
   };
 
   const save = async () => {

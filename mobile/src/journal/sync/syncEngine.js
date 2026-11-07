@@ -5,7 +5,7 @@ import { AppState } from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
 import { journalApi } from '../../api/journal';
 import { storage } from '../../utils/storage';
-import { ENTITIES } from './entities';
+import { ENTITIES, normalizeSyncData } from './entities';
 import { getJournalDb, notifyJournalChange, serializeWrite, subscribeJournalChanges } from '../db/database';
 import { applyRemoteChange, hasPendingOutbox } from '../db/repo';
 import { MAX_ATTEMPTS, getCursor, getMeta, pendingCount, setCursor, setCursorInTx, setMeta, takeBatch } from './outbox';
@@ -70,7 +70,7 @@ const buildChanges = (rows) => {
       client_uuid: row.uuid,
       op: row.op,
       updated_at: row.updated_at,
-      data: row.payload ? JSON.parse(row.payload) : null,
+      data: row.payload ? normalizeSyncData(row.entity, JSON.parse(row.payload)) : null,
     };
     const len = JSON.stringify(change).length;
     if (changes.length && size + len > MAX_PUSH_BYTES) break;

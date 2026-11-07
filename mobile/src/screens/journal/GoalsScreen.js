@@ -13,7 +13,7 @@ const NUTRITION_GOALS = [
   { key: 'water_ml_goal', label: 'Вода', unit: 'мл' },
 ];
 
-const DIRECTION_LABELS = { up: 'Не ниже', down: 'Не выше' };
+const DIRECTION_LABELS = { reach: 'Не ниже', not_exceed: 'Не выше' };
 
 const Content = ({ navigation }) => {
   const colors = useColors();

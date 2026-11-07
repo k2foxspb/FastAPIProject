@@ -1,0 +1,6 @@
+# удалить мусор
+docker builder prune -af
+docker image prune -a -f
+sudo journalctl --vacuum-size=200M
+sudo apt autoremove --purge -y
+sudo apt clean

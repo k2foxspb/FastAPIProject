@@ -125,7 +125,7 @@ const Content = ({ navigation }) => {
         )}
         ListHeaderComponent={(
           <Text style={[styles.hint, { color: colors.textSecondary }]}>
-            Включите напоминание - оно придёт точно в указанное время, даже без интернета. Если за приём пищи уже есть запись, напоминание не придёт. Долгое нажатие - удалить.
+            Включите напоминание - оно придёт через 30 минут после указанного времени, даже без интернета. Если за приём пищи уже есть запись, напоминание не придёт. Долгое нажатие - удалить.
           </Text>
         )}
         ListEmptyComponent={meals ? <EmptyState icon="restaurant-outline" title="Нет приёмов пищи" actionLabel="Добавить" onAction={() => setEditing({ meal: null })} /> : null}

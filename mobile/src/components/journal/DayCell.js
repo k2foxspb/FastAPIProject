@@ -10,7 +10,7 @@ const DayCell = ({ date, state, marking, onPress, onLongPress, colors }) => {
   const isToday = state === 'today';
   const disabled = state === 'disabled';
   const selected = marking?.selected;
-  const hasData = !disabled && !!s && (s.events_total > 0 || s.kcal > 0 || s.income_kop > 0 || s.expense_kop > 0 || s.has_diary || s.tracker_count > 0);
+  const hasData = !disabled && !!s && (s.events_total > 0 || s.kcal > 0 || s.income_kop > 0 || s.expense_kop > 0 || s.has_diary || s.tracker_count > 0 || s.goal_missed > 0);
   const net = (s?.income_kop || 0) - (s?.expense_kop || 0);
   return (
     <TouchableOpacity
@@ -43,6 +43,7 @@ const DayCell = ({ date, state, marking, onPress, onLongPress, colors }) => {
           <View style={styles.dots}>
             {s.has_diary && <Icon name="book" size={9} color={colors.primary} />}
             {s.tracker_count > 0 && <View style={[styles.dot, { backgroundColor: colors.success }]} />}
+            {s.goal_missed > 0 && <View style={[styles.dot, { backgroundColor: colors.error }]} />}
           </View>
         </View>
       )}
@@ -54,7 +55,8 @@ const sameSummary = (a, b) => {
   if (a === b) return true;
   if (!a || !b) return false;
   return a.events_total === b.events_total && a.events_done === b.events_done && a.kcal === b.kcal
-    && a.income_kop === b.income_kop && a.expense_kop === b.expense_kop && a.has_diary === b.has_diary && a.tracker_count === b.tracker_count;
+    && a.income_kop === b.income_kop && a.expense_kop === b.expense_kop && a.has_diary === b.has_diary && a.tracker_count === b.tracker_count
+    && a.goal_missed === b.goal_missed;
 };
 
 export default memo(DayCell, (prev, next) => (

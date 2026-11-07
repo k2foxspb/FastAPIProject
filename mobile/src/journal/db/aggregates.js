@@ -14,7 +14,7 @@ export const DAY_TOTAL_PROVIDERS = [
 ];
 
 const emptyDay = (date) => ({
-  date, kcal: 0, income_kop: 0, expense_kop: 0, has_diary: false, tracker_count: 0, events_total: 0, events_done: 0,
+  date, kcal: 0, income_kop: 0, expense_kop: 0, has_diary: false, tracker_count: 0, goal_missed: 0, events_total: 0, events_done: 0,
 });
 
 export const summarizeRange = async (start, end) => {
@@ -30,17 +30,39 @@ export const summarizeRange = async (start, end) => {
     if (days[d]) days[d].has_diary = true;
   });
 
-  // Сон не выводится зелёной отметкой в календаре, поэтому не учитывается в tracker_count
+  // Сон не выводится зелёной отметкой в календаре, поэтому не учитывается в tracker_count.
+  // Трекер сна ищется по шаблону и по имени, т.к. созданный вручную трекер может не иметь template_key.
+  // Шаги отмечаются только в дни, когда значение достигло цели (goal_value задаётся в экране трекера).
   const values = await db.getAllAsync(
     `SELECT v.value_date AS d, COUNT(*) AS n FROM tracker_values v
      LEFT JOIN trackers t ON t.uuid = v.tracker_uuid
      WHERE v.value_date BETWEEN ? AND ?
-       AND t.template_key IS NOT 'sleep'
+       AND (t.template_key IS NULL OR t.template_key <> 'sleep')
+       AND (t.name IS NULL OR t.name NOT IN ('Сон', 'сон'))
+       AND (t.template_key IS NULL OR t.template_key <> 'steps'
+         OR (t.goal_value IS NOT NULL AND v.num_value >= t.goal_value))
      GROUP BY v.value_date`,
     [start, end],
   );
   values.forEach(({ d, n }) => {
     if (days[d]) days[d].tracker_count = n;
+  });
+
+  // Красная точка: замеры трекеров с целью, которые цель не достигли (та же логика, что goalStatus)
+  const missed = await db.getAllAsync(
+    `SELECT v.value_date AS d, COUNT(*) AS n FROM tracker_values v
+     JOIN trackers t ON t.uuid = v.tracker_uuid
+     WHERE v.value_date BETWEEN ? AND ?
+       AND t.goal_value IS NOT NULL AND t.value_type <> 'text' AND v.num_value IS NOT NULL
+       AND (t.template_key IS NULL OR t.template_key <> 'sleep')
+       AND (t.name IS NULL OR t.name NOT IN ('Сон', 'сон'))
+       AND (CASE WHEN t.goal_direction = 'not_exceed'
+         THEN v.num_value > t.goal_value ELSE v.num_value < t.goal_value END)
+     GROUP BY v.value_date`,
+    [start, end],
+  );
+  missed.forEach(({ d, n }) => {
+    if (days[d]) days[d].goal_missed = n;
   });
 
   (await eventsInRange(start, end)).forEach((inst) => {

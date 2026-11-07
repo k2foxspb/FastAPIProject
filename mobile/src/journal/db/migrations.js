@@ -163,6 +163,11 @@ export const MIGRATIONS = [
   DELETE FROM outbox WHERE entity = 'budget';
   DROP TABLE IF EXISTS budgets;
   `,
+  // 9 - направления целей трекеров: сервер принимает только reach и not_exceed (старые up/down приводятся)
+  `
+  UPDATE trackers SET goal_direction = CASE goal_direction WHEN 'up' THEN 'reach' ELSE 'not_exceed' END
+  WHERE goal_direction IN ('up', 'down');
+  `,
 ];
 
 export const runMigrations = async (db) => {

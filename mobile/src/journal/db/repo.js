@@ -61,7 +61,10 @@ export const saveEntity = (entity, data, uuid = null) => serializeWrite(async ()
   const updatedAt = nowIso();
   await db.withTransactionAsync(async () => {
     const existing = await db.getFirstAsync(`SELECT * FROM ${tableOf(entity)} WHERE uuid = ?`, [id]);
-    await writeRow(db, entity, id, data, { updated_at: updatedAt, created_at: existing ? null : updatedAt });
+    // Частичное обновление дополняется текущими полями: SQLite проверяет NOT NULL до разрешения
+    // конфликта по uuid, поэтому без обязательных полей (например, tracker.name) запись падает
+    const merged = existing ? { ...rowToPayload(entity, existing), ...data } : data;
+    await writeRow(db, entity, id, merged, { updated_at: updatedAt, created_at: existing ? null : updatedAt });
     const row = await db.getFirstAsync(`SELECT * FROM ${tableOf(entity)} WHERE uuid = ?`, [id]);
     if (ENTITIES[entity].pushUpsert !== false) {
       await putOutbox(db, entity, id, 'upsert', rowToPayload(entity, row), updatedAt);

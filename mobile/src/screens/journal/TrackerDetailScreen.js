@@ -3,9 +3,9 @@ import { Alert, FlatList, Modal, Pressable, ScrollView, StyleSheet, Text, View, 
 import { BarChart, LineChart } from 'react-native-gifted-charts';
 import { Ionicons as Icon } from '@expo/vector-icons';
 import { useJournal, useJournalQuery } from '../../context/JournalContext';
-import { Chip, EmptyState, HeaderButton, JournalGate, Section, useColors } from '../../components/journal/common';
+import { Chip, EmptyState, Field, HeaderButton, Input, JournalGate, PrimaryButton, Section, useColors } from '../../components/journal/common';
 import {
-  deleteTracker, formatTrackerValue, getTracker, listTrackerDailyValues, listTrackerDayStats, listTrackerValues, listTrackerValuesInRange,
+  deleteTracker, formatTrackerValue, getTracker, listTrackerDailyValues, listTrackerDayStats, listTrackerValues, listTrackerValuesInRange, saveTracker,
 } from '../../journal/db/repos/trackers';
 import { addDays, formatDateRu, formatDateShort, formatTime } from '../../journal/utils/dates';
 
@@ -182,6 +182,37 @@ const TrackerChart = ({ kind, points, colors, color, viewWidth, height, goal, yO
   );
 };
 
+// Цель по шагам: дни, где шагов не меньше цели, отмечаются зелёной точкой в календаре
+const StepsGoalField = ({ tracker }) => {
+  const [value, setValue] = useState(
+    tracker.goal_value !== null && tracker.goal_value !== undefined ? String(tracker.goal_value) : '',
+  );
+  const [saving, setSaving] = useState(false);
+
+  const save = async () => {
+    const raw = value.trim().replace(',', '.');
+    const n = raw === '' ? null : Number(raw);
+    if (n !== null && (!Number.isFinite(n) || n < 0)) return Alert.alert('Проверьте значение цели');
+    setSaving(true);
+    try {
+      await saveTracker({ goal_value: n, goal_direction: n === null ? null : 'reach' }, tracker.uuid);
+    } catch (e) {
+      Alert.alert('Не удалось сохранить', e?.message || '');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Section title="Цель">
+      <Field label="Шагов в день (пусто - цель снята)">
+        <Input value={value} onChangeText={setValue} keyboardType="number-pad" placeholder="например 8000" />
+      </Field>
+      <PrimaryButton title="Сохранить цель" onPress={save} loading={saving} />
+    </Section>
+  );
+};
+
 const TrackerDetailContent = ({ navigation, uuid }) => {
   const colors = useColors();
   const { today } = useJournal();
@@ -280,6 +311,7 @@ const TrackerDetailContent = ({ navigation, uuid }) => {
           {renderChart(width - 90, 180)}
         </View>
       )}
+      {tracker.template_key === 'steps' && <StepsGoalField key={tracker.uuid} tracker={tracker} />}
       <Section title="Сводка за период">
         <View style={styles.stats}>
           {isBool ? (

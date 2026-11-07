@@ -185,6 +185,16 @@ export const rowToObject = (entity, row) => {
   return obj;
 };
 
+// Старые локальные направления цели (up/down) сервер не принимает: приводим к reach/not_exceed
+const LEGACY_GOAL_DIRECTIONS = { up: 'reach', down: 'not_exceed' };
+
+export const normalizeSyncData = (entity, data) => {
+  if (entity === 'tracker' && data?.goal_direction) {
+    return { ...data, goal_direction: LEGACY_GOAL_DIRECTIONS[data.goal_direction] || data.goal_direction };
+  }
+  return data;
+};
+
 // Данные записи для sync push (только поля сущности)
 export const rowToPayload = (entity, row) => {
   const { fields } = ENTITIES[entity];
@@ -192,5 +202,5 @@ export const rowToPayload = (entity, row) => {
   Object.entries(fields).forEach(([name, type]) => {
     data[name] = fromDbValue(type, row[name]);
   });
-  return data;
+  return normalizeSyncData(entity, data);
 };
