@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { usersApi } from '../api';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
+import { PrimaryButton } from '../components/journal/common';
 
 export default function CreateAlbumScreen({ navigation }) {
   const insets = useSafeAreaInsets();
@@ -46,7 +47,7 @@ export default function CreateAlbumScreen({ navigation }) {
       >
         <Text style={[styles.label, { color: colors.text }]}>Название альбома</Text>
       <TextInput
-        style={[styles.input, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]}
+        style={[styles.input, { backgroundColor: 'transparent', color: colors.text, borderColor: colors.border }]}
         value={title}
         onChangeText={setTitle}
         placeholder="Введите название"
@@ -55,7 +56,7 @@ export default function CreateAlbumScreen({ navigation }) {
 
       <Text style={[styles.label, { color: colors.text }]}>Описание</Text>
       <TextInput
-        style={[styles.input, styles.textArea, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]}
+        style={[styles.input, styles.textArea, { backgroundColor: 'transparent', color: colors.text, borderColor: colors.border }]}
         value={description}
         onChangeText={setDescription}
         placeholder="Введите описание (необязательно)"
@@ -76,14 +77,15 @@ export default function CreateAlbumScreen({ navigation }) {
             style={[
               styles.privacyOption,
               { borderColor: colors.border },
-              privacy === item.value && { backgroundColor: colors.primary, borderColor: colors.primary }
+              { backgroundColor: 'transparent' },
+              privacy === item.value && { backgroundColor: `${colors.primary}22`, borderColor: colors.primary }
             ]}
             onPress={() => setPrivacy(item.value)}
           >
             <Text style={[
               styles.privacyText,
               { color: colors.text },
-              privacy === item.value && { color: '#fff' }
+              privacy === item.value && { color: colors.primary }
             ]}>
               {item.label}
             </Text>
@@ -93,13 +95,12 @@ export default function CreateAlbumScreen({ navigation }) {
       </ScrollView>
 
       <View style={[styles.stickyFooter, { backgroundColor: colors.background, borderTopColor: colors.border, paddingBottom: Math.max(insets.bottom, 15) }]}>
-        <TouchableOpacity 
-          style={[styles.button, { backgroundColor: colors.primary }, loading && styles.disabled]} 
+        <PrimaryButton
+          title={loading ? 'Создание...' : 'Создать альбом'}
           onPress={handleCreate}
           disabled={loading}
-        >
-          <Text style={styles.buttonText}>{loading ? 'Создание...' : 'Создать альбом'}</Text>
-        </TouchableOpacity>
+          style={styles.button}
+        />
       </View>
     </KeyboardAvoidingView>
   );
@@ -138,10 +139,7 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   button: {
-    padding: 15,
-    borderRadius: 10,
-    alignItems: 'center',
+    marginHorizontal: 0,
+    marginTop: 0,
   },
-  buttonText: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
-  disabled: { opacity: 0.5 },
 });

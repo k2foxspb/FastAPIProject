@@ -1,8 +1,9 @@
-import React from 'react';
-import { View, Text, TextInput, TouchableOpacity, Animated, Vibration, Platform } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, TextInput, TouchableOpacity, Animated, Vibration, Platform, StyleSheet } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { styles } from '../styles';
 import { formatRecordingTime, getReplyPreviewText } from '../utils';
+import { PICKER_EMOJIS } from '../emojis';
 
 // Нижняя панель: превью ответа, отправка текста/вложений, запись голосовых и видеосообщений
 export default function ChatInputBar({
@@ -47,6 +48,11 @@ export default function ChatInputBar({
   onSendVideoNote,
 }) {
   const isAnyRecording = isRecording || isVideoRecording;
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+
+  const insertEmoji = (emoji) => {
+    onChangeText((inputText || '') + emoji);
+  };
 
   return (
     <View style={[
@@ -142,6 +148,13 @@ export default function ChatInputBar({
               >
                 <MaterialIcons name="image" size={24} color={colors.primary} />
               </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setShowEmojiPicker((value) => !value)}
+                style={styles.attachButton}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <MaterialIcons name="emoji-emotions" size={24} color={showEmojiPicker ? colors.primary : colors.textSecondary} />
+              </TouchableOpacity>
             </View>
           )}
           
@@ -196,6 +209,34 @@ export default function ChatInputBar({
         </>
       )}
       </View>
+      {showEmojiPicker && !isAnyRecording && !recordedUri && !pendingVideoNoteUri && (
+        <View style={[emojiStyles.picker, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          {PICKER_EMOJIS.map((emoji) => (
+            <TouchableOpacity key={emoji} onPress={() => insertEmoji(emoji)} style={emojiStyles.pickerItem}>
+              <Text style={emojiStyles.pickerEmoji}>{emoji}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
     </View>
   );
 }
+
+const emojiStyles = StyleSheet.create({
+  picker: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    borderWidth: 1,
+    borderRadius: 12,
+    marginTop: 8,
+    paddingHorizontal: 4,
+  },
+  pickerItem: {
+    width: '10%',
+    alignItems: 'center',
+    paddingVertical: 6,
+  },
+  pickerEmoji: {
+    fontSize: 24,
+  },
+});

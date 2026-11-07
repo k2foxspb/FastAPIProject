@@ -1,20 +1,22 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View, TouchableOpacity } from 'react-native';
 import Animated, { ZoomIn, useSharedValue, useAnimatedStyle, withSequence, withTiming, withSpring } from 'react-native-reanimated';
 import { styles } from '../styles';
-
-const QUICK_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
+import ReactionBurst from './ReactionBurst';
+import { REACTION_EMOJIS } from '../emojis';
 
 // Одна кнопка-эмодзи: появляется с анимацией ZoomIn (по очереди), а при нажатии
 // "подпрыгивает" — быстро увеличивается и пружинисто возвращается к исходному размеру.
 function AnimatedEmojiButton({ emoji, index, onSelect }) {
   const scale = useSharedValue(1);
+  const [burstKey, setBurstKey] = useState(0);
 
   const handlePress = () => {
     scale.value = withSequence(
       withTiming(1.7, { duration: 100 }),
       withSpring(1, { damping: 7, stiffness: 180 })
     );
+    setBurstKey((key) => key + 1);
     onSelect(emoji);
   };
 
@@ -26,6 +28,7 @@ function AnimatedEmojiButton({ emoji, index, onSelect }) {
     <Animated.View entering={ZoomIn.delay(index * 40).springify().damping(12)}>
       <TouchableOpacity style={styles.reactionBarEmojiButton} onPress={handlePress}>
         <Animated.Text style={[styles.reactionBarEmojiText, animatedStyle]}>{emoji}</Animated.Text>
+        <ReactionBurst trigger={burstKey} />
       </TouchableOpacity>
     </Animated.View>
   );
@@ -35,7 +38,7 @@ function AnimatedEmojiButton({ emoji, index, onSelect }) {
 export default function ReactionBar({ colors, onSelect }) {
   return (
     <View style={[styles.reactionBarWrapper, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-      {QUICK_EMOJIS.map((emoji, index) => (
+      {REACTION_EMOJIS.map((emoji, index) => (
         <AnimatedEmojiButton key={emoji} emoji={emoji} index={index} onSelect={onSelect} />
       ))}
     </View>

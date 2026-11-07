@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { Text, TouchableOpacity } from 'react-native';
 import Animated, { ZoomIn, useSharedValue, useAnimatedStyle, withSequence, withTiming, withSpring } from 'react-native-reanimated';
 import { styles } from '../styles';
+import ReactionBurst from './ReactionBurst';
 
 // Анимированный бейдж реакции под сообщением: при первом появлении "выезжает" (ZoomIn),
 // а при изменении счётчика (постановке/снятии реакции) эмодзи "подлетает" вверх с увеличением,
@@ -46,6 +47,7 @@ export default function ReactionBadge({ emoji, count, isMine, isReceived, colors
         ]}
       >
         <Animated.Text style={[styles.reactionBadgeEmoji, animatedEmojiStyle]}>{emoji}</Animated.Text>
+        <ReactionBurst trigger={count} size={44} />
         {count > 1 && (
           <Text style={[styles.reactionBadgeCount, { color: isReceived ? colors.textSecondary : 'rgba(255,255,255,0.9)' }]}>
             {count}

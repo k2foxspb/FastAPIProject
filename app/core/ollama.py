@@ -54,8 +54,7 @@ class OllamaBadResponse(OllamaError):
     """Ответ не удалось разобрать (не JSON, пустой, не прошёл проверку схемы)."""
 
 
-_THINK_OPEN = "<think>"
-_THINK_CLOSE = "</think>"
+_REASONING_TAGS = (("<think>", "</think>"), ("<thinking>", "</thinking>"), ("<reasoning>", "</reasoning>"))
 
 
 def _partial_tag_len(buf: str, tag: str) -> int:
@@ -67,40 +66,45 @@ def _partial_tag_len(buf: str, tag: str) -> int:
 
 
 class ReasoningFilter:
-    """Убирает из потока рассуждения модели в блоках <think>...</think>, даже если теги пришли по частям."""
+    """Убирает из потока рассуждения модели в блоках <think>/<thinking>/<reasoning>, даже если теги пришли по частям."""
 
     def __init__(self):
         self._buf = ""
-        self._inside = False
+        self._close: str | None = None
+
+    def _open_tags(self) -> list[str]:
+        return [o for o, _ in _REASONING_TAGS]
 
     def feed(self, piece: str) -> str:
         self._buf += piece
         out = []
         while True:
-            if self._inside:
-                idx = self._buf.find(_THINK_CLOSE)
+            if self._close is not None:
+                idx = self._buf.find(self._close)
                 if idx == -1:
-                    keep = _partial_tag_len(self._buf, _THINK_CLOSE)
+                    keep = _partial_tag_len(self._buf, self._close)
                     self._buf = self._buf[len(self._buf) - keep:]
                     break
-                self._buf = self._buf[idx + len(_THINK_CLOSE):]
-                self._inside = False
+                self._buf = self._buf[idx + len(self._close):]
+                self._close = None
             else:
-                idx = self._buf.find(_THINK_OPEN)
-                if idx == -1:
-                    keep = _partial_tag_len(self._buf, _THINK_OPEN)
+                found = [(self._buf.find(o), o, c) for o, c in _REASONING_TAGS]
+                found = [f for f in found if f[0] != -1]
+                if not found:
+                    keep = max(_partial_tag_len(self._buf, o) for o in self._open_tags())
                     out.append(self._buf[:len(self._buf) - keep])
                     self._buf = self._buf[len(self._buf) - keep:]
                     break
+                idx, o, c = min(found)
                 out.append(self._buf[:idx])
-                self._buf = self._buf[idx + len(_THINK_OPEN):]
-                self._inside = True
+                self._buf = self._buf[idx + len(o):]
+                self._close = c
         return "".join(out)
 
     def flush(self) -> str:
-        tail = "" if self._inside else self._buf
+        tail = "" if self._close is not None else self._buf
         self._buf = ""
-        self._inside = False
+        self._close = None
         return tail
 
 

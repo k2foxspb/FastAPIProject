@@ -9,7 +9,7 @@ const PAGE = 20;
 
 const LINKS = [
   ['FinanceCategories', 'Категории'],
-  ['ExpenseAnalytics', 'Аналитика расходов'],
+  ['ExpenseAnalytics', 'Доходы и расходы'],
 ];
 
 function Content({ navigation }) {

@@ -326,7 +326,7 @@ function JournalStack() {
         <Stack.Screen name="ImportBatches" component={ImportBatchesScreen} options={{ title: 'История импорта' }} />
         <Stack.Screen name="ReviewQueue" component={ReviewQueueScreen} options={{ title: 'Разобрать операции' }} />
         <Stack.Screen name="ImportRules" component={ImportRulesScreen} options={{ title: 'Правила импорта' }} />
-        <Stack.Screen name="ExpenseAnalytics" component={ExpenseAnalyticsScreen} options={{ title: 'Расходы' }} />
+        <Stack.Screen name="ExpenseAnalytics" component={ExpenseAnalyticsScreen} options={{ title: 'Доходы и расходы' }} />
         <Stack.Screen name="Goals" component={GoalsScreen} options={{ title: 'Цели' }} />
         <Stack.Screen name="GoalEdit" component={GoalEditScreen} options={{ title: 'Цель' }} />
         <Stack.Screen name="Analytics" component={AnalyticsScreen} options={{ title: 'Аналитика' }} />
