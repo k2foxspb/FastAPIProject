@@ -15,6 +15,7 @@ import {
   Keyboard,
 } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import RenderHTML from 'react-native-render-html';
 import { useFocusEffect } from '@react-navigation/native';
@@ -26,6 +27,7 @@ import { theme as themeConstants } from '../constants/theme';
 import { getFullUrl, getAvatarUrl, formatName, formatPostDateTime } from '../utils/formatters';
 import FadeInImage from '../components/FadeInImage';
 import CachedMedia from '../components/CachedMedia';
+import ZoomableView from '../components/ZoomableView';
 
 // Полноценный экран публикации (пост или объявление) из ленты: показывает текст и
 // медиафайл целиком (без обрезки), а не только модалку с комментариями, плюс список
@@ -299,7 +301,7 @@ export default function PostDetailScreen({ route, navigation }) {
           onRequestClose={() => setFullScreenVisible(false)}
         >
           <StatusBar barStyle="light-content" backgroundColor="#000" />
-          <View style={styles.fullScreenContainer}>
+          <GestureHandlerRootView style={styles.fullScreenContainer}>
             <View style={[styles.fullScreenTop, { paddingTop: Math.max(insets.top, StatusBar.currentHeight || 0) + 10 }]}>
               <TouchableOpacity style={styles.fullScreenCloseBtn} onPress={() => setFullScreenVisible(false)}>
                 <Icon name="close" size={30} color="#fff" />
@@ -315,13 +317,15 @@ export default function PostDetailScreen({ route, navigation }) {
                 resizeMode="contain"
               />
             ) : (
-              <FadeInImage
-                source={{ uri: getFullUrl(post.media_url) }}
-                style={styles.fullScreenMedia}
-                resizeMode="contain"
-              />
+              <ZoomableView style={styles.fullScreenMedia} isActive={fullScreenVisible}>
+                <FadeInImage
+                  source={{ uri: getFullUrl(post.media_url) }}
+                  style={styles.fullScreenMedia}
+                  resizeMode="contain"
+                />
+              </ZoomableView>
             )}
-          </View>
+          </GestureHandlerRootView>
         </Modal>
       )}
 

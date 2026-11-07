@@ -30,12 +30,12 @@ export const summarizeRange = async (start, end) => {
     if (days[d]) days[d].has_diary = true;
   });
 
-  // Сон считается зелёной отметкой только при длительности больше 6 часов (360 мин, значение в минутах)
+  // Сон не выводится зелёной отметкой в календаре, поэтому не учитывается в tracker_count
   const values = await db.getAllAsync(
     `SELECT v.value_date AS d, COUNT(*) AS n FROM tracker_values v
      LEFT JOIN trackers t ON t.uuid = v.tracker_uuid
      WHERE v.value_date BETWEEN ? AND ?
-       AND (t.template_key IS NOT 'sleep' OR v.num_value > 360)
+       AND t.template_key IS NOT 'sleep'
      GROUP BY v.value_date`,
     [start, end],
   );

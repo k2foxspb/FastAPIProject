@@ -1,8 +1,10 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, FlatList, TouchableOpacity, Modal, Pressable, StyleSheet } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import CachedMedia from '../../../components/CachedMedia';
+import ZoomableView from '../../../components/ZoomableView';
 import { styles } from '../styles';
 import { formatMediaTime, formatBytesRu, isVideoMedia } from '../utils';
 
@@ -40,6 +42,11 @@ export default function FullScreenMediaViewer({
   // Модалка рисует собственные контролы без системного заголовка, поэтому верхний отступ
   // под статус-бар/чёлку добавляем вручную через insets.top (см. SafeAreaScreen).
   const insets = useSafeAreaInsets();
+  const [isZoomed, setIsZoomed] = useState(false);
+
+  useEffect(() => {
+    if (!fullScreenMedia) setIsZoomed(false);
+  }, [fullScreenMedia]);
 
   return (
     <Modal
@@ -47,7 +54,7 @@ export default function FullScreenMediaViewer({
       transparent={true}
       onRequestClose={onClose}
     >
-      <View style={styles.fullScreenContainer}>
+      <GestureHandlerRootView style={styles.fullScreenContainer}>
         {showFullScreenControls && (
           <View style={[styles.fullScreenControlsTop, { paddingTop: insets.top + 10 }]}>
             <TouchableOpacity 
@@ -81,9 +88,12 @@ export default function FullScreenMediaViewer({
             onMediaIndexChange(index);
           }}
           keyExtractor={(_, i) => `fs_media_${i}`}
+          scrollEnabled={!isZoomed}
           showsHorizontalScrollIndicator={false}
-          renderItem={({ item: mediaItem, index }) => (
-            <View style={{ width: screenWidth, height: '100%', justifyContent: 'center', alignItems: 'center' }}>
+          renderItem={({ item: mediaItem, index }) => {
+            const pageStyle = { width: screenWidth, height: '100%', justifyContent: 'center', alignItems: 'center' };
+            const pageContent = (
+              <>
               <CachedMedia 
                 item={mediaItem}
                 style={styles.fullScreenVideo}
@@ -115,8 +125,16 @@ export default function FullScreenMediaViewer({
                   </View>
                 )}
               </Pressable>
-            </View>
-          )}
+              </>
+            );
+            return isVideoMedia(mediaItem) ? (
+              <View style={pageStyle}>{pageContent}</View>
+            ) : (
+              <ZoomableView style={pageStyle} isActive={currentMediaIndex === index} onZoomChange={setIsZoomed}>
+                {pageContent}
+              </ZoomableView>
+            );
+          }}
         />
 
         {fsDownloading && isCurrentVideo && (
@@ -197,7 +215,7 @@ export default function FullScreenMediaViewer({
             </View>
           </View>
         )}
-      </View>
+      </GestureHandlerRootView>
     </Modal>
   );
 }

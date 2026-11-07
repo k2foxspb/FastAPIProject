@@ -23,6 +23,7 @@ import { getFullUrl } from '../utils/urlHelper';
 import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
 import CachedMedia from '../components/CachedMedia';
+import ZoomableView from '../components/ZoomableView';
 
 const { width, height } = Dimensions.get('window');
 
@@ -57,6 +58,7 @@ export default function PhotoDetailScreen({ route, navigation }) {
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
   const [showComments, setShowComments] = useState(false);
   const [isMediaFullscreen, setIsMediaFullscreen] = useState(false);
+  const [isZoomed, setIsZoomed] = useState(false);
   const flatListRef = useRef(null);
 
   const fetchAlbumPhotos = useCallback(async () => {
@@ -315,8 +317,6 @@ export default function PhotoDetailScreen({ route, navigation }) {
     return (
       <View style={styles.slide}>
         <ScrollView
-          maximumZoomScale={5}
-          minimumZoomScale={1}
           centerContent={true}
           showsHorizontalScrollIndicator={false}
           showsVerticalScrollIndicator={false}
@@ -347,30 +347,41 @@ export default function PhotoDetailScreen({ route, navigation }) {
                 )}
               </View>
             ) : (
-              <TouchableOpacity 
-                activeOpacity={1} 
-                onPress={selectionMode ? () => toggleSelection(item.id) : toggleDescription}
-                onLongPress={isOwner && !selectionMode ? enterSelectionMode : null}
+              <ZoomableView
                 style={styles.fullPhoto}
+                isActive={currentIndex === index}
+                onZoomChange={setIsZoomed}
               >
-                <Image 
-                  source={{ uri: mediaUrl }} 
-                  style={[
-                    styles.fullPhoto,
-                    isSelected && { opacity: 0.7 }
-                  ]} 
-                  resizeMode="contain" 
-                />
-              </TouchableOpacity>
+                <TouchableOpacity
+                  activeOpacity={1}
+                  onPress={selectionMode ? () => toggleSelection(item.id) : toggleDescription}
+                  onLongPress={isOwner && !selectionMode ? enterSelectionMode : null}
+                  style={styles.fullPhoto}
+                >
+                  <Image
+                    source={{ uri: mediaUrl }}
+                    style={[
+                      styles.fullPhoto,
+                      isSelected && { opacity: 0.7 }
+                    ]}
+                    resizeMode="contain"
+                  />
+                </TouchableOpacity>
+              </ZoomableView>
             )}
             {selectionMode && (
-              <View style={styles.selectionOverlay}>
+              <TouchableOpacity
+                style={styles.selectionOverlay}
+                onPress={() => toggleSelection(item.id)}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                activeOpacity={0.7}
+              >
                 <Icon 
                   name={isSelected ? "checkbox" : "square-outline"} 
                   size={30} 
                   color={isSelected ? colors.primary : "#fff"} 
                 />
-              </View>
+              </TouchableOpacity>
             )}
           </View>
         </ScrollView>
@@ -405,6 +416,8 @@ export default function PhotoDetailScreen({ route, navigation }) {
         ref={flatListRef}
         style={StyleSheet.absoluteFill}
         data={photos}
+        scrollEnabled={!isZoomed}
+        extraData={[selectionMode, selectedIds, currentIndex, hideChrome, isZoomed]}
         renderItem={renderItem}
         keyExtractor={(item) => item.id.toString()}
         horizontal
@@ -433,7 +446,6 @@ export default function PhotoDetailScreen({ route, navigation }) {
             }
           }
         }}
-        removeClippedSubviews={true}
         scrollEventThrottle={16}
         windowSize={5}
         maxToRenderPerBatch={3}
@@ -466,11 +478,6 @@ export default function PhotoDetailScreen({ route, navigation }) {
           </Text>
 
           <View style={styles.headerRight}>
-            {!selectionMode && (
-              <TouchableOpacity onPress={toggleDescription} style={styles.headerButton}>
-                <Icon name={showDescription ? "information-circle" : "information-circle-outline"} size={28} color="#fff" />
-              </TouchableOpacity>
-            )}
             {isOwner && !selectionMode && (
               <TouchableOpacity onPress={enterSelectionMode} style={styles.headerButton}>
                 <Icon name="checkbox-outline" size={28} color="#fff" />
