@@ -28,6 +28,7 @@ import { getFullUrl, getAvatarUrl, formatName, formatPostDateTime } from '../uti
 import FadeInImage from '../components/FadeInImage';
 import CachedMedia from '../components/CachedMedia';
 import ZoomableView from '../components/ZoomableView';
+import ReactionsListModal from './chat/components/ReactionsListModal';
 
 // Полноценный экран публикации (пост или объявление) из ленты: показывает текст и
 // медиафайл целиком (без обрезки), а не только модалку с комментариями, плюс список
@@ -47,6 +48,8 @@ export default function PostDetailScreen({ route, navigation }) {
   const [newCommentText, setNewCommentText] = useState('');
   const [submittingComment, setSubmittingComment] = useState(false);
   const [fullScreenVisible, setFullScreenVisible] = useState(false);
+  const [likersVisible, setLikersVisible] = useState(false);
+  const [likers, setLikers] = useState([]);
 
   const isAnnouncement = post?.item_type === 'announcement';
   const scrollRef = useRef(null);
@@ -114,6 +117,24 @@ export default function PostDetailScreen({ route, navigation }) {
     }
   };
 
+  const openLikers = async () => {
+    if (!post?.id) return;
+    setLikersVisible(true);
+    try {
+      const res = await usersApi.getProfilePostReactions(post.id);
+      setLikers((res.data || []).map((r) => ({
+        user_id: r.user_id,
+        first_name: r.user?.first_name,
+        last_name: r.user?.last_name,
+        avatar_url: r.user?.avatar_url,
+        emoji: '❤️',
+      })));
+    } catch (err) {
+      setLikersVisible(false);
+      Alert.alert('Ошибка', 'Не удалось загрузить список лайков');
+    }
+  };
+
   const handleAddComment = async () => {
     if (!newCommentText.trim() || !post?.id) return;
     setSubmittingComment(true);
@@ -177,6 +198,15 @@ export default function PostDetailScreen({ route, navigation }) {
         </Text>
         <View style={styles.headerBackBtn} />
       </View>
+      <ReactionsListModal
+        visible={likersVisible}
+        emoji="❤️"
+        reactions={likers}
+        colors={colors}
+        currentUserId={currentUser?.id}
+        navigation={navigation}
+        onClose={() => setLikersVisible(false)}
+      />
       <ScrollView
         ref={scrollRef}
         style={[styles.container, { backgroundColor: colors.background }]}
@@ -237,7 +267,7 @@ export default function PostDetailScreen({ route, navigation }) {
         )}
 
         <View style={[styles.reactionsRow, { borderColor: colors.border }]}>
-          <TouchableOpacity style={styles.reactionItem} onPress={handleReact}>
+          <TouchableOpacity style={styles.reactionItem} onPress={handleReact} onLongPress={openLikers} delayLongPress={300}>
             <Icon
               name={post.my_reaction ? 'heart' : 'heart-outline'}
               size={20}

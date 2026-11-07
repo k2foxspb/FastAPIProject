@@ -681,6 +681,13 @@ class ProfilePostReactionResponse(BaseModel):
     user: Optional[ProfilePostAuthor] = None
     model_config = ConfigDict(from_attributes=True)
 
+    @classmethod
+    def model_validate(cls, obj, **kwargs):
+        item = super().model_validate(obj, **kwargs)
+        if item.user is not None and not item.user.avatar_url:
+            item.user.avatar_url = get_default_avatar_url(getattr(getattr(obj, "user", None), "gender", None))
+        return item
+
 
 class ProfilePostResponse(BaseModel):
     id: int

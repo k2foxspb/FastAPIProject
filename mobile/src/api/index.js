@@ -191,6 +191,7 @@ export const usersApi = {
   updateProfilePost: (postId, data) => api.patch(`/users/me/posts/${postId}`, data),
   deleteProfilePost: (postId) => api.delete(`/users/me/posts/${postId}`),
   reactToProfilePost: (postId, reactionType) => api.post(`/users/posts/${postId}/react`, null, { params: { reaction_type: reactionType } }),
+  getProfilePostReactions: (postId) => api.get(`/users/posts/${postId}/reactions`),
   getProfilePostComments: (postId) => api.get(`/users/posts/${postId}/comments`),
   addProfilePostComment: (postId, comment) => api.post(`/users/posts/${postId}/comments`, { comment }),
   deleteProfilePostComment: (commentId) => api.delete(`/users/posts/comments/${commentId}`),

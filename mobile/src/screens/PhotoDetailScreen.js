@@ -24,6 +24,8 @@ import { useTheme } from '../context/ThemeContext';
 import { theme as themeConstants } from '../constants/theme';
 import CachedMedia from '../components/CachedMedia';
 import ZoomableView from '../components/ZoomableView';
+import ReactionsListModal from './chat/components/ReactionsListModal';
+import { useNotifications } from '../context/NotificationContext';
 
 const { width, height } = Dimensions.get('window');
 
@@ -59,6 +61,9 @@ export default function PhotoDetailScreen({ route, navigation }) {
   const [showComments, setShowComments] = useState(false);
   const [isMediaFullscreen, setIsMediaFullscreen] = useState(false);
   const [isZoomed, setIsZoomed] = useState(false);
+  const [likersVisible, setLikersVisible] = useState(false);
+  const [likers, setLikers] = useState([]);
+  const { currentUser } = useNotifications();
   const flatListRef = useRef(null);
 
   const fetchAlbumPhotos = useCallback(async () => {
@@ -152,6 +157,25 @@ export default function PhotoDetailScreen({ route, navigation }) {
     }
   };
 
+  const openLikers = async () => {
+    const photo = photos[currentIndex];
+    if (!photo) return;
+    setLikersVisible(true);
+    try {
+      const res = await usersApi.getPhoto(photo.id);
+      setLikers((res.data.liked_by || []).map((u) => ({
+        user_id: u.id,
+        first_name: u.first_name,
+        last_name: u.last_name,
+        avatar_url: u.avatar_url,
+        emoji: '❤️',
+      })));
+    } catch (err) {
+      setLikersVisible(false);
+      Alert.alert('Ошибка', 'Не удалось загрузить список лайков');
+    }
+  };
+
   const submitComment = async () => {
     if (!newComment.trim() || isSubmittingComment) return;
     
@@ -238,13 +262,8 @@ export default function PhotoDetailScreen({ route, navigation }) {
     fetchAlbumPhotos();
   }, [fetchAlbumPhotos]);
 
-  const toggleDescription = () => {
-    if (selectionMode) return;
-    setShowDescription(!showDescription);
-  };
-
-  // Тап по видео переключает два состояния: всё скрыто (шторки и кнопка play) и всё видно (шторки с описанием и комментариями, кнопка play)
-  const handleVideoTap = () => {
+  // Тап по фото или видео переключает два состояния: всё скрыто (шторки и кнопка play) и всё видно (шторки с описанием и комментариями)
+  const handleMediaTap = () => {
     if (selectionMode) return;
     if (isMediaFullscreen) setShowDescription(true);
     setIsMediaFullscreen(!isMediaFullscreen);
@@ -335,7 +354,7 @@ export default function PhotoDetailScreen({ route, navigation }) {
                     isSelected && { opacity: 0.7 }
                   ]}
                   shouldPlay={currentIndex === index && !selectionMode}
-                  onTap={handleVideoTap}
+                  onTap={handleMediaTap}
                   controlsVisible={!hideChrome}
                 />
                 {selectionMode && (
@@ -354,7 +373,7 @@ export default function PhotoDetailScreen({ route, navigation }) {
               >
                 <TouchableOpacity
                   activeOpacity={1}
-                  onPress={selectionMode ? () => toggleSelection(item.id) : toggleDescription}
+                  onPress={selectionMode ? () => toggleSelection(item.id) : handleMediaTap}
                   onLongPress={isOwner && !selectionMode ? enterSelectionMode : null}
                   style={styles.fullPhoto}
                 >
@@ -389,16 +408,13 @@ export default function PhotoDetailScreen({ route, navigation }) {
     );
   };
 
-  const currentIsVideo = isVideo(photos[currentIndex]?.image_url);
-  const hideChrome = isMediaFullscreen && currentIsVideo;
+  const hideChrome = isMediaFullscreen;
 
-  // Видео открывается сразу в состоянии «всё видно», чтобы первый тап скрывал интерфейс
+  // Медиа открывается сразу в состоянии «всё видно», чтобы первый тап скрывал интерфейс
   useEffect(() => {
-    if (currentIsVideo) {
-      setIsMediaFullscreen(false);
-      setShowDescription(true);
-    }
-  }, [currentIndex, currentIsVideo]);
+    setIsMediaFullscreen(false);
+    setShowDescription(true);
+  }, [currentIndex]);
 
   if (loading) {
     return (
@@ -411,6 +427,16 @@ export default function PhotoDetailScreen({ route, navigation }) {
   return (
     <View style={[styles.container, { flex: 1, backgroundColor: '#000' }]}>
       <StatusBar hidden={!showDescription || hideChrome} />
+
+      <ReactionsListModal
+        visible={likersVisible}
+        emoji="❤️"
+        reactions={likers}
+        colors={colors}
+        currentUserId={currentUser?.id}
+        navigation={navigation}
+        onClose={() => setLikersVisible(false)}
+      />
       
       <FlatList
         ref={flatListRef}
@@ -521,6 +547,8 @@ export default function PhotoDetailScreen({ route, navigation }) {
                 <TouchableOpacity 
                   style={[styles.reactionButton, photos[currentIndex].my_reaction === 1 && styles.activeLike]} 
                   onPress={() => handleReaction(1)}
+                  onLongPress={openLikers}
+                  delayLongPress={300}
                 >
                   <Icon name={photos[currentIndex].my_reaction === 1 ? "heart" : "heart-outline"} size={24} color={photos[currentIndex].my_reaction === 1 ? colors.error : "#fff"} />
                   <Text style={styles.reactionText}>{photos[currentIndex].likes_count || 0}</Text>

@@ -3222,6 +3222,33 @@ async def react_to_profile_post(
         return {"status": "ok", "action": "added", "reaction_type": r_type}
 
 
+@router.get("/posts/{post_id}/reactions", response_model=list[ProfilePostReactionResponse])
+async def get_profile_post_reactions(
+    post_id: int,
+    current_user: UserModel = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Возвращает список пользователей, поставивших реакцию на публикацию профиля."""
+    res = await db.execute(
+        select(ProfilePostModel).where(ProfilePostModel.id == post_id, ProfilePostModel.is_active == True)
+    )
+    post = res.scalar_one_or_none()
+    if not post:
+        raise HTTPException(status_code=404, detail="Публикация не найдена")
+
+    friendship_status = await get_friendship_status(db, current_user.id, post.user_id)
+    if not can_view_content(post.user_id, current_user.id, post.privacy, friendship_status):
+        raise HTTPException(status_code=403, detail="Доступ запрещен настройками приватности")
+
+    reactions_res = await db.execute(
+        select(ProfilePostReactionModel)
+        .options(selectinload(ProfilePostReactionModel.user))
+        .where(ProfilePostReactionModel.post_id == post_id)
+        .order_by(ProfilePostReactionModel.id.asc())
+    )
+    return [ProfilePostReactionResponse.model_validate(r) for r in reactions_res.scalars().all()]
+
+
 @router.get("/posts/{post_id}/comments", response_model=list[ProfilePostCommentResponse])
 async def get_profile_post_comments(
     post_id: int,

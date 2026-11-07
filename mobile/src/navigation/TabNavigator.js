@@ -389,10 +389,20 @@ export default function TabNavigator() {
       <Tab.Screen 
         name="Users" 
         component={UsersStack} 
-        options={{ 
-          title: 'Пользователи', 
-          headerShown: false,
-          tabBarBadge: friendRequestsCount > 0 ? friendRequestsCount : null,
+        options={({ route }) => {
+          // Скрываем нижнюю панель навигации при просмотре медиа профиля (экран PhotoDetail)
+          const routeName = getFocusedRouteNameFromRoute(route) ?? 'UsersMain';
+          const hideTabBar = routeName === 'PhotoDetail';
+          return {
+            title: 'Пользователи', 
+            headerShown: false,
+            tabBarBadge: friendRequestsCount > 0 ? friendRequestsCount : null,
+            tabBarStyle: {
+              backgroundColor: colors.background,
+              borderTopColor: colors.border,
+              display: hideTabBar ? 'none' : 'flex',
+            },
+          };
         }} 
       />
       <Tab.Screen 
@@ -427,7 +437,25 @@ export default function TabNavigator() {
         }} 
       />
       <Tab.Screen name="Journal" component={JournalStack} options={{ title: 'Журнал', headerShown: false }} />
-      <Tab.Screen name="Profile" component={ProfileStack} options={{ title: 'Профиль', headerShown: false }} />
+      <Tab.Screen
+        name="Profile"
+        component={ProfileStack}
+        options={({ route }) => {
+          // Скрываем нижнюю панель навигации при просмотре медиа в профиле (экран PhotoDetail),
+          // чтобы фото и видео занимали весь экран.
+          const routeName = getFocusedRouteNameFromRoute(route) ?? 'ProfileMain';
+          const hideTabBar = routeName === 'PhotoDetail';
+          return {
+            title: 'Профиль',
+            headerShown: false,
+            tabBarStyle: {
+              backgroundColor: colors.background,
+              borderTopColor: colors.border,
+              display: hideTabBar ? 'none' : 'flex',
+            },
+          };
+        }}
+      />
     </Tab.Navigator>
     </JournalProvider>
   );
