@@ -1,6 +1,6 @@
 from datetime import date, datetime
 from decimal import Decimal
-from pydantic import BaseModel, EmailStr, Field, ConfigDict, field_validator
+from pydantic import BaseModel, EmailStr, Field, ConfigDict, field_validator, model_validator
 from typing import Any, Optional
 
 
@@ -37,7 +37,14 @@ class ReactorInfo(BaseModel):
     first_name: str | None = None
     last_name: str | None = None
     avatar_url: str | None = None
+    gender: str | None = Field(default=None, exclude=True)
     model_config = ConfigDict(from_attributes=True)
+
+    @model_validator(mode="after")
+    def _default_avatar(self):
+        if not self.avatar_url:
+            self.avatar_url = get_default_avatar_url(self.gender)
+        return self
 
 
 class UserPhotoBase(BaseModel):

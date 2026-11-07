@@ -220,17 +220,18 @@ async def _build_reactions_map(db: AsyncSession, message_ids: List[int]) -> dict
             UserModel.last_name,
             UserModel.avatar_url,
             UserModel.avatar_preview_url,
+            UserModel.gender,
         )
         .join(UserModel, ChatMessageReaction.user_id == UserModel.id)
         .where(ChatMessageReaction.message_id.in_(message_ids))
     )
-    for r, first_name, last_name, avatar_url, avatar_preview_url in res_reactions.all():
+    for r, first_name, last_name, avatar_url, avatar_preview_url, gender in res_reactions.all():
         reactions_map.setdefault(r.message_id, []).append({
             "emoji": r.emoji,
             "user_id": r.user_id,
             "first_name": first_name,
             "last_name": last_name,
-            "avatar_url": avatar_url,
+            "avatar_url": avatar_url or get_default_avatar_url(gender),
             "avatar_preview_url": avatar_preview_url,
         })
     return reactions_map
